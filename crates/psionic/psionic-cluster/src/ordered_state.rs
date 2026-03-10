@@ -1269,6 +1269,206 @@ pub enum ClusterCommand {
     RequestSnapshot,
 }
 
+/// Required authority scope for one imperative cluster command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCommandAuthorityScope {
+    /// Only the current coordinator may authorize the mutation.
+    CoordinatorOnly,
+    /// Any allowed cluster member may authorize the command.
+    ClusterMember,
+    /// Only the node referenced by the command may authorize it.
+    SelfNode,
+    /// Only one endpoint referenced by the link may authorize it.
+    LinkPeer,
+    /// Only the node proposed as leader may authorize the update.
+    ProposedLeader,
+}
+
+/// Replay-safe authorization policy for imperative cluster commands.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommandAuthorizationPolicy {
+    /// Whether joining members may submit cluster commands.
+    pub allow_joining_members: bool,
+    /// Whether draining members may submit cluster commands.
+    pub allow_draining_members: bool,
+    /// Whether offline members may submit cluster commands.
+    pub allow_offline_members: bool,
+    /// Whether the current coordinator may override narrower command scopes.
+    pub allow_coordinator_override: bool,
+}
+
+impl ClusterCommandAuthorizationPolicy {
+    /// Default policy for operator-managed clusters.
+    #[must_use]
+    pub const fn operator_managed_default() -> Self {
+        Self {
+            allow_joining_members: true,
+            allow_draining_members: false,
+            allow_offline_members: false,
+            allow_coordinator_override: true,
+        }
+    }
+
+    /// Returns a stable digest for this authorization policy.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_json_digest("cluster_command_authorization_policy", self)
+    }
+
+    fn permits_status(&self, status: ClusterMembershipStatus) -> bool {
+        match status {
+            ClusterMembershipStatus::Ready => true,
+            ClusterMembershipStatus::Joining => self.allow_joining_members,
+            ClusterMembershipStatus::Draining => self.allow_draining_members,
+            ClusterMembershipStatus::Offline => self.allow_offline_members,
+        }
+    }
+}
+
+impl Default for ClusterCommandAuthorizationPolicy {
+    fn default() -> Self {
+        Self::operator_managed_default()
+    }
+}
+
+/// Stable refusal code for one cluster-command authorization failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCommandAuthorizationRefusalCode {
+    /// Submitter identity is not known well enough to authorize the command.
+    SubmitterUnknown,
+    /// Submitter membership status is not currently allowed by policy.
+    SubmitterMembershipNotAllowed,
+    /// Current coordinator authority was required but not present.
+    CoordinatorRequired,
+    /// Command targeted a different node than the submitter.
+    TargetNodeMismatch,
+    /// Connection command submitter was not one endpoint of the link.
+    LinkPeerMismatch,
+    /// Leadership update submitter did not match the proposed leader.
+    ProposedLeaderMismatch,
+}
+
+/// Machine-checkable authorization refusal for one cluster command.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommandAuthorizationRefusal {
+    /// Stable refusal code.
+    pub code: ClusterCommandAuthorizationRefusalCode,
+    /// Node that attempted to submit the command.
+    pub submitter_node_id: NodeId,
+    /// Required scope for the refused command.
+    pub required_scope: ClusterCommandAuthorityScope,
+    /// Stable digest of the refused command.
+    pub command_digest: String,
+    /// Stable digest of the policy used for the decision.
+    pub authorization_policy_digest: String,
+    /// Plain-language refusal detail.
+    pub detail: String,
+}
+
+impl ClusterCommandAuthorizationRefusal {
+    fn new(
+        code: ClusterCommandAuthorizationRefusalCode,
+        submitter_node_id: NodeId,
+        required_scope: ClusterCommandAuthorityScope,
+        command_digest: String,
+        authorization_policy_digest: String,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            submitter_node_id,
+            required_scope,
+            command_digest,
+            authorization_policy_digest,
+            detail: detail.into(),
+        }
+    }
+}
+
+/// Authorization failure for one cluster command.
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum ClusterCommandAuthorizationError {
+    /// Command submission was refused by policy.
+    #[error("cluster command authorization refused: {refusal:?}")]
+    Refused {
+        /// Machine-checkable refusal detail.
+        refusal: ClusterCommandAuthorizationRefusal,
+    },
+}
+
+/// Machine-checkable authorization fact for one imperative cluster command.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommandAuthorization {
+    /// Stable digest of the command payload.
+    pub command_digest: String,
+    /// Stable digest of the policy used for the authorization decision.
+    pub authorization_policy_digest: String,
+    /// Required authority scope for the command family.
+    pub authority_scope: ClusterCommandAuthorityScope,
+    /// Node that submitted the command.
+    pub submitter_node_id: NodeId,
+    /// Role recorded for the submitter at authorization time.
+    pub submitter_role: crate::NodeRole,
+    /// Membership status recorded for the submitter at authorization time.
+    pub submitter_membership_status: ClusterMembershipStatus,
+    /// Coordinator authority visible at authorization time, when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coordinator_authority: Option<ClusterCommitAuthority>,
+}
+
+impl ClusterCommandAuthorization {
+    fn new(
+        command_digest: String,
+        authorization_policy_digest: String,
+        authority_scope: ClusterCommandAuthorityScope,
+        submitter_node_id: NodeId,
+        submitter_role: crate::NodeRole,
+        submitter_membership_status: ClusterMembershipStatus,
+        coordinator_authority: Option<ClusterCommitAuthority>,
+    ) -> Self {
+        Self {
+            command_digest,
+            authorization_policy_digest,
+            authority_scope,
+            submitter_node_id,
+            submitter_role,
+            submitter_membership_status,
+            coordinator_authority,
+        }
+    }
+
+    /// Returns a stable digest for this authorization fact.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_json_digest("cluster_command_authorization", self)
+    }
+}
+
+impl ClusterCommand {
+    /// Returns the required authority scope for this command family.
+    #[must_use]
+    pub const fn authority_scope(&self) -> ClusterCommandAuthorityScope {
+        match self {
+            Self::ReconcileMembership { .. }
+            | Self::ReconcileNodeTelemetry { .. }
+            | Self::ReconcileArtifactResidency { .. }
+            | Self::RequestCatchup { .. } => ClusterCommandAuthorityScope::SelfNode,
+            Self::ReconcileConnection { .. } => ClusterCommandAuthorityScope::LinkPeer,
+            Self::UpdateLeadership { .. } => ClusterCommandAuthorityScope::ProposedLeader,
+            Self::RemoveMember { .. } => ClusterCommandAuthorityScope::CoordinatorOnly,
+            Self::RequestSnapshot => ClusterCommandAuthorityScope::ClusterMember,
+        }
+    }
+
+    /// Returns a stable digest for this command payload.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_json_digest("cluster_command", self)
+    }
+}
+
 /// Local non-authoritative fact produced by one node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1985,6 +2185,217 @@ impl ClusterState {
         self.snapshot.artifact_residency_digest()
     }
 
+    /// Authorizes one imperative cluster command against the current authoritative state.
+    pub fn authorize_command(
+        &self,
+        submitter_node_id: &NodeId,
+        command: &ClusterCommand,
+        policy: &ClusterCommandAuthorizationPolicy,
+    ) -> Result<ClusterCommandAuthorization, ClusterCommandAuthorizationError> {
+        let required_scope = command.authority_scope();
+        let command_digest = command.stable_digest();
+        let authorization_policy_digest = policy.stable_digest();
+        let coordinator_authority = self.commit_authority();
+
+        if policy.allow_coordinator_override
+            && let Some(current_coordinator) = coordinator_authority.as_ref()
+            && &current_coordinator.leader_id == submitter_node_id
+        {
+            let submitter = self.membership_submitter(submitter_node_id).ok_or_else(|| {
+                refused_command_authorization(
+                    ClusterCommandAuthorizationRefusalCode::SubmitterUnknown,
+                    submitter_node_id.clone(),
+                    required_scope,
+                    command_digest.clone(),
+                    authorization_policy_digest.clone(),
+                    format!(
+                        "submitter `{}` holds coordinator authority but has no current membership record",
+                        submitter_node_id.as_str()
+                    ),
+                )
+            })?;
+            if !policy.permits_status(submitter.membership_status) {
+                return Err(refused_command_authorization(
+                    ClusterCommandAuthorizationRefusalCode::SubmitterMembershipNotAllowed,
+                    submitter_node_id.clone(),
+                    required_scope,
+                    command_digest,
+                    authorization_policy_digest,
+                    format!(
+                        "submitter `{}` has membership status `{:?}` which policy does not allow",
+                        submitter_node_id.as_str(),
+                        submitter.membership_status
+                    ),
+                ));
+            }
+            return Ok(ClusterCommandAuthorization::new(
+                command.stable_digest(),
+                policy.stable_digest(),
+                required_scope,
+                submitter.node_id,
+                submitter.role,
+                submitter.membership_status,
+                coordinator_authority,
+            ));
+        }
+
+        let submitter = self
+            .command_submitter(submitter_node_id, command)
+            .ok_or_else(|| {
+                refused_command_authorization(
+                    ClusterCommandAuthorizationRefusalCode::SubmitterUnknown,
+                    submitter_node_id.clone(),
+                    required_scope,
+                    command_digest.clone(),
+                    authorization_policy_digest.clone(),
+                    format!(
+                        "submitter `{}` is not known well enough to authorize `{required_scope:?}`",
+                        submitter_node_id.as_str()
+                    ),
+                )
+            })?;
+        if !policy.permits_status(submitter.membership_status) {
+            return Err(refused_command_authorization(
+                ClusterCommandAuthorizationRefusalCode::SubmitterMembershipNotAllowed,
+                submitter_node_id.clone(),
+                required_scope,
+                command_digest,
+                authorization_policy_digest,
+                format!(
+                    "submitter `{}` has membership status `{:?}` which policy does not allow",
+                    submitter_node_id.as_str(),
+                    submitter.membership_status
+                ),
+            ));
+        }
+
+        match command {
+            ClusterCommand::ReconcileMembership { membership } => {
+                if submitter.node_id != membership.identity.node_id {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::TargetNodeMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` may only reconcile its own membership record, not `{}`",
+                            submitter_node_id.as_str(),
+                            membership.identity.node_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::RemoveMember { .. } => {
+                return Err(refused_command_authorization(
+                    ClusterCommandAuthorizationRefusalCode::CoordinatorRequired,
+                    submitter_node_id.clone(),
+                    required_scope,
+                    command.stable_digest(),
+                    policy.stable_digest(),
+                    format!(
+                        "submitter `{}` is not the current coordinator and cannot remove members",
+                        submitter_node_id.as_str()
+                    ),
+                ));
+            }
+            ClusterCommand::ReconcileConnection { link } => {
+                if submitter.node_id != link.key.left_node_id
+                    && submitter.node_id != link.key.right_node_id
+                {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::LinkPeerMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` is not one endpoint of link `{}` <-> `{}`",
+                            submitter_node_id.as_str(),
+                            link.key.left_node_id.as_str(),
+                            link.key.right_node_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::ReconcileNodeTelemetry { telemetry } => {
+                if submitter.node_id != telemetry.node_id {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::TargetNodeMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` may only reconcile its own telemetry, not `{}`",
+                            submitter_node_id.as_str(),
+                            telemetry.node_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::ReconcileArtifactResidency { residency } => {
+                if submitter.node_id != residency.key.node_id {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::TargetNodeMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` may only reconcile its own artifact residency, not `{}`",
+                            submitter_node_id.as_str(),
+                            residency.key.node_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::UpdateLeadership { leader_id, .. } => {
+                if submitter.node_id != *leader_id {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::ProposedLeaderMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` may only propose itself as leader, not `{}`",
+                            submitter_node_id.as_str(),
+                            leader_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::RequestCatchup { request } => {
+                if submitter.node_id != request.requester_id {
+                    return Err(refused_command_authorization(
+                        ClusterCommandAuthorizationRefusalCode::TargetNodeMismatch,
+                        submitter_node_id.clone(),
+                        required_scope,
+                        command.stable_digest(),
+                        policy.stable_digest(),
+                        format!(
+                            "submitter `{}` may only request catchup for itself, not `{}`",
+                            submitter_node_id.as_str(),
+                            request.requester_id.as_str()
+                        ),
+                    ));
+                }
+            }
+            ClusterCommand::RequestSnapshot => {}
+        }
+
+        Ok(ClusterCommandAuthorization::new(
+            command.stable_digest(),
+            policy.stable_digest(),
+            required_scope,
+            submitter.node_id,
+            submitter.role,
+            submitter.membership_status,
+            coordinator_authority,
+        ))
+    }
+
     /// Applies one indexed authoritative event using contiguous-index discipline.
     pub fn apply(&mut self, indexed_event: IndexedClusterEvent) -> Result<(), ClusterHistoryError> {
         validate_event_owner(self.cluster_id(), &indexed_event.cluster_id)?;
@@ -2052,6 +2463,52 @@ impl ClusterState {
 
         self.snapshot.last_applied_event_index = Some(indexed_event.index);
         Ok(())
+    }
+
+    fn membership_submitter(
+        &self,
+        submitter_node_id: &NodeId,
+    ) -> Option<ResolvedClusterCommandSubmitter> {
+        self.snapshot
+            .memberships
+            .get(submitter_node_id)
+            .map(ResolvedClusterCommandSubmitter::from_membership)
+    }
+
+    fn command_submitter(
+        &self,
+        submitter_node_id: &NodeId,
+        command: &ClusterCommand,
+    ) -> Option<ResolvedClusterCommandSubmitter> {
+        self.membership_submitter(submitter_node_id).or_else(|| match command {
+            ClusterCommand::ReconcileMembership { membership }
+                if membership.identity.node_id == *submitter_node_id =>
+            {
+                Some(ResolvedClusterCommandSubmitter {
+                    node_id: membership.identity.node_id.clone(),
+                    role: membership.identity.role,
+                    membership_status: membership.status,
+                })
+            }
+            _ => None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResolvedClusterCommandSubmitter {
+    node_id: NodeId,
+    role: crate::NodeRole,
+    membership_status: ClusterMembershipStatus,
+}
+
+impl ResolvedClusterCommandSubmitter {
+    fn from_membership(membership: &ClusterMembershipRecord) -> Self {
+        Self {
+            node_id: membership.identity.node_id.clone(),
+            role: membership.identity.role,
+            membership_status: membership.status,
+        }
     }
 }
 
@@ -2340,6 +2797,36 @@ fn next_expected_index(last_applied_event_index: Option<ClusterEventIndex>) -> C
     last_applied_event_index.map_or(ClusterEventIndex::initial(), ClusterEventIndex::next)
 }
 
+fn stable_json_digest(label: &str, value: &impl Serialize) -> String {
+    let encoded = serde_json::to_vec(value)
+        .unwrap_or_else(|_| unreachable!("cluster stable-digest serialization should succeed"));
+    let mut hasher = Sha256::new();
+    hasher.update(label.as_bytes());
+    hasher.update(b"|");
+    hasher.update(encoded);
+    hex::encode(hasher.finalize())
+}
+
+fn refused_command_authorization(
+    code: ClusterCommandAuthorizationRefusalCode,
+    submitter_node_id: NodeId,
+    required_scope: ClusterCommandAuthorityScope,
+    command_digest: String,
+    authorization_policy_digest: String,
+    detail: impl Into<String>,
+) -> ClusterCommandAuthorizationError {
+    ClusterCommandAuthorizationError::Refused {
+        refusal: ClusterCommandAuthorizationRefusal::new(
+            code,
+            submitter_node_id,
+            required_scope,
+            command_digest,
+            authorization_policy_digest,
+            detail,
+        ),
+    }
+}
+
 fn gap_exceeds_threshold(
     requested_from: Option<ClusterEventIndex>,
     head: Option<ClusterEventIndex>,
@@ -2462,15 +2949,18 @@ mod tests {
     use super::{
         ClusterArtifactReference, ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
         ClusterArtifactTransferMethod, ClusterBackendReadinessStatus, ClusterCatchupPayload,
-        ClusterCatchupRequest, ClusterElectionError, ClusterElectionLedger, ClusterElectionMessage,
-        ClusterEvent, ClusterEventIndex, ClusterEventLog, ClusterHistoryError,
-        ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus, ClusterLeadershipRecord,
-        ClusterLeaseTick, ClusterLink, ClusterLinkClass, ClusterLinkStatus,
-        ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
-        ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
-        ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
-        ClusterSplitBrainDiagnostic, ClusterStabilityPosture, ClusterState, ClusterTerm,
-        ClusterTransportClass, ConfiguredClusterPeer, IndexedClusterEvent,
+        ClusterCatchupRequest, ClusterCommand, ClusterCommandAuthorityScope,
+        ClusterCommandAuthorizationError, ClusterCommandAuthorizationPolicy,
+        ClusterCommandAuthorizationRefusalCode, ClusterElectionError, ClusterElectionLedger,
+        ClusterElectionMessage, ClusterEvent, ClusterEventIndex, ClusterEventLog,
+        ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
+        ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
+        ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus,
+        ClusterNodeTelemetry, ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError,
+        ClusterRecoveryPolicy, ClusterRecoveryReason, ClusterRecoveryReplayWindow,
+        ClusterSchemaVersion, ClusterSnapshot, ClusterSplitBrainDiagnostic,
+        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
+        ConfiguredClusterPeer, IndexedClusterEvent,
     };
 
     fn sample_cluster_id() -> crate::ClusterId {
@@ -2975,6 +3465,285 @@ mod tests {
                         && actual == ClusterEventIndex::initial().next().next()
             ),
             "out-of-order apply should be refused"
+        );
+    }
+
+    #[test]
+    fn joining_node_can_authorize_its_own_membership_reconcile() {
+        let cluster_id = sample_cluster_id();
+        let joining = sample_membership_record(
+            &cluster_id,
+            4251,
+            NodeRole::Mixed,
+            ClusterMembershipStatus::Joining,
+        );
+        let state = ClusterState::new(cluster_id);
+        let command = ClusterCommand::ReconcileMembership {
+            membership: joining.clone(),
+        };
+
+        let authorization = state
+            .authorize_command(
+                &joining.identity.node_id,
+                &command,
+                &ClusterCommandAuthorizationPolicy::default(),
+            )
+            .expect("joining node should authorize its own membership");
+
+        assert_eq!(
+            authorization.authority_scope,
+            ClusterCommandAuthorityScope::SelfNode
+        );
+        assert_eq!(authorization.submitter_node_id, joining.identity.node_id);
+        assert_eq!(authorization.submitter_role, NodeRole::Mixed);
+        assert_eq!(
+            authorization.submitter_membership_status,
+            ClusterMembershipStatus::Joining
+        );
+        assert!(authorization.coordinator_authority.is_none());
+        assert!(!authorization.command_digest.is_empty());
+        assert!(!authorization.authorization_policy_digest.is_empty());
+        assert!(!authorization.stable_digest().is_empty());
+    }
+
+    #[test]
+    fn coordinator_can_authorize_remove_member_command() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4252,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            4253,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial(),
+                ClusterEvent::MembershipReconciled {
+                    membership: coordinator.clone(),
+                },
+            ))
+            .expect("coordinator membership should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial().next(),
+                ClusterEvent::MembershipReconciled {
+                    membership: executor.clone(),
+                },
+            ))
+            .expect("executor membership should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id,
+                ClusterEventIndex::initial().next().next(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: ClusterLeadershipRecord::new(
+                        ClusterTerm::initial(),
+                        coordinator.identity.node_id.clone(),
+                        ClusterEventIndex::initial().next(),
+                    )
+                    .with_lease_policy(ClusterLeaseTick::new(6), sample_leadership_lease_policy()),
+                },
+            ))
+            .expect("leadership should apply");
+
+        let authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::RemoveMember {
+                    node_id: executor.identity.node_id.clone(),
+                    reason: String::from("draining"),
+                },
+                &ClusterCommandAuthorizationPolicy::default(),
+            )
+            .expect("coordinator should authorize removal");
+
+        assert_eq!(
+            authorization.authority_scope,
+            ClusterCommandAuthorityScope::CoordinatorOnly
+        );
+        let authority = authorization
+            .coordinator_authority
+            .expect("coordinator authority should be attached");
+        assert_eq!(authority.leader_id, coordinator.identity.node_id);
+        assert_eq!(authority.term, ClusterTerm::initial());
+    }
+
+    #[test]
+    fn non_coordinator_cannot_authorize_remove_member_command() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4254,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            4255,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial(),
+                ClusterEvent::MembershipReconciled {
+                    membership: coordinator.clone(),
+                },
+            ))
+            .expect("coordinator membership should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial().next(),
+                ClusterEvent::MembershipReconciled {
+                    membership: executor.clone(),
+                },
+            ))
+            .expect("executor membership should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id,
+                ClusterEventIndex::initial().next().next(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: ClusterLeadershipRecord::new(
+                        ClusterTerm::initial(),
+                        coordinator.identity.node_id.clone(),
+                        ClusterEventIndex::initial().next(),
+                    )
+                    .with_lease_policy(ClusterLeaseTick::new(7), sample_leadership_lease_policy()),
+                },
+            ))
+            .expect("leadership should apply");
+
+        let refusal = state.authorize_command(
+            &executor.identity.node_id,
+            &ClusterCommand::RemoveMember {
+                node_id: coordinator.identity.node_id.clone(),
+                reason: String::from("stale"),
+            },
+            &ClusterCommandAuthorizationPolicy::default(),
+        );
+        assert!(
+            matches!(
+                refusal,
+                Err(ClusterCommandAuthorizationError::Refused { refusal })
+                    if refusal.code == ClusterCommandAuthorizationRefusalCode::CoordinatorRequired
+                        && refusal.required_scope == ClusterCommandAuthorityScope::CoordinatorOnly
+                        && refusal.submitter_node_id == executor.identity.node_id
+            ),
+            "non-coordinator member should be refused"
+        );
+    }
+
+    #[test]
+    fn non_peer_cannot_authorize_connection_reconcile_command() {
+        let cluster_id = sample_cluster_id();
+        let left = sample_membership_record(
+            &cluster_id,
+            4256,
+            NodeRole::Mixed,
+            ClusterMembershipStatus::Ready,
+        );
+        let right = sample_membership_record(
+            &cluster_id,
+            4257,
+            NodeRole::Mixed,
+            ClusterMembershipStatus::Ready,
+        );
+        let observer = sample_membership_record(
+            &cluster_id,
+            4258,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let mut state = ClusterState::new(cluster_id.clone());
+        for (index, membership) in [left.clone(), right.clone(), observer.clone()]
+            .into_iter()
+            .enumerate()
+        {
+            let event_index = (0..index).fold(ClusterEventIndex::initial(), |current, _| {
+                current.next()
+            });
+            state
+                .apply(IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    event_index,
+                    ClusterEvent::MembershipReconciled { membership },
+                ))
+                .expect("membership should apply");
+        }
+
+        let refusal = state.authorize_command(
+            &observer.identity.node_id,
+            &ClusterCommand::ReconcileConnection {
+                link: ClusterLink::new(
+                    left.identity.node_id.clone(),
+                    right.identity.node_id.clone(),
+                    ClusterTransportClass::Tcp,
+                    ClusterLinkStatus::Healthy,
+                ),
+            },
+            &ClusterCommandAuthorizationPolicy::default(),
+        );
+        assert!(
+            matches!(
+                refusal,
+                Err(ClusterCommandAuthorizationError::Refused { refusal })
+                    if refusal.code == ClusterCommandAuthorizationRefusalCode::LinkPeerMismatch
+                        && refusal.required_scope == ClusterCommandAuthorityScope::LinkPeer
+                        && refusal.submitter_node_id == observer.identity.node_id
+            ),
+            "non-peer submitter should be refused for link commands"
+        );
+    }
+
+    #[test]
+    fn draining_member_cannot_request_snapshot_under_default_policy() {
+        let cluster_id = sample_cluster_id();
+        let draining = sample_membership_record(
+            &cluster_id,
+            4259,
+            NodeRole::Mixed,
+            ClusterMembershipStatus::Draining,
+        );
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id,
+                ClusterEventIndex::initial(),
+                ClusterEvent::MembershipReconciled {
+                    membership: draining.clone(),
+                },
+            ))
+            .expect("draining membership should apply");
+
+        let refusal = state.authorize_command(
+            &draining.identity.node_id,
+            &ClusterCommand::RequestSnapshot,
+            &ClusterCommandAuthorizationPolicy::default(),
+        );
+        assert!(
+            matches!(
+                refusal,
+                Err(ClusterCommandAuthorizationError::Refused { refusal })
+                    if refusal.code
+                        == ClusterCommandAuthorizationRefusalCode::SubmitterMembershipNotAllowed
+                        && refusal.required_scope
+                            == ClusterCommandAuthorityScope::ClusterMember
+                        && refusal.submitter_node_id == draining.identity.node_id
+            ),
+            "default operator-managed policy should refuse draining members"
         );
     }
 
