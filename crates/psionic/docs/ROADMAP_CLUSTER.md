@@ -126,16 +126,16 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) is landed on `main`
     - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) is landed on `main`
     - `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) is landed on `main`
-  - the next follow-on queue is now open for coordinator-authority multi-subnet work
+  - the coordinator-authority multi-subnet queue is now landed on `main`
     - `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) is landed on `main`
     - `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) is landed on `main`
     - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is landed on `main`
     - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is landed on `main`
-  - the next follow-on queue is now open for command authorization and payout provenance
+  - the command authorization and payout provenance queue is now landed on `main`
     - `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) is landed on `main`
     - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is landed on `main`
     - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is landed on `main`
-    - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is open
+    - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -590,10 +590,8 @@ Required outcome:
 ### Command authorization and payout provenance follow-on
 
 Tracked by landed `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315)
-through open `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318),
-with `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316)
-and `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317)
-now also landed on `main`.
+through `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318),
+with the full D3 queue now landed on `main`.
 
 Current truth:
 
@@ -609,8 +607,11 @@ Current truth:
   bounded command/admission provenance, including scheduler membership,
   selected-node membership, artifact-residency authorization, and leadership
   fence truth
-- the remaining gap is validation gates and runbook proof for those new
-  runtime/provider provenance claims
+- the validation matrix and operator runbook now also cover allowed/refused
+  authorization flows, payout-facing settlement provenance, and the sharded
+  provenance merge path
+- no open cluster roadmap issues remain under the current D3 scope; any
+  stronger claim now requires a new explicit follow-on queue
 
 Required outcome:
 
@@ -726,7 +727,7 @@ clusters now that signed transport and coordinator authority truth exist on
 | `PSI-206` | [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) | Closed | Add typed cluster command authorization policy and refusal diagnostics | `psionic-cluster`, ordered-state/tests | Landed in `e6888aaa0`: `ordered_state` now exposes typed command authority scopes, operator-managed authorization policy digests, explicit coordinator override, stable authorization facts, and machine-checkable refusal codes with coverage for coordinator-only, self-node, link-peer, and membership-status-gated command submission. |
 | `PSI-207` | [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) | Closed | Preserve command provenance through authoritative cluster events | `psionic-cluster`, recovery/tests | Landed in `7b7b681f7`: `IndexedClusterEvent`, `ClusterSnapshot`, and `ClusterState` now retain command-authorization provenance for the current authoritative facts they expose, while compaction, catchup, and snapshot recovery preserve that provenance and the new replay/recovery tests prove it survives state rebuilds. |
 | `PSI-208` | [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) | Closed | Extend cluster execution and settlement evidence with command provenance truth | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Landed in `24dd4aee8`: `ClusterExecutionContext` and settlement-linkage inputs now retain bounded command/admission provenance, whole-request and sharded cluster planners now emit that truth from authoritative membership/residency/leadership facts, and provider receipts now serialize payout-facing cluster provenance for audit or later dispute handling. |
-| `PSI-209` | [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) | Open | Add cluster authorization and payout-provenance validation gates | docs/tests/validation plus cluster crates | Stronger operator or payout-oriented claims are not supportable without validation drills. This issue adds refusal/provenance coverage and runbook gates so the new authorization contract is evidence-backed instead of code-only. |
+| `PSI-209` | [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) | Closed | Add cluster authorization and payout-provenance validation gates | docs/tests/validation plus cluster crates | Landed in `715539147`: `cluster_validation_matrix` now covers allowed versus refused command flows plus whole-request and sharded payout-provenance surfaces, while the cluster validation runbook now defines the authorization/payout provenance drill and exit gate for stronger audit or dispute claims. |
 
 ## Recommended Order
 
@@ -738,8 +739,8 @@ The shortest honest path from today's `main` is:
    on queue closing in `ac9dd2285`.
 3. Treat D2 as landed on `main`, with the coordinator-authority follow-on queue
    closing in `4732fbc26`.
-4. Work the remaining D3 queue in order as the active operator-managed follow-
-   on queue: `#3318`.
+4. Treat D3 as landed on `main`, with the authorization and payout-provenance
+   queue closing in `715539147`.
 5. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
