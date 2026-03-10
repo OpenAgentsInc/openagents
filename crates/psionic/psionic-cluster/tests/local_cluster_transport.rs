@@ -5,8 +5,8 @@ use std::{
 };
 
 use psionic_cluster::{
-    ClusterJoinRefusalReason, ClusterTrustPosture, ConfiguredClusterPeer, LocalClusterConfig,
-    LocalClusterNode, NodeRole,
+    ClusterJoinRefusalReason, ClusterOperatorManifest, ClusterTrustPosture, ConfiguredClusterPeer,
+    LocalClusterConfig, LocalClusterNode, NodeRole,
 };
 use tempfile::tempdir;
 use tokio::time::{Instant, sleep, timeout};
@@ -54,6 +54,12 @@ async fn bootstrap_file_backed_identity(
     let shutdown = node.shutdown().await;
     assert!(shutdown.is_ok(), "bootstrap node should shut down cleanly");
     identity
+}
+
+fn store_operator_manifest(path: &Path, config: &LocalClusterConfig) {
+    let manifest = ClusterOperatorManifest::from_local_config(config);
+    let stored = manifest.store_json(path);
+    assert!(stored.is_ok(), "operator manifest should store");
 }
 
 async fn wait_for_single_peer(node: &LocalClusterNode) -> psionic_cluster::PeerSnapshot {
@@ -568,6 +574,106 @@ async fn unknown_authenticated_peer_is_refused_under_configured_peer_posture() {
         intruder_shutdown.is_ok(),
         "intruder should shut down cleanly"
     );
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn authenticated_nodes_can_boot_from_operator_manifest() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-manifest-identity.json");
+    let sender_identity_path = temp.path().join("sender-manifest-identity.json");
+    let receiver_manifest_path = temp.path().join("receiver-manifest.json");
+    let sender_manifest_path = temp.path().join("sender-manifest.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver_manifest_config = base_config(receiver_addr, NodeRole::CoordinatorOnly)
+        .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+            sender_bootstrap.node_id.clone(),
+            sender_addr,
+            sender_bootstrap.auth_public_key.clone(),
+        )]);
+    store_operator_manifest(&receiver_manifest_path, &receiver_manifest_config);
+
+    let sender_manifest_config = base_config(sender_addr, NodeRole::ExecutorOnly)
+        .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+            receiver_bootstrap.node_id.clone(),
+            receiver_addr,
+            receiver_bootstrap.auth_public_key.clone(),
+        )]);
+    store_operator_manifest(&sender_manifest_path, &sender_manifest_config);
+
+    let receiver_config = LocalClusterConfig::load_operator_manifest(&receiver_manifest_path);
+    assert!(
+        receiver_config.is_ok(),
+        "receiver manifest config should load"
+    );
+    let receiver = LocalClusterNode::spawn(
+        receiver_config
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"))
+            .with_file_backed_identity(receiver_identity_path),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start from manifest");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender_config = LocalClusterConfig::load_operator_manifest(&sender_manifest_path);
+    assert!(sender_config.is_ok(), "sender manifest config should load");
+    let sender = LocalClusterNode::spawn(
+        sender_config
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"))
+            .with_file_backed_identity(sender_identity_path),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start from manifest");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let receiver_peer = wait_for_single_peer(&receiver).await;
+    let sender_peer = wait_for_single_peer(&sender).await;
+
+    assert_eq!(
+        receiver.trust_policy().posture,
+        ClusterTrustPosture::AuthenticatedConfiguredPeers
+    );
+    assert_eq!(
+        sender.trust_policy().posture,
+        ClusterTrustPosture::AuthenticatedConfiguredPeers
+    );
+    assert_eq!(
+        receiver_peer.identity.node_id,
+        sender.local_identity().node_id
+    );
+    assert_eq!(
+        sender_peer.identity.node_id,
+        receiver.local_identity().node_id
+    );
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
     let receiver_shutdown = receiver.shutdown().await;
     assert!(
         receiver_shutdown.is_ok(),
