@@ -44,9 +44,10 @@
 > after landing `PSI-219` / `#3331` in `98dc1bdc3`, after opening
 > `PSI-220` through `PSI-222` as `#3332` through `#3334` for the cluster
 > benchmark-receipt follow-on queue, after landing `PSI-220` / `#3332` in
-> `4f64525b4`, after landing `PSI-221` / `#3334` in `a524658b8`, and after
-> checking live GitHub issue search so this roadmap reflects the current
-> GitHub queue rather than local placeholders.
+> `4f64525b4`, after landing `PSI-221` / `#3334` in `a524658b8`, after
+> landing `PSI-222` / `#3333` in `TBD`, and after checking live GitHub issue
+> search so this roadmap reflects the current GitHub queue rather than local
+> placeholders and no open cluster roadmap issues remain.
 >
 > This is the live roadmap for truthful Psionic cluster support in
 > `crates/psionic/*`. It is intentionally narrower than
@@ -167,7 +168,8 @@ As of 2026-03-10, the current issue reality is:
   - the benchmark-receipt follow-on queue is now open on GitHub
     - `PSI-220` / [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) is landed on `main`
     - `PSI-221` / [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) is landed on `main`
-    - `PSI-222` / [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) is open
+    - `PSI-222` / [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) is landed on `main`
+  - no open `psionic` cluster roadmap issues remain on GitHub
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -842,16 +844,15 @@ surface, not Metal cluster readiness.
 
 ### Phase G1: cluster benchmark receipt follow-on
 
-This is the current active post-F2 queue. `#3332` and `#3334` are now landed on
-`main`, and `#3333` remains open to close the remaining gap between the landed
-benchmark gates and the roadmap's requirement that cluster performance claims
-be tied to explicit machine-checkable benchmark receipts.
+This queue is now landed on `main`. It closed the remaining gap between the
+landed benchmark gates and the roadmap's requirement that cluster performance
+claims be tied to explicit machine-checkable benchmark receipts.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-220` | [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) | Closed | Add typed cluster benchmark receipts and gate JSON schema | `psionic-cluster`, tests | Landed in `4f64525b4`: `psionic-cluster` now exposes typed `ClusterBenchmarkReceipt` models plus topology/recovery benchmark contexts and stable digest helpers, while the benchmark gates now emit receipt-shaped JSON instead of anonymous summary blobs and release-gate artifacts now preserve benchmark identity, budget truth, context, and pass/fail outcome. |
 | `PSI-221` | [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) | Closed | Wire cluster benchmark gate script and outputs to typed receipts | `psionic-cluster`, scripts/docs | Landed in `a524658b8`: the cluster benchmark gate script now documents typed benchmark receipts instead of generic summaries, validates the stable receipt filenames and core schema fields after the release gate runs, emits explicit receipt artifact paths for CI and operator consumers, and the runbook now points at receipt artifacts rather than anonymous summary JSON. |
-| `PSI-222` | [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) | Open | Add benchmark receipt validation drill and roadmap closeout | docs/tests/validation plus cluster crates | The roadmap and validation runbook still need an explicit operator drill and exit criteria for typed benchmark receipts before stronger performance claims are honest. |
+| `PSI-222` | [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) | Closed | Add benchmark receipt validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `TBD`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit benchmark receipt drill with exact commands, expected receipt files, and failure interpretation, while this roadmap now closes the G1 queue explicitly instead of leaving typed benchmark receipts as an open-ended follow-on note. |
 
 ## Recommended Order
 
@@ -874,9 +875,9 @@ The shortest honest path from today's `main` is:
 8. Treat F2 as landed on `main` in `98dc1bdc3`: communication-class
    eligibility is now explicit, and current Metal nodes remain refused for
    cluster execution while the Metal roadmap queue stays open.
-9. Finish G1 by landing `#3333`, so the validation drill and roadmap closeout
-   catch up to the typed receipt output and script-level receipt contract now
-   shipped in `4f64525b4` and `a524658b8`.
+9. Treat G1 as landed on `main` once `#3333` is on `main`, so benchmark-backed
+   performance claims now have typed receipts, a script-level output contract,
+   and an operator drill instead of a vague follow-on gap.
 10. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 11. If stronger trust or wider network claims are needed beyond G1, open a new
