@@ -1754,6 +1754,9 @@ pub struct IndexedClusterEvent {
     pub index: ClusterEventIndex,
     /// Ordered event payload.
     pub event: ClusterEvent,
+    /// Authorization provenance for the command that produced this event, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_authorization: Option<ClusterCommandAuthorization>,
 }
 
 impl IndexedClusterEvent {
@@ -1764,7 +1767,18 @@ impl IndexedClusterEvent {
             cluster_id,
             index,
             event,
+            command_authorization: None,
         }
+    }
+
+    /// Attaches command-authorization provenance to this ordered event.
+    #[must_use]
+    pub fn with_command_authorization(
+        mut self,
+        command_authorization: ClusterCommandAuthorization,
+    ) -> Self {
+        self.command_authorization = Some(command_authorization);
+        self
     }
 }
 
@@ -1780,17 +1794,33 @@ pub struct ClusterSnapshot {
     pub last_applied_event_index: Option<ClusterEventIndex>,
     /// Current cluster membership by node ID.
     pub memberships: BTreeMap<NodeId, ClusterMembershipRecord>,
+    /// Command provenance for the current membership map.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub membership_provenance: BTreeMap<NodeId, ClusterCommandAuthorization>,
     /// Current cluster links by canonical node pair.
     pub links: BTreeMap<ClusterLinkKey, ClusterLink>,
+    /// Command provenance for the current link map.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub link_provenance: BTreeMap<ClusterLinkKey, ClusterCommandAuthorization>,
     /// Current node telemetry by node ID.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub telemetry: BTreeMap<NodeId, ClusterNodeTelemetry>,
+    /// Command provenance for current node telemetry.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub telemetry_provenance: BTreeMap<NodeId, ClusterCommandAuthorization>,
     /// Current artifact residency/staging facts by node and artifact.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub artifact_residency: BTreeMap<ClusterArtifactResidencyKey, ClusterArtifactResidencyRecord>,
+    /// Command provenance for current artifact residency facts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub artifact_residency_provenance:
+        BTreeMap<ClusterArtifactResidencyKey, ClusterCommandAuthorization>,
     /// Current leader/coordinator truth, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub leadership: Option<ClusterLeadershipRecord>,
+    /// Command provenance for the current leader/coordinator fact, when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leadership_provenance: Option<ClusterCommandAuthorization>,
 }
 
 impl ClusterSnapshot {
@@ -1808,10 +1838,15 @@ impl ClusterSnapshot {
             schema_version,
             last_applied_event_index: None,
             memberships: BTreeMap::new(),
+            membership_provenance: BTreeMap::new(),
             links: BTreeMap::new(),
+            link_provenance: BTreeMap::new(),
             telemetry: BTreeMap::new(),
+            telemetry_provenance: BTreeMap::new(),
             artifact_residency: BTreeMap::new(),
+            artifact_residency_provenance: BTreeMap::new(),
             leadership: None,
+            leadership_provenance: None,
         }
     }
 
@@ -1935,6 +1970,39 @@ impl ClusterSnapshot {
         );
         hasher.update(self.artifact_residency_digest().as_bytes());
         hasher.update(b"|");
+        for (node_id, authorization) in &self.membership_provenance {
+            hasher.update(b"|membership_provenance|");
+            hasher.update(node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        for (link_key, authorization) in &self.link_provenance {
+            hasher.update(b"|link_provenance|");
+            hasher.update(link_key.left_node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(link_key.right_node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        for (node_id, authorization) in &self.telemetry_provenance {
+            hasher.update(b"|telemetry_provenance|");
+            hasher.update(node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        for (residency_key, authorization) in &self.artifact_residency_provenance {
+            hasher.update(b"|artifact_residency_provenance|");
+            hasher.update(residency_key.node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(residency_key.artifact_digest.as_bytes());
+            hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        if let Some(authorization) = &self.leadership_provenance {
+            hasher.update(b"|leadership_provenance|");
+            hasher.update(authorization.stable_digest().as_bytes());
+            hasher.update(b"|");
+        }
         if let Some(leadership) = &self.leadership {
             hasher.update(b"|leadership|");
             hasher.update(leadership.term.as_u64().to_string().as_bytes());
@@ -2108,10 +2176,52 @@ impl ClusterState {
         &self.snapshot.artifact_residency
     }
 
+    /// Returns the command provenance for one membership record, when known.
+    #[must_use]
+    pub fn membership_provenance(
+        &self,
+        node_id: &NodeId,
+    ) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.membership_provenance.get(node_id)
+    }
+
+    /// Returns the command provenance for one link record, when known.
+    #[must_use]
+    pub fn link_provenance(
+        &self,
+        key: &ClusterLinkKey,
+    ) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.link_provenance.get(key)
+    }
+
+    /// Returns the command provenance for one telemetry record, when known.
+    #[must_use]
+    pub fn telemetry_provenance(
+        &self,
+        node_id: &NodeId,
+    ) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.telemetry_provenance.get(node_id)
+    }
+
+    /// Returns the command provenance for one artifact-residency record, when known.
+    #[must_use]
+    pub fn artifact_residency_provenance(
+        &self,
+        key: &ClusterArtifactResidencyKey,
+    ) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.artifact_residency_provenance.get(key)
+    }
+
     /// Returns the current leader/coordinator record, when one exists.
     #[must_use]
     pub fn leadership(&self) -> Option<&ClusterLeadershipRecord> {
         self.snapshot.leadership.as_ref()
+    }
+
+    /// Returns the command provenance for the current leadership record, when known.
+    #[must_use]
+    pub fn leadership_provenance(&self) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.leadership_provenance.as_ref()
     }
 
     /// Returns the current leadership lease status, when one leader exists.
@@ -2400,21 +2510,38 @@ impl ClusterState {
     pub fn apply(&mut self, indexed_event: IndexedClusterEvent) -> Result<(), ClusterHistoryError> {
         validate_event_owner(self.cluster_id(), &indexed_event.cluster_id)?;
         validate_contiguous_index(self.last_applied_event_index(), indexed_event.index)?;
+        let command_authorization = indexed_event.command_authorization.clone();
 
         match indexed_event.event {
             ClusterEvent::MembershipReconciled { membership } => {
+                let node_id = membership.identity.node_id.clone();
                 self.snapshot
                     .memberships
-                    .insert(membership.identity.node_id.clone(), membership);
+                    .insert(node_id.clone(), membership);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .membership_provenance
+                        .insert(node_id, command_authorization);
+                } else {
+                    self.snapshot.membership_provenance.remove(&node_id);
+                }
             }
             ClusterEvent::MembershipRemoved { node_id, .. } => {
                 self.snapshot.memberships.remove(&node_id);
+                self.snapshot.membership_provenance.remove(&node_id);
                 self.snapshot
                     .links
                     .retain(|key, _| key.left_node_id != node_id && key.right_node_id != node_id);
+                self.snapshot
+                    .link_provenance
+                    .retain(|key, _| key.left_node_id != node_id && key.right_node_id != node_id);
                 self.snapshot.telemetry.remove(&node_id);
+                self.snapshot.telemetry_provenance.remove(&node_id);
                 self.snapshot
                     .artifact_residency
+                    .retain(|key, _| key.node_id != node_id);
+                self.snapshot
+                    .artifact_residency_provenance
                     .retain(|key, _| key.node_id != node_id);
                 if self
                     .snapshot
@@ -2423,26 +2550,55 @@ impl ClusterState {
                     .is_some_and(|leadership| leadership.leader_id == node_id)
                 {
                     self.snapshot.leadership = None;
+                    self.snapshot.leadership_provenance = None;
                 }
             }
             ClusterEvent::ConnectionReconciled { link } => {
-                self.snapshot.links.insert(link.key.clone(), link);
+                let link_key = link.key.clone();
+                self.snapshot.links.insert(link_key.clone(), link);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .link_provenance
+                        .insert(link_key, command_authorization);
+                } else {
+                    self.snapshot.link_provenance.remove(&link_key);
+                }
             }
             ClusterEvent::ConnectionRemoved { key } => {
                 self.snapshot.links.remove(&key);
+                self.snapshot.link_provenance.remove(&key);
             }
             ClusterEvent::NodeTelemetryReconciled { telemetry } => {
+                let node_id = telemetry.node_id.clone();
                 self.snapshot
                     .telemetry
-                    .insert(telemetry.node_id.clone(), telemetry);
+                    .insert(node_id.clone(), telemetry);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .telemetry_provenance
+                        .insert(node_id, command_authorization);
+                } else {
+                    self.snapshot.telemetry_provenance.remove(&node_id);
+                }
             }
             ClusterEvent::ArtifactResidencyReconciled { residency } => {
+                let residency_key = residency.key.clone();
                 self.snapshot
                     .artifact_residency
-                    .insert(residency.key.clone(), residency);
+                    .insert(residency_key.clone(), residency);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .artifact_residency_provenance
+                        .insert(residency_key, command_authorization);
+                } else {
+                    self.snapshot
+                        .artifact_residency_provenance
+                        .remove(&residency_key);
+                }
             }
             ClusterEvent::ArtifactResidencyRemoved { key } => {
                 self.snapshot.artifact_residency.remove(&key);
+                self.snapshot.artifact_residency_provenance.remove(&key);
             }
             ClusterEvent::LeadershipReconciled { leadership } => {
                 if let Some(current_leadership) = &self.snapshot.leadership
@@ -2458,6 +2614,7 @@ impl ClusterState {
                     });
                 }
                 self.snapshot.leadership = Some(leadership);
+                self.snapshot.leadership_provenance = command_authorization;
             }
         }
 
@@ -2581,6 +2738,20 @@ impl ClusterEventLog {
     pub fn append_event(&mut self, event: ClusterEvent) -> IndexedClusterEvent {
         let index = next_expected_index(self.last_index());
         let indexed_event = IndexedClusterEvent::new(self.cluster_id.clone(), index, event);
+        self.events.push(indexed_event.clone());
+        indexed_event
+    }
+
+    /// Appends one new authoritative event with retained command provenance.
+    #[must_use]
+    pub fn append_event_with_authorization(
+        &mut self,
+        event: ClusterEvent,
+        command_authorization: ClusterCommandAuthorization,
+    ) -> IndexedClusterEvent {
+        let index = next_expected_index(self.last_index());
+        let indexed_event = IndexedClusterEvent::new(self.cluster_id.clone(), index, event)
+            .with_command_authorization(command_authorization);
         self.events.push(indexed_event.clone());
         indexed_event
     }
@@ -3745,6 +3916,270 @@ mod tests {
             ),
             "default operator-managed policy should refuse draining members"
         );
+    }
+
+    #[test]
+    fn authoritative_replay_preserves_command_provenance() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4260,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            4261,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let coordinator_membership_command = ClusterCommand::ReconcileMembership {
+            membership: coordinator.clone(),
+        };
+        let coordinator_membership_auth = ClusterState::new(cluster_id.clone())
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &coordinator_membership_command,
+                &policy,
+            )
+            .expect("coordinator should authorize its own membership");
+        let executor_membership_command = ClusterCommand::ReconcileMembership {
+            membership: executor.clone(),
+        };
+        let executor_membership_auth = ClusterState::new(cluster_id.clone())
+            .authorize_command(
+                &executor.identity.node_id,
+                &executor_membership_command,
+                &policy,
+            )
+            .expect("executor should authorize its own membership");
+
+        let mut authorization_state = ClusterState::new(cluster_id.clone());
+        authorization_state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial(),
+                    ClusterEvent::MembershipReconciled {
+                        membership: coordinator.clone(),
+                    },
+                )
+                .with_command_authorization(coordinator_membership_auth.clone()),
+            )
+            .expect("coordinator membership should apply");
+        authorization_state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next(),
+                    ClusterEvent::MembershipReconciled {
+                        membership: executor.clone(),
+                    },
+                )
+                .with_command_authorization(executor_membership_auth.clone()),
+            )
+            .expect("executor membership should apply");
+
+        let link = ClusterLink::new(
+            coordinator.identity.node_id.clone(),
+            executor.identity.node_id.clone(),
+            ClusterTransportClass::LanUdp,
+            ClusterLinkStatus::Healthy,
+        );
+        let link_auth = authorization_state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileConnection { link: link.clone() },
+                &policy,
+            )
+            .expect("coordinator should authorize one endpoint link reconcile");
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::MembershipReconciled {
+                membership: coordinator.clone(),
+            },
+            coordinator_membership_auth.clone(),
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::MembershipReconciled {
+                membership: executor.clone(),
+            },
+            executor_membership_auth.clone(),
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::ConnectionReconciled { link: link.clone() },
+            link_auth.clone(),
+        );
+
+        let replayed = log.replay().expect("authorized log should replay");
+        assert_eq!(
+            replayed.membership_provenance(&coordinator.identity.node_id),
+            Some(&coordinator_membership_auth)
+        );
+        assert_eq!(
+            replayed.membership_provenance(&executor.identity.node_id),
+            Some(&executor_membership_auth)
+        );
+        assert_eq!(replayed.link_provenance(&link.key), Some(&link_auth));
+        assert_eq!(
+            replayed.snapshot().stable_digest(),
+            ClusterState::from_snapshot(replayed.snapshot()).stable_digest()
+        );
+    }
+
+    #[test]
+    fn compaction_and_snapshot_recovery_preserve_command_provenance() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4262,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            4263,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let coordinator_membership_auth = ClusterState::new(cluster_id.clone())
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileMembership {
+                    membership: coordinator.clone(),
+                },
+                &policy,
+            )
+            .expect("coordinator membership authorization should succeed");
+        let executor_membership_auth = ClusterState::new(cluster_id.clone())
+            .authorize_command(
+                &executor.identity.node_id,
+                &ClusterCommand::ReconcileMembership {
+                    membership: executor.clone(),
+                },
+                &policy,
+            )
+            .expect("executor membership authorization should succeed");
+
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial(),
+                    ClusterEvent::MembershipReconciled {
+                        membership: coordinator.clone(),
+                    },
+                )
+                .with_command_authorization(coordinator_membership_auth.clone()),
+            )
+            .expect("coordinator membership should apply");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next(),
+                    ClusterEvent::MembershipReconciled {
+                        membership: executor.clone(),
+                    },
+                )
+                .with_command_authorization(executor_membership_auth.clone()),
+            )
+            .expect("executor membership should apply");
+
+        let leadership_auth = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::UpdateLeadership {
+                    leader_id: coordinator.identity.node_id.clone(),
+                    term: ClusterTerm::initial(),
+                },
+                &policy,
+            )
+            .expect("coordinator should authorize leadership update");
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let first = log.append_event_with_authorization(
+            ClusterEvent::MembershipReconciled {
+                membership: coordinator.clone(),
+            },
+            coordinator_membership_auth.clone(),
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::MembershipReconciled {
+                membership: executor.clone(),
+            },
+            executor_membership_auth.clone(),
+        );
+        let _ = log.append_event(ClusterEvent::NodeTelemetryReconciled {
+            telemetry: ClusterNodeTelemetry::new(executor.identity.node_id.clone())
+                .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready),
+        });
+        let leadership_event = log.append_event_with_authorization(
+            ClusterEvent::LeadershipReconciled {
+                leadership: ClusterLeadershipRecord::new(
+                    ClusterTerm::initial(),
+                    coordinator.identity.node_id.clone(),
+                    ClusterEventIndex::initial().next().next(),
+                )
+                .with_lease_policy(ClusterLeaseTick::new(9), sample_leadership_lease_policy()),
+            },
+            leadership_auth.clone(),
+        );
+        let full_snapshot = log.snapshot().expect("full snapshot");
+        let full_digest = full_snapshot.stable_digest();
+        let compacted_snapshot = log
+            .compact(&sample_recovery_policy())
+            .expect("compaction should work")
+            .expect("compaction should produce a snapshot");
+        assert_eq!(
+            compacted_snapshot.membership_provenance.get(&coordinator.identity.node_id),
+            Some(&coordinator_membership_auth)
+        );
+
+        let response = log
+            .catchup_response(
+                &ClusterCatchupRequest::new(
+                    cluster_id,
+                    executor.identity.node_id.clone(),
+                    Some(first.index),
+                    ClusterSchemaVersion::initial(),
+                    8,
+                ),
+                &sample_recovery_policy(),
+            )
+            .expect("snapshot catchup response should build");
+        match response.payload {
+            ClusterCatchupPayload::Snapshot {
+                snapshot,
+                tail_events,
+                ..
+            } => {
+                let recovered = ClusterState::recover(*snapshot, &tail_events)
+                    .expect("snapshot plus tail should recover current state");
+                assert_eq!(
+                    recovered.membership_provenance(&coordinator.identity.node_id),
+                    Some(&coordinator_membership_auth)
+                );
+                assert_eq!(
+                    recovered.membership_provenance(&executor.identity.node_id),
+                    Some(&executor_membership_auth)
+                );
+                assert_eq!(
+                    recovered.leadership_provenance(),
+                    Some(&leadership_auth)
+                );
+                assert_eq!(
+                    recovered.last_applied_event_index(),
+                    Some(leadership_event.index)
+                );
+                assert_eq!(recovered.stable_digest(), full_digest);
+            }
+            payload => panic!("expected snapshot payload, got {payload:?}"),
+        }
     }
 
     #[test]
