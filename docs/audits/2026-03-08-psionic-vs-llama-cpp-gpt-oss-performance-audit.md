@@ -1,6 +1,6 @@
 # 2026-03-08 Psionic vs llama.cpp GPT-OSS Performance Audit
 
-> Updated 2026-03-09 after re-running the live repo benchmark script against
+> Updated 2026-03-10 after re-running the live repo benchmark script against
 > the current Psionic worktree on the local RTX 4080 host, after landing the
 > CUDA-side shared-prefix residency follow-up, after trimming the default
 > OpenAI-compatible hot path so Harmony debug fields are opt-in instead of
@@ -51,7 +51,15 @@
 > also correcting the roadmap direction: the official grouped
 > routing-metadata / scatter / gather path is prefill-oriented, while the
 > decode-hot-path work on this benchmark tracks the official small-token
-> `moe_matmul_swiglu -> moe_matmul -> accumulate` path instead.
+> `moe_matmul_swiglu -> moe_matmul -> accumulate` path instead. The newest
+> checkpoint after that work is much larger: `#3293` is now landed, and the
+> real GPT-OSS CUDA decode path no longer calls the old fused
+> `router_topk_softmax_32_kernel` helper directly. Instead it uses a
+> transposed-router dense matmul, device bias add, and delayed-softmax top-k
+> over precomputed router logits. Two consecutive end-to-end runs of the exact
+> benchmark contract on this host now measure Psionic `prompt_cache_hit` at
+> `173.19 tok/s` and `171.29 tok/s`, both with the exact visible one-sentence
+> response. That is the current truthful floor for the next wave.
 
 ## Scope
 
@@ -1132,3 +1140,57 @@ What should happen next:
   where that actually matters for the measured contract
 - keep the bigger throughput push focused on the remaining heavy CUDA paths:
   ids-enabled grouped expert execution and decode attention dispatch
+
+## 2026-03-10 Delayed-Softmax Router Split Checkpoint
+
+This checkpoint closes the old `#3276` `150+ tok/s` umbrella and the concrete
+router-parity issue `#3293`.
+
+What changed:
+
+- Psionic no longer runs the real GPT-OSS decode path through the old fused
+  `router_topk_softmax_32_kernel` helper.
+- `crates/psionic/psionic-serve/src/gpt_oss.rs` now uploads a transposed CUDA
+  copy of each router matrix at model load, allocates a per-layer
+  `router_logits_buffer` in the CUDA decode-step plan, and wires decode
+  routing as:
+  `matmul(ffn_norm, router_weight_t) -> add bias -> delayed-softmax top-k`.
+- `crates/psionic/psionic-backend-cuda/src/kernels/quantized_matvec.cu` now
+  exposes a dedicated delayed-softmax top-k kernel over precomputed router
+  logits, including the exact `32`-expert fast path.
+- `crates/psionic/psionic-backend-cuda/src/lib.rs` now exposes that op through
+  the CUDA submission surface and includes a backend test proving the split
+  route matches the old fused router helper on both selected ids and routing
+  weights.
+
+Measured on the exact benchmark contract after landing `#3293`:
+
+- Psionic `prompt_cache_hit`:
+  - `173.19 tok/s`
+  - `171.29 tok/s`
+- Both runs returned the exact visible one-sentence response:
+  `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
+- Immediate pre-issue truthful floor on the same host and contract:
+  - about `123.48 tok/s`
+- Net gain from this issue alone:
+  - about `+48 tok/s`
+
+Control status:
+
+- The same benchmark script currently records `llama.cpp` in the
+  `167-169 tok/s` class on this host.
+- However, the script still lets `llama.cpp` spend completion tokens in
+  Harmony `reasoning_content`, so the current `llama.cpp` numbers remain useful
+  as a throughput oracle but not as a contract-clean visible-output comparison.
+- Psionic is now the cleaner benchmark participant on this exact script
+  contract because it returns the exact visible sentence and stops cleanly.
+
+Interpretation:
+
+- The router split was not a neutral architectural cleanup; it was a real hot
+  path win on this GPU and model.
+- The old belief that Psionic's floor was still in the `122 tok/s` class is no
+  longer true after this landing.
+- The next remaining performance work should move directly to the expert path
+  that still differs most from `llama.cpp`: `#3294` ids-driven grouped expert
+  matvec, then `#3295` fused gate/up `+ GLU`, then `#3296` attention dispatch.
