@@ -1346,8 +1346,8 @@ prompt-cache-hit contract:
 
 - Psionic:
   - `2.24 tok/s`
-  - `6.47 tok/s`
-  - `10.50 tok/s`
+  - `6.45-6.47 tok/s`
+  - `10.41-10.50 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1443,6 +1443,12 @@ What the remaining gap now points to:
   `10.35 tok/s`, and a pinned-host async region-copy rewrite of the decode-lane
   selected4 cache-fill path cratered the cold and warm lanes while leaving
   prompt-cache-hit essentially flat at about `10.30 tok/s`.
+- two more nearby 120B cache-shape ideas are now ruled out too:
+  a more concentrated memory-neutral `8/6/5` hot-layer slot skew still stayed
+  below the kept branch at about `10.44 tok/s`, and disabling selected4 layer
+  caches entirely on the historically low-hit 120B layers cratered the exact
+  contract to about `1.64 tok/s` cold, `4.68 tok/s` warm-non-hit, and
+  `7.43 tok/s` prompt-cache-hit.
 - updated conclusion:
   `#3345` should stay focused on cutting or restructuring selected-expert
   staging itself. The new evidence argues against retrying small cache-geometry
