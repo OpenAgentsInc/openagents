@@ -6,6 +6,7 @@ use crate::contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
     AppleFmCompletionResult, AppleFmHealthResponse, AppleFmModelsResponse,
+    AppleFmSystemLanguageModelAvailability,
 };
 
 /// Reusable blocking client for the current Apple FM bridge contract.
@@ -95,6 +96,13 @@ impl AppleFmBridgeClient {
     /// Fetches just the model identifiers exposed by the bridge.
     pub fn model_ids(&self) -> Result<Vec<String>, AppleFmBridgeClientError> {
         Ok(self.list_models()?.model_ids())
+    }
+
+    /// Fetches typed system-model availability/configuration truth.
+    pub fn system_model_availability(
+        &self,
+    ) -> Result<AppleFmSystemLanguageModelAvailability, AppleFmBridgeClientError> {
+        Ok(self.health()?.system_model_availability())
     }
 
     /// Executes a raw chat-completion request against the bridge.
@@ -195,6 +203,9 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{AppleFmBridgeClient, AppleFmBridgeClientError};
+    use crate::contract::{
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
+    };
 
     fn spawn_mock_bridge() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock bridge");
@@ -221,12 +232,24 @@ mod tests {
                     ("GET", "/health") => serde_json::json!({
                         "status": "ok",
                         "model_available": true,
-                        "availability_message": "Foundation Models is available"
+                        "availability_message": "Foundation Models is available",
+                        "default_use_case": "general",
+                        "default_guardrails": "default",
+                        "supported_use_cases": ["general", "content_tagging"],
+                        "supported_guardrails": ["default", "permissive_content_transformations"]
                     })
                     .to_string(),
                     ("GET", "/v1/models") => serde_json::json!({
                         "object": "list",
-                        "data": [{ "id": "apple-foundation-model", "object": "model" }]
+                        "data": [{
+                            "id": "apple-foundation-model",
+                            "object": "model",
+                            "default_use_case": "general",
+                            "default_guardrails": "default",
+                            "supported_use_cases": ["general", "content_tagging"],
+                            "supported_guardrails": ["default", "permissive_content_transformations"],
+                            "available": true
+                        }]
                     })
                     .to_string(),
                     ("POST", "/v1/chat/completions") => serde_json::json!({
@@ -292,9 +315,30 @@ mod tests {
 
         let health = client.health().expect("health");
         assert!(health.model_available);
+        assert_eq!(
+            health.default_use_case,
+            AppleFmSystemLanguageModelUseCase::General
+        );
+        assert_eq!(
+            health.default_guardrails,
+            AppleFmSystemLanguageModelGuardrails::Default
+        );
 
         let model_ids = client.model_ids().expect("models");
         assert_eq!(model_ids, vec!["apple-foundation-model".to_string()]);
+
+        let system_model = client
+            .system_model_availability()
+            .expect("system model availability");
+        assert!(system_model.available);
+        assert_eq!(
+            system_model.model.use_case,
+            AppleFmSystemLanguageModelUseCase::General
+        );
+        assert_eq!(
+            system_model.model.guardrails,
+            AppleFmSystemLanguageModelGuardrails::Default
+        );
 
         let completion = client
             .completion_from_prompt("hello", Some("apple-foundation-model"), Some(128), None)

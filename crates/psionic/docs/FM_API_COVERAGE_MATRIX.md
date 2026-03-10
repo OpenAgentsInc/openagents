@@ -1,8 +1,10 @@
 # Apple FM API Coverage Matrix
 
-Status: `FM-1` landed matrix, updated 2026-03-10 from the retained Apple FM
-audit plus a direct scan of `~/code/python-apple-fm-sdk`, after moving the
-current bridge contract and reusable client into `psionic-apple-fm`.
+Status: `FM-1` and `FM-2` landed matrix, updated 2026-03-10 from the retained
+Apple FM audit plus a direct scan of `~/code/python-apple-fm-sdk`, after
+moving the current bridge contract and reusable client into
+`psionic-apple-fm`, and after landing typed system-model availability,
+use-case, and guardrail coverage.
 
 This is the living coverage matrix for the Psionic Apple Foundation Models
 lane. It maps the exported Python SDK surface and its major behavioral families
@@ -19,10 +21,10 @@ Legend:
 
 | Python SDK surface | Rust / Psionic target | Status | Roadmap issue | Notes |
 | --- | --- | --- | --- | --- |
-| `SystemLanguageModel` | Reusable Rust Apple FM model wrapper | planned | `FM-2` / `#3347` | Current retained bridge only exposes coarse health + model-list results. |
-| `SystemLanguageModelUseCase` | Rust enum | planned | `FM-2` / `#3347` | Not yet represented in reusable Rust code. |
-| `SystemLanguageModelGuardrails` | Rust enum | planned | `FM-2` / `#3347` | Not yet represented in reusable Rust code. |
-| `SystemLanguageModelUnavailableReason` | Rust enum | planned | `FM-2` / `#3347` | Current app path only has strings. |
+| `SystemLanguageModel` | `psionic-apple-fm::AppleFmSystemLanguageModel` | landed | `FM-2` / `#3347` | Reusable Rust wrapper now carries model id, use-case, and guardrails. |
+| `SystemLanguageModelUseCase` | `psionic-apple-fm::AppleFmSystemLanguageModelUseCase` | landed | `FM-2` / `#3347` | Includes typed bridge decode plus unknown-value fallback. |
+| `SystemLanguageModelGuardrails` | `psionic-apple-fm::AppleFmSystemLanguageModelGuardrails` | landed | `FM-2` / `#3347` | Includes typed bridge decode plus unknown-value fallback. |
+| `SystemLanguageModelUnavailableReason` | `psionic-apple-fm::AppleFmSystemLanguageModelUnavailableReason` | landed | `FM-2` / `#3347` | Bridge and desktop now carry typed reason codes instead of only strings. |
 | `LanguageModelSession` | Reusable Rust session handle and APIs | planned | `FM-3` / `#3348` | Current retained Swift bridge uses one shared hidden session. |
 | `Transcript` | Reusable transcript type + bridge coverage | planned | `FM-6` / `#3351` | No transcript bridge support on `main` yet. |
 | `GenerationOptions` | Rust generation-options type | planned | `FM-4` / `#3349` | Current bridge accepts only minimal lossy request fields. |
@@ -46,6 +48,8 @@ Legend:
 | `/v1/chat/completions` request shape | `psionic-apple-fm::contract::AppleFmChatCompletionRequest` | landed | `FM-1` / `#3346` | Current minimal bridge contract only. |
 | `/v1/chat/completions` response shape | `psionic-apple-fm::contract::AppleFmChatCompletionResponse` | landed | `FM-1` / `#3346` | Includes choice/message/usage shapes. |
 | Reusable current bridge client | `psionic-apple-fm::AppleFmBridgeClient` | landed | `FM-1` / `#3346` | Desktop now consumes the shared client instead of owning the transport types. |
+| Typed system-model availability/configuration contract | `psionic-apple-fm::AppleFmSystemLanguageModelAvailability` | landed | `FM-2` / `#3347` | Health payload now reconstructs typed availability + configuration truth. |
+| Typed model listing config/availability fields | `psionic-apple-fm::AppleFmModelInfo` | landed | `FM-2` / `#3347` | `/v1/models` now carries typed use-case/guardrail fields and availability detail. |
 | Session-aware bridge protocol | Reusable bridge/session contract | planned | `FM-3` / `#3348` | Current bridge is still one-shot and hidden-session-oriented. |
 | Streaming bridge protocol | Reusable stream contract | planned | `FM-5` / `#3350` | Not yet present in retained bridge. |
 | Transcript bridge protocol | Reusable transcript contract | planned | `FM-6` / `#3351` | Not yet present in retained bridge. |
@@ -57,6 +61,7 @@ Legend:
 | Behavior family | Status | Roadmap issue | Notes |
 | --- | --- | --- | --- |
 | Current minimal bridge contract captured in reusable Rust types and client | landed | `FM-1` / `#3346` | The desktop no longer owns the transport contract types for the current retained endpoints. |
+| Typed model availability/use-case/guardrail truth | landed | `FM-2` / `#3347` | Desktop/provider runtime now carries typed system-model status instead of relying only on free-form strings. |
 | Session serialization semantics | planned | `FM-3` / `#3348` | Must match the Python SDK contract. |
 | Reset-after-cancel/failure semantics | planned | `FM-3` / `#3348` | Must not erase transcript history. |
 | Streaming snapshot semantics | planned | `FM-5` / `#3350` | Python SDK yields full response-so-far snapshots, not deltas. |
@@ -67,10 +72,10 @@ Legend:
 | Typed error mapping | planned | `FM-9` / `#3354` | Must replace generic string failures. |
 | Desktop/macOS Mission Control Apple FM truth | planned | `FM-10` / `#3355` | Mission Control is still GPT-OSS-first on `main`. |
 
-## FM-1 Landed Scope
+## FM-1 And FM-2 Landed Scope
 
-The following is explicitly landed by `FM-1` and should remain the starting
-point for later issues:
+The following is explicitly landed by `FM-1` and `FM-2` and should remain the
+starting point for later issues:
 
 - `crates/psionic/psionic-apple-fm` exists as the reusable crate for the Apple
   FM bridge contract and client
@@ -78,10 +83,15 @@ point for later issues:
 - the current bridge has a reusable blocking client in Psionic
 - the desktop Apple FM worker uses those shared types instead of owning its own
   transport contract
+- the reusable crate now exposes typed system-model enums for use case,
+  guardrails, and unavailable reason
+- bridge health/model listing responses now carry typed system-model
+  configuration and availability truth
+- desktop/provider runtime state now carries typed Apple FM system-model
+  readiness fields instead of only free-form availability text
 
-What is intentionally **not** closed by `FM-1`:
+What is intentionally **not** closed by `FM-1` and `FM-2`:
 
-- model availability/use-case/guardrail enums
 - session handles
 - streaming
 - transcripts

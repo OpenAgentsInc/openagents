@@ -6,35 +6,64 @@ actor ChatHandler {
 
     init() {}
 
+    private let defaultUseCase: SystemLanguageModelUseCase = .general
+    private let defaultGuardrails: SystemLanguageModelGuardrails = .default
+
+    func supportedUseCases() -> [SystemLanguageModelUseCase] {
+        [.general, .contentTagging]
+    }
+
+    func supportedGuardrails() -> [SystemLanguageModelGuardrails] {
+        [.default, .permissiveContentTransformations]
+    }
+
     func checkAvailability() -> Bool {
         let model = SystemLanguageModel.default
         return model.availability == .available
     }
 
-    func getAvailabilityStatus() -> (available: Bool, message: String) {
+    func getAvailabilityStatus()
+        -> (
+            available: Bool,
+            reason: SystemLanguageModelUnavailableReason?,
+            message: String
+        )
+    {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            return (true, "Foundation Models is available")
+            return (true, nil, "Foundation Models is available")
         case .unavailable(let reason):
             switch reason {
             case .deviceNotEligible:
-                return (false, "Device not supported - requires Apple Silicon Mac")
+                return (
+                    false,
+                    .deviceNotEligible,
+                    "Device not supported - requires Apple Silicon Mac"
+                )
             case .appleIntelligenceNotEnabled:
-                return (false, "Apple Intelligence is not enabled in System Settings")
+                return (
+                    false,
+                    .appleIntelligenceNotEnabled,
+                    "Apple Intelligence is not enabled in System Settings"
+                )
             case .modelNotReady:
-                return (false, "Model is not ready - please wait for download to complete")
+                return (
+                    false,
+                    .modelNotReady,
+                    "Model is not ready - please wait for download to complete"
+                )
             @unknown default:
-                return (false, "Foundation Models unavailable: \(reason)")
+                return (false, .unknown, "Foundation Models unavailable: \(reason)")
             }
         @unknown default:
-            return (false, "Unknown availability status")
+            return (false, .unknown, "Unknown availability status")
         }
     }
 
     func handleCompletion(request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
         guard checkAvailability() else {
-            let (_, message) = getAvailabilityStatus()
+            let (_, _, message) = getAvailabilityStatus()
             throw FMError.modelUnavailable(message)
         }
 

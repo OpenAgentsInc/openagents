@@ -153,7 +153,7 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1` is now landed on `main`.
+`FM-1` and `FM-2` are now landed on `main`.
 
 What shipped:
 
@@ -169,10 +169,20 @@ What shipped:
 - `crates/psionic/docs/FM_API_COVERAGE_MATRIX.md` exists as the living
   conformance matrix mapping the exported Python SDK surface and behavior
   families to the Rust/Psionic roadmap
+- `psionic-apple-fm` now exposes typed `SystemLanguageModel`-equivalent Rust
+  model/configuration state via `AppleFmSystemLanguageModel`,
+  `AppleFmSystemLanguageModelUseCase`,
+  `AppleFmSystemLanguageModelGuardrails`, and
+  `AppleFmSystemLanguageModelUnavailableReason`
+- bridge `/health` and `/v1/models` responses now carry typed Apple FM
+  availability/use-case/guardrail truth, and the reusable client reconstructs
+  that truth as `AppleFmSystemLanguageModelAvailability`
+- `apps/autopilot-desktop` Apple FM runtime state now carries typed system-model
+  readiness/configuration fields instead of collapsing everything into a single
+  availability string
 
-What `FM-1` did not close:
+What `FM-1` and `FM-2` did not close:
 
-- typed system-model availability/use-case/guardrail coverage
 - sessions and transcript lifecycle
 - generation-options validation beyond the retained minimal bridge shape
 - streaming, structured generation, tools, and typed error taxonomy
@@ -566,17 +576,16 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-1`, the next-item order is:
+After `FM-2`, the next-item order is:
 
-1. `FM-2` model availability/configuration truth
-2. `FM-3` session lifecycle and isolation
-3. `FM-4` plain text generation plus generation-options coverage
-4. `FM-5` streaming
-5. `FM-6` transcripts and session restore
-6. `FM-7` structured generation and schema support
-7. `FM-8` tools
-8. `FM-9` typed errors and metrics truth
-9. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-3` session lifecycle and isolation
+2. `FM-4` plain text generation plus generation-options coverage
+3. `FM-5` streaming
+4. `FM-6` transcripts and session restore
+5. `FM-7` structured generation and schema support
+6. `FM-8` tools
+7. `FM-9` typed errors and metrics truth
+8. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

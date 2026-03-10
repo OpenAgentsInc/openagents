@@ -27,7 +27,7 @@ struct FoundationBridge {
         let chatHandler = ChatHandler()
         let server = HTTPServer(port: port, chatHandler: chatHandler)
 
-        let (available, message) = await chatHandler.getAvailabilityStatus()
+        let (available, _, message) = await chatHandler.getAvailabilityStatus()
         if available {
             print("Foundation Models: Available")
         } else {

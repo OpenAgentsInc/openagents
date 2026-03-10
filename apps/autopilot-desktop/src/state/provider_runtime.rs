@@ -14,6 +14,10 @@ pub use openagents_provider_substrate::{
     ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
     ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
+use psionic_apple_fm::{
+    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+    AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+};
 
 pub type LocalInferenceBackend = ProviderBackendKind;
 pub type EarnFailureClass = ProviderFailureClass;
@@ -61,6 +65,10 @@ impl ProviderOllamaRuntimeState {
 pub struct ProviderAppleFmRuntimeState {
     pub reachable: bool,
     pub model_available: bool,
+    pub system_model: AppleFmSystemLanguageModel,
+    pub unavailable_reason: Option<AppleFmSystemLanguageModelUnavailableReason>,
+    pub supported_use_cases: Vec<AppleFmSystemLanguageModelUseCase>,
+    pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
     pub ready_model: Option<String>,
     pub available_models: Vec<String>,
     pub last_error: Option<String>,
@@ -86,7 +94,10 @@ impl ProviderAppleFmRuntimeState {
             available_models: self.available_models.clone(),
             last_error: self.last_error.clone(),
             last_action: self.last_action.clone(),
-            availability_message: self.availability_message.clone(),
+            availability_message: self.availability_message.clone().or_else(|| {
+                self.unavailable_reason
+                    .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
+            }),
             latency_ms_p50: self
                 .last_metrics
                 .as_ref()
