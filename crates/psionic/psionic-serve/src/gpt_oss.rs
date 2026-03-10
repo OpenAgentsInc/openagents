@@ -1958,20 +1958,19 @@ fn run_metal_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
-        let mut pending_token = if exact_prompt_cache_hit
-            && can_use_cached_prompt_argmax(&request.options)
-        {
-            Some(
-                exact_prompt_token
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
-            )
-        } else {
-            Some(
-                sampler
-                    .select_next_token(&last_logits, &cache)
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
-            )
-        };
+        let mut pending_token =
+            if exact_prompt_cache_hit && can_use_cached_prompt_argmax(&request.options) {
+                Some(
+                    exact_prompt_token
+                        .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+                )
+            } else {
+                Some(
+                    sampler
+                        .select_next_token(&last_logits, &cache)
+                        .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+                )
+            };
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
@@ -3058,8 +3057,9 @@ impl GptOssCudaModelInner {
                 selected_weights_buffer: backend.f32_buffer(selected_count)?,
                 activated_buffer: backend.f32_buffer(selected_count.saturating_mul(gate_rows))?,
                 activated_q8_1_buffer: backend.byte_buffer(&vec![0_u8; activated_q8_1_bytes])?,
-                moe_projected_buffer: backend
-                    .f32_buffer(selected_count.saturating_mul(layer.feed_forward_down_experts_weight.rows))?,
+                moe_projected_buffer: backend.f32_buffer(
+                    selected_count.saturating_mul(layer.feed_forward_down_experts_weight.rows),
+                )?,
                 moe_buffer: backend.f32_buffer(hidden_size)?,
             });
         }
@@ -4593,7 +4593,8 @@ impl GptOssMetalModelInner {
     fn acquire_decode_step_plan(
         &self,
         backend: &mut MetalBackend,
-    ) -> Result<(GptOssMetalStepPlan, CompilePathEvidence, bool), ReferenceTextGenerationError> {
+    ) -> Result<(GptOssMetalStepPlan, CompilePathEvidence, bool), ReferenceTextGenerationError>
+    {
         let cache_hit = self
             .decode_step_plan
             .lock()
@@ -5487,7 +5488,11 @@ impl GptOssMetalModelInner {
                 .saturating_add(duration_ns(attention_norm_start));
 
             let qkv_start = Instant::now();
-            write_metal_buffer_prefix(&mut plan.hidden_norm_buffer, hidden_norm.as_slice(), &mut perf)?;
+            write_metal_buffer_prefix(
+                &mut plan.hidden_norm_buffer,
+                hidden_norm.as_slice(),
+                &mut perf,
+            )?;
             let mut qkv_submission = backend.begin_submission("psionic.gpt_oss.qkv")?;
             backend.encode_quantized_matvec_submission(
                 &mut qkv_submission,
@@ -5676,7 +5681,11 @@ impl GptOssMetalModelInner {
             let mut moe_out = vec![0.0; hidden_size];
             if !selected.is_empty() {
                 let expert_projection_start = Instant::now();
-                write_metal_buffer_prefix(&mut plan.hidden_norm_buffer, ffn_input.as_slice(), &mut perf)?;
+                write_metal_buffer_prefix(
+                    &mut plan.hidden_norm_buffer,
+                    ffn_input.as_slice(),
+                    &mut perf,
+                )?;
                 let mut gate_up_submission = backend.begin_submission("psionic.gpt_oss.gate_up")?;
                 let selected_ids = selected
                     .iter()
@@ -5720,8 +5729,12 @@ impl GptOssMetalModelInner {
                     .expert_projection_ns
                     .saturating_add(duration_ns(expert_projection_start));
 
-                let gate_rows = layer.feed_forward_gate_up_experts_weight.rows_per_projection[0];
-                let up_rows = layer.feed_forward_gate_up_experts_weight.rows_per_projection[1];
+                let gate_rows = layer
+                    .feed_forward_gate_up_experts_weight
+                    .rows_per_projection[0];
+                let up_rows = layer
+                    .feed_forward_gate_up_experts_weight
+                    .rows_per_projection[1];
                 for (selected_index, expert_index) in selected.iter().copied().enumerate() {
                     let base = selected_index.saturating_mul(per_selected_rows);
                     let gate_end = base.saturating_add(gate_rows);
@@ -5729,7 +5742,12 @@ impl GptOssMetalModelInner {
 
                     let mut gate = plan.gate_up_values[base..gate_end].to_vec();
                     if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
-                        add_expert_bias_in_place(&mut gate, bias.as_slice(), expert_index, gate_rows);
+                        add_expert_bias_in_place(
+                            &mut gate,
+                            bias.as_slice(),
+                            expert_index,
+                            gate_rows,
+                        );
                     }
                     let mut up = plan.gate_up_values[gate_end..up_end].to_vec();
                     if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
@@ -5769,7 +5787,8 @@ impl GptOssMetalModelInner {
                         .commit(psionic_backend_metal::MetalCommandWait::Completed)
                         .map_err(ReferenceTextGenerationError::Runtime)?;
                     accumulate_metal_submission_report(&mut perf, &expert_down_report);
-                    kernel_count = kernel_count.saturating_add(expert_down_report.encoded_operations);
+                    kernel_count =
+                        kernel_count.saturating_add(expert_down_report.encoded_operations);
                     read_metal_buffer_prefix_into(
                         &plan.expert_output_buffer,
                         layer.feed_forward_down_experts_weight.rows,
@@ -5891,9 +5910,12 @@ impl GptOssMetalModelInner {
                     )?;
                 }
                 MetalLogitsOutputMode::RawLogits => {
-                    logits = selection.logits.ok_or(
-                        ReferenceTextGenerationError::MissingOutput("metal raw logits"),
-                    )?;
+                    logits =
+                        selection
+                            .logits
+                            .ok_or(ReferenceTextGenerationError::MissingOutput(
+                                "metal raw logits",
+                            ))?;
                 }
             }
         }
@@ -8331,9 +8353,7 @@ fn write_metal_buffer_prefix(
         .map_err(ReferenceTextGenerationError::Runtime)?;
     accumulate_metal_host_to_device_bytes(
         perf,
-        values
-            .len()
-            .saturating_mul(std::mem::size_of::<f32>()),
+        values.len().saturating_mul(std::mem::size_of::<f32>()),
     );
     Ok(())
 }

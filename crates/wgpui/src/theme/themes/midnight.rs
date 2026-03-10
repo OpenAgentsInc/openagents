@@ -20,7 +20,7 @@ pub static MIDNIGHT: Theme = Theme {
         glow: Hsla::new(0.533, 0.682, 0.618, 1.0),   // #5BC6E0
 
         // Text
-        text: Hsla::new(0.0, 0.0, 1.0, 1.0),          // #FFFFFF
+        text: Hsla::new(0.0, 0.0, 1.0, 1.0), // #FFFFFF
         text_muted: Hsla::new(0.625, 0.016, 0.490, 1.0), // #7B7C7F
         text_disabled: Hsla::new(0.540, 0.696, 0.271, 1.0), // #155e75
         text_accent: Hsla::new(0.522, 0.857, 0.533, 1.0), // #22d3ee

@@ -6788,11 +6788,11 @@ mod tests {
         InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
         LoadedModelRegistryError, LocalModelCatalog, ModelDescriptor, ModelSummary,
         PsionicLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SharedPrefixCompatibility, SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
-        StreamingTextGenerationExecutor, TerminationReason, TextGenerationExecutor, TokenId,
-        WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
-        WordDecoderExecutionModel, current_time_millis, default_generation_streaming_policy,
-        finalize_embedding_values, prefix_compatibility,
+        SharedPrefixCompatibility, SharedPrefixStore, ShowObservation, SmokeByteEmbedder,
+        SmokeEmbeddingsService, StreamingTextGenerationExecutor, TerminationReason,
+        TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
+        WeightTensorMetadata, WordDecoderExecutionModel, current_time_millis,
+        default_generation_streaming_policy, finalize_embedding_values, prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use psionic_models::{
@@ -7443,7 +7443,8 @@ mod tests {
     }
 
     #[test]
-    fn shared_prefix_store_preserves_exact_hit_for_exact_only_logit_receipts() -> Result<(), Box<dyn std::error::Error>> {
+    fn shared_prefix_store_preserves_exact_hit_for_exact_only_logit_receipts()
+    -> Result<(), Box<dyn std::error::Error>> {
         let decoder = ReferenceWordDecoder::new();
         let compatibility = SharedPrefixCompatibility {
             served_artifact_digest: String::from("artifact"),
@@ -7479,7 +7480,10 @@ mod tests {
         let partial = store.lookup(&compatibility, &hello);
         assert_eq!(partial.state, PrefixCacheState::Hit);
         assert_eq!(partial.reused_tokens, hello.len());
-        assert_eq!(partial.cache.as_ref().map(InMemoryKvCache::len), Some(hello.len()));
+        assert_eq!(
+            partial.cache.as_ref().map(InMemoryKvCache::len),
+            Some(hello.len())
+        );
         assert!(partial.prompt_logits.is_empty());
         assert!(partial.last_logits.is_empty());
 

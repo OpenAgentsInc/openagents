@@ -9058,8 +9058,12 @@ mod tests {
         assert_eq!(report.encoded_operations, 3);
 
         let actual_projected = projected.read_f32()?;
-        let expected_projected =
-            expected_moe_down_project_outputs(&activated, &weights_bytes, selected_ids.as_slice(), 32)?;
+        let expected_projected = expected_moe_down_project_outputs(
+            &activated,
+            &weights_bytes,
+            selected_ids.as_slice(),
+            32,
+        )?;
         assert_close(&actual_projected, &expected_projected, 1e-4);
 
         let actual = output.read_f32()?;
