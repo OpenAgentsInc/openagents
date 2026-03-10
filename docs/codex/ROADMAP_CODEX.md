@@ -2,8 +2,9 @@
 
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
-> `docs/OWNERSHIP.md`, and after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`.
+> `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
+> turn-input surfaces on `main`, and after landing `CX-1` in `132b733b4`
+> (`Implement Codex readiness preflight`).
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -145,6 +146,10 @@ than replace:
   refresh
 - richer OpenAgents-native dynamic tool bridging than T3 Code
 - live `turn/plan/updated` and `turn/diff/updated` handling in desktop state
+- `CX-1` landed on `main` in `132b733b4`: install/version probing in
+  `crates/codex-client`, lane snapshot propagation, unified readiness refresh,
+  and desktop config-constraint summaries derived from `config/read` layers plus
+  `configRequirements/read`
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -156,8 +161,6 @@ The roadmap below is about product-layer gaps around that existing strength.
 
 These are the current gaps that matter most:
 
-- we do not have a compact readiness/preflight surface that answers "is Codex
-  installed, authenticated, and usable right now?"
 - we do not expose many already-supported lane capabilities as a coherent
   operator workflow in desktop chat; this is especially true for session
   controls, status, and coding-shell actions
@@ -204,23 +207,19 @@ Codex CLI/TUI in practice, not just by protocol completeness.
 
 ### CX-1. Codex Readiness, Auth, And Config Truth ([#3357](https://github.com/OpenAgentsInc/openagents/issues/3357))
 
-Scope:
+Status:
 
-- detect Codex binary presence, version shape, auth state, and local readiness
-- surface account, login/logout, pending login, and rate-limit truth in one
-  compact operator surface
-- surface config and config-requirement truth with clear explanations when a
-  chosen approval or sandbox mode is not allowed
-- make this readiness/config truth available to local desktop and future remote
-  surfaces
+- shipped on `main` in `132b733b4`
+- desktop now exposes install presence, resolved invocation, version,
+  account/login state, rate limits, effective approval/sandbox config, and
+  managed-constraint explanations in one Codex operator surface
+- config truth is derived from real `config/read` layers plus
+  `configRequirements/read`, so disallowed selections are explained instead of
+  just hidden behind the effective fallback
 
-Acceptance:
+Next:
 
-- the user can tell whether Codex is usable before starting work
-- login, logout, rate-limit, and config-truth flows are visible without dropping
-  to external tooling
-- this closes the local equivalent of Codex `/status` plus `/debug-config`
-  ambiguity for basic operator questions
+- `CX-2` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity
 
