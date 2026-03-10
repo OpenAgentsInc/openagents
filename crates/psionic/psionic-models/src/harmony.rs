@@ -1,3 +1,6 @@
+use std::{collections::HashMap, ops::Range};
+
+use fancy_regex::Regex;
 use openai_harmony::chat::{
     Author as HarmonyAuthor, ChannelConfig as HarmonyChannelConfig,
     Conversation as HarmonyConversation, DeveloperContent as HarmonyDeveloperContent,
@@ -14,8 +17,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::{
-    GgufTokenizerMetadata, GgufTokenizerModel, PromptMessage, PromptMessageRole, TokenId,
-    TokenSequence, TokenVocabulary, TokenizerBoundary,
+    GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, PromptMessage,
+    PromptMessageRole, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
 };
 
 /// GPT-OSS / Harmony reasoning-effort label.
@@ -168,6 +171,12 @@ pub enum GptOssHarmonyError {
     #[error("invalid gpt-oss harmony conversation: {message}")]
     InvalidConversation {
         /// Validation failure summary.
+        message: String,
+    },
+    /// Building or using the GGUF-backed GPT-OSS tokenizer failed.
+    #[error("failed to build gpt-oss tokenizer: {message}")]
+    Tokenizer {
+        /// Lower-level failure summary.
         message: String,
     },
     /// Rendering a Harmony prompt failed.
@@ -363,10 +372,169 @@ fn load_gpt_oss_harmony_encoding() -> Result<openai_harmony::HarmonyEncoding, Gp
     })
 }
 
-/// Runtime tokenizer for GPT-OSS models backed by the published Harmony encoding.
+const GPT_4O_BPE_PATTERN: &str = concat!(
+    "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*",
+    "[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|",
+    "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+",
+    "[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|",
+    "\\p{N}{1,3}|",
+    " ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|",
+    "\\s*[\\r\\n]+|",
+    "\\s+(?!\\S)|",
+    "\\s+"
+);
+
+const LLAMA_TOKEN_TYPE_UNKNOWN: i32 = 2;
+const LLAMA_TOKEN_TYPE_CONTROL: i32 = 3;
+const LLAMA_TOKEN_TYPE_USER_DEFINED: i32 = 4;
+const LLAMA_TOKEN_TYPE_UNUSED: i32 = 5;
+
+#[derive(Clone, Debug)]
+struct GgufByteLevelBpeTokenizer {
+    ordinary_encoder: HashMap<Vec<u8>, u32>,
+    ordinary_decoder: HashMap<u32, Vec<u8>>,
+    special_encoder: HashMap<String, u32>,
+    special_decoder: HashMap<u32, String>,
+    ordinary_regex: Regex,
+    special_regex: Option<Regex>,
+}
+
+impl GgufByteLevelBpeTokenizer {
+    fn from_gguf(tokenizer: &GgufTokenizerMetadata) -> Result<Self, GptOssHarmonyError> {
+        let pattern = gpt_oss_tokenizer_pattern(tokenizer)?;
+        let ordinary_regex =
+            Regex::new(pattern).map_err(|error| GptOssHarmonyError::Tokenizer {
+                message: format!("failed to compile tokenizer regex: {error}"),
+            })?;
+        let unicode_to_byte = gpt_unicode_to_byte_map();
+        let mut ordinary_encoder = HashMap::new();
+        let mut ordinary_decoder = HashMap::new();
+        let mut special_encoder = HashMap::new();
+        let mut special_decoder = HashMap::new();
+
+        for (index, token) in tokenizer.vocabulary.tokens().iter().enumerate() {
+            let token_id = index as u32;
+            let token_type = tokenizer.token_types.get(index).copied();
+            if gguf_token_is_special(token, token_type) {
+                if special_encoder.insert(token.clone(), token_id).is_some() {
+                    return Err(GptOssHarmonyError::Tokenizer {
+                        message: format!("duplicate special token `{token}` in GGUF tokenizer"),
+                    });
+                }
+                special_decoder.insert(token_id, token.clone());
+                continue;
+            }
+
+            let raw_bytes = gguf_token_to_raw_bytes(token, &unicode_to_byte)?;
+            if ordinary_encoder
+                .insert(raw_bytes.clone(), token_id)
+                .is_some()
+            {
+                return Err(GptOssHarmonyError::Tokenizer {
+                    message: format!(
+                        "duplicate ordinary token bytes for GGUF token id {token_id} (`{token}`)"
+                    ),
+                });
+            }
+            ordinary_decoder.insert(token_id, raw_bytes);
+        }
+
+        let special_regex = build_special_regex(&special_encoder)?;
+        Ok(Self {
+            ordinary_encoder,
+            ordinary_decoder,
+            special_encoder,
+            special_decoder,
+            ordinary_regex,
+            special_regex,
+        })
+    }
+
+    fn encode_with_special_tokens(&self, text: &str) -> Vec<u32> {
+        let mut tokens = Vec::new();
+        let mut start = 0;
+        while start < text.len() {
+            let next_special = self.find_next_special(text, start);
+            let end = next_special.map_or(text.len(), |(match_start, _, _)| match_start);
+            self.encode_ordinary_segment(&text[start..end], &mut tokens);
+            match next_special {
+                Some((_, match_end, token_id)) => {
+                    tokens.push(token_id);
+                    start = match_end;
+                }
+                None => break,
+            }
+        }
+        tokens
+    }
+
+    fn decode_utf8(&self, tokens: &[TokenId]) -> Option<String> {
+        let mut bytes = Vec::new();
+        for token in tokens {
+            let token_id = token.as_u32();
+            if let Some(raw_bytes) = self.ordinary_decoder.get(&token_id) {
+                bytes.extend_from_slice(raw_bytes);
+                continue;
+            }
+            if let Some(special) = self.special_decoder.get(&token_id) {
+                bytes.extend_from_slice(special.as_bytes());
+                continue;
+            }
+            return None;
+        }
+        String::from_utf8(bytes).ok()
+    }
+
+    fn find_next_special(&self, text: &str, start: usize) -> Option<(usize, usize, u32)> {
+        let regex = self.special_regex.as_ref()?;
+        let matched = regex.find_from_pos(text, start).ok().flatten()?;
+        let token = self
+            .special_encoder
+            .get(&text[matched.start()..matched.end()])?;
+        Some((matched.start(), matched.end(), *token))
+    }
+
+    fn starts_with_special_token(&self, text: &str) -> bool {
+        self.special_token_prefix_range(text)
+            .map(|range| range.start == 0)
+            .unwrap_or(false)
+    }
+
+    fn special_token_prefix_range(&self, text: &str) -> Option<Range<usize>> {
+        self.find_next_special(text, 0)
+            .and_then(|(start, end, _)| (start == 0).then_some(start..end))
+    }
+
+    fn encode_ordinary_segment(&self, text: &str, out: &mut Vec<u32>) {
+        if text.is_empty() {
+            return;
+        }
+        let matches = match self
+            .ordinary_regex
+            .find_iter(text)
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(matches) => matches,
+            Err(_) => {
+                out.extend(byte_pair_encode(text.as_bytes(), &self.ordinary_encoder));
+                return;
+            }
+        };
+        for matched in matches {
+            let piece = matched.as_str().as_bytes();
+            if let Some(token) = self.ordinary_encoder.get(piece) {
+                out.push(*token);
+                continue;
+            }
+            out.extend(byte_pair_encode(piece, &self.ordinary_encoder));
+        }
+    }
+}
+
+/// Runtime tokenizer for GPT-OSS models backed by the model's own GGUF tokenizer metadata.
 #[derive(Clone)]
 pub struct GptOssTokenizer {
-    encoding: openai_harmony::HarmonyEncoding,
+    bpe: GgufByteLevelBpeTokenizer,
     vocabulary: TokenVocabulary,
     add_bos: bool,
     add_eos: bool,
@@ -376,7 +544,7 @@ pub struct GptOssTokenizer {
 impl std::fmt::Debug for GptOssTokenizer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GptOssTokenizer")
-            .field("encoding", &self.encoding.name())
+            .field("tokenizer_contract", &"gguf_gpt_bpe")
             .field("vocabulary_len", &self.vocabulary.len())
             .field("add_bos", &self.add_bos)
             .field("add_eos", &self.add_eos)
@@ -389,7 +557,7 @@ impl GptOssTokenizer {
     /// Builds the GPT-OSS runtime tokenizer from GGUF tokenizer metadata.
     pub fn from_gguf(tokenizer: &GgufTokenizerMetadata) -> Result<Self, GptOssHarmonyError> {
         if tokenizer.model != GgufTokenizerModel::Gpt2Bpe {
-            return Err(GptOssHarmonyError::InvalidConversation {
+            return Err(GptOssHarmonyError::Tokenizer {
                 message: format!(
                     "gpt-oss harmony tokenizer requires gguf gpt2 metadata, found {:?}",
                     tokenizer.model
@@ -425,7 +593,7 @@ impl GptOssTokenizer {
             .unwrap_or(eos_id);
 
         Ok(Self {
-            encoding: load_gpt_oss_harmony_encoding()?,
+            bpe: GgufByteLevelBpeTokenizer::from_gguf(tokenizer)?,
             vocabulary: TokenVocabulary::new(
                 tokenizer.vocabulary.tokens().to_vec(),
                 pad_id,
@@ -452,8 +620,7 @@ impl GptOssTokenizer {
             tokens.push(self.vocabulary.bos_id());
         }
         tokens.extend(
-            self.encoding
-                .tokenizer()
+            self.bpe
                 .encode_with_special_tokens(text)
                 .into_iter()
                 .map(TokenId),
@@ -467,7 +634,8 @@ impl GptOssTokenizer {
     /// Encodes text using the GGUF tokenizer defaults.
     #[must_use]
     pub fn encode_with_defaults(&self, text: &str) -> TokenSequence {
-        self.encode_with_special_tokens(text, self.add_bos, self.add_eos)
+        let add_bos = self.add_bos && !self.bpe.starts_with_special_token(text);
+        self.encode_with_special_tokens(text, add_bos, self.add_eos)
     }
 
     /// Returns whether the token is one of the declared EOS IDs.
@@ -483,21 +651,183 @@ impl TokenizerBoundary for GptOssTokenizer {
     }
 
     fn decode(&self, tokens: &[TokenId]) -> String {
-        self.encoding
-            .tokenizer()
-            .decode_utf8(tokens.iter().map(|token| token.as_u32()))
-            .unwrap_or_else(|_| {
-                tokens
-                    .iter()
-                    .filter_map(|token| self.vocabulary.token(*token))
-                    .collect::<Vec<_>>()
-                    .join("")
-            })
+        self.bpe.decode_utf8(tokens).unwrap_or_else(|| {
+            tokens
+                .iter()
+                .filter_map(|token| self.vocabulary.token(*token))
+                .collect::<Vec<_>>()
+                .join("")
+        })
     }
 
     fn vocabulary(&self) -> &TokenVocabulary {
         &self.vocabulary
     }
+}
+
+fn gpt_oss_tokenizer_pattern(
+    tokenizer: &GgufTokenizerMetadata,
+) -> Result<&'static str, GptOssHarmonyError> {
+    match tokenizer.pretokenizer.as_ref() {
+        Some(GgufTokenizerPretokenizer::Custom(value)) if value == "gpt-4o" => {
+            Ok(GPT_4O_BPE_PATTERN)
+        }
+        None => Ok(GPT_4O_BPE_PATTERN),
+        Some(other) => Err(GptOssHarmonyError::Tokenizer {
+            message: format!("unsupported gpt-oss GGUF pretokenizer `{other:?}`"),
+        }),
+    }
+}
+
+fn gguf_token_is_special(token: &str, token_type: Option<i32>) -> bool {
+    matches!(
+        token_type,
+        Some(
+            LLAMA_TOKEN_TYPE_UNKNOWN
+                | LLAMA_TOKEN_TYPE_CONTROL
+                | LLAMA_TOKEN_TYPE_USER_DEFINED
+                | LLAMA_TOKEN_TYPE_UNUSED
+        )
+    ) || token.starts_with("<|") && token.ends_with("|>")
+}
+
+fn build_special_regex(
+    special_encoder: &HashMap<String, u32>,
+) -> Result<Option<Regex>, GptOssHarmonyError> {
+    if special_encoder.is_empty() {
+        return Ok(None);
+    }
+    let mut tokens = special_encoder
+        .keys()
+        .map(|token| fancy_regex::escape(token))
+        .collect::<Vec<_>>();
+    tokens.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
+    Regex::new(&tokens.join("|"))
+        .map(Some)
+        .map_err(|error| GptOssHarmonyError::Tokenizer {
+            message: format!("failed to compile special-token regex: {error}"),
+        })
+}
+
+fn gpt_unicode_to_byte_map() -> HashMap<char, u8> {
+    let mut mapping = HashMap::with_capacity(256);
+    let mut assigned = [false; 256];
+    for byte in 0x21_u32..=0x7e {
+        let character = char::from_u32(byte).unwrap_or('\0');
+        mapping.insert(character, byte as u8);
+        assigned[byte as usize] = true;
+    }
+    for byte in 0xa1_u32..=0xac {
+        let character = char::from_u32(byte).unwrap_or('\0');
+        mapping.insert(character, byte as u8);
+        assigned[byte as usize] = true;
+    }
+    for byte in 0xae_u32..=0xff {
+        let character = char::from_u32(byte).unwrap_or('\0');
+        mapping.insert(character, byte as u8);
+        assigned[byte as usize] = true;
+    }
+    let mut next_codepoint = 256_u32;
+    for (byte, is_assigned) in assigned.iter().enumerate() {
+        if *is_assigned {
+            continue;
+        }
+        let character = char::from_u32(next_codepoint).unwrap_or('\0');
+        mapping.insert(character, byte as u8);
+        next_codepoint += 1;
+    }
+    mapping
+}
+
+fn gguf_token_to_raw_bytes(
+    token: &str,
+    unicode_to_byte: &HashMap<char, u8>,
+) -> Result<Vec<u8>, GptOssHarmonyError> {
+    token
+        .chars()
+        .map(|character| {
+            unicode_to_byte
+                .get(&character)
+                .copied()
+                .ok_or_else(|| GptOssHarmonyError::Tokenizer {
+                    message: format!(
+                        "GGUF token contains non-byte-mapped character U+{:04X} in `{token}`",
+                        character as u32
+                    ),
+                })
+        })
+        .collect()
+}
+
+fn byte_pair_encode(piece: &[u8], ranks: &HashMap<Vec<u8>, u32>) -> Vec<u32> {
+    if piece.is_empty() {
+        return Vec::new();
+    }
+    if piece.len() == 1 {
+        return ranks
+            .get(piece)
+            .copied()
+            .map_or_else(Vec::new, |rank| vec![rank]);
+    }
+    byte_pair_merge(piece, ranks)
+        .windows(2)
+        .flat_map(|part| {
+            let segment = &piece[part[0].0..part[1].0];
+            ranks
+                .get(segment)
+                .copied()
+                .map_or_else(|| encode_bytes_as_tokens(segment, ranks), |rank| vec![rank])
+        })
+        .collect()
+}
+
+fn encode_bytes_as_tokens(bytes: &[u8], ranks: &HashMap<Vec<u8>, u32>) -> Vec<u32> {
+    bytes
+        .iter()
+        .filter_map(|byte| ranks.get(&vec![*byte]).copied())
+        .collect()
+}
+
+fn byte_pair_merge(piece: &[u8], ranks: &HashMap<Vec<u8>, u32>) -> Vec<(usize, u32)> {
+    let mut parts = Vec::with_capacity(piece.len() + 1);
+    let mut min_rank = (u32::MAX, usize::MAX);
+    for index in 0..piece.len().saturating_sub(1) {
+        let rank = *ranks.get(&piece[index..index + 2]).unwrap_or(&u32::MAX);
+        if rank < min_rank.0 {
+            min_rank = (rank, index);
+        }
+        parts.push((index, rank));
+    }
+    parts.push((piece.len().saturating_sub(1), u32::MAX));
+    parts.push((piece.len(), u32::MAX));
+
+    let get_rank = |parts: &Vec<(usize, u32)>, index: usize| {
+        if index + 3 < parts.len() {
+            *ranks
+                .get(&piece[parts[index].0..parts[index + 3].0])
+                .unwrap_or(&u32::MAX)
+        } else {
+            u32::MAX
+        }
+    };
+
+    while min_rank.0 != u32::MAX {
+        let index = min_rank.1;
+        if index > 0 {
+            parts[index - 1].1 = get_rank(&parts, index - 1);
+        }
+        parts[index].1 = get_rank(&parts, index);
+        parts.remove(index + 1);
+
+        min_rank = (u32::MAX, usize::MAX);
+        for (scan_index, &(_, rank)) in parts[..parts.len().saturating_sub(1)].iter().enumerate() {
+            if rank < min_rank.0 {
+                min_rank = (rank, scan_index);
+            }
+        }
+    }
+
+    parts
 }
 
 fn build_gpt_oss_harmony_conversation(
@@ -815,4 +1145,232 @@ fn harmony_message_text(message: &HarmonyMessage) -> String {
             output.push_str(&segment);
             output
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{
+        GPT_4O_BPE_PATTERN, GptOssHarmonyRenderContext, GptOssTokenizer, LLAMA_TOKEN_TYPE_CONTROL,
+        PromptChannelConfig, PromptMessage, PromptMessageRole, PromptReasoningEffort,
+        PromptRenderOptions, gguf_token_to_raw_bytes, gpt_unicode_to_byte_map,
+        render_gpt_oss_harmony_prompt,
+    };
+    use crate::{
+        GgufContent, GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer,
+        GgufTokenizerVocabulary, TokenId, TokenizerBoundary, golden_tokenizer_fixture,
+    };
+
+    fn real_gpt_oss_gguf_path() -> Option<PathBuf> {
+        let fixture = golden_tokenizer_fixture("gpt_oss_20b")?;
+        [
+            fixture.source_path,
+            "/Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|candidate| candidate.exists())
+    }
+
+    fn test_gpt_oss_tokenizer_metadata() -> GgufTokenizerMetadata {
+        GgufTokenizerMetadata {
+            model: GgufTokenizerModel::Gpt2Bpe,
+            vocabulary: GgufTokenizerVocabulary {
+                tokens: vec![
+                    String::from("<|start|>"),
+                    String::from("h"),
+                    String::from("e"),
+                    String::from("l"),
+                    String::from("o"),
+                    String::from("he"),
+                    String::from("ll"),
+                    String::from("hell"),
+                    String::from("hello"),
+                ],
+                bos_token_id: Some(TokenId(0)),
+                eos_token_ids: vec![TokenId(0)],
+                pad_token_id: None,
+                unknown_token_id: None,
+            },
+            scores: Vec::new(),
+            token_types: vec![LLAMA_TOKEN_TYPE_CONTROL, 1, 1, 1, 1, 1, 1, 1, 1],
+            merges: vec![
+                String::from("h e"),
+                String::from("l l"),
+                String::from("he ll"),
+                String::from("hell o"),
+            ],
+            add_bos: false,
+            add_eos: false,
+            pretokenizer: Some(GgufTokenizerPretokenizer::Custom(String::from("gpt-4o"))),
+            token_type_count: None,
+            digest: String::from("test-gpt-oss-tokenizer"),
+        }
+    }
+
+    #[test]
+    fn gpt_oss_tokenizer_encodes_special_tokens_and_merged_words() {
+        let tokenizer =
+            GptOssTokenizer::from_gguf(&test_gpt_oss_tokenizer_metadata()).expect("tokenizer");
+        let encoded = tokenizer.encode("<|start|>hello");
+
+        assert_eq!(encoded.as_slice(), &[TokenId(0), TokenId(8)]);
+        assert_eq!(tokenizer.decode(encoded.as_slice()), "<|start|>hello");
+    }
+
+    #[test]
+    fn gpt_oss_tokenizer_maps_gguf_tokens_back_to_raw_bytes() {
+        let unicode_to_byte = gpt_unicode_to_byte_map();
+        let raw = gguf_token_to_raw_bytes("hello", &unicode_to_byte).expect("raw bytes");
+
+        assert_eq!(raw, b"hello");
+        assert!(GPT_4O_BPE_PATTERN.contains("\\p{N}{1,3}"));
+    }
+
+    #[test]
+    fn gpt_oss_real_gguf_prompt_token_count_matches_tracked_local_oracle()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(path) = real_gpt_oss_gguf_path() else {
+            return Ok(());
+        };
+
+        let content = GgufContent::read_path(&path)?;
+        let metadata = content.load_tokenizer()?;
+        let tokenizer = GptOssTokenizer::from_gguf(&metadata)?;
+        let messages = vec![
+            PromptMessage::new(
+                PromptMessageRole::Developer,
+                "Be concise. Output exactly one sentence.",
+            ),
+            PromptMessage::new(
+                PromptMessageRole::User,
+                "Reply with exactly this sentence and nothing else: HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.",
+            ),
+        ];
+        let prompt_options = PromptRenderOptions {
+            gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
+                reasoning_effort: Some(PromptReasoningEffort::Low),
+                channel_config: Some(PromptChannelConfig::default()),
+                ..Default::default()
+            }),
+        };
+
+        let rendered =
+            render_gpt_oss_harmony_prompt(messages.as_slice(), true, Some(&prompt_options))?;
+        let tokens = tokenizer.encode_with_defaults(rendered.as_str());
+
+        assert_eq!(tokens.len(), 103);
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_real_short_contract_prompt_tokens_match_local_llama_cpp_oracle()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(path) = real_gpt_oss_gguf_path() else {
+            return Ok(());
+        };
+
+        let content = GgufContent::read_path(&path)?;
+        let metadata = content.load_tokenizer()?;
+        let tokenizer = GptOssTokenizer::from_gguf(&metadata)?;
+        let messages = vec![PromptMessage::new(PromptMessageRole::User, "What is 2 + 2?")];
+        let prompt_options = PromptRenderOptions {
+            gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
+                reasoning_effort: Some(PromptReasoningEffort::Low),
+                channel_config: Some(PromptChannelConfig::default()),
+                ..Default::default()
+            }),
+        };
+
+        let rendered =
+            render_gpt_oss_harmony_prompt(messages.as_slice(), true, Some(&prompt_options))?;
+        assert_eq!(
+            rendered,
+            concat!(
+                "<|start|>system<|message|>",
+                "You are ChatGPT, a large language model trained by OpenAI.\n",
+                "Knowledge cutoff: 2024-06\n\n",
+                "Reasoning: low\n\n",
+                "# Valid channels: analysis, commentary, final. Channel must be included for every message.",
+                "<|end|>",
+                "<|start|>user<|message|>",
+                "What is 2 + 2?",
+                "<|end|>",
+                "<|start|>assistant",
+            )
+        );
+
+        let tokens = tokenizer.encode_with_defaults(rendered.as_str());
+        assert_eq!(
+            tokens.as_slice(),
+            &[
+                TokenId(200006),
+                TokenId(17360),
+                TokenId(200008),
+                TokenId(3575),
+                TokenId(553),
+                TokenId(17554),
+                TokenId(162016),
+                TokenId(11),
+                TokenId(261),
+                TokenId(4410),
+                TokenId(6439),
+                TokenId(2359),
+                TokenId(22203),
+                TokenId(656),
+                TokenId(7788),
+                TokenId(17527),
+                TokenId(558),
+                TokenId(87447),
+                TokenId(100594),
+                TokenId(25),
+                TokenId(220),
+                TokenId(1323),
+                TokenId(19),
+                TokenId(12),
+                TokenId(3218),
+                TokenId(279),
+                TokenId(30377),
+                TokenId(289),
+                TokenId(25),
+                TokenId(4465),
+                TokenId(279),
+                TokenId(2),
+                TokenId(13888),
+                TokenId(18403),
+                TokenId(25),
+                TokenId(8450),
+                TokenId(11),
+                TokenId(49159),
+                TokenId(11),
+                TokenId(1721),
+                TokenId(13),
+                TokenId(21030),
+                TokenId(2804),
+                TokenId(413),
+                TokenId(7360),
+                TokenId(395),
+                TokenId(1753),
+                TokenId(3176),
+                TokenId(13),
+                TokenId(200007),
+                TokenId(200006),
+                TokenId(1428),
+                TokenId(200008),
+                TokenId(4827),
+                TokenId(382),
+                TokenId(220),
+                TokenId(17),
+                TokenId(659),
+                TokenId(220),
+                TokenId(17),
+                TokenId(30),
+                TokenId(200007),
+                TokenId(200006),
+                TokenId(173781),
+            ]
+        );
+        Ok(())
+    }
 }

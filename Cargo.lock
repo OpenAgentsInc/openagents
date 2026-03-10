@@ -6527,6 +6527,7 @@ dependencies = [
 name = "psionic-models"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex 0.16.2",
  "hex",
  "openai-harmony",
  "psionic-catalog",
