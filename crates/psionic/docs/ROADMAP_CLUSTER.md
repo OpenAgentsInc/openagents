@@ -18,7 +18,8 @@
 > landing `PSI-195` / `#3304` in `1cdcf3058`, after landing `PSI-196` /
 > `#3305` in `7124eefd7`, after landing `PSI-197` / `#3306` in `d424ab1cf`,
 > after opening `PSI-198` through `PSI-201` as `#3307` through `#3310` for the
-> operator-managed multi-subnet follow-on queue, and after checking live
+> operator-managed multi-subnet follow-on queue, after landing `PSI-198` /
+> `#3307` in `011e0452c`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -111,10 +112,9 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are landed on `main`
   - the next follow-on queue is now open for operator-managed multi-subnet work
-    - `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
-    - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308)
-    - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309)
-    - `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310)
+    - `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) is landed on `main`
+    - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) through
+      `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -251,6 +251,12 @@ on:
     configured-peer discovery, unknown-peer refusal, tamper refusal, and
     replay refusal without pretending the default cluster posture is now
     internet-safe
+- `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
+  - landed in `011e0452c`
+  - `psionic-cluster` now ships a persisted `ClusterOperatorManifest` with a
+    stable rollout digest, JSON load/store, manifest-to-`LocalClusterConfig`
+    conversion, and transport coverage proving authenticated configured-peer
+    nodes can boot from manifests instead of ad hoc code-only config
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -454,13 +460,14 @@ Required outcome:
 
 ### Operator-managed multi-subnet follow-on
 
-Tracked by open `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
+Tracked by landed `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
+and open `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308)
 through `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310).
 
 Current truth:
 
-- authenticated configured-peer posture exists, but rollout still depends on
-  hand-built Rust config rather than a reusable operator artifact
+- authenticated configured-peer posture now has a reusable operator manifest
+  and rollout digest instead of relying entirely on hand-built Rust config
 - catchup and snapshot payloads are still local-state objects, not
   tamper-evident authenticated recovery envelopes
 - configured peers are still retried as seed peers rather than carrying
@@ -470,8 +477,6 @@ Current truth:
 
 Required outcome:
 
-- add a reusable operator manifest and trust-bundle digest for configured-peer
-  rollout
 - make recovery payloads tamper-evident before widening multi-subnet claims
 - surface explicit dial policy and degraded peer health for configured peers
 - add key rotation and rollout diagnostics before claiming stronger operational
@@ -555,7 +560,7 @@ toward a more operationally robust multi-subnet substrate.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-198` | [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) | Open | Add operator cluster manifest and trust-bundle digests | `psionic-cluster`, security/docs | Configured-peer posture exists, but operator rollout still depends on ad hoc code-level config. A stable manifest and digest are the minimum artifact for machine-checkable rollout and drift detection. |
+| `PSI-198` | [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) | Closed | Add operator cluster manifest and trust-bundle digests | `psionic-cluster`, security/docs | Landed in `011e0452c`: Psionic now persists cluster rollout inputs as a `ClusterOperatorManifest` with a stable digest, JSON load/store, manifest-derived config, and manifest-backed authenticated transport coverage. |
 | `PSI-199` | [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) | Open | Add tamper-evident catchup and snapshot envelopes | `psionic-cluster`, ordered-state/tests | Signed control-plane transport exists, but recovery payloads are not yet authenticated or tamper-evident. |
 | `PSI-200` | [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) | Open | Add explicit multi-subnet peer dial policy and health truth | `psionic-cluster`, transport/docs | Configured peers still behave like retrying seed peers; wider-network clusters need explicit dial policy, degraded reachability truth, and operator-visible peer health. |
 | `PSI-201` | [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) | Open | Add membership key rotation and rollout diagnostics | `psionic-cluster`, security/docs | Authenticated clusters still lack an explicit operator story for trust-bundle versioning, key rotation, and stale-rollout refusal. |
@@ -567,7 +572,7 @@ The shortest honest path from today's `main` is:
 1. Treat C1 through C6 as landed on `main`, with the first trusted-cluster
    scope closing in `d424ab1cf`.
 2. If cluster work continues now, work the operator-managed multi-subnet queue
-   in this order: `#3307` -> `#3308` -> `#3309` -> `#3310`.
+   in this order: `#3308` -> `#3309` -> `#3310`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
