@@ -12,9 +12,9 @@ use crate::app_state::{
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
     CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_composer_height_for_value,
-    chat_composer_input_bounds_with_height, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_thread_row_bounds, chat_transcript_body_bounds_with_height, chat_transcript_bounds,
-    chat_workspace_rail_bounds, pane_content_bounds,
+    chat_composer_input_bounds_with_height, chat_new_thread_button_bounds, chat_send_button_bounds,
+    chat_thread_rail_bounds, chat_thread_row_bounds, chat_transcript_body_bounds_with_height,
+    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -2051,6 +2051,26 @@ fn paint_chat_shell(
         15.0,
         theme::text::PRIMARY,
     ));
+    if matches!(autopilot_chat.chat_browse_mode(), ChatBrowseMode::Autopilot) {
+        let new_thread_bounds = chat_new_thread_button_bounds(content_bounds);
+        paint.scene.draw_quad(
+            Quad::new(new_thread_bounds)
+                .with_background(theme::bg::APP.with_alpha(0.26))
+                .with_border(theme::border::DEFAULT.with_alpha(0.35), 1.0)
+                .with_corner_radius(6.0),
+        );
+        let plus_origin = Point::new(
+            new_thread_bounds.origin.x
+                + (new_thread_bounds.size.width - paint.text.measure("+", 14.0)) * 0.5,
+            new_thread_bounds.origin.y + (new_thread_bounds.size.height - 14.0) * 0.5 - 2.0,
+        );
+        paint.scene.draw_text(paint.text.layout(
+            "+",
+            plus_origin,
+            14.0,
+            theme::text::PRIMARY,
+        ));
+    }
     for (index, entry) in shell_channel_entries(autopilot_chat)
         .into_iter()
         .enumerate()

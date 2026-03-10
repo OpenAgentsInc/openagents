@@ -41,6 +41,8 @@ const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
 const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+/// Compact + button next to "Threads" to start a new thread
+const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
 const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
 const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
@@ -1394,12 +1396,12 @@ pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn chat_new_thread_button_bounds(content_bounds: Bounds) -> Bounds {
-    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    let rail = chat_thread_rail_bounds(content_bounds);
     Bounds::new(
-        refresh.origin.x,
-        refresh.max_y() + 6.0,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
+        rail.origin.x + rail.size.width - 10.0 - CHAT_NEW_THREAD_BUTTON_SIZE,
+        rail.origin.y + 28.0,
+        CHAT_NEW_THREAD_BUTTON_SIZE,
+        CHAT_NEW_THREAD_BUTTON_SIZE,
     )
 }
 
@@ -3670,6 +3672,15 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::ProjectOps => None,
         PaneKind::AutopilotChat => {
+            let browse_mode = state.autopilot_chat.chat_browse_mode();
+            if browse_mode == crate::app_state::ChatBrowseMode::Autopilot {
+                if chat_new_thread_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatNewThread);
+                }
+                if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatRefreshThreads);
+                }
+            }
             if state.autopilot_chat.chat_has_browseable_content() {
                 let workspace_count = chat_visible_workspace_row_count(
                     content_bounds,
@@ -3681,7 +3692,6 @@ fn pane_hit_action_for_pane(
                     }
                 }
             }
-            let browse_mode = state.autopilot_chat.chat_browse_mode();
             let managed_channel_rows = (browse_mode == crate::app_state::ChatBrowseMode::Managed)
                 .then(|| state.autopilot_chat.active_managed_chat_channel_rail_rows());
             let direct_room_count =
