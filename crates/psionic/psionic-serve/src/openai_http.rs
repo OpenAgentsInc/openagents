@@ -893,7 +893,8 @@ async fn handle_chat_completions(
         return proxy_chat_completions(state.as_ref(), proxy, &request).await;
     }
     validate_requested_model(request.model.as_deref(), &state.accepted_model_names)?;
-    let request_prompt_key = prompt_request_cache_key(request.messages.as_slice());
+    let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
+    let request_prompt_key = prompt_request_cache_key(prompt_messages.as_slice());
     let request_id = next_request_id(&state);
     let response_model_name = request
         .model
@@ -911,7 +912,6 @@ async fn handle_chat_completions(
         if let Some(tokens) = cache.lookup(request_prompt_key.as_str()) {
             tokens
         } else {
-            let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
             let rendered = render_gpt_oss_harmony_prompt(
                 prompt_messages.as_slice(),
                 true,
@@ -1222,14 +1222,14 @@ fn next_request_id(state: &GptOssOpenAiCompatState) -> String {
     format!("psionic-chatcmpl-{next}")
 }
 
-fn prompt_request_cache_key(messages: &[ChatCompletionMessage]) -> String {
+fn prompt_request_cache_key(messages: &[PromptMessage]) -> String {
     let mut hasher = Sha256::new();
     for message in messages {
-        hasher.update(message.role.as_bytes());
+        hasher.update(prompt_message_role_cache_key(message.role).as_bytes());
         hasher.update([0xff]);
         hasher.update(message.content.as_bytes());
         hasher.update([0xff]);
-        if let Some(name) = message.name.as_deref() {
+        if let Some(name) = message.author_name.as_deref() {
             hasher.update(name.as_bytes());
         }
         hasher.update([0x00]);
@@ -1282,33 +1282,51 @@ fn chat_messages_to_prompt_messages(
             "chat completions require at least one message",
         )));
     }
-    messages
-        .iter()
-        .map(|message| {
-            let role = match message.role.as_str() {
-                "system" => PromptMessageRole::System,
-                "developer" => PromptMessageRole::Developer,
-                "user" => PromptMessageRole::User,
-                "assistant" => PromptMessageRole::Assistant,
-                "tool" => PromptMessageRole::Tool,
-                other => {
-                    return Err(OpenAiCompatHttpError::BadRequest(format!(
-                        "unsupported chat message role `{other}`"
-                    )));
-                }
-            };
-            let mut prompt = PromptMessage::new(role, message.content.clone());
-            if role == PromptMessageRole::Tool {
-                let Some(name) = message.name.as_ref() else {
-                    return Err(OpenAiCompatHttpError::BadRequest(String::from(
-                        "tool messages require a `name` field",
-                    )));
-                };
-                prompt = prompt.with_author_name(name.clone());
+    let mut prompt_messages = Vec::new();
+    for (index, message) in messages.iter().enumerate() {
+        let role = match message.role.as_str() {
+            "system" => PromptMessageRole::System,
+            "developer" => PromptMessageRole::Developer,
+            "user" => PromptMessageRole::User,
+            "assistant" => PromptMessageRole::Assistant,
+            "tool" => PromptMessageRole::Tool,
+            other => {
+                return Err(OpenAiCompatHttpError::BadRequest(format!(
+                    "unsupported chat message role `{other}`"
+                )));
             }
-            Ok(prompt)
-        })
-        .collect()
+        };
+        // Mirror the GPT-OSS llama.cpp OpenAI template so native and proxy
+        // backends tokenize the same public request contract.
+        let normalized_role = match (index, role) {
+            (0, PromptMessageRole::System | PromptMessageRole::Developer) => {
+                PromptMessageRole::Developer
+            }
+            (_, PromptMessageRole::System | PromptMessageRole::Developer) => continue,
+            _ => role,
+        };
+        let mut prompt = PromptMessage::new(normalized_role, message.content.clone());
+        if normalized_role == PromptMessageRole::Tool {
+            let Some(name) = message.name.as_ref() else {
+                return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                    "tool messages require a `name` field",
+                )));
+            };
+            prompt = prompt.with_author_name(name.clone());
+        }
+        prompt_messages.push(prompt);
+    }
+    Ok(prompt_messages)
+}
+
+fn prompt_message_role_cache_key(role: PromptMessageRole) -> &'static str {
+    match role {
+        PromptMessageRole::System => "system",
+        PromptMessageRole::Developer => "developer",
+        PromptMessageRole::User => "user",
+        PromptMessageRole::Assistant => "assistant",
+        PromptMessageRole::Tool => "tool",
+    }
 }
 
 fn final_assistant_content(parsed: &GptOssHarmonyParsedOutput) -> Option<String> {
@@ -1412,8 +1430,9 @@ mod tests {
         generation_options_from_chat_request, prompt_request_cache_key, resolve_execution_summary,
     };
     use psionic_models::{
-        GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,
-        TokenId, TokenSequence,
+        GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext,
+        PromptChannelConfig, PromptMessage, PromptMessageRole, PromptReasoningEffort,
+        PromptRenderOptions, TokenId, TokenSequence, render_gpt_oss_harmony_prompt,
     };
 
     #[test]
@@ -1432,11 +1451,103 @@ mod tests {
         ])
         .expect("prompt messages");
 
-        assert_eq!(prompt[0].role, PromptMessageRole::System);
+        assert_eq!(prompt[0].role, PromptMessageRole::Developer);
         assert_eq!(prompt[1].role, PromptMessageRole::Tool);
         assert_eq!(
             prompt[1].author_name.as_deref(),
             Some("functions.lookup_weather")
+        );
+    }
+
+    #[test]
+    fn chat_messages_ignore_non_initial_instruction_turns_for_gpt_oss_parity() {
+        let prompt = chat_messages_to_prompt_messages(&[
+            ChatCompletionMessage {
+                role: String::from("system"),
+                content: String::from("first instruction"),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("developer"),
+                content: String::from("ignored instruction"),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            },
+        ])
+        .expect("prompt messages");
+
+        assert_eq!(prompt.len(), 2);
+        assert_eq!(prompt[0].role, PromptMessageRole::Developer);
+        assert_eq!(prompt[0].content, "first instruction");
+        assert_eq!(prompt[1].role, PromptMessageRole::User);
+        assert_eq!(prompt[1].content, "hello");
+    }
+
+    #[test]
+    fn rendered_prompt_matches_llama_cpp_gpt_oss_openai_contract() {
+        let prompt_messages = chat_messages_to_prompt_messages(&[
+            ChatCompletionMessage {
+                role: String::from("system"),
+                content: String::from(
+                    "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-09\n\nReasoning: low\n\n# Valid channels: analysis, final. Channel must be included for every message.",
+                ),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("developer"),
+                content: String::from("Be concise. Output exactly one sentence."),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from(
+                    "Reply with exactly this sentence and nothing else: HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.",
+                ),
+                name: None,
+            },
+        ])
+        .expect("prompt messages");
+        let prompt_options = PromptRenderOptions {
+            gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
+                reasoning_effort: Some(PromptReasoningEffort::Low),
+                conversation_start_date: Some(String::from("2026-03-09")),
+                knowledge_cutoff: Some(String::from("2024-06")),
+                channel_config: Some(PromptChannelConfig::default()),
+                ..Default::default()
+            }),
+        };
+
+        let rendered =
+            render_gpt_oss_harmony_prompt(prompt_messages.as_slice(), true, Some(&prompt_options))
+                .expect("rendered prompt");
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "<|start|>system<|message|>",
+                "You are ChatGPT, a large language model trained by OpenAI.\n",
+                "Knowledge cutoff: 2024-06\n",
+                "Current date: 2026-03-09\n\n",
+                "Reasoning: low\n\n",
+                "# Valid channels: analysis, commentary, final. Channel must be included for every message.",
+                "<|end|>",
+                "<|start|>developer<|message|>",
+                "# Instructions\n\n",
+                "You are ChatGPT, a large language model trained by OpenAI.\n",
+                "Knowledge cutoff: 2024-06\n",
+                "Current date: 2026-03-09\n\n",
+                "Reasoning: low\n\n",
+                "# Valid channels: analysis, final. Channel must be included for every message.",
+                "<|end|>",
+                "<|start|>user<|message|>",
+                "Reply with exactly this sentence and nothing else: HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.",
+                "<|end|>",
+                "<|start|>assistant",
+            )
         );
     }
 
@@ -1586,15 +1697,51 @@ mod tests {
 
     #[test]
     fn prompt_request_cache_key_is_stable_for_identical_messages() {
-        let messages = vec![ChatCompletionMessage {
-            role: String::from("user"),
-            content: String::from("hello"),
-            name: None,
-        }];
+        let messages = vec![PromptMessage::new(PromptMessageRole::User, "hello")];
 
         assert_eq!(
             prompt_request_cache_key(messages.as_slice()),
             prompt_request_cache_key(messages.as_slice())
+        );
+    }
+
+    #[test]
+    fn prompt_request_cache_key_uses_normalized_prompt_messages() {
+        let first = chat_messages_to_prompt_messages(&[
+            ChatCompletionMessage {
+                role: String::from("system"),
+                content: String::from("first instruction"),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("developer"),
+                content: String::from("ignored instruction"),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            },
+        ])
+        .expect("first normalized prompt");
+        let second = chat_messages_to_prompt_messages(&[
+            ChatCompletionMessage {
+                role: String::from("system"),
+                content: String::from("first instruction"),
+                name: None,
+            },
+            ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            },
+        ])
+        .expect("second normalized prompt");
+
+        assert_eq!(
+            prompt_request_cache_key(first.as_slice()),
+            prompt_request_cache_key(second.as_slice())
         );
     }
 }
