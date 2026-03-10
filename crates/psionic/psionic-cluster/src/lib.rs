@@ -1,6 +1,7 @@
 //! Trusted-LAN cluster control-plane substrate for Psionic.
 
 mod layer_sharded;
+mod operator_manifest;
 mod ordered_state;
 mod replicated_serving;
 mod scheduler;
@@ -29,6 +30,7 @@ use tokio::{
 };
 
 pub use layer_sharded::*;
+pub use operator_manifest::*;
 pub use ordered_state::*;
 pub use replicated_serving::*;
 pub use scheduler::*;
@@ -70,6 +72,17 @@ pub enum ClusterError {
     /// The configured identity file contained an invalid signing key.
     #[error("failed to decode local cluster signing key: {0}")]
     IdentityKey(String),
+    /// The configured operator manifest could not be read or written.
+    #[error("failed to read or write cluster operator manifest: {0}")]
+    ManifestIo(#[source] std::io::Error),
+    /// The configured operator manifest contained invalid data.
+    #[error("failed to parse cluster operator manifest: {0}")]
+    ManifestFormat(#[source] serde_json::Error),
+    /// The configured operator manifest schema version is unsupported.
+    #[error(
+        "unsupported cluster operator manifest schema version: expected {expected}, found {actual}"
+    )]
+    ManifestSchemaVersion { expected: u32, actual: u32 },
 }
 
 /// Namespace that scopes one trusted local cluster.
@@ -91,7 +104,7 @@ impl ClusterNamespace {
 }
 
 /// Shared admission token for the first trusted-LAN seam.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdmissionToken(String);
 
 impl AdmissionToken {
@@ -115,7 +128,7 @@ impl std::fmt::Debug for AdmissionToken {
 }
 
 /// Explicit namespace and admission configuration for the local cluster seam.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterAdmissionConfig {
     /// Namespace that scopes the cluster.
     pub namespace: ClusterNamespace,
@@ -424,6 +437,17 @@ impl LocalClusterConfig {
             .collect();
         self.trust_policy = ClusterTrustPolicy::authenticated_configured_peers(configured_peers);
         self
+    }
+
+    /// Builds local cluster config from one persisted operator manifest.
+    #[must_use]
+    pub fn from_operator_manifest(manifest: ClusterOperatorManifest) -> Self {
+        manifest.into()
+    }
+
+    /// Loads local cluster config from one persisted operator manifest file.
+    pub fn load_operator_manifest(path: impl AsRef<std::path::Path>) -> Result<Self, ClusterError> {
+        ClusterOperatorManifest::load_json(path).map(Into::into)
     }
 }
 
