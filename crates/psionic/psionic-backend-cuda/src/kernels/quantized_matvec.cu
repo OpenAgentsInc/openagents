@@ -2287,6 +2287,68 @@ __global__ void router_topk_softmax_kernel(
     }
 }
 
+__global__ void router_logits_topk_delayed_softmax_kernel(
+    const float *logits,
+    int expert_count,
+    int top_k,
+    int32_t *selected_ids,
+    float *selected_weights
+) {
+    expert_count = min(expert_count, kMoeMaxExperts);
+    top_k = min(top_k, min(expert_count, kMoeMaxSelected));
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    float top_values[kMoeMaxSelected];
+    int top_indices[kMoeMaxSelected];
+    for (int index = 0; index < top_k; ++index) {
+        top_values[index] = -INFINITY;
+        top_indices[index] = -1;
+    }
+
+    for (int expert = 0; expert < expert_count; ++expert) {
+        const float value = logits[expert];
+        int insert_at = top_k;
+        for (int slot = 0; slot < top_k; ++slot) {
+            if (value > top_values[slot] ||
+                (value == top_values[slot] && (top_indices[slot] < 0 || expert < top_indices[slot]))) {
+                insert_at = slot;
+                break;
+            }
+        }
+        if (insert_at >= top_k) {
+            continue;
+        }
+        for (int slot = top_k - 1; slot > insert_at; --slot) {
+            top_values[slot] = top_values[slot - 1];
+            top_indices[slot] = top_indices[slot - 1];
+        }
+        top_values[insert_at] = value;
+        top_indices[insert_at] = expert;
+    }
+
+    float max_value = -INFINITY;
+    for (int slot = 0; slot < top_k; ++slot) {
+        max_value = fmaxf(max_value, top_values[slot]);
+    }
+
+    float denom = 0.0f;
+    for (int slot = 0; slot < top_k; ++slot) {
+        const float weight = expf(top_values[slot] - max_value);
+        selected_weights[slot] = weight;
+        denom += weight;
+    }
+    if (denom != 0.0f) {
+        for (int slot = 0; slot < top_k; ++slot) {
+            selected_weights[slot] /= denom;
+        }
+    }
+    for (int slot = 0; slot < top_k; ++slot) {
+        selected_ids[slot] = top_indices[slot];
+    }
+}
+
 template <bool HasBias>
 __launch_bounds__(kWarpSize, 1)
 __global__ void router_topk_softmax_32_kernel(
@@ -2307,6 +2369,69 @@ __global__ void router_topk_softmax_32_kernel(
     if constexpr (HasBias) {
         weight_value += bias[expert];
     }
+
+    float top_values[kMoeMaxSelected];
+    int top_indices[kMoeMaxSelected];
+    if (threadIdx.x == 0) {
+        for (int index = 0; index < top_k; ++index) {
+            top_values[index] = -INFINITY;
+            top_indices[index] = -1;
+        }
+    }
+
+    for (int selection = 0; selection < top_k; ++selection) {
+        float max_value = weight_value;
+        int max_expert = expert;
+#pragma unroll
+        for (int mask = kWarpSize / 2; mask > 0; mask >>= 1) {
+            const float candidate_value = __shfl_xor_sync(0xffffffffu, max_value, mask, kWarpSize);
+            const int candidate_expert = __shfl_xor_sync(0xffffffffu, max_expert, mask, kWarpSize);
+            if (candidate_value > max_value ||
+                (candidate_value == max_value && candidate_expert < max_expert)) {
+                max_value = candidate_value;
+                max_expert = candidate_expert;
+            }
+        }
+        if (expert == max_expert) {
+            weight_value = -INFINITY;
+        }
+        if (threadIdx.x == 0) {
+            top_values[selection] = max_value;
+            top_indices[selection] = max_expert;
+        }
+    }
+
+    if (threadIdx.x == 0) {
+        float max_value = -INFINITY;
+        for (int slot = 0; slot < top_k; ++slot) {
+            max_value = fmaxf(max_value, top_values[slot]);
+        }
+        float denom = 0.0f;
+        for (int slot = 0; slot < top_k; ++slot) {
+            const float selected = expf(top_values[slot] - max_value);
+            selected_weights[slot] = selected;
+            denom += selected;
+        }
+        if (denom != 0.0f) {
+            for (int slot = 0; slot < top_k; ++slot) {
+                selected_weights[slot] /= denom;
+            }
+        }
+        for (int slot = 0; slot < top_k; ++slot) {
+            selected_ids[slot] = top_indices[slot];
+        }
+    }
+}
+
+__launch_bounds__(kWarpSize, 1)
+__global__ void router_logits_topk_delayed_softmax_32_kernel(
+    const float *logits,
+    int top_k,
+    int32_t *selected_ids,
+    float *selected_weights
+) {
+    const int expert = static_cast<int>(threadIdx.x);
+    float weight_value = logits[expert];
 
     float top_values[kMoeMaxSelected];
     int top_indices[kMoeMaxSelected];
@@ -4547,6 +4672,33 @@ extern "C" int psionic_cuda_router_topk_softmax(
             static_cast<const float *>(input),
             expert_count,
             input_size,
+            top_k,
+            static_cast<int32_t *>(selected_ids),
+            static_cast<float *>(selected_weights)
+        );
+    }
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_router_topk_delayed_softmax(
+    const void *logits,
+    int expert_count,
+    int top_k,
+    void *selected_ids,
+    void *selected_weights,
+    void *stream
+) {
+    if (expert_count == kWarpSize && top_k > 0 && top_k <= kMoeMaxSelected) {
+        router_logits_topk_delayed_softmax_32_kernel<<<1, kWarpSize, 0, static_cast<cudaStream_t>(stream)>>>(
+            static_cast<const float *>(logits),
+            top_k,
+            static_cast<int32_t *>(selected_ids),
+            static_cast<float *>(selected_weights)
+        );
+    } else {
+        router_logits_topk_delayed_softmax_kernel<<<1, 1, 0, static_cast<cudaStream_t>(stream)>>>(
+            static_cast<const float *>(logits),
+            expert_count,
             top_k,
             static_cast<int32_t *>(selected_ids),
             static_cast<float *>(selected_weights)

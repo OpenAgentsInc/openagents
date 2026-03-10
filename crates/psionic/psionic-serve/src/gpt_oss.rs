@@ -2943,6 +2943,7 @@ struct GptOssCudaStepPlanLayer {
     attention_buffer: CudaBuffer,
     projected_buffer: CudaBuffer,
     ffn_norm_buffer: CudaBuffer,
+    router_logits_buffer: CudaBuffer,
     selected_ids_buffer: CudaBuffer,
     selected_weights_buffer: CudaBuffer,
     activated_buffer: CudaBuffer,
@@ -3053,6 +3054,7 @@ impl GptOssCudaModelInner {
                 attention_buffer: backend.f32_buffer(layer.attention_output_weight.columns)?,
                 projected_buffer: backend.f32_buffer(layer.attention_output_weight.rows)?,
                 ffn_norm_buffer: backend.f32_buffer(hidden_size)?,
+                router_logits_buffer: backend.f32_buffer(layer.feed_forward_router_weight.rows)?,
                 selected_ids_buffer: backend.i32_buffer(selected_count)?,
                 selected_weights_buffer: backend.f32_buffer(selected_count)?,
                 activated_buffer: backend.f32_buffer(selected_count.saturating_mul(gate_rows))?,
@@ -3456,12 +3458,25 @@ impl GptOssCudaModelInner {
                         hidden_size,
                         self.family_metadata.rms_norm_epsilon,
                     )?;
-                    submission.router_topk_softmax(
-                        &layer.feed_forward_router_weight_device,
-                        layer.feed_forward_router_bias_device.as_ref(),
+                    submission.matmul(
                         &layer_plan.ffn_norm_buffer,
-                        layer.feed_forward_router_weight.rows,
+                        &layer.feed_forward_router_weight_transposed_device,
+                        &layer_plan.router_logits_buffer,
+                        1,
                         layer.feed_forward_router_weight.columns,
+                        layer.feed_forward_router_weight.rows,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                        submission.add_f32_in_place(
+                            &layer_plan.router_logits_buffer,
+                            0,
+                            bias,
+                            layer.feed_forward_router_weight.rows,
+                        )?;
+                    }
+                    submission.router_topk_delayed_softmax(
+                        &layer_plan.router_logits_buffer,
+                        layer.feed_forward_router_weight.rows,
                         selected_count,
                         &layer_plan.selected_ids_buffer,
                         &layer_plan.selected_weights_buffer,
@@ -3596,12 +3611,25 @@ impl GptOssCudaModelInner {
                     hidden_size,
                     self.family_metadata.rms_norm_epsilon,
                 )?;
-                submission.router_topk_softmax(
-                    &layer.feed_forward_router_weight_device,
-                    layer.feed_forward_router_bias_device.as_ref(),
+                submission.matmul(
                     &layer_plan.ffn_norm_buffer,
-                    layer.feed_forward_router_weight.rows,
+                    &layer.feed_forward_router_weight_transposed_device,
+                    &layer_plan.router_logits_buffer,
+                    1,
                     layer.feed_forward_router_weight.columns,
+                    layer.feed_forward_router_weight.rows,
+                )?;
+                if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                    submission.add_f32_in_place(
+                        &layer_plan.router_logits_buffer,
+                        0,
+                        bias,
+                        layer.feed_forward_router_weight.rows,
+                    )?;
+                }
+                submission.router_topk_delayed_softmax(
+                    &layer_plan.router_logits_buffer,
+                    layer.feed_forward_router_weight.rows,
                     selected_count,
                     &layer_plan.selected_ids_buffer,
                     &layer_plan.selected_weights_buffer,
@@ -4307,6 +4335,7 @@ struct GptOssCudaLayer {
     feed_forward_norm_device: CudaBuffer,
     feed_forward_router_weight: DenseMatrix,
     feed_forward_router_weight_device: CudaBuffer,
+    feed_forward_router_weight_transposed_device: CudaBuffer,
     feed_forward_router_bias: Option<Vec<f32>>,
     feed_forward_router_bias_device: Option<CudaBuffer>,
     feed_forward_gate_up_experts_weight: CudaQuantizedExpertProjectionGroup,
@@ -4393,6 +4422,13 @@ impl GptOssCudaLayer {
             "feed_forward_router_weight",
             feed_forward_router_weight.values.as_slice(),
         )?;
+        let feed_forward_router_weight_transposed =
+            transpose_dense_matrix_f32(&feed_forward_router_weight);
+        let feed_forward_router_weight_transposed_device = upload_cuda_f32_buffer(
+            backend,
+            "feed_forward_router_weight_transposed",
+            feed_forward_router_weight_transposed.as_slice(),
+        )?;
         let feed_forward_router_bias = layout
             .feed_forward_router_bias
             .as_ref()
@@ -4470,6 +4506,7 @@ impl GptOssCudaLayer {
             feed_forward_norm_device,
             feed_forward_router_weight,
             feed_forward_router_weight_device,
+            feed_forward_router_weight_transposed_device,
             feed_forward_router_bias,
             feed_forward_router_bias_device,
             feed_forward_gate_up_experts_weight: load_cuda_quantized_expert_projection_group(
@@ -6548,6 +6585,18 @@ impl DenseMatrix {
         }
         Ok(())
     }
+}
+
+fn transpose_dense_matrix_f32(matrix: &DenseMatrix) -> Vec<f32> {
+    let mut transposed = vec![0.0_f32; matrix.rows.saturating_mul(matrix.columns)];
+    for row_index in 0..matrix.rows {
+        let row_start = row_index.saturating_mul(matrix.columns);
+        let row = &matrix.values[row_start..row_start + matrix.columns];
+        for (column_index, value) in row.iter().copied().enumerate() {
+            transposed[column_index.saturating_mul(matrix.rows) + row_index] = value;
+        }
+    }
+    transposed
 }
 
 #[derive(Clone, Debug)]

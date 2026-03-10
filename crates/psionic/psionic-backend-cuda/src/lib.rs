@@ -1381,6 +1381,27 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Selects the top experts from precomputed router logits and applies
+    /// delayed softmax normalization across only the selected set.
+    pub fn router_topk_delayed_softmax(
+        &mut self,
+        logits: &CudaBuffer,
+        expert_count: usize,
+        top_k: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_router_topk_delayed_softmax(
+            &logits.platform,
+            expert_count,
+            top_k,
+            &selected_ids.platform,
+            &selected_weights.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Executes the packed GPT-OSS gate/up expert projection on device and
     /// writes the post-SwiGLU activations for the selected experts.
     #[allow(clippy::too_many_arguments)]
@@ -3503,6 +3524,14 @@ mod platform {
             selected_weights: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_router_topk_delayed_softmax(
+            logits: *const c_void,
+            expert_count: c_int,
+            top_k: c_int,
+            selected_ids: *mut c_void,
+            selected_weights: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_moe_gate_up_swiglu_q8_1(
             weights: *const c_void,
             mode: c_int,
@@ -5511,6 +5540,36 @@ mod platform {
             )
         }
 
+        pub(super) fn encode_router_topk_delayed_softmax(
+            &mut self,
+            logits: &PlatformBuffer,
+            expert_count: usize,
+            top_k: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let expert_count = c_int::try_from(expert_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda router expert count exceeds c_int"))
+            })?;
+            let top_k = c_int::try_from(top_k).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda router top-k exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_router_topk_delayed_softmax(
+                        logits.inner.device_ptr.cast(),
+                        expert_count,
+                        top_k,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_router_topk_delayed_softmax",
+            )
+        }
+
         #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_moe_gate_up_swiglu(
             &mut self,
@@ -6986,6 +7045,19 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_router_topk_delayed_softmax(
+            &mut self,
+            _logits: &PlatformBuffer,
+            _expert_count: usize,
+            _top_k: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_moe_gate_up_swiglu(
             &mut self,
@@ -8368,6 +8440,106 @@ mod tests {
         assert_close(
             &selected_weights_fused.read_f32()?,
             &selected_weights_separate.read_f32()?,
+            1e-6,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_router_topk_delayed_softmax_matches_fused_router_kernel_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let element_count = 2880usize;
+        let expert_count = 32usize;
+        let top_k = 4usize;
+        let input = (0..element_count)
+            .map(|index| ((index as f32 % 17.0) - 8.0) * 0.03125)
+            .collect::<Vec<_>>();
+        let router_weights = (0..expert_count)
+            .flat_map(|expert| {
+                (0..element_count).map(move |index| {
+                    ((expert as f32 + 1.0) * 0.0015) + (((index as f32 % 29.0) - 14.0) * 0.00075)
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut router_weights_transposed = vec![0.0_f32; router_weights.len()];
+        for expert in 0..expert_count {
+            let row_start = expert * element_count;
+            let row = &router_weights[row_start..row_start + element_count];
+            for (column, value) in row.iter().copied().enumerate() {
+                router_weights_transposed[column * expert_count + expert] = value;
+            }
+        }
+        let router_bias = (0..expert_count)
+            .map(|expert| ((expert as f32 % 5.0) - 2.0) * 0.0625)
+            .collect::<Vec<_>>();
+
+        let input_buffer = backend.input_buffer(Shape::new(vec![element_count]), input)?;
+        let router_weights_buffer = backend.input_buffer(
+            Shape::new(vec![expert_count, element_count]),
+            router_weights,
+        )?;
+        let router_weights_transposed_buffer = backend.input_buffer(
+            Shape::new(vec![element_count, expert_count]),
+            router_weights_transposed,
+        )?;
+        let router_bias_buffer =
+            backend.input_buffer(Shape::new(vec![expert_count]), router_bias)?;
+        let selected_ids_fused = backend.byte_buffer(&vec![0_u8; top_k * size_of::<i32>()])?;
+        let selected_weights_fused = backend.f32_buffer(top_k)?;
+        let router_logits = backend.f32_buffer(expert_count)?;
+        let selected_ids_split = backend.byte_buffer(&vec![0_u8; top_k * size_of::<i32>()])?;
+        let selected_weights_split = backend.f32_buffer(top_k)?;
+
+        let mut fused = backend.begin_submission()?;
+        fused.router_topk_softmax(
+            &router_weights_buffer,
+            Some(&router_bias_buffer),
+            &input_buffer,
+            expert_count,
+            element_count,
+            top_k,
+            &selected_ids_fused,
+            &selected_weights_fused,
+        )?;
+        let fused_report = fused.commit(CudaCommandWait::Completed)?;
+        assert_eq!(fused_report.encoded_operations, 1);
+
+        let mut split = backend.begin_submission()?;
+        split.matmul(
+            &input_buffer,
+            &router_weights_transposed_buffer,
+            &router_logits,
+            1,
+            element_count,
+            expert_count,
+        )?;
+        split.add_f32_in_place(&router_logits, 0, &router_bias_buffer, expert_count)?;
+        split.router_topk_delayed_softmax(
+            &router_logits,
+            expert_count,
+            top_k,
+            &selected_ids_split,
+            &selected_weights_split,
+        )?;
+        let split_report = split.commit(CudaCommandWait::Completed)?;
+        assert_eq!(split_report.encoded_operations, 3);
+
+        assert_eq!(
+            selected_ids_split.read_bytes()?,
+            selected_ids_fused.read_bytes()?
+        );
+        assert_close(
+            &selected_weights_split.read_f32()?,
+            &selected_weights_fused.read_f32()?,
             1e-6,
         );
         Ok(())
