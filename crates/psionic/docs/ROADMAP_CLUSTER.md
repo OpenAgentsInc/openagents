@@ -5,8 +5,8 @@
 > `../../../docs/audits/2026-03-09-psionic-exo-cluster-integration-audit.md`,
 > after confirming that the cluster-adjacent substrate `PSI-148`,
 > `PSI-160` through `PSI-175`, and `PSI-179` through `PSI-183` is already
-> landed on `main`, after confirming that the active NVIDIA local-runtime gate
-> remains `#3276` -> `#3288` -> `#3248`, after confirming that the active
+> landed on `main`, after confirming that the former NVIDIA local-runtime gate
+> `#3276` -> `#3288` -> `#3248` is now closed on GitHub, after confirming that the active
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
 > after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
 > `f2e758720`, after landing `PSI-186` / `#3291` in `cc60eea89`, after
@@ -37,7 +37,9 @@
 > opening `PSI-214` through `PSI-216` as `#3323` through `#3325` for the
 > wider-network discovery follow-on queue, after landing `PSI-214` / `#3323`
 > in `1102bffa4`, after landing `PSI-215` / `#3324` in `47410298a`, after
-> landing `PSI-216` / `#3325` in `7c0f34503`, and after checking live
+> landing `PSI-216` / `#3325` in `7c0f34503`, after opening `PSI-217`
+> through `PSI-219` as `#3329` through `#3331` for the post-E1 follow-on
+> queue, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -153,8 +155,12 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-214` / [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) is landed on `main`
     - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is landed on `main`
     - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is landed on `main`
+  - the post-E1 follow-on queue now exists on GitHub
+    - `PSI-217` / [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) is open
+    - `PSI-218` / [#3330](https://github.com/OpenAgentsInc/openagents/issues/3330) is open
+    - `PSI-219` / [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) is open
 - the current backend execution gates are still real and must remain visible
-  - NVIDIA: `#3276` -> `#3288` -> `#3248`
+  - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
 
 That is now concrete enough that cluster work deserves its own roadmap.
@@ -385,8 +391,8 @@ one:
   internet-wide adversarial trust model
 - real cluster execution claims must remain gated on a stable local backend lane
   rather than on design-doc optimism
-  - first likely lane: homogeneous CUDA GPT-OSS after `#3276`, `#3288`, and
-    `#3248`
+  - first truthful lane is now homogeneous CUDA GPT-OSS, with `#3276`,
+    `#3288`, and `#3248` closed on `main`
   - current Metal GPT-OSS nodes remain explicit refusal candidates until the
     Metal roadmap queue closes
 
@@ -793,18 +799,37 @@ clusters now that signed transport and coordinator authority truth exist on
 
 ### Phase E1: wider-network discovery substrate follow-on
 
-This queue is now landed on `main`, but it still does not widen cluster
-execution claims past the active local CUDA truth gate
-`#3276` -> `#3288` -> `#3248`. The point of this queue was to replace the
-current explicit discovery refusal boundary with real, bounded wider-network
-discovery truth without turning the discovery substrate into the cluster
-control plane itself.
+This queue is now landed on `main`. It replaced the earlier explicit discovery
+refusal boundary with bounded wider-network discovery truth without turning the
+discovery substrate into the cluster control plane itself.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-214` | [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) | Closed | Add signed cluster introduction envelopes and policy digests | `psionic-cluster`, docs/tests | Landed in `1102bffa4`: Psionic now has `ClusterDiscoveryCandidate`, signed `SignedClusterIntroductionEnvelope`, explicit `ClusterIntroductionPolicy` digests, verification/refusal diagnostics for untrusted or malformed introduction artifacts, and manifest/config surfaces that keep future wider-network introductions separate from admitted membership truth. |
 | `PSI-215` | [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) | Closed | Add bounded discovery-candidate ledger and admission reconciliation | `psionic-cluster`, ordered-state/tests | Landed in `47410298a`: Psionic now keeps `ClusterDiscoveredCandidateRecord` state and provenance separate from admitted membership, exposes deterministic candidate status transitions for introduced/accepted/refused/expired discovery truth, and replays, compacts, and recovers explicit candidate admission into membership without silently widening cluster membership. |
 | `PSI-216` | [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) | Closed | Add wider-network discovery validation drills and rollout gates | docs/tests/validation plus cluster crates | Landed in `7c0f34503`: `cluster_validation_matrix` now carries an explicit wider-network discovery gate covering signed introduction intake, untrusted-source refusal, expiry, and admission reconciliation, while `CLUSTER_VALIDATION_RUNBOOK.md` now defines the wider-network discovery drill and rollout boundary before any broader discovery claims. |
+
+### Phase F1: optional Exo interoperability follow-on
+
+This is now the active post-E1 queue. It must remain bounded: Exo may inform
+placement, but Psionic must keep final scheduling authority, execution, and
+evidence truth.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-217` | [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) | Open | Add bounded Exo placement-hint adapter for remote scheduling | `psionic-cluster`, runtime evidence/tests | The first honest Exo follow-on is not delegating execution, but testing whether Exo-derived placement input can bias Psionic scheduling without widening eligibility or weakening Psionic-owned receipts and evidence. |
+| `PSI-218` | [#3330](https://github.com/OpenAgentsInc/openagents/issues/3330) | Open | Make an explicit keep/discard decision on optional Exo interoperability | docs/tests plus cluster crates | The Exo interop seam must end in a deliberate decision rather than accidental dependency drift, with a concrete memo pointing at real integration cost, evidence truth, and dependency risk. |
+
+### Phase F2: post-Metal communication-class eligibility follow-on
+
+This queue stays blocked on the Metal roadmap queue
+`#3286` -> `#3285` -> `#3269` -> `#3262`. The point is to define the truthful
+eligibility contract future Apple clustered execution would need without
+claiming the lane is ready today.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-219` | [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) | Open | Add communication-class eligibility and keep Apple cluster refusal explicit | `psionic-cluster`, runtime/provider evidence/tests | Future Apple cluster claims need explicit communication-class eligibility and refusal diagnostics; backend-label-only refusal is not enough to make later Apple placement honest. |
 
 ## Recommended Order
 
@@ -822,15 +847,15 @@ The shortest honest path from today's `main` is:
    closing in `b0601f662`.
 6. Treat E1 as landed on `main`, with the wider-network discovery queue now
    closing in `7c0f34503`.
-7. Keep the active local CUDA throughput queue
-   `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
-   become an excuse to stop finishing the local lane.
-8. Treat closure of that local CUDA lane as the gate for widening cluster
-   execution claims beyond the current replicated, layer-sharded, and
-   tensor-sharded lanes into broader sharded delivery.
+7. Treat the former local CUDA truth gate `#3276` -> `#3288` -> `#3248` as
+   closed on `main`, and use that closure to work the active F1 queue in order:
+   `#3329` -> `#3330`.
+8. Keep `#3331` explicitly blocked on the Metal roadmap queue
+   `#3286` -> `#3285` -> `#3269` -> `#3262`; do not use Exo or generic cluster
+   work to backdoor Apple cluster eligibility claims.
 9. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-10. If stronger trust or wider network claims are needed beyond E1, open a new
+10. If stronger trust or wider network claims are needed beyond F2, open a new
     GitHub-backed queue instead of extending this roadmap with local placeholders.
 11. Keep current Metal GPT-OSS nodes refused for cluster execution until the
     Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
@@ -885,17 +910,6 @@ true:
   scope widening
 - downstream OpenAgents systems can tell exactly what cluster topology was
   promised, selected, delivered, and degraded
-
-## Likely Follow-On Beyond E1
-
-There are still two likely follow-ons that should remain outside the current
-roadmap queue:
-
-- optional Exo interoperability experiments, only after Psionic's own cluster
-  substrate is credible
-- Apple clustered execution, but only after the native Metal GPT-OSS roadmap is
-  complete and cluster placement can express communication-class eligibility
-  honestly
 
 ## Non-Goals
 
