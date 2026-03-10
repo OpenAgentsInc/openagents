@@ -8,6 +8,7 @@
 pub mod client;
 pub mod contract;
 pub mod structured;
+pub mod tool;
 pub mod transcript;
 
 pub use client::{
@@ -30,13 +31,15 @@ pub use contract::{
     AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
     AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
     AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmTextGenerationResponse,
-    AppleFmTextStreamEvent, AppleFmTextStreamEventKind, AppleFmUsageMeasurement, AppleFmUsageTruth,
-    DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmTextStreamEvent, AppleFmTextStreamEventKind, AppleFmToolCallError,
+    AppleFmToolCallRequest, AppleFmToolCallResponse, AppleFmToolCallbackConfiguration,
+    AppleFmToolDefinition, AppleFmUsageMeasurement, AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
 };
 pub use structured::{
     AppleFmGeneratedContent, AppleFmGenerationId, AppleFmGenerationSchema, AppleFmStructuredType,
     AppleFmStructuredValueError,
 };
+pub use tool::AppleFmTool;
 pub use transcript::{
     APPLE_FM_TRANSCRIPT_TYPE, APPLE_FM_TRANSCRIPT_VERSION, AppleFmTranscript,
     AppleFmTranscriptContent, AppleFmTranscriptEntry, AppleFmTranscriptError,

@@ -2,6 +2,13 @@ use futures_util::StreamExt;
 use reqwest::Url;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -15,19 +22,32 @@ use crate::contract::{
     AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
     AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
     AppleFmSessionStructuredGenerationRequest, AppleFmSessionStructuredGenerationResponse,
-    AppleFmSessionToolMetadata, AppleFmStructuredGenerationRequest,
-    AppleFmStructuredGenerationResponse, AppleFmSystemLanguageModel,
-    AppleFmSystemLanguageModelAvailability, AppleFmTextGenerationRequest,
-    AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
+    AppleFmStructuredGenerationRequest, AppleFmStructuredGenerationResponse,
+    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
+    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
+    AppleFmToolCallError, AppleFmToolCallRequest, AppleFmToolCallResponse,
+    AppleFmToolCallbackConfiguration, AppleFmToolDefinition,
 };
 use crate::structured::{AppleFmStructuredType, AppleFmStructuredValueError};
+use crate::tool::AppleFmTool;
 use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 
+static NEXT_TOOL_SESSION_TOKEN: AtomicU64 = AtomicU64::new(1);
+
 /// Reusable blocking client for the current Apple FM bridge contract.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppleFmBridgeClient {
     base_url: String,
     client: Client,
+    tool_runtime: Arc<AppleFmToolCallbackRuntime>,
+}
+
+impl std::fmt::Debug for AppleFmBridgeClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppleFmBridgeClient")
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Reusable async client for Apple FM streaming transport.
@@ -56,7 +76,11 @@ impl AppleFmBridgeClient {
         client: Client,
     ) -> Result<Self, AppleFmBridgeClientError> {
         let base_url = canonical_base_url(base_url.into())?;
-        Ok(Self { base_url, client })
+        Ok(Self {
+            base_url,
+            client,
+            tool_runtime: Arc::new(AppleFmToolCallbackRuntime::default()),
+        })
     }
 
     /// Returns the normalized base URL.
@@ -141,19 +165,19 @@ impl AppleFmBridgeClient {
                 error,
             }
         })?;
-        self.client
+        let response = self
+            .client
             .post(self.endpoint(APPLE_FM_BRIDGE_SESSIONS_PATH)?)
             .json(request)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "create_session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "create_session",
-                error: error.to_string(),
-            })?
+            })?;
+        if !response.status().is_success() {
+            return Err(map_status_response("create_session", response));
+        }
+        response
             .json::<AppleFmSessionCreateResponse>()
             .map(|response| response.session)
             .map_err(|error| AppleFmBridgeClientError::Decode {
@@ -167,10 +191,56 @@ impl AppleFmBridgeClient {
         &self,
         transcript: AppleFmTranscript,
         model: Option<AppleFmSystemLanguageModel>,
-        tools: Vec<AppleFmSessionToolMetadata>,
+        tools: Vec<AppleFmToolDefinition>,
     ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
         let request = AppleFmSessionCreateRequest::from_transcript(transcript, model, tools);
         self.create_session(&request)
+    }
+
+    /// Creates a new Apple FM session with active Rust-side tool implementations.
+    pub fn create_session_with_tools(
+        &self,
+        request: &AppleFmSessionCreateRequest,
+        tools: Vec<Arc<dyn AppleFmTool>>,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        if tools.is_empty() {
+            return self.create_session(request);
+        }
+        let mut request = request.clone();
+        let (definitions, callback, session_token) = self
+            .tool_runtime
+            .register_tools(tools)
+            .map_err(|error| AppleFmBridgeClientError::ToolRuntime {
+                operation: "create_session_with_tools",
+                error,
+            })?;
+        request.tools = definitions;
+        request.tool_callback = Some(callback);
+        match self.create_session(&request) {
+            Ok(session) => {
+                self.tool_runtime
+                    .bind_session_token(session.id.as_str(), session_token);
+                Ok(session)
+            }
+            Err(error) => {
+                self.tool_runtime
+                    .remove_session_token(session_token.as_str());
+                Err(error)
+            }
+        }
+    }
+
+    /// Restores a session from transcript with active Rust-side tool implementations.
+    pub fn create_session_from_transcript_with_tools(
+        &self,
+        transcript: AppleFmTranscript,
+        model: Option<AppleFmSystemLanguageModel>,
+        tools: Vec<Arc<dyn AppleFmTool>>,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        self.create_session_with_tools(
+            &AppleFmSessionCreateRequest::from_transcript(transcript, model, Vec::new()),
+            tools,
+        )
     }
 
     /// Fetches current session state.
@@ -232,6 +302,7 @@ impl AppleFmBridgeClient {
                 operation: "delete_session",
                 error: error.to_string(),
             })?;
+        self.tool_runtime.unregister_session(session_id);
         Ok(())
     }
 
@@ -271,19 +342,19 @@ impl AppleFmBridgeClient {
                 operation: "respond_in_session",
                 error,
             })?;
-        self.client
+        let response = self
+            .client
             .post(self.endpoint(&session_responses_path(session_id))?)
             .json(request)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "respond_in_session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "respond_in_session",
-                error: error.to_string(),
-            })?
+            })?;
+        if !response.status().is_success() {
+            return Err(map_status_response("respond_in_session", response));
+        }
+        response
             .json::<AppleFmSessionRespondResponse>()
             .map_err(|error| AppleFmBridgeClientError::Decode {
                 operation: "respond_in_session",
@@ -303,19 +374,22 @@ impl AppleFmBridgeClient {
                 operation: "respond_structured_in_session",
                 error,
             })?;
-        self.client
+        let response = self
+            .client
             .post(self.endpoint(&session_structured_responses_path(session_id))?)
             .json(request)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "respond_structured_in_session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "respond_structured_in_session",
-                error: error.to_string(),
-            })?
+            })?;
+        if !response.status().is_success() {
+            return Err(map_status_response(
+                "respond_structured_in_session",
+                response,
+            ));
+        }
+        response
             .json::<AppleFmSessionStructuredGenerationResponse>()
             .map_err(|error| AppleFmBridgeClientError::Decode {
                 operation: "respond_structured_in_session",
@@ -410,6 +484,52 @@ impl AppleFmBridgeClient {
         Ok(self.generate_text(&request)?.completion_result())
     }
 
+    /// Executes a one-shot user prompt through an Apple FM session with active tools.
+    pub fn completion_from_prompt_with_tools(
+        &self,
+        prompt: impl Into<String>,
+        model: Option<impl Into<String>>,
+        options: Option<AppleFmGenerationOptions>,
+        tools: Vec<Arc<dyn AppleFmTool>>,
+    ) -> Result<AppleFmCompletionResult, AppleFmBridgeClientError> {
+        let session = self.create_session_with_tools(
+            &AppleFmSessionCreateRequest {
+                instructions: None,
+                model: model.map(|model_id| AppleFmSystemLanguageModel {
+                    id: model_id.into(),
+                    ..Default::default()
+                }),
+                tools: Vec::new(),
+                tool_callback: None,
+                transcript_json: None,
+                transcript: None,
+            },
+            tools,
+        )?;
+        let response = self.respond_in_session(
+            session.id.as_str(),
+            &AppleFmSessionRespondRequest {
+                prompt: prompt.into(),
+                options,
+            },
+        );
+        let _ = self.delete_session(session.id.as_str());
+        response.map(|response| AppleFmCompletionResult {
+            model: response.model,
+            output: response.output,
+            prompt_tokens: response
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.prompt_tokens),
+            completion_tokens: response
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.completion_tokens),
+            total_tokens: response.usage.as_ref().and_then(|usage| usage.total_tokens),
+            usage: response.usage,
+        })
+    }
+
     /// Executes one-shot structured generation using an ephemeral Apple FM session.
     pub fn generate_structured(
         &self,
@@ -431,6 +551,7 @@ impl AppleFmBridgeClient {
                     ..Default::default()
                 }),
             tools: Vec::new(),
+            tool_callback: None,
             transcript_json: None,
             transcript: None,
         })?;
@@ -641,6 +762,308 @@ fn session_structured_responses_path(session_id: &str) -> String {
 }
 
 #[derive(Default)]
+struct AppleFmToolCallbackRuntime {
+    state: Arc<AppleFmToolCallbackRuntimeState>,
+}
+
+#[derive(Default)]
+struct AppleFmToolCallbackRuntimeState {
+    callback_url: Mutex<Option<String>>,
+    tools_by_token: Mutex<HashMap<String, HashMap<String, Arc<dyn AppleFmTool>>>>,
+    session_tokens: Mutex<HashMap<String, String>>,
+}
+
+impl AppleFmToolCallbackRuntime {
+    fn register_tools(
+        &self,
+        tools: Vec<Arc<dyn AppleFmTool>>,
+    ) -> Result<
+        (
+            Vec<AppleFmToolDefinition>,
+            AppleFmToolCallbackConfiguration,
+            String,
+        ),
+        String,
+    > {
+        let callback_url = self.ensure_callback_url()?;
+        let session_token = next_tool_session_token();
+        let mut tool_map = HashMap::new();
+        let mut definitions = Vec::with_capacity(tools.len());
+        for tool in tools {
+            let definition = tool.definition();
+            tool_map.insert(definition.name.clone(), Arc::clone(&tool));
+            definitions.push(definition);
+        }
+        self.state
+            .tools_by_token
+            .lock()
+            .map_err(|_| "tool runtime lock poisoned".to_string())?
+            .insert(session_token.clone(), tool_map);
+        Ok((
+            definitions,
+            AppleFmToolCallbackConfiguration {
+                url: callback_url,
+                session_token: session_token.clone(),
+            },
+            session_token,
+        ))
+    }
+
+    fn bind_session_token(&self, session_id: &str, session_token: String) {
+        if let Ok(mut tokens) = self.state.session_tokens.lock() {
+            tokens.insert(session_id.to_string(), session_token);
+        }
+    }
+
+    fn unregister_session(&self, session_id: &str) {
+        let session_token = self
+            .state
+            .session_tokens
+            .lock()
+            .ok()
+            .and_then(|mut tokens| tokens.remove(session_id));
+        if let Some(session_token) = session_token {
+            self.remove_session_token(session_token.as_str());
+        }
+    }
+
+    fn remove_session_token(&self, session_token: &str) {
+        if let Ok(mut tools) = self.state.tools_by_token.lock() {
+            tools.remove(session_token);
+        }
+    }
+
+    fn ensure_callback_url(&self) -> Result<String, String> {
+        if let Some(url) = self
+            .state
+            .callback_url
+            .lock()
+            .map_err(|_| "tool runtime lock poisoned".to_string())?
+            .clone()
+        {
+            return Ok(url);
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .map_err(|error| format!("bind callback listener: {error}"))?;
+        let port = listener
+            .local_addr()
+            .map_err(|error| format!("tool callback listener addr: {error}"))?
+            .port();
+        let callback_url = format!("http://127.0.0.1:{port}/tool-call");
+        let state = Arc::clone(&self.state);
+        thread::spawn(move || run_tool_callback_server(listener, state));
+        *self
+            .state
+            .callback_url
+            .lock()
+            .map_err(|_| "tool runtime lock poisoned".to_string())? = Some(callback_url.clone());
+        Ok(callback_url)
+    }
+}
+
+fn next_tool_session_token() -> String {
+    let next = NEXT_TOOL_SESSION_TOKEN.fetch_add(1, Ordering::Relaxed);
+    format!("tool-session-{next}")
+}
+
+fn run_tool_callback_server(listener: TcpListener, state: Arc<AppleFmToolCallbackRuntimeState>) {
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else {
+            continue;
+        };
+        let state = Arc::clone(&state);
+        thread::spawn(move || {
+            let _ = handle_tool_callback_connection(stream, state);
+        });
+    }
+}
+
+fn handle_tool_callback_connection(
+    mut stream: TcpStream,
+    state: Arc<AppleFmToolCallbackRuntimeState>,
+) -> Result<(), String> {
+    let request = read_http_request(&mut stream)?;
+    if request.method != "POST" || request.path != "/tool-call" {
+        write_json_response(
+            &mut stream,
+            404,
+            &AppleFmErrorResponse {
+                error: crate::contract::AppleFmErrorDetail {
+                    message: format!("Not found: {} {}", request.method, request.path),
+                    r#type: "not_found".to_string(),
+                    code: Some("not_found".to_string()),
+                    tool_name: None,
+                    underlying_error: None,
+                },
+            },
+        )?;
+        return Ok(());
+    }
+    let callback_request: AppleFmToolCallRequest = serde_json::from_slice(request.body.as_slice())
+        .map_err(|error| format!("decode tool callback request: {error}"))?;
+    match dispatch_tool_call(&state, callback_request) {
+        Ok(output) => write_json_response(&mut stream, 200, &AppleFmToolCallResponse { output })?,
+        Err(error) => write_json_response(&mut stream, 422, &error)?,
+    }
+    Ok(())
+}
+
+fn dispatch_tool_call(
+    state: &AppleFmToolCallbackRuntimeState,
+    request: AppleFmToolCallRequest,
+) -> Result<String, AppleFmToolCallError> {
+    let tool = state
+        .tools_by_token
+        .lock()
+        .map_err(|_| {
+            AppleFmToolCallError::new(request.tool_name.clone(), "tool runtime lock poisoned")
+        })?
+        .get(request.session_token.as_str())
+        .and_then(|tools| tools.get(request.tool_name.as_str()).cloned())
+        .ok_or_else(|| {
+            AppleFmToolCallError::new(
+                request.tool_name.clone(),
+                format!(
+                    "no registered Rust-side Apple FM tool for session token '{}'",
+                    request.session_token
+                ),
+            )
+        })?;
+    tool.call(request.arguments)
+}
+
+struct HttpRequest {
+    method: String,
+    path: String,
+    body: Vec<u8>,
+}
+
+fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
+    let mut buffer = Vec::new();
+    let mut header_end = None;
+    let mut content_length = 0usize;
+    loop {
+        let mut chunk = [0_u8; 4096];
+        let read = stream
+            .read(&mut chunk)
+            .map_err(|error| format!("read tool callback request: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        if header_end.is_none() {
+            if let Some(index) = find_header_end(buffer.as_slice()) {
+                header_end = Some(index);
+                content_length = parse_content_length(&buffer[..index])?;
+            }
+        }
+        if let Some(index) = header_end {
+            let body_end = index + 4 + content_length;
+            if buffer.len() >= body_end {
+                break;
+            }
+        }
+    }
+    let header_end = header_end.ok_or("missing HTTP header terminator".to_string())?;
+    let header_text =
+        String::from_utf8(buffer[..header_end].to_vec()).map_err(|error| error.to_string())?;
+    let mut header_lines = header_text.split("\r\n");
+    let request_line = header_lines
+        .next()
+        .ok_or("missing tool callback request line".to_string())?;
+    let mut request_parts = request_line.split_whitespace();
+    let method = request_parts
+        .next()
+        .ok_or("missing tool callback method".to_string())?
+        .to_string();
+    let path = request_parts
+        .next()
+        .ok_or("missing tool callback path".to_string())?
+        .to_string();
+    let body_start = header_end + 4;
+    let body_end = body_start + content_length;
+    if buffer.len() < body_end {
+        return Err("incomplete HTTP body".to_string());
+    }
+    Ok(HttpRequest {
+        method,
+        path,
+        body: buffer[body_start..body_end].to_vec(),
+    })
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn parse_content_length(headers: &[u8]) -> Result<usize, String> {
+    let headers =
+        String::from_utf8(headers.to_vec()).map_err(|error| format!("decode headers: {error}"))?;
+    for line in headers.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            return value
+                .trim()
+                .parse::<usize>()
+                .map_err(|error| format!("invalid content-length: {error}"));
+        }
+    }
+    Ok(0)
+}
+
+fn write_json_response<T: serde::Serialize>(
+    stream: &mut TcpStream,
+    status_code: u16,
+    body: &T,
+) -> Result<(), String> {
+    let body = serde_json::to_string(body).map_err(|error| error.to_string())?;
+    let response = format!(
+        "HTTP/1.1 {status_code} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .map_err(|error| format!("write tool callback response: {error}"))
+}
+
+fn map_status_response(
+    operation: &'static str,
+    response: reqwest::blocking::Response,
+) -> AppleFmBridgeClientError {
+    let status = response.status();
+    let body = response.text().unwrap_or_default();
+    if let Ok(error_response) = serde_json::from_str::<AppleFmErrorResponse>(body.as_str()) {
+        if error_response.error.code.as_deref() == Some("tool_call_failed") {
+            return AppleFmBridgeClientError::ToolCall {
+                operation,
+                error: AppleFmToolCallError::new(
+                    error_response
+                        .error
+                        .tool_name
+                        .unwrap_or_else(|| "unknown_tool".to_string()),
+                    error_response
+                        .error
+                        .underlying_error
+                        .unwrap_or_else(|| error_response.error.message.clone()),
+                ),
+            };
+        }
+        return AppleFmBridgeClientError::Status {
+            operation,
+            error: format!("{status}: {}", error_response.error.message),
+        };
+    }
+    AppleFmBridgeClientError::Status {
+        operation,
+        error: format!("{status}: {body}"),
+    }
+}
+
+#[derive(Default)]
 struct PendingSseEvent {
     event_name: Option<String>,
     data_lines: Vec<String>,
@@ -801,6 +1224,22 @@ pub enum AppleFmBridgeClientError {
         /// Structured decode detail.
         error: AppleFmStructuredValueError,
     },
+    /// Local tool runtime setup or callback transport failed.
+    #[error("Apple FM {operation} tool runtime failed: {error}")]
+    ToolRuntime {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Tool runtime detail.
+        error: String,
+    },
+    /// A registered Apple FM tool call failed explicitly.
+    #[error("Apple FM {operation} tool call failed: {error}")]
+    ToolCall {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Typed tool-call failure.
+        error: AppleFmToolCallError,
+    },
     /// Stream endpoint returned the wrong content type.
     #[error("Apple FM {operation} returned non-stream content type: {content_type}")]
     InvalidStreamContentType {
@@ -852,14 +1291,19 @@ mod tests {
     use std::time::{Duration, Instant};
     use tokio_stream::StreamExt;
 
-    use super::{AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmBridgeClientError};
+    use super::{
+        AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmBridgeClientError,
+        AppleFmToolCallbackRuntime, dispatch_tool_call,
+    };
     use crate::contract::{
         AppleFmGenerationOptions, AppleFmSamplingMode, AppleFmSessionCreateRequest,
         AppleFmSessionRespondRequest, AppleFmSessionStructuredGenerationRequest,
-        AppleFmSessionToolMetadata, AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
-        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase, AppleFmUsageTruth,
+        AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
+        AppleFmToolCallError, AppleFmToolCallRequest, AppleFmToolDefinition, AppleFmUsageTruth,
     };
     use crate::structured::AppleFmGenerationSchema;
+    use crate::tool::AppleFmTool;
     use crate::transcript::{
         APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
         AppleFmTranscriptEntry, AppleFmTranscriptPayload,
@@ -870,6 +1314,152 @@ mod tests {
         title: String,
         completed: bool,
         tags: Vec<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    struct SecretLookupArgs {
+        key: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    struct UserLookupArgs {
+        user_id: u64,
+    }
+
+    #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    struct ListJoinArgs {
+        items: Vec<String>,
+        separator: String,
+    }
+
+    #[derive(Clone)]
+    struct SecretLookupTool;
+
+    impl AppleFmTool for SecretLookupTool {
+        fn definition(&self) -> AppleFmToolDefinition {
+            AppleFmToolDefinition::typed::<SecretLookupArgs>(
+                "lookup_secret_code",
+                Some("Returns a stable secret code for the requested key"),
+            )
+            .expect("secret lookup tool definition")
+        }
+
+        fn call(
+            &self,
+            arguments: crate::structured::AppleFmGeneratedContent,
+        ) -> Result<String, AppleFmToolCallError> {
+            let key = arguments
+                .property::<String>("key")
+                .map_err(|error| {
+                    AppleFmToolCallError::new("lookup_secret_code", error.to_string())
+                })?
+                .unwrap_or_default();
+            let output = match key.as_str() {
+                "fm_status" => "FM-LIVE-RECEIPT-42",
+                "desktop_lane" => "APPLE-FM-MAC-LANE",
+                _ => "UNKNOWN-SECRET",
+            };
+            Ok(output.to_string())
+        }
+    }
+
+    #[derive(Clone)]
+    struct UserLookupTool;
+
+    impl AppleFmTool for UserLookupTool {
+        fn definition(&self) -> AppleFmToolDefinition {
+            AppleFmToolDefinition::typed::<UserLookupArgs>(
+                "lookup_user_profile",
+                Some("Returns the stored user profile for a numeric user id"),
+            )
+            .expect("user lookup tool definition")
+        }
+
+        fn call(
+            &self,
+            arguments: crate::structured::AppleFmGeneratedContent,
+        ) -> Result<String, AppleFmToolCallError> {
+            let user_id = arguments
+                .property::<u64>("user_id")
+                .map_err(|error| {
+                    AppleFmToolCallError::new("lookup_user_profile", error.to_string())
+                })?
+                .unwrap_or_default();
+            match user_id {
+                1 => Ok("USER-1: Alice / admin".to_string()),
+                2 => Ok("USER-2: Bob / user".to_string()),
+                other => Err(AppleFmToolCallError::new(
+                    "lookup_user_profile",
+                    format!("user {other} not found"),
+                )),
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct ListJoinTool;
+
+    impl AppleFmTool for ListJoinTool {
+        fn definition(&self) -> AppleFmToolDefinition {
+            AppleFmToolDefinition::typed::<ListJoinArgs>(
+                "join_list_values",
+                Some("Joins a list of strings with the provided separator"),
+            )
+            .expect("list join tool definition")
+        }
+
+        fn call(
+            &self,
+            arguments: crate::structured::AppleFmGeneratedContent,
+        ) -> Result<String, AppleFmToolCallError> {
+            let items = arguments
+                .property::<Vec<String>>("items")
+                .map_err(|error| AppleFmToolCallError::new("join_list_values", error.to_string()))?
+                .unwrap_or_default();
+            let separator = arguments
+                .property::<String>("separator")
+                .map_err(|error| AppleFmToolCallError::new("join_list_values", error.to_string()))?
+                .unwrap_or_else(|| ",".to_string());
+            Ok(items.join(separator.as_str()))
+        }
+    }
+
+    #[derive(Clone)]
+    struct FailingTool;
+
+    impl AppleFmTool for FailingTool {
+        fn definition(&self) -> AppleFmToolDefinition {
+            AppleFmToolDefinition::typed::<SecretLookupArgs>(
+                "always_fail",
+                Some("Always fails for tool-call error coverage"),
+            )
+            .expect("failing tool definition")
+        }
+
+        fn call(
+            &self,
+            arguments: crate::structured::AppleFmGeneratedContent,
+        ) -> Result<String, AppleFmToolCallError> {
+            let key = arguments
+                .property::<String>("key")
+                .map_err(|error| AppleFmToolCallError::new("always_fail", error.to_string()))?
+                .unwrap_or_else(|| "unknown".to_string());
+            Err(AppleFmToolCallError::new(
+                "always_fail",
+                format!("intentional failure for key '{key}'"),
+            ))
+        }
+    }
+
+    fn search_tool_definition() -> AppleFmToolDefinition {
+        AppleFmToolDefinition::new(
+            "search",
+            Some("Search docs"),
+            AppleFmGenerationSchema::from_json_str(
+                r#"{"type":"object","properties":{"query":{"type":"string"}}}"#,
+            )
+            .expect("search tool schema"),
+        )
     }
 
     fn empty_transcript_json() -> String {
@@ -1061,43 +1651,59 @@ mod tests {
                 {
                     let request_json: serde_json::Value =
                         serde_json::from_str(request_body.as_str()).expect("session request json");
-                    assert_eq!(request_json["prompt"], "hello");
-                    assert_eq!(request_json["options"]["temperature"], 0.4);
-                    assert_eq!(request_json["options"]["sampling"]["mode"], "random");
-                    assert_eq!(request_json["options"]["sampling"]["top_k"], 32);
-                    assert_eq!(request_json["options"]["sampling"]["seed"], 7);
                     let session_id = path
                         .trim_start_matches("/v1/sessions/")
                         .trim_end_matches("/responses")
                         .trim_end_matches('/');
-                    (
-                        200,
-                        serde_json::json!({
-                            "session": {
-                                "id": session_id,
-                                "instructions": "You are a helper",
-                                "model": {
-                                    "id": "apple-foundation-model",
-                                    "use_case": "general",
-                                    "guardrails": "default"
+                    if request_json["prompt"] == "fail tool" {
+                        (
+                            502,
+                            serde_json::json!({
+                                "error": {
+                                    "message": "Tool 'always_fail' failed: intentional failure for key 'explode'",
+                                    "type": "tool_call_failed",
+                                    "code": "tool_call_failed",
+                                    "tool_name": "always_fail",
+                                    "underlying_error": "intentional failure for key 'explode'"
+                                }
+                            })
+                            .to_string(),
+                        )
+                    } else {
+                        assert_eq!(request_json["prompt"], "hello");
+                        assert_eq!(request_json["options"]["temperature"], 0.4);
+                        assert_eq!(request_json["options"]["sampling"]["mode"], "random");
+                        assert_eq!(request_json["options"]["sampling"]["top_k"], 32);
+                        assert_eq!(request_json["options"]["sampling"]["seed"], 7);
+                        (
+                            200,
+                            serde_json::json!({
+                                "session": {
+                                    "id": session_id,
+                                    "instructions": "You are a helper",
+                                    "model": {
+                                        "id": "apple-foundation-model",
+                                        "use_case": "general",
+                                        "guardrails": "default"
+                                    },
+                                    "tools": [{ "name": "search", "description": "Search docs" }],
+                                    "is_responding": false,
+                                    "transcript_json": non_empty_transcript_json()
                                 },
-                                "tools": [{ "name": "search", "description": "Search docs" }],
-                                "is_responding": false,
-                                "transcript_json": non_empty_transcript_json()
-                            },
-                            "model": "apple-foundation-model",
-                            "output": "session hello from apple fm",
-                            "usage": {
-                                "prompt_tokens": 6,
-                                "completion_tokens": 5,
-                                "total_tokens": 11,
-                                "prompt_tokens_detail": { "value": 6, "truth": "exact" },
-                                "completion_tokens_detail": { "value": 5, "truth": "estimated" },
-                                "total_tokens_detail": { "value": 11, "truth": "estimated" }
-                            }
-                        })
-                        .to_string(),
-                    )
+                                "model": "apple-foundation-model",
+                                "output": "session hello from apple fm",
+                                "usage": {
+                                    "prompt_tokens": 6,
+                                    "completion_tokens": 5,
+                                    "total_tokens": 11,
+                                    "prompt_tokens_detail": { "value": 6, "truth": "exact" },
+                                    "completion_tokens_detail": { "value": 5, "truth": "estimated" },
+                                    "total_tokens_detail": { "value": 11, "truth": "estimated" }
+                                }
+                            })
+                            .to_string(),
+                        )
+                    }
                 } else if method == "POST"
                     && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/responses/structured")
@@ -1371,10 +1977,8 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             .create_session(&AppleFmSessionCreateRequest {
                 instructions: Some("You are a helper".to_string()),
                 model: Some(AppleFmSystemLanguageModel::default()),
-                tools: vec![AppleFmSessionToolMetadata {
-                    name: "search".to_string(),
-                    description: Some("Search docs".to_string()),
-                }],
+                tools: vec![search_tool_definition()],
+                tool_callback: None,
                 transcript_json: None,
                 transcript: None,
             })
@@ -1471,6 +2075,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                tool_callback: None,
                 transcript_json: None,
                 transcript: None,
             })
@@ -1581,6 +2186,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                tool_callback: None,
                 transcript_json: Some("{".to_string()),
                 transcript: None,
             })
@@ -1607,6 +2213,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                tool_callback: None,
                 transcript_json: None,
                 transcript: None,
             })
@@ -1691,6 +2298,106 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         handle.join().expect("mock bridge thread");
     }
 
+    #[test]
+    fn tool_callback_runtime_dispatches_complex_arguments_and_errors() {
+        let runtime = AppleFmToolCallbackRuntime::default();
+        let (_definitions, _callback, session_token) = runtime
+            .register_tools(vec![
+                Arc::new(ListJoinTool) as Arc<dyn AppleFmTool>,
+                Arc::new(FailingTool) as Arc<dyn AppleFmTool>,
+            ])
+            .expect("register tools");
+
+        let joined = dispatch_tool_call(
+            &runtime.state,
+            AppleFmToolCallRequest {
+                session_token: session_token.clone(),
+                tool_name: "join_list_values".to_string(),
+                arguments: crate::structured::AppleFmGeneratedContent::from_json_str(
+                    r#"{"items":["alpha","beta","gamma"],"separator":" / "}"#,
+                )
+                .expect("join tool args"),
+            },
+        )
+        .expect("dispatch join tool");
+        assert_eq!(joined, "alpha / beta / gamma");
+
+        let failure = dispatch_tool_call(
+            &runtime.state,
+            AppleFmToolCallRequest {
+                session_token: session_token.clone(),
+                tool_name: "always_fail".to_string(),
+                arguments: crate::structured::AppleFmGeneratedContent::from_json_str(
+                    r#"{"key":"explode"}"#,
+                )
+                .expect("failing tool args"),
+            },
+        )
+        .expect_err("failing tool should bubble typed error");
+        assert_eq!(failure.tool_name, "always_fail");
+        assert!(failure.underlying_error.contains("explode"));
+
+        runtime.remove_session_token(session_token.as_str());
+    }
+
+    #[test]
+    fn client_creates_session_with_registered_tools() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let session = client
+            .create_session_with_tools(
+                &AppleFmSessionCreateRequest {
+                    instructions: Some(
+                        "You are a helpful assistant with access to multiple tools.".to_string(),
+                    ),
+                    model: Some(AppleFmSystemLanguageModel::default()),
+                    tools: vec![],
+                    tool_callback: None,
+                    transcript_json: None,
+                    transcript: None,
+                },
+                vec![
+                    Arc::new(SecretLookupTool) as Arc<dyn AppleFmTool>,
+                    Arc::new(UserLookupTool) as Arc<dyn AppleFmTool>,
+                ],
+            )
+            .expect("create session with tools");
+
+        assert_eq!(session.tools.len(), 2);
+        assert_eq!(session.tools[0].name, "lookup_secret_code");
+        assert_eq!(session.tools[1].name, "lookup_user_profile");
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_maps_tool_call_failures_explicitly() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let error = client
+            .respond_in_session(
+                "sess-1",
+                &AppleFmSessionRespondRequest {
+                    prompt: "fail tool".to_string(),
+                    options: None,
+                },
+            )
+            .expect_err("tool failure should map to ToolCall");
+
+        match error {
+            AppleFmBridgeClientError::ToolCall { operation, error } => {
+                assert_eq!(operation, "respond_in_session");
+                assert_eq!(error.tool_name, "always_fail");
+                assert!(error.underlying_error.contains("explode"));
+            }
+            other => panic!("expected ToolCall error, got {other:?}"),
+        }
+
+        handle.join().expect("mock bridge thread");
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
@@ -1741,6 +2448,58 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             .expect("live typed structured generation");
         assert!(!typed.title.trim().is_empty());
         assert!(!typed.tags.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
+    fn live_tool_call_receipt() {
+        let (client, _bridge) = spawn_live_foundation_bridge();
+
+        let session = client
+            .create_session_with_tools(
+                &AppleFmSessionCreateRequest {
+                    instructions: Some(
+                        "You must use the named tools for secret codes and user-profile lookups. Do not guess tool outputs.".to_string(),
+                    ),
+                    model: Some(AppleFmSystemLanguageModel::default()),
+                    tools: vec![],
+                    tool_callback: None,
+                    transcript_json: None,
+                    transcript: None,
+                },
+                vec![
+                    Arc::new(SecretLookupTool) as Arc<dyn AppleFmTool>,
+                    Arc::new(UserLookupTool) as Arc<dyn AppleFmTool>,
+                ],
+            )
+            .expect("live session with tools");
+
+        let secret = client
+            .respond_in_session(
+                session.id.as_str(),
+                &AppleFmSessionRespondRequest {
+                    prompt: "Use the lookup_secret_code tool to fetch the secret code for fm_status. Return the code.".to_string(),
+                    options: None,
+                },
+            )
+            .expect("live secret tool call");
+        assert!(secret.output.contains("FM-LIVE-RECEIPT-42"));
+
+        let user = client
+            .respond_in_session(
+                session.id.as_str(),
+                &AppleFmSessionRespondRequest {
+                    prompt: "Use the lookup_user_profile tool to fetch the profile for user 1. Tell me the user's name.".to_string(),
+                    options: None,
+                },
+            )
+            .expect("live user tool call");
+        assert!(user.output.contains("Alice"));
+
+        client
+            .delete_session(session.id.as_str())
+            .expect("delete live tool session");
     }
 
     #[test]

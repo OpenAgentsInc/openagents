@@ -57,10 +57,39 @@ struct SessionToolMetadata: Codable {
     let description: String?
 }
 
+struct ToolDefinition: Codable {
+    let name: String
+    let description: String?
+    let argumentsSchema: JSONValue
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case argumentsSchema = "arguments_schema"
+    }
+}
+
+extension ToolDefinition {
+    var metadata: SessionToolMetadata {
+        SessionToolMetadata(name: name, description: description)
+    }
+}
+
+struct ToolCallbackConfiguration: Codable {
+    let url: String
+    let sessionToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case sessionToken = "session_token"
+    }
+}
+
 struct SessionCreateRequest: Codable {
     let instructions: String?
     let model: SessionModelConfiguration?
-    let tools: [SessionToolMetadata]
+    let tools: [ToolDefinition]
+    let toolCallback: ToolCallbackConfiguration?
     let transcriptJSON: String?
     let transcript: Transcript?
 
@@ -68,6 +97,7 @@ struct SessionCreateRequest: Codable {
         case instructions
         case model
         case tools
+        case toolCallback = "tool_callback"
         case transcriptJSON = "transcript_json"
         case transcript
     }
@@ -189,6 +219,32 @@ struct SessionStructuredResponseResponse: Codable {
     let model: String
     let content: GeneratedContentPayload
     let usage: Usage?
+}
+
+struct ToolCallRequestPayload: Codable {
+    let sessionToken: String
+    let toolName: String
+    let arguments: GeneratedContentPayload
+
+    enum CodingKeys: String, CodingKey {
+        case sessionToken = "session_token"
+        case toolName = "tool_name"
+        case arguments
+    }
+}
+
+struct ToolCallResponsePayload: Codable {
+    let output: String
+}
+
+struct ToolCallErrorPayload: Codable {
+    let toolName: String
+    let underlyingError: String
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case underlyingError = "underlying_error"
+    }
 }
 
 struct ChatCompletionRequest: Codable {
@@ -383,11 +439,22 @@ struct ErrorDetail: Codable {
     let message: String
     let type: String
     let code: String?
+    let toolName: String?
+    let underlyingError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case type
+        case code
+        case toolName = "tool_name"
+        case underlyingError = "underlying_error"
+    }
 }
 
 enum FMError: Error {
     case modelUnavailable(String)
     case concurrentRequests(String)
+    case toolCallFailed(toolName: String, underlyingError: String)
     case requestFailed(String)
     case invalidRequest(String)
     case serverError(String)
@@ -399,7 +466,9 @@ enum FMError: Error {
                 error: ErrorDetail(
                     message: msg,
                     type: "model_unavailable",
-                    code: "model_unavailable"
+                    code: "model_unavailable",
+                    toolName: nil,
+                    underlyingError: nil
                 )
             )
         case .concurrentRequests(let msg):
@@ -407,7 +476,19 @@ enum FMError: Error {
                 error: ErrorDetail(
                     message: msg,
                     type: "concurrent_requests",
-                    code: "concurrent_requests"
+                    code: "concurrent_requests",
+                    toolName: nil,
+                    underlyingError: nil
+                )
+            )
+        case .toolCallFailed(let toolName, let underlyingError):
+            return ErrorResponse(
+                error: ErrorDetail(
+                    message: "Tool '\(toolName)' failed: \(underlyingError)",
+                    type: "tool_call_failed",
+                    code: "tool_call_failed",
+                    toolName: toolName,
+                    underlyingError: underlyingError
                 )
             )
         case .requestFailed(let msg):
@@ -415,7 +496,9 @@ enum FMError: Error {
                 error: ErrorDetail(
                     message: msg,
                     type: "request_failed",
-                    code: "request_failed"
+                    code: "request_failed",
+                    toolName: nil,
+                    underlyingError: nil
                 )
             )
         case .invalidRequest(let msg):
@@ -423,7 +506,9 @@ enum FMError: Error {
                 error: ErrorDetail(
                     message: msg,
                     type: "invalid_request_error",
-                    code: "invalid_request"
+                    code: "invalid_request",
+                    toolName: nil,
+                    underlyingError: nil
                 )
             )
         case .serverError(let msg):
@@ -431,7 +516,9 @@ enum FMError: Error {
                 error: ErrorDetail(
                     message: msg,
                     type: "server_error",
-                    code: "server_error"
+                    code: "server_error",
+                    toolName: nil,
+                    underlyingError: nil
                 )
             )
         }

@@ -116,7 +116,6 @@ What the retained tree has today:
 
 What the retained tree does not have today:
 
-- tools
 - typed error mapping
 - Apple FM as the default Mac local inference lane
 - a Mission Control pane that speaks Apple FM truth on macOS instead of
@@ -151,8 +150,8 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, and `FM-7` are now landed on
-`main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, and `FM-8` are now
+landed on `main`.
 
 What shipped:
 
@@ -245,10 +244,24 @@ What shipped:
 - a live local receipt now exists for both explicit-schema and typed
   structured generation through the retained Swift bridge on macOS with Apple
   FM availability
+- `psionic-apple-fm` now exposes a reusable Rust `AppleFmTool` trait plus
+  `AppleFmToolDefinition`, `AppleFmToolCallRequest`,
+  `AppleFmToolCallResponse`, and typed `AppleFmToolCallError`
+- Apple FM sessions can now be created with active Rust-side tool
+  implementations through a session-bound loopback callback contract instead of
+  prompt-flattened tool descriptions
+- the Swift bridge now constructs real Foundation Models `Tool` objects from
+  registered Rust tool definitions and calls back into the Rust-side runtime
+  when Apple FM invokes a tool
+- client-side tests now cover direct tool invocation, typed tool registration,
+  complex argument payloads, explicit tool failure mapping, and mock-session
+  registration behavior
+- a live ignored macOS receipt now proves a real Apple FM session can use
+  multiple registered Rust tools through the Swift bridge
 
-What `FM-1` through `FM-7` did not close:
+What `FM-1` through `FM-8` did not close:
 
-- tools and typed error taxonomy
+- typed error taxonomy
 - desktop Mission Control cutover on macOS
 - raw token counts are now truthfully marked as estimated, but the broader
   typed metrics/error taxonomy work still remains `FM-9`
@@ -352,7 +365,6 @@ streaming truth.
 Relative to the Python SDK target, the retained repo is currently missing at
 least the following:
 
-- no tool registration or tool-call/result protocol
 - no typed Rust error taxonomy aligned to the Apple FM model contract
 - usage metrics are still explicitly estimated rather than exact, and the
   broader typed evidence/error work still remains
@@ -640,11 +652,10 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-7`, the next-item order is:
+After `FM-8`, the next-item order is:
 
-1. `FM-8` tools
-2. `FM-9` typed errors and metrics truth
-3. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-9` typed errors and metrics truth
+2. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and
