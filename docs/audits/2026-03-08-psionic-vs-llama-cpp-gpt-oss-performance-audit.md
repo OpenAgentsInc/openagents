@@ -1346,8 +1346,8 @@ prompt-cache-hit contract:
 
 - Psionic:
   - `2.24-2.26 tok/s`
-  - `6.43-6.47 tok/s`
-  - `10.41-10.55 tok/s`
+  - `6.43-6.51 tok/s`
+  - `10.41-10.57 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1417,6 +1417,13 @@ What the newest kept checkpoint proved:
   stays at `6`, and the remaining hybrid layers stay at `5`
 - on the exact contract that moved the latest kept checkpoint to
   `2.26 / 6.43 / 10.55 tok/s`
+- the newest kept follow-up after that narrows the expanded set and spends the
+  saved slot budget back onto the proven hot layers:
+  layers `23, 25, 28, 29` now keep `8` cache slots, layers
+  `10, 18, 21, 22, 26, 31, 33` keep `6`, and the remaining hybrid layers stay
+  at `5`
+- on the exact contract that nudged the latest kept checkpoint to
+  `2.26 / 6.51 / 10.57 tok/s`
 
 What the remaining gap now points to:
 
