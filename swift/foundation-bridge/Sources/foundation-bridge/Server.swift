@@ -2,6 +2,17 @@ import Foundation
 import Network
 
 actor HTTPServer {
+    private struct ParsedRequest {
+        let method: String
+        let path: String
+        let body: String?
+    }
+
+    private enum RouteResponse {
+        case buffered(Data)
+        case sse(sessionID: String, stream: AsyncThrowingStream<TextStreamEvent, Error>)
+    }
+
     private let port: UInt16
     private var listener: NWListener?
     private let chatHandler: ChatHandler
@@ -53,7 +64,16 @@ actor HTTPServer {
             if let data, !data.isEmpty {
                 Task {
                     let response = await self.processRequest(data)
-                    await self.sendResponse(connection: connection, response: response)
+                    switch response {
+                    case .buffered(let data):
+                        await self.sendResponse(connection: connection, response: data)
+                    case .sse(let sessionID, let stream):
+                        await self.sendSseResponse(
+                            connection: connection,
+                            sessionID: sessionID,
+                            stream: stream
+                        )
+                    }
                 }
             } else if let error {
                 print("Receive error: \(error)")
@@ -62,19 +82,27 @@ actor HTTPServer {
         }
     }
 
-    private func processRequest(_ data: Data) async -> Data {
+    private func processRequest(_ data: Data) async -> RouteResponse {
         guard let requestString = String(data: data, encoding: .utf8) else {
-            return buildErrorResponse(status: 400, message: "Invalid request encoding")
+            return .buffered(
+                buildErrorResponse(status: 400, message: "Invalid request encoding")
+            )
         }
+        guard let request = parseRequest(requestString) else {
+            return .buffered(buildErrorResponse(status: 400, message: "Invalid request line"))
+        }
+        return await routeRequest(request)
+    }
 
+    private func parseRequest(_ requestString: String) -> ParsedRequest? {
         let lines = requestString.split(separator: "\r\n", omittingEmptySubsequences: false)
         guard let requestLine = lines.first else {
-            return buildErrorResponse(status: 400, message: "Empty request")
+            return nil
         }
 
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else {
-            return buildErrorResponse(status: 400, message: "Invalid request line")
+            return nil
         }
 
         let method = String(parts[0])
@@ -86,27 +114,32 @@ actor HTTPServer {
             body = bodyLines.joined(separator: "\r\n")
         }
 
-        return await routeRequest(method: method, path: path, body: body)
+        return ParsedRequest(method: method, path: path, body: body)
     }
 
-    private func routeRequest(method: String, path: String, body: String?) async -> Data {
-        if method == "OPTIONS" {
-            return buildCORSResponse()
+    private func routeRequest(_ request: ParsedRequest) async -> RouteResponse {
+        if request.method == "OPTIONS" {
+            return .buffered(buildCORSResponse())
         }
 
-        if path == "/v1/sessions" || path.hasPrefix("/v1/sessions/") {
-            return await handleSessions(method: method, path: path, body: body)
+        if request.path == "/v1/sessions" || request.path.hasPrefix("/v1/sessions/") {
+            return await handleSessions(request)
         }
 
-        switch (method, path) {
+        switch (request.method, request.path) {
         case ("GET", "/health"):
-            return await handleHealth()
+            return .buffered(await handleHealth())
         case ("GET", "/v1/models"), ("GET", "/models"):
-            return await handleModels()
+            return .buffered(await handleModels())
         case ("POST", "/v1/chat/completions"), ("POST", "/chat/completions"):
-            return await handleChatCompletions(body: body)
+            return .buffered(await handleChatCompletions(body: request.body))
         default:
-            return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+            return .buffered(
+                buildErrorResponse(
+                    status: 404,
+                    message: "Not found: \(request.method) \(request.path)"
+                )
+            )
         }
     }
 
@@ -152,43 +185,80 @@ actor HTTPServer {
         return buildJSONResponse(status: 200, body: models)
     }
 
-    private func handleSessions(method: String, path: String, body: String?) async -> Data {
-        switch (method, path) {
+    private func handleSessions(_ request: ParsedRequest) async -> RouteResponse {
+        switch (request.method, request.path) {
         case ("POST", "/v1/sessions"):
-            return await handleSessionCreate(body: body)
+            return .buffered(await handleSessionCreate(body: request.body))
         default:
             break
         }
 
-        let components = path.split(separator: "/")
+        let components = request.path.split(separator: "/")
         guard components.count >= 3 else {
-            return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+            return .buffered(
+                buildErrorResponse(
+                    status: 404,
+                    message: "Not found: \(request.method) \(request.path)"
+                )
+            )
         }
         let sessionID = String(components[2])
 
         if components.count == 3 {
-            switch method {
+            switch request.method {
             case "GET":
-                return await handleSessionGet(sessionID: sessionID)
+                return .buffered(await handleSessionGet(sessionID: sessionID))
             case "DELETE":
-                return await handleSessionDelete(sessionID: sessionID)
+                return .buffered(await handleSessionDelete(sessionID: sessionID))
             default:
-                return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+                return .buffered(
+                    buildErrorResponse(
+                        status: 404,
+                        message: "Not found: \(request.method) \(request.path)"
+                    )
+                )
             }
         }
 
         if components.count == 4 {
-            switch (method, components[3]) {
+            switch (request.method, components[3]) {
             case ("POST", "responses"):
-                return await handleSessionRespond(sessionID: sessionID, body: body)
+                return .buffered(await handleSessionRespond(sessionID: sessionID, body: request.body))
             case ("POST", "reset"):
-                return await handleSessionReset(sessionID: sessionID)
+                return .buffered(await handleSessionReset(sessionID: sessionID))
             default:
-                return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+                return .buffered(
+                    buildErrorResponse(
+                        status: 404,
+                        message: "Not found: \(request.method) \(request.path)"
+                    )
+                )
             }
         }
 
-        return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+        if components.count == 5 {
+            switch (request.method, components[3], components[4]) {
+            case ("POST", "responses", "stream"):
+                return await handleSessionResponseStream(
+                    sessionID: sessionID,
+                    body: request.body
+                )
+            default:
+                return .buffered(
+                    buildErrorResponse(
+                        status: 404,
+                        message: "Not found: \(request.method) \(request.path)"
+                    )
+                )
+            }
+        }
+
+        return .buffered(
+            buildErrorResponse(
+                status: 404,
+                message: "Not found: \(request.method) \(request.path)"
+            )
+        )
     }
 
     private func handleSessionCreate(body: String?) async -> Data {
@@ -303,6 +373,57 @@ actor HTTPServer {
         }
     }
 
+    private func handleSessionResponseStream(
+        sessionID: String,
+        body: String?
+    ) async -> RouteResponse {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return .buffered(
+                buildJSONResponse(
+                    status: 400,
+                    body: FMError.invalidRequest("Missing request body").errorResponse
+                )
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return .buffered(
+                buildJSONResponse(
+                    status: 400,
+                    body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                )
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(SessionRespondRequest.self, from: bodyData)
+            let stream = try await chatHandler.streamResponse(
+                sessionID: sessionID,
+                request: request
+            )
+            return .sse(sessionID: sessionID, stream: stream)
+        } catch let error as FMError {
+            return .buffered(
+                buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+            )
+        } catch let error as DecodingError {
+            return .buffered(
+                buildJSONResponse(
+                    status: 400,
+                    body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
+                        .errorResponse
+                )
+            )
+        } catch {
+            return .buffered(
+                buildJSONResponse(
+                    status: 500,
+                    body: FMError.serverError(error.localizedDescription).errorResponse
+                )
+            )
+        }
+    }
+
     private func handleChatCompletions(body: String?) async -> Data {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
@@ -396,12 +517,104 @@ actor HTTPServer {
     }
 
     private func sendResponse(connection: NWConnection, response: Data) async {
-        connection.send(content: response, completion: .contentProcessed { error in
-            if let error {
-                print("Send error: \(error)")
+        _ = await sendData(connection: connection, data: response)
+        connection.cancel()
+    }
+
+    private func sendSseResponse(
+        connection: NWConnection,
+        sessionID: String,
+        stream: AsyncThrowingStream<TextStreamEvent, Error>
+    ) async {
+        connection.stateUpdateHandler = { [chatHandler] state in
+            switch state {
+            case .failed, .cancelled:
+                Task {
+                    await chatHandler.cancelStreamingSession(sessionID: sessionID)
+                }
+            default:
+                break
             }
+        }
+        let headers = [
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/event-stream",
+            "Cache-Control: no-cache",
+            "Connection: close",
+            "Access-Control-Allow-Origin: *",
+            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers: Content-Type",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        guard await sendData(connection: connection, data: Data(headers.utf8)) else {
+            await chatHandler.cancelStreamingSession(sessionID: sessionID)
             connection.cancel()
-        })
+            return
+        }
+
+        do {
+            for try await event in stream {
+                let name: String = switch event.kind {
+                case .snapshot:
+                    "snapshot"
+                case .completed:
+                    "completed"
+                }
+                guard let payload = try? JSONEncoder().encode(event),
+                    let body = String(data: payload, encoding: .utf8)
+                else {
+                    continue
+                }
+                let frame = encodeSseFrame(event: name, data: body)
+                guard await sendData(connection: connection, data: Data(frame.utf8)) else {
+                    await chatHandler.cancelStreamingSession(sessionID: sessionID)
+                    connection.cancel()
+                    return
+                }
+            }
+        } catch let error as FMError {
+            let payload = buildJSONPayload(error.errorResponse)
+            _ = await sendData(
+                connection: connection,
+                data: Data(encodeSseFrame(event: "error", data: payload).utf8)
+            )
+        } catch {
+            let payload = buildJSONPayload(FMError.serverError(error.localizedDescription).errorResponse)
+            _ = await sendData(
+                connection: connection,
+                data: Data(encodeSseFrame(event: "error", data: payload).utf8)
+            )
+        }
+        connection.cancel()
+    }
+
+    private func sendData(connection: NWConnection, data: Data) async -> Bool {
+        await withCheckedContinuation { continuation in
+            connection.send(content: data, completion: .contentProcessed { error in
+                if let error {
+                    print("Send error: \(error)")
+                }
+                continuation.resume(returning: error == nil)
+            })
+        }
+    }
+
+    private func encodeSseFrame(event: String, data: String) -> String {
+        let dataLines = data.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "data: \($0)" }
+            .joined(separator: "\n")
+        return "event: \(event)\n\(dataLines)\n\n"
+    }
+
+    private func buildJSONPayload<T: Encodable>(_ value: T) -> String {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(value),
+            let string = String(data: data, encoding: .utf8)
+        else {
+            return "{\"error\":{\"message\":\"failed_to_encode_payload\",\"type\":\"server_error\"}}"
+        }
+        return string
     }
 
     private func httpStatusText(_ status: Int) -> String {

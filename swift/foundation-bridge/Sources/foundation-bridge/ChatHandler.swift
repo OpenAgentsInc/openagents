@@ -8,6 +8,7 @@ actor ChatHandler {
         let model: SessionModelConfiguration
         let tools: [SessionToolMetadata]
         var isResponding: Bool
+        var transcriptJSONSnapshot: String?
     }
 
     private var sessions: [String: SessionRecord] = [:]
@@ -77,12 +78,14 @@ actor ChatHandler {
             model: model,
             transcriptJSON: request.transcriptJSON
         )
+        let transcriptJSONSnapshot = try transcriptJSONString(for: session)
         sessions[sessionID] = SessionRecord(
             session: session,
             instructions: request.instructions,
             model: model,
             tools: request.tools,
-            isResponding: false
+            isResponding: false,
+            transcriptJSONSnapshot: transcriptJSONSnapshot
         )
         return SessionCreateResponse(session: try sessionState(sessionID: sessionID))
     }
@@ -106,6 +109,7 @@ actor ChatHandler {
                 "Apple FM session '\(sessionID)' cannot reset while a request is active"
             )
         }
+        sessions[sessionID] = try restoredRecord(from: record)
         return try sessionState(sessionID: sessionID)
     }
 
@@ -132,6 +136,7 @@ actor ChatHandler {
             let content = response.content
 
             record.isResponding = false
+            record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
             sessions[sessionID] = record
 
             return SessionRespondResponse(
@@ -141,8 +146,7 @@ actor ChatHandler {
                 usage: estimatedUsage(prompt: request.prompt, output: content)
             )
         } catch let error as LanguageModelSession.GenerationError {
-            record.isResponding = false
-            sessions[sessionID] = record
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
             if case .concurrentRequests = error {
                 throw FMError.concurrentRequests(
                     "Apple FM session '\(sessionID)' rejected overlapping requests"
@@ -152,12 +156,95 @@ actor ChatHandler {
                 "Foundation Models session request failed after \(Date().timeIntervalSince(startTime))s: \(error.localizedDescription)"
             )
         } catch {
-            record.isResponding = false
-            sessions[sessionID] = record
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
             throw FMError.requestFailed(
                 "Foundation Models session request failed: \(error.localizedDescription)"
             )
         }
+    }
+
+    func streamResponse(
+        sessionID: String,
+        request: SessionRespondRequest
+    ) throws -> AsyncThrowingStream<TextStreamEvent, Error> {
+        guard var record = sessions[sessionID] else {
+            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+        }
+        if record.isResponding {
+            throw FMError.concurrentRequests(
+                "Apple FM session '\(sessionID)' already has an in-flight request"
+            )
+        }
+
+        let options = try bridgeGenerationOptions(from: request.options)
+        record.isResponding = true
+        sessions[sessionID] = record
+
+        let session = record.session
+        let modelID = record.model.id
+        let prompt = request.prompt
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                var finalOutput = ""
+                do {
+                    let stream = session.streamResponse(to: prompt, options: options)
+                    for try await snapshot in stream {
+                        try Task.checkCancellation()
+                        finalOutput = snapshot.content
+                        continuation.yield(
+                            TextStreamEvent(
+                                kind: .snapshot,
+                                model: modelID,
+                                output: finalOutput,
+                                session: nil,
+                                usage: nil
+                            )
+                        )
+                    }
+
+                    let completedEvent = try self.finishSuccessfulStream(
+                        sessionID: sessionID,
+                        prompt: prompt,
+                        finalOutput: finalOutput
+                    )
+                    continuation.yield(completedEvent)
+                    continuation.finish()
+                } catch is CancellationError {
+                    self.cancelStream(sessionID: sessionID)
+                    continuation.finish()
+                } catch let error as LanguageModelSession.GenerationError {
+                    self.cancelStream(sessionID: sessionID)
+                    if case .concurrentRequests = error {
+                        continuation.finish(
+                            throwing: FMError.concurrentRequests(
+                                "Apple FM session '\(sessionID)' rejected overlapping requests"
+                            )
+                        )
+                    } else {
+                        continuation.finish(
+                            throwing: FMError.requestFailed(
+                                "Foundation Models session stream failed: \(error.localizedDescription)"
+                            )
+                        )
+                    }
+                } catch {
+                    self.cancelStream(sessionID: sessionID)
+                    continuation.finish(
+                        throwing: FMError.requestFailed(
+                            "Foundation Models session stream failed: \(error.localizedDescription)"
+                        )
+                    )
+                }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
+    func cancelStreamingSession(sessionID: String) {
+        cancelStream(sessionID: sessionID)
     }
 
     func handleCompletion(request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
@@ -260,13 +347,65 @@ actor ChatHandler {
             model: record.model,
             tools: record.tools,
             isResponding: record.isResponding,
-            transcriptJSON: try transcriptJSONString(for: record.session)
+            transcriptJSON: record.transcriptJSONSnapshot
         )
     }
 
     private func transcriptJSONString(for session: LanguageModelSession) throws -> String? {
         let transcriptData = try JSONEncoder().encode(session.transcript)
         return String(data: transcriptData, encoding: .utf8)
+    }
+
+    private func restoredRecord(from record: SessionRecord) throws -> SessionRecord {
+        let session = try makeSession(
+            instructions: record.instructions,
+            model: record.model,
+            transcriptJSON: record.transcriptJSONSnapshot
+        )
+        return SessionRecord(
+            session: session,
+            instructions: record.instructions,
+            model: record.model,
+            tools: record.tools,
+            isResponding: false,
+            transcriptJSONSnapshot: record.transcriptJSONSnapshot
+        )
+    }
+
+    private func recoveryRecord(afterFailureOf record: SessionRecord) -> SessionRecord {
+        if let restored = try? restoredRecord(from: record) {
+            return restored
+        }
+        var fallback = record
+        fallback.isResponding = false
+        return fallback
+    }
+
+    private func cancelStream(sessionID: String) {
+        guard let record = sessions[sessionID] else {
+            return
+        }
+        sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+    }
+
+    private func finishSuccessfulStream(
+        sessionID: String,
+        prompt: String,
+        finalOutput: String
+    ) throws -> TextStreamEvent {
+        guard var record = sessions[sessionID] else {
+            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+        }
+        record.isResponding = false
+        record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
+        sessions[sessionID] = record
+        return TextStreamEvent(
+            kind: .completed,
+            model: record.model.id,
+            output: finalOutput,
+            session: try sessionState(sessionID: sessionID),
+            usage: estimatedUsage(prompt: prompt, output: finalOutput)
+        )
     }
 
     private func buildPrompt(from messages: [ChatMessage]) -> String {

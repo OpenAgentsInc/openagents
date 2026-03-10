@@ -213,6 +213,19 @@ struct UsageMeasurement: Codable {
     let truth: UsageTruth
 }
 
+enum TextStreamEventKind: String, Codable {
+    case snapshot
+    case completed
+}
+
+struct TextStreamEvent: Codable {
+    let kind: TextStreamEventKind
+    let model: String
+    let output: String
+    let session: SessionState?
+    let usage: Usage?
+}
+
 struct ModelsResponse: Codable {
     let object: String
     let data: [ModelInfo]
