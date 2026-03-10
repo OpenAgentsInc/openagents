@@ -8,18 +8,31 @@ Usage:
   crates/psionic/scripts/benchmark-cluster-gates.sh [--json-out DIR]
 
 Defaults:
-  json summaries: disabled
+  benchmark receipt JSON: disabled
 
 Notes:
   - Runs the ignored `cluster_benchmark_gates` release tests for `psionic-cluster`.
   - Use env vars such as `PSIONIC_CLUSTER_BENCH_WHOLE_REQUEST_MAX_MS` to override budgets.
-  - When `--json-out DIR` is set, each benchmark writes one summary JSON file into DIR.
+  - When `--json-out DIR` is set, each benchmark writes one typed benchmark receipt JSON file into DIR.
+  - Stable receipt filenames are:
+      whole_request_scheduler.json
+      recovery_catchup.json
+      replicated_serving.json
+      layer_sharded_planner.json
+      tensor_sharded_planner.json
 EOF
 }
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/../../.." && pwd)
 JSON_OUT=
+RECEIPT_IDS=(
+  whole_request_scheduler
+  recovery_catchup
+  replicated_serving
+  layer_sharded_planner
+  tensor_sharded_planner
+)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,5 +69,27 @@ cd "$REPO_ROOT"
 cargo test -p psionic-cluster --release --test cluster_benchmark_gates -- --ignored --nocapture --test-threads=1
 
 if [[ -n "$JSON_OUT" ]]; then
-  echo "benchmark_json_out=$JSON_OUT"
+  for benchmark_id in "${RECEIPT_IDS[@]}"; do
+    receipt_path="$JSON_OUT/$benchmark_id.json"
+    if [[ ! -f "$receipt_path" ]]; then
+      echo "missing benchmark receipt: $receipt_path" >&2
+      exit 1
+    fi
+    if ! grep -q "\"schema_version\"" "$receipt_path"; then
+      echo "benchmark receipt missing schema_version: $receipt_path" >&2
+      exit 1
+    fi
+    if ! grep -q "\"benchmark_id\": \"$benchmark_id\"" "$receipt_path"; then
+      echo "benchmark receipt has unexpected benchmark_id: $receipt_path" >&2
+      exit 1
+    fi
+    if ! grep -q "\"outcome\"" "$receipt_path"; then
+      echo "benchmark receipt missing outcome: $receipt_path" >&2
+      exit 1
+    fi
+  done
+  echo "benchmark_receipt_json_out=$JSON_OUT"
+  for benchmark_id in "${RECEIPT_IDS[@]}"; do
+    echo "benchmark_receipt=$JSON_OUT/$benchmark_id.json"
+  done
 fi
