@@ -2032,6 +2032,34 @@ impl AutopilotChatState {
         project.defaults = project_defaults_from_thread_metadata(metadata);
     }
 
+    pub fn refresh_project_registry(&mut self) {
+        self.rebuild_project_registry();
+    }
+
+    pub fn set_thread_workspace_location(
+        &mut self,
+        thread_id: &str,
+        cwd: Option<String>,
+        path: Option<String>,
+    ) {
+        let Some(metadata) = self.thread_metadata.get_mut(thread_id) else {
+            return;
+        };
+        if let Some(cwd) = cwd {
+            let trimmed = cwd.trim();
+            if !trimmed.is_empty() {
+                metadata.cwd = Some(trimmed.to_string());
+            }
+        }
+        if let Some(path) = path {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                metadata.path = Some(trimmed.to_string());
+            }
+        }
+        self.rebuild_project_registry();
+    }
+
     pub fn active_plan_artifact(&self) -> Option<&AutopilotPlanArtifact> {
         self.active_thread_id
             .as_deref()
@@ -3329,6 +3357,48 @@ impl AutopilotChatState {
         });
         self.next_message_id = self.next_message_id.saturating_add(1);
         self.last_turn_status = Some("inProgress".to_string());
+    }
+
+    pub fn append_local_exchange(
+        &mut self,
+        prompt: impl Into<String>,
+        response: impl Into<String>,
+        is_error: bool,
+    ) {
+        self.transcript_selection = None;
+        let prompt = prompt.into();
+        let response = response.into();
+        let trimmed_prompt = prompt.trim();
+        let trimmed_response = response.trim();
+        if !trimmed_prompt.is_empty() {
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::User,
+                status: AutopilotMessageStatus::Done,
+                content: trimmed_prompt.to_string(),
+                structured: None,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+        if !trimmed_response.is_empty() {
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::Codex,
+                status: if is_error {
+                    AutopilotMessageStatus::Error
+                } else {
+                    AutopilotMessageStatus::Done
+                },
+                content: trimmed_response.to_string(),
+                structured: None,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+        if let Some(thread_id) = self.active_thread_id.clone() {
+            self.thread_transcript_cache
+                .insert(thread_id, self.messages.clone());
+        }
+        self.last_error = is_error.then(|| trimmed_response.to_string());
     }
 
     pub fn record_turn_submission_metadata(

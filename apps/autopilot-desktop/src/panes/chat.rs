@@ -3533,9 +3533,9 @@ pub fn paint(
     }
     if browse_mode == ChatBrowseMode::Autopilot {
         let hint = if autopilot_chat.active_turn_id.is_some() {
-            "Use `/mention PATH` or `/image PATH|URL`. Sending while a turn runs steers the live task."
+            "Use `/git ...`, `/pr prep`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
         } else {
-            "Use `/mention PATH` or `/image PATH|URL` to attach workspace targets and images."
+            "Use `/git ...`, `/pr prep`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
         };
         paint.scene.draw_text(paint.text.layout_mono(
             hint,

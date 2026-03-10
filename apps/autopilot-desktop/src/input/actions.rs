@@ -88,6 +88,20 @@ enum ChatSpacetimeComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatGitComposerIntent {
+    Status,
+    Pull,
+    Init,
+    BranchList,
+    BranchCreate { branch: String },
+    Checkout { branch: String },
+    WorktreeList,
+    WorktreeAdd { path: String, branch: String },
+    WorktreeRemove { path: String },
+    PrPrep { base_branch: Option<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -139,6 +153,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
     let prompt_chars = trimmed_prompt.chars().count();
     if trimmed_prompt.is_empty() {
         return false;
+    }
+    match parse_chat_git_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_git_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
     }
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
         state.autopilot_chat.last_error =
@@ -2501,6 +2525,733 @@ fn current_chat_workspace_root(state: &crate::app_state::RenderState) -> Option<
                 .ok()
                 .and_then(|value| value.into_os_string().into_string().ok())
         })
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ChatGitExecutionResult {
+    response: String,
+    thread_workspace_override: Option<String>,
+}
+
+fn parse_shell_like_words(input: &str) -> Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        match quote {
+            Some(active_quote) => match ch {
+                '\\' if active_quote == '"' => escaped = true,
+                value if value == active_quote => quote = None,
+                _ => current.push(ch),
+            },
+            None => match ch {
+                '"' | '\'' => quote = Some(ch),
+                '\\' => escaped = true,
+                value if value.is_whitespace() => {
+                    if !current.is_empty() {
+                        words.push(std::mem::take(&mut current));
+                    }
+                }
+                _ => current.push(ch),
+            },
+        }
+    }
+
+    if escaped {
+        return Err("Command parser found a trailing escape character.".to_string());
+    }
+    if quote.is_some() {
+        return Err("Command parser found an unterminated quoted string.".to_string());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    Ok(words)
+}
+
+fn parse_chat_git_intent(prompt: &str) -> Result<Option<ChatGitComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    match command {
+        "/git" => parse_git_command_words(&words).map(Some),
+        "/pr" => parse_pr_command_words(&words).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn parse_git_command_words(words: &[String]) -> Result<ChatGitComposerIntent, String> {
+    let Some(subcommand) = words.get(1).map(String::as_str) else {
+        return Err(
+            "`/git` requires a subcommand: status, pull, init, branch, checkout, worktree."
+                .to_string(),
+        );
+    };
+    match subcommand {
+        "status" if words.len() == 2 => Ok(ChatGitComposerIntent::Status),
+        "pull" if words.len() == 2 => Ok(ChatGitComposerIntent::Pull),
+        "init" if words.len() == 2 => Ok(ChatGitComposerIntent::Init),
+        "branch" if words.len() == 2 || words.get(2).map(String::as_str) == Some("list") => {
+            if words.len() <= 3 {
+                Ok(ChatGitComposerIntent::BranchList)
+            } else {
+                Err("Usage: `/git branch` or `/git branch create <name>`.".to_string())
+            }
+        }
+        "branch" if words.get(2).map(String::as_str) == Some("create") => {
+            let Some(branch) = words.get(3).map(String::as_str) else {
+                return Err("Usage: `/git branch create <name>`.".to_string());
+            };
+            if words.len() != 4 {
+                return Err("Usage: `/git branch create <name>`.".to_string());
+            }
+            Ok(ChatGitComposerIntent::BranchCreate {
+                branch: branch.to_string(),
+            })
+        }
+        "checkout" | "switch" => {
+            let Some(branch) = words.get(2).map(String::as_str) else {
+                return Err("Usage: `/git checkout <branch>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/git checkout <branch>`.".to_string());
+            }
+            Ok(ChatGitComposerIntent::Checkout {
+                branch: branch.to_string(),
+            })
+        }
+        "worktree" if words.get(2).map(String::as_str) == Some("list") => {
+            if words.len() == 3 {
+                Ok(ChatGitComposerIntent::WorktreeList)
+            } else {
+                Err("Usage: `/git worktree list`.".to_string())
+            }
+        }
+        "worktree" if words.get(2).map(String::as_str) == Some("add") => {
+            let Some(path) = words.get(3).map(String::as_str) else {
+                return Err("Usage: `/git worktree add <path> <branch>`.".to_string());
+            };
+            let Some(branch) = words.get(4).map(String::as_str) else {
+                return Err("Usage: `/git worktree add <path> <branch>`.".to_string());
+            };
+            if words.len() != 5 {
+                return Err("Usage: `/git worktree add <path> <branch>`.".to_string());
+            }
+            Ok(ChatGitComposerIntent::WorktreeAdd {
+                path: path.to_string(),
+                branch: branch.to_string(),
+            })
+        }
+        "worktree" if words.get(2).map(String::as_str) == Some("remove") => {
+            let Some(path) = words.get(3).map(String::as_str) else {
+                return Err("Usage: `/git worktree remove <path>`.".to_string());
+            };
+            if words.len() != 4 {
+                return Err("Usage: `/git worktree remove <path>`.".to_string());
+            }
+            Ok(ChatGitComposerIntent::WorktreeRemove {
+                path: path.to_string(),
+            })
+        }
+        _ => Err(format!(
+            "Unsupported git command. Try `/git status`, `/git branch create <name>`, `/git checkout <branch>`, or `/git worktree add <path> <branch>`."
+        )),
+    }
+}
+
+fn parse_pr_command_words(words: &[String]) -> Result<ChatGitComposerIntent, String> {
+    if words.get(1).map(String::as_str) != Some("prep") {
+        return Err("Usage: `/pr prep [base-branch]`.".to_string());
+    }
+    if words.len() > 3 {
+        return Err("Usage: `/pr prep [base-branch]`.".to_string());
+    }
+    Ok(ChatGitComposerIntent::PrPrep {
+        base_branch: words.get(2).cloned(),
+    })
+}
+
+fn chat_git_command_workspace(
+    state: &crate::app_state::RenderState,
+) -> Result<std::path::PathBuf, String> {
+    let Some(raw_workspace) = current_chat_workspace_root(state)
+        .or_else(|| current_chat_session_cwd(state))
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|value| value.into_os_string().into_string().ok())
+        })
+    else {
+        return Err("No workspace path is available for local git actions.".to_string());
+    };
+    let trimmed = raw_workspace.trim();
+    if trimmed.is_empty() {
+        return Err("No workspace path is available for local git actions.".to_string());
+    }
+    let path = std::path::PathBuf::from(trimmed);
+    let normalized = if path.is_file() {
+        path.parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or(path.clone())
+    } else {
+        path
+    };
+    if !normalized.exists() {
+        return Err(format!(
+            "Workspace path does not exist: {}",
+            normalized.display()
+        ));
+    }
+    Ok(std::fs::canonicalize(&normalized).unwrap_or(normalized))
+}
+
+fn run_chat_git_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatGitComposerIntent,
+) -> bool {
+    let active_thread_id = state.autopilot_chat.active_thread_id.clone();
+    if let Some(thread_id) = active_thread_id.as_deref() {
+        state
+            .autopilot_chat
+            .remember_submission_draft(thread_id, prompt.clone());
+    }
+    let workspace = match chat_git_command_workspace(state) {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            state
+                .autopilot_chat
+                .append_local_exchange(prompt, error, true);
+            return true;
+        }
+    };
+
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+
+    match execute_chat_git_intent(state, workspace.as_path(), &intent) {
+        Ok(result) => {
+            if let (Some(thread_id), Some(workspace_override)) = (
+                active_thread_id.as_deref(),
+                result.thread_workspace_override.clone(),
+            ) {
+                state.autopilot_chat.set_thread_workspace_location(
+                    thread_id,
+                    Some(workspace_override.clone()),
+                    Some(workspace_override),
+                );
+            } else {
+                state.autopilot_chat.refresh_project_registry();
+            }
+            state
+                .autopilot_chat
+                .append_local_exchange(prompt, result.response, false);
+        }
+        Err(error) => {
+            state.autopilot_chat.refresh_project_registry();
+            state
+                .autopilot_chat
+                .append_local_exchange(prompt, error, true);
+        }
+    }
+    true
+}
+
+fn execute_chat_git_intent(
+    state: &crate::app_state::RenderState,
+    workspace: &std::path::Path,
+    intent: &ChatGitComposerIntent,
+) -> Result<ChatGitExecutionResult, String> {
+    match intent {
+        ChatGitComposerIntent::Status => {
+            let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+            let worktrees = git_command_checked(workspace, &["worktree", "list"])?;
+            let mut response = format!("Git status for `{}`.", workspace.display());
+            append_text_block(&mut response, "Status", &status);
+            append_text_block(&mut response, "Worktrees", &worktrees);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::Pull => {
+            let output = git_command_checked(workspace, &["pull", "--ff-only"])?;
+            let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+            let mut response = format!("Pulled latest changes in `{}`.", workspace.display());
+            append_text_block(&mut response, "git pull --ff-only", &output);
+            append_text_block(&mut response, "Status", &status);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::Init => {
+            let output = git_command_checked(workspace, &["init"])?;
+            let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+            let mut response = format!("Initialized a git repo in `{}`.", workspace.display());
+            append_text_block(&mut response, "git init", &output);
+            append_text_block(&mut response, "Status", &status);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: Some(path_display_string(workspace)),
+            })
+        }
+        ChatGitComposerIntent::BranchList => {
+            let branches = git_command_checked(workspace, &["branch", "--all", "--verbose"])?;
+            let mut response = format!("Branch inventory for `{}`.", workspace.display());
+            append_text_block(&mut response, "Branches", &branches);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::BranchCreate { branch } => {
+            let output = git_command_checked(workspace, &["checkout", "-b", branch.as_str()])?;
+            let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+            let mut response = format!(
+                "Created and checked out branch `{branch}` in `{}`.",
+                workspace.display()
+            );
+            append_text_block(&mut response, "git checkout -b", &output);
+            append_text_block(&mut response, "Status", &status);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::Checkout { branch } => {
+            let output = git_command_checked(workspace, &["checkout", branch.as_str()])?;
+            let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+            let mut response = format!(
+                "Checked out branch `{branch}` in `{}`.",
+                workspace.display()
+            );
+            append_text_block(&mut response, "git checkout", &output);
+            append_text_block(&mut response, "Status", &status);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::WorktreeList => {
+            let worktrees = git_command_checked(workspace, &["worktree", "list"])?;
+            let mut response = format!("Worktree inventory for `{}`.", workspace.display());
+            append_text_block(&mut response, "Worktrees", &worktrees);
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: None,
+            })
+        }
+        ChatGitComposerIntent::WorktreeAdd { path, branch } => {
+            let worktree_path = resolve_git_worktree_path(path, workspace);
+            let branch_exists = git_local_branch_exists(workspace, branch.as_str())?;
+            let worktree_path_string = worktree_path.display().to_string();
+            let args = if branch_exists {
+                vec![
+                    "worktree",
+                    "add",
+                    worktree_path_string.as_str(),
+                    branch.as_str(),
+                ]
+            } else {
+                vec![
+                    "worktree",
+                    "add",
+                    "-b",
+                    branch.as_str(),
+                    worktree_path_string.as_str(),
+                ]
+            };
+            let output = git_command_checked(workspace, &args)?;
+            let worktrees = git_command_checked(workspace, &["worktree", "list"])?;
+            let next_workspace = path_display_string(worktree_path.as_path());
+            let mut response =
+                format!("Added worktree `{}` for branch `{branch}`.", next_workspace);
+            append_text_block(&mut response, "git worktree add", &output);
+            append_text_block(&mut response, "Worktrees", &worktrees);
+            response.push_str(
+                "\n\nActive thread workspace now points at the new worktree so follow-up threads stay on that branch context.",
+            );
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: Some(next_workspace),
+            })
+        }
+        ChatGitComposerIntent::WorktreeRemove { path } => {
+            let worktree_path = resolve_git_worktree_path(path, workspace);
+            let active_workspace = state
+                .autopilot_chat
+                .active_thread_workspace_root()
+                .map(std::path::PathBuf::from);
+            let fallback_workspace = active_workspace
+                .as_ref()
+                .filter(|active| paths_equivalent(active.as_path(), worktree_path.as_path()))
+                .and_then(|_| git_common_worktree_root(workspace))
+                .map(|path| path_display_string(path.as_path()));
+            let worktree_path_string = worktree_path.display().to_string();
+            let output = git_command_checked(
+                workspace,
+                &["worktree", "remove", worktree_path_string.as_str()],
+            )?;
+            let worktrees = git_command_checked(workspace, &["worktree", "list"])?;
+            let mut response = format!("Removed worktree `{}`.", worktree_path.display());
+            append_text_block(&mut response, "git worktree remove", &output);
+            append_text_block(&mut response, "Worktrees", &worktrees);
+            if let Some(next_workspace) = fallback_workspace.as_deref() {
+                response.push_str(&format!(
+                    "\n\nActive thread workspace fell back to `{next_workspace}`."
+                ));
+            }
+            Ok(ChatGitExecutionResult {
+                response,
+                thread_workspace_override: fallback_workspace,
+            })
+        }
+        ChatGitComposerIntent::PrPrep { base_branch } => {
+            build_pr_prep_response(state, workspace, base_branch.as_deref())
+        }
+    }
+}
+
+fn run_git_command(
+    workspace: &std::path::Path,
+    args: &[&str],
+) -> Result<std::process::Output, String> {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(workspace)
+        .args(args)
+        .output()
+        .map_err(|error| format!("Failed to launch git in {}: {error}", workspace.display()))
+}
+
+fn git_output_text(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => stdout,
+        (true, false) => stderr,
+        (false, false) => format!("{stdout}\n{stderr}"),
+    }
+}
+
+fn git_command_checked(workspace: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = run_git_command(workspace, args)?;
+    let body = git_output_text(&output);
+    if output.status.success() {
+        return Ok(body);
+    }
+    let fallback = if body.is_empty() {
+        format!("git exited with status {}", output.status)
+    } else {
+        body
+    };
+    Err(format!(
+        "`git {}` failed in `{}`.\n\n```text\n{}\n```",
+        args.join(" "),
+        workspace.display(),
+        fallback
+    ))
+}
+
+fn git_command_optional(workspace: &std::path::Path, args: &[&str]) -> Option<String> {
+    let output = run_git_command(workspace, args).ok()?;
+    output.status.success().then(|| git_output_text(&output))
+}
+
+fn git_ref_exists(workspace: &std::path::Path, reference: &str) -> Result<bool, String> {
+    let output = run_git_command(workspace, &["rev-parse", "--verify", "--quiet", reference])?;
+    Ok(output.status.success())
+}
+
+fn git_local_branch_exists(workspace: &std::path::Path, branch: &str) -> Result<bool, String> {
+    git_ref_exists(workspace, format!("refs/heads/{branch}").as_str())
+}
+
+fn git_current_branch(workspace: &std::path::Path) -> Result<String, String> {
+    let branch = git_command_checked(workspace, &["branch", "--show-current"])?;
+    let trimmed = branch.trim();
+    if !trimmed.is_empty() {
+        return Ok(trimmed.to_string());
+    }
+    let detached = git_command_checked(workspace, &["rev-parse", "--short", "HEAD"])?;
+    let trimmed = detached.trim();
+    if trimmed.is_empty() {
+        return Err(format!(
+            "Could not determine the current git branch for `{}`.",
+            workspace.display()
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn git_origin_head_branch(workspace: &std::path::Path) -> Option<String> {
+    let value = git_command_optional(
+        workspace,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    )?;
+    value
+        .trim()
+        .strip_prefix("origin/")
+        .map(ToString::to_string)
+}
+
+fn default_pr_base_branch(workspace: &std::path::Path, head_branch: &str) -> String {
+    if let Some(origin_head) = git_origin_head_branch(workspace)
+        && origin_head != head_branch
+    {
+        return origin_head;
+    }
+    for candidate in ["main", "master", "develop", "trunk"] {
+        if candidate == head_branch {
+            continue;
+        }
+        if git_ref_exists(workspace, candidate).unwrap_or(false)
+            || git_ref_exists(workspace, format!("origin/{candidate}").as_str()).unwrap_or(false)
+        {
+            return candidate.to_string();
+        }
+    }
+    head_branch.to_string()
+}
+
+fn git_remote_origin_url(workspace: &std::path::Path) -> Option<String> {
+    let value = git_command_optional(workspace, &["remote", "get-url", "origin"])?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn resolve_git_worktree_path(raw: &str, workspace: &std::path::Path) -> std::path::PathBuf {
+    expand_attachment_path(raw, workspace.to_str())
+}
+
+fn path_display_string(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn paths_equivalent(left: &std::path::Path, right: &std::path::Path) -> bool {
+    let left = std::fs::canonicalize(left).unwrap_or_else(|_| left.to_path_buf());
+    let right = std::fs::canonicalize(right).unwrap_or_else(|_| right.to_path_buf());
+    left == right
+}
+
+fn git_common_worktree_root(workspace: &std::path::Path) -> Option<std::path::PathBuf> {
+    let value = git_command_optional(workspace, &["rev-parse", "--git-common-dir"])?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let common_dir = {
+        let path = std::path::PathBuf::from(trimmed);
+        if path.is_absolute() {
+            path
+        } else {
+            workspace.join(path)
+        }
+    };
+    common_dir.parent().map(std::path::Path::to_path_buf)
+}
+
+fn github_compare_url(remote_url: &str, base_branch: &str, head_branch: &str) -> Option<String> {
+    let trimmed = remote_url.trim().trim_end_matches('/');
+    let repo_path = if let Some(value) = trimmed.strip_prefix("git@github.com:") {
+        value
+    } else if let Some(value) = trimmed.strip_prefix("ssh://git@github.com/") {
+        value
+    } else if let Some(value) = trimmed.strip_prefix("https://github.com/") {
+        value
+    } else if let Some(value) = trimmed.strip_prefix("http://github.com/") {
+        value
+    } else {
+        return None;
+    };
+    let repo_path = repo_path.trim_end_matches(".git").trim_matches('/');
+    if repo_path.is_empty() || !repo_path.contains('/') {
+        return None;
+    }
+    Some(format!(
+        "https://github.com/{repo_path}/compare/{base_branch}...{head_branch}?expand=1"
+    ))
+}
+
+fn append_text_block(response: &mut String, label: &str, body: &str) {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    response.push_str("\n\n");
+    response.push_str(label);
+    response.push_str(":\n```text\n");
+    response.push_str(trimmed);
+    response.push_str("\n```");
+}
+
+fn append_markdown_block(response: &mut String, label: &str, body: &str) {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    response.push_str("\n\n");
+    response.push_str(label);
+    response.push_str(":\n```md\n");
+    response.push_str(trimmed);
+    response.push_str("\n```");
+}
+
+fn truncate_line(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let count = trimmed.chars().count();
+    if count <= max_chars {
+        return trimmed.to_string();
+    }
+    let truncated = trimmed
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    format!("{truncated}…")
+}
+
+fn suggested_pr_title(state: &crate::app_state::RenderState, head_branch: &str) -> Option<String> {
+    if let Some(thread_id) = state.autopilot_chat.active_thread_id.as_deref()
+        && let Some(name) = state
+            .autopilot_chat
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.thread_name.as_deref())
+            .map(str::trim)
+        && !name.is_empty()
+    {
+        return Some(truncate_line(name, 72));
+    }
+    if let Some(explanation) = state
+        .autopilot_chat
+        .active_plan_artifact()
+        .and_then(|artifact| artifact.explanation.as_deref())
+    {
+        let line = explanation.lines().find(|line| !line.trim().is_empty())?;
+        return Some(truncate_line(line, 72));
+    }
+    if let Some(diff) = state.autopilot_chat.active_diff_artifact()
+        && diff.files.len() == 1
+    {
+        return Some(truncate_line(
+            format!("Update {}", diff.files[0].path).as_str(),
+            72,
+        ));
+    }
+    (!head_branch.trim().is_empty()).then(|| truncate_line(head_branch, 72))
+}
+
+fn suggested_pr_body(state: &crate::app_state::RenderState) -> String {
+    let mut body = String::from("## Summary\n");
+    let mut summary_items = Vec::new();
+    if let Some(plan) = state.autopilot_chat.active_plan_artifact() {
+        for step in plan.steps.iter().take(4) {
+            let trimmed = step.step.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            summary_items.push(format!("- {trimmed}"));
+        }
+    }
+    if summary_items.is_empty()
+        && let Some(diff) = state.autopilot_chat.active_diff_artifact()
+    {
+        for file in diff.files.iter().take(4) {
+            summary_items.push(format!(
+                "- Update `{}` (+{} / -{})",
+                file.path, file.added_line_count, file.removed_line_count
+            ));
+        }
+    }
+    if summary_items.is_empty() {
+        summary_items.push("- Summarize the main user-facing and technical changes.".to_string());
+    }
+    body.push_str(&summary_items.join("\n"));
+    body.push_str("\n\n## Testing\n- Not run yet.");
+    body
+}
+
+fn build_pr_prep_response(
+    state: &crate::app_state::RenderState,
+    workspace: &std::path::Path,
+    requested_base_branch: Option<&str>,
+) -> Result<ChatGitExecutionResult, String> {
+    let head_branch = git_current_branch(workspace)?;
+    let base_branch = requested_base_branch
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| default_pr_base_branch(workspace, head_branch.as_str()));
+    let status = git_command_checked(workspace, &["status", "--short", "--branch"])?;
+    let diff_stat = git_command_optional(
+        workspace,
+        &["diff", "--stat", format!("{base_branch}...HEAD").as_str()],
+    )
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or_else(|| format!("No diff stat available for `{base_branch}...HEAD`."));
+    let commits = git_command_optional(
+        workspace,
+        &["log", "--oneline", format!("{base_branch}..HEAD").as_str()],
+    )
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or_else(|| format!("No commits available for `{base_branch}..HEAD`."));
+    let compare_url = git_remote_origin_url(workspace).and_then(|remote| {
+        github_compare_url(remote.as_str(), base_branch.as_str(), head_branch.as_str())
+    });
+    let title = suggested_pr_title(state, head_branch.as_str())
+        .unwrap_or_else(|| format!("Update {head_branch}"));
+    let body = suggested_pr_body(state);
+
+    let mut response = format!(
+        "PR prep for `{}` against `{}` in `{}`.",
+        head_branch,
+        base_branch,
+        workspace.display()
+    );
+    response.push_str("\n\nSuggested title:\n");
+    response.push_str(title.trim());
+    if let Some(compare_url) = compare_url {
+        response.push_str("\n\nCompare URL:\n");
+        response.push_str(compare_url.as_str());
+    }
+    append_markdown_block(&mut response, "Suggested body", &body);
+    append_text_block(&mut response, "Status", &status);
+    append_text_block(
+        &mut response,
+        format!("Commits ({base_branch}..HEAD)").as_str(),
+        &commits,
+    );
+    append_text_block(
+        &mut response,
+        format!("Diff stat ({base_branch}...HEAD)").as_str(),
+        &diff_stat,
+    );
+    Ok(ChatGitExecutionResult {
+        response,
+        thread_workspace_override: None,
+    })
 }
 
 fn chat_session_workspace_roots(state: &crate::app_state::RenderState) -> Vec<String> {
@@ -9547,15 +10298,17 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatSpacetimeComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
-        DirectMessageComposerIntent, ManagedChatComposerIntent,
+        ChatGitComposerIntent, ChatSpacetimeComposerIntent, ChatWalletComposerIntent,
+        ChatWalletMessagePayload, DirectMessageComposerIntent, ManagedChatComposerIntent,
         build_direct_message_outbound_message, build_managed_chat_join_request_event,
         build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
         build_managed_chat_outbound_message, build_managed_chat_reaction_event,
         build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
-        classify_provider_failure, extract_chat_wallet_payload, extract_target_provider_pubkeys,
-        is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        nip90_request_kind_for_request_type, parse_chat_spacetime_intent, parse_chat_wallet_intent,
+        classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
+        extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
+        git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
+        loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_git_intent,
+        parse_chat_spacetime_intent, parse_chat_wallet_intent,
         parse_direct_message_creation_intent, parse_direct_message_room_intent,
         parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
         resolve_wallet_blink_env_from_secure_values,
@@ -9606,6 +10359,33 @@ mod tests {
                 has_value: true,
             },
         ]
+    }
+
+    fn git_ok(cwd: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(cwd)
+            .args(args)
+            .status()
+            .expect("git status");
+        assert!(
+            status.success(),
+            "git {:?} failed in {}",
+            args,
+            cwd.display()
+        );
+    }
+
+    fn init_temp_git_repo(branch: &str) -> tempfile::TempDir {
+        let temp = tempfile::tempdir().expect("tempdir");
+        git_ok(temp.path(), &["init"]);
+        git_ok(temp.path(), &["config", "user.email", "agent@example.com"]);
+        git_ok(temp.path(), &["config", "user.name", "OpenAgents Test"]);
+        std::fs::write(temp.path().join("README.md"), "# test\n").expect("write readme");
+        git_ok(temp.path(), &["add", "README.md"]);
+        git_ok(temp.path(), &["commit", "-m", "initial"]);
+        git_ok(temp.path(), &["branch", "-M", branch]);
+        temp
     }
 
     fn fixture_identity() -> nostr::NostrIdentity {
@@ -10319,6 +11099,103 @@ mod tests {
         );
         assert!(parse_chat_spacetime_intent("/search").is_err());
         assert_eq!(parse_chat_spacetime_intent("deploy"), Ok(None));
+    }
+
+    #[test]
+    fn chat_git_commands_parse_branch_worktree_and_pr_syntax() {
+        assert_eq!(
+            parse_chat_git_intent("/git status").unwrap(),
+            Some(ChatGitComposerIntent::Status)
+        );
+        assert_eq!(
+            parse_chat_git_intent("/git branch create feature/cx-8").unwrap(),
+            Some(ChatGitComposerIntent::BranchCreate {
+                branch: "feature/cx-8".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_git_intent("/git checkout feature/cx-8").unwrap(),
+            Some(ChatGitComposerIntent::Checkout {
+                branch: "feature/cx-8".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_git_intent("/git worktree add \"../feature tree\" feature/cx-8").unwrap(),
+            Some(ChatGitComposerIntent::WorktreeAdd {
+                path: "../feature tree".to_string(),
+                branch: "feature/cx-8".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_git_intent("/pr prep main").unwrap(),
+            Some(ChatGitComposerIntent::PrPrep {
+                base_branch: Some("main".to_string()),
+            })
+        );
+        assert!(parse_chat_git_intent("/git worktree add ../feature-only").is_err());
+    }
+
+    #[test]
+    fn github_compare_url_handles_https_and_ssh_remotes() {
+        assert_eq!(
+            github_compare_url(
+                "git@github.com:OpenAgentsInc/openagents.git",
+                "main",
+                "feature/cx-8"
+            )
+            .as_deref(),
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/cx-8?expand=1"
+            )
+        );
+        assert_eq!(
+            github_compare_url(
+                "https://github.com/OpenAgentsInc/openagents.git",
+                "main",
+                "feature/cx-8"
+            )
+            .as_deref(),
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/cx-8?expand=1"
+            )
+        );
+        assert!(
+            github_compare_url(
+                "https://gitlab.com/OpenAgentsInc/openagents.git",
+                "main",
+                "x"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn git_helpers_detect_branch_and_worktree_context() {
+        let repo = init_temp_git_repo("main");
+        assert_eq!(git_current_branch(repo.path()).unwrap(), "main");
+        assert_eq!(default_pr_base_branch(repo.path(), "feature/cx-8"), "main");
+        assert!(git_local_branch_exists(repo.path(), "main").unwrap());
+
+        let worktree_parent = tempfile::tempdir().expect("worktree tempdir");
+        let worktree_path = worktree_parent.path().join("feature-cx-8");
+        let worktree_arg = worktree_path.display().to_string();
+        git_ok(
+            repo.path(),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/cx-8",
+                worktree_arg.as_str(),
+            ],
+        );
+
+        let common_root = git_common_worktree_root(worktree_path.as_path()).expect("common root");
+        assert_eq!(
+            std::fs::canonicalize(common_root).unwrap(),
+            std::fs::canonicalize(repo.path()).unwrap()
+        );
+        assert!(git_local_branch_exists(repo.path(), "feature/cx-8").unwrap());
     }
 
     #[test]
