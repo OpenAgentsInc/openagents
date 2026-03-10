@@ -15,8 +15,9 @@
 > after landing `PSI-191` / `#3300` in `ad6891b82`, after confirming that
 > `PSI-192` / `#3301` in `327944c08`, after landing `PSI-193` / `#3302` in
 > `d88d284c5`, after landing `PSI-194` / `#3303` in `fa7523ada`, after
-> landing `PSI-195` / `#3304` in `1cdcf3058`, after confirming that `#3305`
-> is now the next open cluster queue item, and after checking live
+> landing `PSI-195` / `#3304` in `1cdcf3058`, after landing `PSI-196` /
+> `#3305` in `7124eefd7`, after confirming that `#3306` is now the next open
+> cluster queue item, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -107,9 +108,8 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-195` / [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) are landed on `main`
-  - `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) and
-    `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remain open
+    `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) are landed on `main`
+  - `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remains open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -229,6 +229,13 @@ on:
     `ExecutionTopologyPlan::tensor_sharded` output; `psionic-runtime` and
     `psionic-provider` now preserve tensor partition facts through delivered
     execution and receipt surfaces
+- `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305)
+  - landed in `7124eefd7`
+  - `psionic-cluster` now ships a reusable integration validation matrix, a
+    restart/rejoin transport test, fault-injected recovery/scheduling/
+    replication/sharding coverage, a release benchmark gate script for cluster
+    planners, and an operator runbook in
+    `crates/psionic/docs/CLUSTER_VALIDATION_RUNBOOK.md`
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -400,27 +407,28 @@ Current truth:
 
 Required outcome:
 
-- keep both sharded lanes honest while the next phase adds validation,
-  fault-injection, and performance gates around the claims now present on
-  `main`
+- keep both sharded lanes bounded by the new validation matrix, benchmark gate,
+  and operator runbook rather than letting the roadmap outrun the evidence
 - continue refusing unsupported cluster sharding explicitly instead of
   collapsing to whole-request or replica-routed claims
 
 ### Validation, security, and rollout
 
-Tracked by `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305)
-and `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306).
+Tracked by landed `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305)
+and open `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306).
 
 Current truth:
 
-- there is no cluster validation matrix, fault-injection suite, or hardening
-  path
+- there is now a reusable cluster validation matrix, fault-injected coverage,
+  a release benchmark gate, and an operator runbook for the first shipped
+  trusted-LAN scope
 - there is no authenticated cluster membership story beyond a local trusted-LAN
   assumption
 
 Required outcome:
 
-- cluster claims become evidence-backed and supportable before scope widening
+- keep the new validation and benchmark assets authoritative while the next
+  phase hardens trust posture beyond the first LAN-only admission model
 
 ## GitHub-Backed Roadmap Items
 
@@ -487,7 +495,7 @@ Already on `main`:
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-196` | [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) | Open | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Cluster claims need a real validation matrix, not just unit-test confidence. |
+| `PSI-196` | [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) | Closed | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Landed in `7124eefd7`: Psionic now ships a reusable cluster validation matrix, restart/rejoin transport coverage, fault-injected recovery/scheduling/replication/sharding tests, a release benchmark gate script, and an operator runbook so cluster claims stay repeatable and evidence-backed. |
 | `PSI-197` | [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) | Open | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | The first shipped cluster scope is LAN-trusted only; wider cluster claims need explicit authentication, replay protection, and stronger admission rules. |
 
 ## Recommended Order
@@ -497,15 +505,15 @@ The shortest honest path from today's `main` is:
 1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
-   `#3305` -> `#3306`.
+   `#3306`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
 4. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-5. Execute `#3305` and `#3306` before widening scope beyond the first
-   trusted-LAN cluster claim.
+5. Execute `#3306` before widening scope beyond the first trusted-LAN cluster
+   claim.
 6. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
