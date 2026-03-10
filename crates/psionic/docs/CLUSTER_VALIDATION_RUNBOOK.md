@@ -6,8 +6,15 @@ recovery/catchup, remote scheduling, replicated serving, and sharded execution.
 
 ## Scope
 
-This runbook does not widen the trust posture. It validates the current
-trusted-LAN cluster claim and the current homogeneous CUDA planning lanes.
+This runbook validates two cluster trust postures:
+
+- the shipped trusted-LAN baseline with explicit namespace/admission policy
+- the widened authenticated configured-peer posture for operator-managed
+  multi-subnet or otherwise non-LAN-assumed deployments
+
+This runbook still does not claim internet-wide adversarial safety. It validates
+the current truthful cluster claims and the current homogeneous CUDA planning
+lanes.
 
 ## Baseline Validation Commands
 
@@ -26,6 +33,8 @@ What these cover:
   - admission mismatch refusal
   - stale-epoch refusal
   - restart/rejoin with advanced node epoch
+  - authenticated configured-peer discovery with signed control-plane messages
+  - refusal of unknown peers under configured-peer posture
 - `cluster_validation_matrix`
   - compacted catchup and snapshot-install recovery
   - degraded whole-request scheduling with explicit artifact staging truth
@@ -48,6 +57,25 @@ The fault seam currently covers:
 
 If a new cluster claim cannot be validated by one of those seams, extend the
 fixture before broadening the roadmap claim.
+
+## Authenticated Membership Drill
+
+Use this sequence before claiming cluster posture wider than the first trusted
+LAN baseline:
+
+1. Run `cargo test -p psionic-cluster --test local_cluster_transport authenticated_configured_peers_discover_each_other_with_signed_control_plane_messages`.
+2. Run `cargo test -p psionic-cluster --test local_cluster_transport unknown_authenticated_peer_is_refused_under_configured_peer_posture`.
+3. Run `cargo test -p psionic-cluster tampered_authenticated_message_is_refused replay_protection_rejects_duplicate_authenticated_counters`.
+4. If any step fails, do not claim authenticated configured-peer rollout readiness for the current build.
+
+Interpretation:
+
+- configured-peer discovery failure means the signed control-plane path is no
+  longer proving authenticated membership truthfully
+- unknown-peer refusal failure means the widened posture is no longer explicit
+  enough to support operator-managed rollout decisions
+- tamper or replay failure means widened cluster trust is not machine-checkable
+  enough for multi-subnet posture claims
 
 ## Recovery Drill
 
@@ -103,5 +131,7 @@ recording why.
 The current cluster claim remains evidence-backed only when:
 
 - the baseline validation commands are green
+- the authenticated membership drill is green before any configured-peer or
+  multi-subnet rollout claim
 - the release benchmark gate is green
 - roadmap and issue comments reference the exact tests and runbook paths above
