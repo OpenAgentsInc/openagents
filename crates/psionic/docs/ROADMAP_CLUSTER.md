@@ -19,7 +19,8 @@
 > `#3305` in `7124eefd7`, after landing `PSI-197` / `#3306` in `d424ab1cf`,
 > after opening `PSI-198` through `PSI-201` as `#3307` through `#3310` for the
 > operator-managed multi-subnet follow-on queue, after landing `PSI-198` /
-> `#3307` in `011e0452c`, and after checking live
+> `#3307` in `011e0452c`, after landing `PSI-199` / `#3308` in `87d428e43`,
+> and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -113,7 +114,8 @@ As of 2026-03-10, the current issue reality is:
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are landed on `main`
   - the next follow-on queue is now open for operator-managed multi-subnet work
     - `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) is landed on `main`
-    - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) through
+    - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) is landed on `main`
+    - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) through
       `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -257,6 +259,12 @@ on:
     stable rollout digest, JSON load/store, manifest-to-`LocalClusterConfig`
     conversion, and transport coverage proving authenticated configured-peer
     nodes can boot from manifests instead of ad hoc code-only config
+- `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308)
+  - landed in `87d428e43`
+  - `ordered_state` now ships authenticated catchup and snapshot envelopes with
+    stable recovery digests, signer/requester verification, replay refusal, and
+    tests proving signed recovery succeeds while tampered or replayed recovery
+    envelopes are refused explicitly
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -461,15 +469,16 @@ Required outcome:
 ### Operator-managed multi-subnet follow-on
 
 Tracked by landed `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
-and open `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308)
+and `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308),
+plus open `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309)
 through `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310).
 
 Current truth:
 
 - authenticated configured-peer posture now has a reusable operator manifest
   and rollout digest instead of relying entirely on hand-built Rust config
-- catchup and snapshot payloads are still local-state objects, not
-  tamper-evident authenticated recovery envelopes
+- catchup and snapshot payloads are now signed, digest-checked, and replay-
+  checked for authenticated recovery paths
 - configured peers are still retried as seed peers rather than carrying
   explicit multi-subnet dial policy and degraded reachability truth
 - key rotation or trust-bundle rollout still has no explicit machine-checkable
@@ -477,7 +486,6 @@ Current truth:
 
 Required outcome:
 
-- make recovery payloads tamper-evident before widening multi-subnet claims
 - surface explicit dial policy and degraded peer health for configured peers
 - add key rotation and rollout diagnostics before claiming stronger operational
   cluster posture
@@ -561,7 +569,7 @@ toward a more operationally robust multi-subnet substrate.
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-198` | [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) | Closed | Add operator cluster manifest and trust-bundle digests | `psionic-cluster`, security/docs | Landed in `011e0452c`: Psionic now persists cluster rollout inputs as a `ClusterOperatorManifest` with a stable digest, JSON load/store, manifest-derived config, and manifest-backed authenticated transport coverage. |
-| `PSI-199` | [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) | Open | Add tamper-evident catchup and snapshot envelopes | `psionic-cluster`, ordered-state/tests | Signed control-plane transport exists, but recovery payloads are not yet authenticated or tamper-evident. |
+| `PSI-199` | [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) | Closed | Add tamper-evident catchup and snapshot envelopes | `psionic-cluster`, ordered-state/tests | Landed in `87d428e43`: Psionic now signs recovery payloads, verifies cluster/requester/signer identity and recovery digests, rejects replayed envelopes, and documents the signed recovery drill in the validation runbook. |
 | `PSI-200` | [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) | Open | Add explicit multi-subnet peer dial policy and health truth | `psionic-cluster`, transport/docs | Configured peers still behave like retrying seed peers; wider-network clusters need explicit dial policy, degraded reachability truth, and operator-visible peer health. |
 | `PSI-201` | [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) | Open | Add membership key rotation and rollout diagnostics | `psionic-cluster`, security/docs | Authenticated clusters still lack an explicit operator story for trust-bundle versioning, key rotation, and stale-rollout refusal. |
 
@@ -572,7 +580,7 @@ The shortest honest path from today's `main` is:
 1. Treat C1 through C6 as landed on `main`, with the first trusted-cluster
    scope closing in `d424ab1cf`.
 2. If cluster work continues now, work the operator-managed multi-subnet queue
-   in this order: `#3308` -> `#3309` -> `#3310`.
+   in this order: `#3309` -> `#3310`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
