@@ -54,7 +54,8 @@
 > capability-profile publication follow-on queue, after opening `PSI-229`
 > through `PSI-231` as `#3343`, `#3344`, and `#3342` for the cluster trust-
 > publication follow-on queue, after landing `PSI-230` / `#3344` in
-> `0dc54768f`, and after checking live
+> `0dc54768f`, after landing `PSI-231` / `#3342` in the docs closeout commit
+> that adds the cluster trust-publication validation drill, and after checking live
 > GitHub issue search so this roadmap reflects
 > the current GitHub queue rather than local placeholders.
 >
@@ -186,10 +187,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is landed on `main`
     - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is landed on `main`
     - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is landed on `main`
-  - the cluster trust-publication follow-on queue is now open on GitHub
+  - the cluster trust-publication follow-on queue is now landed on `main`
     - `PSI-229` / [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) is landed on `main`
     - `PSI-230` / [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) is landed on `main`
-    - `PSI-231` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is open
+    - `PSI-231` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -902,7 +903,7 @@ profiles before any request is planned.
 
 ### Phase H3: cluster trust-publication follow-on
 
-This is the current active post-H2 queue. It closes the next remaining gap
+H3 is now landed on `main`. It closed the next remaining gap
 between advertised clustered-lane support and the trust posture that bounds
 those claims by making provider-visible capability publication carry explicit
 cluster trust posture and compute-market trust refusal truth.
@@ -911,7 +912,7 @@ cluster trust posture and compute-market trust refusal truth.
 | --- | --- | --- | --- | --- | --- |
 | `PSI-229` | [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) | Closed | Add runtime-owned cluster trust publication types | `psionic-runtime`, `psionic-cluster`, tests | Landed in `f1e40e88d`: `psionic-runtime` now owns `ClusterTrustPosture`, `ClusterDiscoveryPosture`, and `ClusterComputeMarketTrustAssessment` plus its stable digest, while `psionic-cluster` now derives and re-exports those runtime-owned publication types instead of keeping a private duplicate model. |
 | `PSI-230` | [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) | Closed | Publish cluster trust assessments through provider capability surfaces | `psionic-provider`, `psionic-cluster`, tests | Landed in `0dc54768f`: `BackendSelection` and provider capability envelopes now publish `cluster_compute_market_trust_assessment` independently of realized execution, and provider tests prove trusted-LAN and attested-configured-peer postures surface bounded refusal truth without fabricating `cluster_execution` evidence. |
-| `PSI-231` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Open | Add cluster trust-publication validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once trust posture publishes through capability surfaces, the runbook and roadmap need explicit validation commands and closeout criteria so those bounded trust claims remain repeatable instead of doc-only. |
+| `PSI-231` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Closed | Add cluster trust-publication validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in the docs closeout commit that adds the H3 trust-publication drill: `CLUSTER_VALIDATION_RUNBOOK.md` now defines exact cluster, runtime, and provider commands for validating published trust posture and refusal truth, and this roadmap now closes H3 explicitly instead of leaving provider trust publication as an undocumented surface. |
 
 ## Recommended Order
 
@@ -941,10 +942,9 @@ The shortest honest path from today's `main` is:
     and queue closeout now anchored in `efa52005e`.
 11. Treat H2 as landed on `main`, with the advertised capability-publication
     validation drill and queue closeout now anchored in `478387b58`.
-12. Treat `#3344` as landed on `main` in `0dc54768f`, then close H3 by
-    landing `#3342` so the new provider-published trust posture has an
-    explicit validation drill and roadmap closeout rather than remaining an
-    undocumented surface.
+12. Treat H3 as landed on `main`: `#3344` now publishes bounded cluster trust
+    assessments through provider capability surfaces, and `#3342` closes the
+    queue with an explicit operator validation drill and roadmap closeout.
 13. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 14. If stronger trust or wider network claims are needed beyond H3, open a new
