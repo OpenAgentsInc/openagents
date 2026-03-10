@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
-    ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility, ClusterExecutionContext,
-    ClusterExecutionDisposition, ClusterPolicyDigest, ClusterPolicyDigestKind,
+    ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
+    ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
+    ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
     ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
     ExecutionTopologyPlan,
@@ -72,6 +73,17 @@ impl Default for LayerShardedExecutionPolicy {
     }
 }
 
+fn default_layer_sharded_capability_profile() -> ClusterExecutionCapabilityProfile {
+    ClusterExecutionCapabilityProfile::new("cuda")
+        .with_supported_lanes(vec![
+            ClusterExecutionLane::RemoteWholeRequest,
+            ClusterExecutionLane::LayerSharded,
+        ])
+        .with_detail(
+            "backend `cuda` declares whole-request dispatch plus layer-sharded cluster handoff support under explicit transport policy",
+        )
+}
+
 /// Request for one homogeneous layer-sharded CUDA execution plan.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LayerShardedExecutionRequest {
@@ -79,6 +91,8 @@ pub struct LayerShardedExecutionRequest {
     pub scheduler_node_id: NodeId,
     /// Runtime backend requested for the lane. The first truthful path is CUDA-only.
     pub requested_backend: String,
+    /// Declared capability profile for the requested backend and clustered lanes.
+    pub capability_profile: ClusterExecutionCapabilityProfile,
     /// Served-artifact digest that must be executable on every selected shard node.
     pub served_artifact_digest: String,
     /// Total number of model layers in the served artifact.
@@ -113,6 +127,7 @@ impl LayerShardedExecutionRequest {
         Self {
             scheduler_node_id,
             requested_backend: String::from("cuda"),
+            capability_profile: default_layer_sharded_capability_profile(),
             served_artifact_digest: served_artifact_digest.into(),
             total_layers,
             shard_count,
@@ -129,6 +144,20 @@ impl LayerShardedExecutionRequest {
     #[must_use]
     pub fn with_requested_backend(mut self, requested_backend: impl Into<String>) -> Self {
         self.requested_backend = requested_backend.into();
+        self.capability_profile =
+            ClusterExecutionCapabilityProfile::new(self.requested_backend.clone());
+        self
+    }
+
+    /// Attaches the declared capability profile and synchronizes the requested backend to it.
+    #[must_use]
+    pub fn with_capability_profile(
+        mut self,
+        capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.requested_backend
+            .clone_from(&capability_profile.runtime_backend);
+        self.capability_profile = capability_profile;
         self
     }
 
@@ -181,6 +210,7 @@ impl LayerShardedExecutionRequest {
             self.scheduler_node_id.clone(),
             self.requested_backend.clone(),
         )
+        .with_capability_profile(self.capability_profile.clone())
         .with_served_artifact_digest(self.served_artifact_digest.clone())
         .requiring_accelerator()
         .with_staging_policy(self.allow_copy_staging, self.allow_pull_staging)
@@ -286,7 +316,7 @@ pub fn schedule_layer_sharded_execution(
     let topology_digest = state.topology_digest();
     let artifact_residency_digest = Some(state.artifact_residency_digest());
     let communication_eligibility =
-        layer_shard_handoff_communication_eligibility(request.requested_backend.as_str());
+        layer_shard_handoff_communication_eligibility(&request.capability_profile);
 
     if !communication_eligibility.eligible {
         return Err(Box::new(layer_sharded_failure(
@@ -694,7 +724,7 @@ fn build_shard_handoffs(
                     shard_count: shard_node_ids.len(),
                     policy_digests: Vec::new(),
                     communication_eligibility: layer_shard_handoff_communication_eligibility(
-                        "cuda",
+                        &default_layer_sharded_capability_profile(),
                     ),
                     selected_node_ids: shard_node_ids.to_vec(),
                     scheduler_failure: None,
@@ -844,8 +874,8 @@ mod tests {
     use std::io::Error;
 
     use psionic_runtime::{
-        ClusterCommunicationClass, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ExecutionTopologyKind,
+        ClusterCommunicationClass, ClusterExecutionCapabilityProfile, ClusterPolicyDigest,
+        ClusterPolicyDigestKind, ExecutionTopologyKind,
     };
 
     use crate::{
@@ -922,6 +952,12 @@ mod tests {
         .with_link_class(ClusterLinkClass::Ethernet)
         .with_latency_us(150)
         .with_bandwidth_mbps(40_000)
+    }
+
+    fn metal_cluster_blocked_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("metal").with_detail(
+            "backend `metal` remains refused for cluster execution until the Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes",
+        )
     }
 
     fn sample_snapshot() -> ClusterSnapshot {
@@ -1045,6 +1081,14 @@ mod tests {
                 .map(|eligibility| eligibility.required_class),
             Some(ClusterCommunicationClass::LayerShardHandoff)
         );
+        assert!(
+            schedule
+                .cluster_execution
+                .communication_eligibility
+                .as_ref()
+                .and_then(|eligibility| eligibility.capability_profile_digest.as_deref())
+                .is_some()
+        );
         Ok(())
     }
 
@@ -1054,7 +1098,8 @@ mod tests {
         let state = ClusterState::from_snapshot(sample_snapshot());
         let request =
             LayerShardedExecutionRequest::new(crate::NodeId::new("scheduler"), "artifact-1", 40, 2)
-                .with_requested_backend("metal");
+                .with_requested_backend("metal")
+                .with_capability_profile(metal_cluster_blocked_capability_profile());
 
         let failure = schedule_layer_sharded_execution(
             &state,

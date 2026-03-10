@@ -13,7 +13,9 @@ use psionic_cluster::{
     TensorShardedExecutionRequest, TensorShardedModelEligibility, TensorShardedTransportPolicy,
     WholeRequestSchedulingRequest,
 };
-use psionic_runtime::ClusterReplicaWarmState;
+use psionic_runtime::{
+    ClusterExecutionCapabilityProfile, ClusterExecutionLane, ClusterReplicaWarmState,
+};
 
 pub const ARTIFACT_DIGEST: &str = "artifact-1";
 pub const CLUSTER_NAMESPACE: &str = "cluster-lan";
@@ -21,6 +23,34 @@ pub const CLUSTER_SECRET: &str = "cluster-secret";
 pub const REPLICA_PRODUCT_ID: &str = "fixture.decoder";
 pub const REPLICA_MODEL_ID: &str = "fixture-decoder";
 pub const REPLICA_RUNTIME_BACKEND: &str = "cuda";
+
+#[must_use]
+pub fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
+    ClusterExecutionCapabilityProfile::new("cuda")
+        .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+        .with_detail("backend `cuda` declares whole-request remote dispatch on ready cluster nodes")
+}
+
+#[allow(dead_code)]
+#[must_use]
+pub fn cuda_replica_routed_capability_profile() -> ClusterExecutionCapabilityProfile {
+    ClusterExecutionCapabilityProfile::new("cuda")
+        .with_supported_lanes(vec![
+            ClusterExecutionLane::RemoteWholeRequest,
+            ClusterExecutionLane::ReplicaRouted,
+        ])
+        .with_detail(
+            "backend `cuda` declares whole-request dispatch plus replica routing across warm lanes",
+        )
+}
+
+#[allow(dead_code)]
+#[must_use]
+pub fn metal_cluster_blocked_capability_profile() -> ClusterExecutionCapabilityProfile {
+    ClusterExecutionCapabilityProfile::new("metal").with_detail(
+        "backend `metal` remains refused for cluster execution until the Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes",
+    )
+}
 
 pub struct ClusterValidationFixture {
     pub cluster_id: ClusterId,
@@ -106,6 +136,7 @@ impl ClusterValidationFixture {
     #[must_use]
     pub fn whole_request(&self) -> WholeRequestSchedulingRequest {
         WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest(ARTIFACT_DIGEST)
             .with_minimum_free_memory_bytes(16 * 1024 * 1024 * 1024)
             .requiring_accelerator()
