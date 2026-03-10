@@ -992,9 +992,9 @@ mod tests {
     };
 
     use super::{
-        schedule_remote_whole_request, WholeRequestClusterSchedule,
-        WholeRequestSchedulingFailureCode, WholeRequestSchedulingRefusalCode,
-        WholeRequestSchedulingRequest,
+        WholeRequestClusterSchedule, WholeRequestSchedulingFailureCode,
+        WholeRequestSchedulingRefusalCode, WholeRequestSchedulingRequest,
+        schedule_remote_whole_request,
     };
 
     fn fixture_error(detail: &str) -> Error {
@@ -1020,6 +1020,7 @@ mod tests {
                 node_epoch: NodeEpoch::initial(),
                 role,
                 auth_public_key: String::new(),
+                attestation: None,
             },
             None,
             ClusterMembershipStatus::Ready,
@@ -1104,8 +1105,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.leadership = Some(ClusterLeadershipRecord::new(
             ClusterTerm::initial(),
@@ -1242,8 +1243,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot
             .links
@@ -1287,8 +1288,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_surfaces_degraded_selection_reasons(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_surfaces_degraded_selection_reasons()
+    -> Result<(), Box<dyn std::error::Error>> {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
         snapshot.memberships.insert(
@@ -1362,8 +1363,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_emits_machine_checkable_refusals(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_emits_machine_checkable_refusals()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.telemetry.insert(
             crate::NodeId::new("worker-a"),

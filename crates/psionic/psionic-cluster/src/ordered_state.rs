@@ -2178,28 +2178,19 @@ impl ClusterState {
 
     /// Returns the command provenance for one membership record, when known.
     #[must_use]
-    pub fn membership_provenance(
-        &self,
-        node_id: &NodeId,
-    ) -> Option<&ClusterCommandAuthorization> {
+    pub fn membership_provenance(&self, node_id: &NodeId) -> Option<&ClusterCommandAuthorization> {
         self.snapshot.membership_provenance.get(node_id)
     }
 
     /// Returns the command provenance for one link record, when known.
     #[must_use]
-    pub fn link_provenance(
-        &self,
-        key: &ClusterLinkKey,
-    ) -> Option<&ClusterCommandAuthorization> {
+    pub fn link_provenance(&self, key: &ClusterLinkKey) -> Option<&ClusterCommandAuthorization> {
         self.snapshot.link_provenance.get(key)
     }
 
     /// Returns the command provenance for one telemetry record, when known.
     #[must_use]
-    pub fn telemetry_provenance(
-        &self,
-        node_id: &NodeId,
-    ) -> Option<&ClusterCommandAuthorization> {
+    pub fn telemetry_provenance(&self, node_id: &NodeId) -> Option<&ClusterCommandAuthorization> {
         self.snapshot.telemetry_provenance.get(node_id)
     }
 
@@ -2570,9 +2561,7 @@ impl ClusterState {
             }
             ClusterEvent::NodeTelemetryReconciled { telemetry } => {
                 let node_id = telemetry.node_id.clone();
-                self.snapshot
-                    .telemetry
-                    .insert(node_id.clone(), telemetry);
+                self.snapshot.telemetry.insert(node_id.clone(), telemetry);
                 if let Some(command_authorization) = command_authorization {
                     self.snapshot
                         .telemetry_provenance
@@ -2637,18 +2626,19 @@ impl ClusterState {
         submitter_node_id: &NodeId,
         command: &ClusterCommand,
     ) -> Option<ResolvedClusterCommandSubmitter> {
-        self.membership_submitter(submitter_node_id).or_else(|| match command {
-            ClusterCommand::ReconcileMembership { membership }
-                if membership.identity.node_id == *submitter_node_id =>
-            {
-                Some(ResolvedClusterCommandSubmitter {
-                    node_id: membership.identity.node_id.clone(),
-                    role: membership.identity.role,
-                    membership_status: membership.status,
-                })
-            }
-            _ => None,
-        })
+        self.membership_submitter(submitter_node_id)
+            .or_else(|| match command {
+                ClusterCommand::ReconcileMembership { membership }
+                    if membership.identity.node_id == *submitter_node_id =>
+                {
+                    Some(ResolvedClusterCommandSubmitter {
+                        node_id: membership.identity.node_id.clone(),
+                        role: membership.identity.role,
+                        membership_status: membership.status,
+                    })
+                }
+                _ => None,
+            })
     }
 }
 
@@ -3126,12 +3116,11 @@ mod tests {
         ClusterElectionMessage, ClusterEvent, ClusterEventIndex, ClusterEventLog,
         ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
         ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
-        ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus,
-        ClusterNodeTelemetry, ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError,
-        ClusterRecoveryPolicy, ClusterRecoveryReason, ClusterRecoveryReplayWindow,
-        ClusterSchemaVersion, ClusterSnapshot, ClusterSplitBrainDiagnostic,
-        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
-        ConfiguredClusterPeer, IndexedClusterEvent,
+        ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
+        ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
+        ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
+        ClusterSplitBrainDiagnostic, ClusterStabilityPosture, ClusterState, ClusterTerm,
+        ClusterTransportClass, ConfiguredClusterPeer, IndexedClusterEvent,
     };
 
     fn sample_cluster_id() -> crate::ClusterId {
@@ -3154,6 +3143,7 @@ mod tests {
                 node_epoch: NodeEpoch::initial(),
                 role,
                 auth_public_key: String::new(),
+                attestation: None,
             },
             Some(SocketAddr::from(([127, 0, 0, 1], port))),
             status,
@@ -3188,6 +3178,7 @@ mod tests {
             node_epoch: NodeEpoch::initial(),
             role,
             auth_public_key: hex::encode(signing_key.verifying_key().to_bytes()),
+            attestation: None,
         }
     }
 
@@ -3843,9 +3834,8 @@ mod tests {
             .into_iter()
             .enumerate()
         {
-            let event_index = (0..index).fold(ClusterEventIndex::initial(), |current, _| {
-                current.next()
-            });
+            let event_index =
+                (0..index).fold(ClusterEventIndex::initial(), |current, _| current.next());
             state
                 .apply(IndexedClusterEvent::new(
                     cluster_id.clone(),
@@ -4136,7 +4126,9 @@ mod tests {
             .expect("compaction should work")
             .expect("compaction should produce a snapshot");
         assert_eq!(
-            compacted_snapshot.membership_provenance.get(&coordinator.identity.node_id),
+            compacted_snapshot
+                .membership_provenance
+                .get(&coordinator.identity.node_id),
             Some(&coordinator_membership_auth)
         );
 
@@ -4168,10 +4160,7 @@ mod tests {
                     recovered.membership_provenance(&executor.identity.node_id),
                     Some(&executor_membership_auth)
                 );
-                assert_eq!(
-                    recovered.leadership_provenance(),
-                    Some(&leadership_auth)
-                );
+                assert_eq!(recovered.leadership_provenance(), Some(&leadership_auth));
                 assert_eq!(
                     recovered.last_applied_event_index(),
                     Some(leadership_event.index)

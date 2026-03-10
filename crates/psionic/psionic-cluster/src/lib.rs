@@ -156,6 +156,82 @@ pub enum ClusterTrustPosture {
     TrustedLanSharedAdmission,
     /// Authenticated configured-peer posture suitable for operator-managed wider networks.
     AuthenticatedConfiguredPeers,
+    /// Attestation-aware configured-peer posture for stronger market-facing admission seams.
+    AttestedConfiguredPeers,
+}
+
+/// Expected attestation facts for one configured market-facing peer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeAttestationRequirement {
+    /// Stable attestation issuer or verifier authority.
+    pub issuer: String,
+    /// Stable digest for the attestation statement or certificate chain.
+    pub attestation_digest: String,
+    /// Stable device or host identity digest when one is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_identity_digest: Option<String>,
+}
+
+impl NodeAttestationRequirement {
+    /// Creates a new attestation requirement.
+    #[must_use]
+    pub fn new(issuer: impl Into<String>, attestation_digest: impl Into<String>) -> Self {
+        Self {
+            issuer: issuer.into(),
+            attestation_digest: attestation_digest.into(),
+            device_identity_digest: None,
+        }
+    }
+
+    /// Attaches a stable device or host identity digest.
+    #[must_use]
+    pub fn with_device_identity_digest(
+        mut self,
+        device_identity_digest: impl Into<String>,
+    ) -> Self {
+        self.device_identity_digest = Some(device_identity_digest.into());
+        self
+    }
+
+    fn matches(&self, evidence: &NodeAttestationEvidence) -> bool {
+        self.issuer == evidence.issuer
+            && self.attestation_digest == evidence.attestation_digest
+            && self.device_identity_digest == evidence.device_identity_digest
+    }
+}
+
+/// Attestation facts carried by one cluster node identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeAttestationEvidence {
+    /// Stable attestation issuer or verifier authority.
+    pub issuer: String,
+    /// Stable digest for the attestation statement or certificate chain.
+    pub attestation_digest: String,
+    /// Stable device or host identity digest when one is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_identity_digest: Option<String>,
+}
+
+impl NodeAttestationEvidence {
+    /// Creates attestation evidence for one node identity.
+    #[must_use]
+    pub fn new(issuer: impl Into<String>, attestation_digest: impl Into<String>) -> Self {
+        Self {
+            issuer: issuer.into(),
+            attestation_digest: attestation_digest.into(),
+            device_identity_digest: None,
+        }
+    }
+
+    /// Attaches a stable device or host identity digest.
+    #[must_use]
+    pub fn with_device_identity_digest(
+        mut self,
+        device_identity_digest: impl Into<String>,
+    ) -> Self {
+        self.device_identity_digest = Some(device_identity_digest.into());
+        self
+    }
 }
 
 /// One explicitly configured peer for the authenticated cluster posture.
@@ -170,6 +246,9 @@ pub struct ConfiguredClusterPeer {
     /// Previously accepted keys during one explicit rotation overlap.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub previous_auth_public_keys: Vec<String>,
+    /// Required attestation facts for this peer when attested admission is active.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_requirement: Option<NodeAttestationRequirement>,
 }
 
 impl ConfiguredClusterPeer {
@@ -185,6 +264,7 @@ impl ConfiguredClusterPeer {
             remote_addr,
             auth_public_key: auth_public_key.into(),
             previous_auth_public_keys: Vec::new(),
+            attestation_requirement: None,
         }
     }
 
@@ -195,6 +275,16 @@ impl ConfiguredClusterPeer {
         previous_auth_public_keys: Vec<String>,
     ) -> Self {
         self.previous_auth_public_keys = previous_auth_public_keys;
+        self
+    }
+
+    /// Requires explicit attestation facts for this peer under attested admission.
+    #[must_use]
+    pub fn with_attestation_requirement(
+        mut self,
+        attestation_requirement: NodeAttestationRequirement,
+    ) -> Self {
+        self.attestation_requirement = Some(attestation_requirement);
         self
     }
 
@@ -379,6 +469,20 @@ impl ClusterTrustPolicy {
         }
     }
 
+    /// Trust policy for attestation-aware configured peers across wider networks.
+    #[must_use]
+    pub fn attested_configured_peers(configured_peers: Vec<ConfiguredClusterPeer>) -> Self {
+        Self {
+            posture: ClusterTrustPosture::AttestedConfiguredPeers,
+            require_message_authentication: true,
+            replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
+            trust_bundle_version: 1,
+            accepted_trust_bundle_versions: Vec::new(),
+            configured_peers,
+            configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
+        }
+    }
+
     /// Overrides the current trust-bundle version for this cluster config.
     #[must_use]
     pub fn with_trust_bundle_version(mut self, trust_bundle_version: u64) -> Self {
@@ -420,6 +524,7 @@ impl ClusterTrustPolicy {
             ClusterTrustPosture::AuthenticatedConfiguredPeers => {
                 b"authenticated_configured_peers".as_slice()
             }
+            ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
         });
         hasher.update(b"|");
         hasher.update(if self.require_message_authentication {
@@ -445,6 +550,18 @@ impl ClusterTrustPolicy {
             for previous_key in &peer.previous_auth_public_keys {
                 hasher.update(b"|previous_key|");
                 hasher.update(previous_key.as_bytes());
+            }
+            if let Some(attestation_requirement) = &peer.attestation_requirement {
+                hasher.update(b"|attestation_issuer|");
+                hasher.update(attestation_requirement.issuer.as_bytes());
+                hasher.update(b"|attestation_digest|");
+                hasher.update(attestation_requirement.attestation_digest.as_bytes());
+                if let Some(device_identity_digest) =
+                    &attestation_requirement.device_identity_digest
+                {
+                    hasher.update(b"|device_identity_digest|");
+                    hasher.update(device_identity_digest.as_bytes());
+                }
             }
         }
         hasher.update(b"|dial_policy|");
@@ -481,16 +598,17 @@ impl ClusterTrustPolicy {
     /// Derives the current compute-market trust posture from the shipped cluster policy.
     #[must_use]
     pub fn compute_market_trust_assessment(&self) -> ClusterComputeMarketTrustAssessment {
-        let mut refusal_reasons = vec![
-            ClusterComputeMarketTrustRefusalReason::MissingSignedEvidenceBundleExport,
-            ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
-            ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture,
-        ];
+        let mut refusal_reasons =
+            vec![ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture];
         match self.posture {
             ClusterTrustPosture::TrustedLanSharedAdmission => {
                 refusal_reasons.insert(
                     0,
                     ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly,
+                );
+                refusal_reasons.insert(
+                    1,
+                    ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                 );
             }
             ClusterTrustPosture::AuthenticatedConfiguredPeers => {
@@ -498,6 +616,22 @@ impl ClusterTrustPolicy {
                     0,
                     ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly,
                 );
+                refusal_reasons.insert(
+                    1,
+                    ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
+                );
+            }
+            ClusterTrustPosture::AttestedConfiguredPeers => {
+                if self
+                    .configured_peers
+                    .iter()
+                    .any(|peer| peer.attestation_requirement.is_none())
+                {
+                    refusal_reasons.insert(
+                        0,
+                        ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
+                    );
+                }
             }
         }
         if !self.require_message_authentication {
@@ -558,8 +692,6 @@ pub enum ClusterComputeMarketTrustRefusalReason {
     MissingAuthenticatedTransport,
     /// Configured peers remain operator-managed allowlist entries instead of market admission.
     OperatorManagedConfiguredPeersOnly,
-    /// Cluster evidence is not yet exported as one signed immutable bundle.
-    MissingSignedEvidenceBundleExport,
     /// Node admission is not yet backed by attested node identity.
     MissingAttestedNodeIdentityAdmission,
     /// Discovery posture is not yet explicit for wider non-LAN environments.
@@ -593,6 +725,7 @@ impl ClusterComputeMarketTrustAssessment {
             ClusterTrustPosture::AuthenticatedConfiguredPeers => {
                 b"authenticated_configured_peers".as_slice()
             }
+            ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
         });
         hasher.update(b"|");
         hasher.update(self.trust_policy_digest.as_bytes());
@@ -612,9 +745,6 @@ impl ClusterComputeMarketTrustAssessment {
                 }
                 ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly => {
                     b"operator_managed_configured_peers_only".as_slice()
-                }
-                ClusterComputeMarketTrustRefusalReason::MissingSignedEvidenceBundleExport => {
-                    b"missing_signed_evidence_bundle_export".as_slice()
                 }
                 ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission => {
                     b"missing_attested_node_identity_admission".as_slice()
@@ -728,6 +858,9 @@ pub struct ClusterNodeIdentity {
     pub role: NodeRole,
     /// Message-signing public key advertised by this node.
     pub auth_public_key: String,
+    /// Attestation facts carried by this node when attested admission is active.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<NodeAttestationEvidence>,
 }
 
 impl ClusterNodeIdentity {
@@ -791,6 +924,8 @@ pub struct LocalClusterConfig {
     pub role: NodeRole,
     /// Identity persistence policy for this node.
     pub identity_persistence: NodeIdentityPersistence,
+    /// Optional local attestation facts to attach to node identity.
+    pub node_attestation: Option<NodeAttestationEvidence>,
     /// Machine-checkable trust policy for this node's transport.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -810,6 +945,7 @@ impl LocalClusterConfig {
             seed_peers: Vec::new(),
             role,
             identity_persistence: NodeIdentityPersistence::Ephemeral,
+            node_attestation: None,
             trust_policy: ClusterTrustPolicy::trusted_lan(),
         }
     }
@@ -825,6 +961,13 @@ impl LocalClusterConfig {
     #[must_use]
     pub fn with_file_backed_identity(mut self, path: PathBuf) -> Self {
         self.identity_persistence = NodeIdentityPersistence::FileBacked { path };
+        self
+    }
+
+    /// Attaches explicit node-attestation facts for this node identity.
+    #[must_use]
+    pub fn with_node_attestation(mut self, node_attestation: NodeAttestationEvidence) -> Self {
+        self.node_attestation = Some(node_attestation);
         self
     }
 
@@ -846,6 +989,20 @@ impl LocalClusterConfig {
             .map(|peer| peer.remote_addr)
             .collect();
         self.trust_policy = ClusterTrustPolicy::authenticated_configured_peers(configured_peers);
+        self
+    }
+
+    /// Attaches attested configured peers and seeds discovery from them.
+    #[must_use]
+    pub fn with_attested_configured_peers(
+        mut self,
+        configured_peers: Vec<ConfiguredClusterPeer>,
+    ) -> Self {
+        self.seed_peers = configured_peers
+            .iter()
+            .map(|peer| peer.remote_addr)
+            .collect();
+        self.trust_policy = ClusterTrustPolicy::attested_configured_peers(configured_peers);
         self
     }
 
@@ -875,6 +1032,35 @@ impl LocalClusterConfig {
 }
 
 /// Machine-checkable cluster-join refusal reason for the first local seam.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterPeerAttestationMismatch {
+    /// Expected attestation issuer.
+    pub expected_issuer: String,
+    /// Observed attestation issuer, when one was supplied.
+    pub actual_issuer: Option<String>,
+    /// Expected attestation digest.
+    pub expected_attestation_digest: String,
+    /// Observed attestation digest, when one was supplied.
+    pub actual_attestation_digest: Option<String>,
+    /// Expected device or host identity digest, when one was required.
+    pub expected_device_identity_digest: Option<String>,
+    /// Observed device or host identity digest, when one was supplied.
+    pub actual_device_identity_digest: Option<String>,
+}
+
+impl ClusterPeerAttestationMismatch {
+    fn between(expected: &NodeAttestationRequirement, actual: &NodeAttestationEvidence) -> Self {
+        Self {
+            expected_issuer: expected.issuer.clone(),
+            actual_issuer: Some(actual.issuer.clone()),
+            expected_attestation_digest: expected.attestation_digest.clone(),
+            actual_attestation_digest: Some(actual.attestation_digest.clone()),
+            expected_device_identity_digest: expected.device_identity_digest.clone(),
+            actual_device_identity_digest: actual.device_identity_digest.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClusterJoinRefusalReason {
     /// The remote namespace did not match this node's namespace.
@@ -916,6 +1102,12 @@ pub enum ClusterJoinRefusalReason {
         /// Observed peer key.
         actual: String,
     },
+    /// The configured peer lacked an attestation requirement under attested admission.
+    ConfiguredPeerAttestationRequirementMissing,
+    /// The remote peer did not advertise attestation facts when attested admission required them.
+    NodeAttestationMissing,
+    /// The remote peer attestation did not match the configured requirement.
+    ConfiguredPeerAttestationMismatch(Box<ClusterPeerAttestationMismatch>),
     /// The remote message lacked a valid signature or authentication payload.
     MessageAuthenticationFailed,
     /// The remote peer used an unexpected trust-bundle version.
@@ -1440,6 +1632,8 @@ struct PersistedNodeIdentityRecord {
     last_epoch: NodeEpoch,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     auth_secret_key_hex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node_attestation: Option<NodeAttestationEvidence>,
 }
 
 struct LoadedLocalIdentity {
@@ -1464,6 +1658,7 @@ fn load_or_create_local_identity(
                     node_epoch: NodeEpoch::initial(),
                     role: config.role,
                     auth_public_key: encode_auth_public_key(&signing_key.verifying_key()),
+                    attestation: config.node_attestation.clone(),
                 },
                 signing_key,
             })
@@ -1472,6 +1667,7 @@ fn load_or_create_local_identity(
             let mut node_id = NodeId::random();
             let mut node_epoch = NodeEpoch::initial();
             let mut signing_key = SigningKey::from_bytes(&random::<[u8; SIGNING_KEY_BYTES]>());
+            let mut node_attestation = config.node_attestation.clone();
             if path.exists() {
                 let bytes = fs::read(path).map_err(ClusterError::IdentityIo)?;
                 let record: PersistedNodeIdentityRecord =
@@ -1482,6 +1678,9 @@ fn load_or_create_local_identity(
                     if let Some(auth_secret_key_hex) = record.auth_secret_key_hex {
                         signing_key = decode_signing_key(&auth_secret_key_hex)?;
                     }
+                    if node_attestation.is_none() {
+                        node_attestation = record.node_attestation;
+                    }
                 }
             } else if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).map_err(ClusterError::IdentityIo)?;
@@ -1491,6 +1690,7 @@ fn load_or_create_local_identity(
                 node_id: node_id.clone(),
                 last_epoch: node_epoch,
                 auth_secret_key_hex: Some(hex::encode(signing_key.to_bytes())),
+                node_attestation: node_attestation.clone(),
             };
             let encoded =
                 serde_json::to_vec_pretty(&record).map_err(ClusterError::IdentityFormat)?;
@@ -1502,6 +1702,7 @@ fn load_or_create_local_identity(
                     node_epoch,
                     role: config.role,
                     auth_public_key: encode_auth_public_key(&signing_key.verifying_key()),
+                    attestation: node_attestation,
                 },
                 signing_key,
             })
@@ -1827,6 +2028,7 @@ fn authenticate_incoming_envelope(
     if matches!(
         config.trust_policy.posture,
         ClusterTrustPosture::AuthenticatedConfiguredPeers
+            | ClusterTrustPosture::AttestedConfiguredPeers
     ) {
         let Some(configured_peer) = config
             .trust_policy
@@ -1876,6 +2078,26 @@ fn authenticate_incoming_envelope(
                 key_match: Some(key_match),
                 disposition: ClusterTrustRolloutDisposition::AcceptedOverlap,
             });
+        }
+        if matches!(
+            config.trust_policy.posture,
+            ClusterTrustPosture::AttestedConfiguredPeers
+        ) {
+            let Some(attestation_requirement) = configured_peer.attestation_requirement.as_ref()
+            else {
+                return Err(ClusterJoinRefusalReason::ConfiguredPeerAttestationRequirementMissing);
+            };
+            let Some(attestation) = envelope.message.sender().attestation.as_ref() else {
+                return Err(ClusterJoinRefusalReason::NodeAttestationMissing);
+            };
+            if !attestation_requirement.matches(attestation) {
+                return Err(ClusterJoinRefusalReason::ConfiguredPeerAttestationMismatch(
+                    Box::new(ClusterPeerAttestationMismatch::between(
+                        attestation_requirement,
+                        attestation,
+                    )),
+                ));
+            }
         }
     }
     if !config.trust_policy.require_message_authentication {
@@ -2010,6 +2232,7 @@ mod tests {
             node_epoch: NodeEpoch::initial(),
             role,
             auth_public_key: encode_auth_public_key(&signing_key.verifying_key()),
+            attestation: None,
         }
     }
 
@@ -2064,6 +2287,13 @@ mod tests {
                 loopback_addr(31001),
                 "peer-key-a",
             )]);
+        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31001), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ]);
         let configured_other_version = configured.clone().with_trust_bundle_version(2);
         let configured_other_policy =
             configured
@@ -2082,6 +2312,7 @@ mod tests {
             )]);
 
         assert_ne!(trusted_lan.stable_digest(), configured.stable_digest());
+        assert_ne!(configured.stable_digest(), attested.stable_digest());
         assert_ne!(
             configured.stable_digest(),
             configured_other_addr.stable_digest()
@@ -2116,7 +2347,6 @@ mod tests {
             vec![
                 ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly,
                 ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport,
-                ClusterComputeMarketTrustRefusalReason::MissingSignedEvidenceBundleExport,
                 ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                 ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture,
             ]
@@ -2147,10 +2377,35 @@ mod tests {
             assessment.refusal_reasons,
             vec![
                 ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly,
-                ClusterComputeMarketTrustRefusalReason::MissingSignedEvidenceBundleExport,
                 ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                 ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture,
             ]
+        );
+    }
+
+    #[test]
+    fn compute_market_assessment_for_attested_peers_only_waits_on_non_lan_discovery() {
+        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ]);
+
+        let assessment = attested.compute_market_trust_assessment();
+
+        assert_eq!(
+            assessment.disposition,
+            ClusterComputeMarketTrustDisposition::Refused
+        );
+        assert_eq!(
+            assessment.posture,
+            ClusterTrustPosture::AttestedConfiguredPeers
+        );
+        assert_eq!(
+            assessment.refusal_reasons,
+            vec![ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture]
         );
     }
 
@@ -2243,6 +2498,173 @@ mod tests {
             ),
             "bundle with a different control-plane key should be refused"
         );
+    }
+
+    #[test]
+    fn attested_configured_peers_refuse_missing_node_attestation() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(16);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(17);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let remote_addr = loopback_addr(31004);
+        let config = sample_transport_config(
+            local_identity,
+            local_signing_key,
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
+        );
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            7,
+        );
+
+        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+
+        assert_eq!(
+            refusal,
+            Err(ClusterJoinRefusalReason::NodeAttestationMissing)
+        );
+    }
+
+    #[test]
+    fn attested_configured_peers_refuse_mismatched_node_attestation() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(18);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(19);
+        let mut remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        remote_identity.attestation = Some(
+            NodeAttestationEvidence::new("issuer-remote", "wrong-attestation")
+                .with_device_identity_digest("device-remote"),
+        );
+        let remote_addr = loopback_addr(31005);
+        let config = sample_transport_config(
+            local_identity,
+            local_signing_key,
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
+        );
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            7,
+        );
+
+        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+
+        assert_eq!(
+            refusal,
+            Err(ClusterJoinRefusalReason::ConfiguredPeerAttestationMismatch(
+                Box::new(ClusterPeerAttestationMismatch {
+                    expected_issuer: String::from("issuer-remote"),
+                    actual_issuer: Some(String::from("issuer-remote")),
+                    expected_attestation_digest: String::from("attestation-remote"),
+                    actual_attestation_digest: Some(String::from("wrong-attestation")),
+                    expected_device_identity_digest: Some(String::from("device-remote")),
+                    actual_device_identity_digest: Some(String::from("device-remote")),
+                }),
+            ))
+        );
+    }
+
+    #[test]
+    fn attested_configured_peers_accept_matching_node_attestation() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(20);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(21);
+        let mut remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        remote_identity.attestation = Some(
+            NodeAttestationEvidence::new("issuer-remote", "attestation-remote")
+                .with_device_identity_digest("device-remote"),
+        );
+        let remote_addr = loopback_addr(31006);
+        let config = sample_transport_config(
+            local_identity,
+            local_signing_key,
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
+        );
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            7,
+        );
+
+        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+
+        assert!(refusal.is_ok(), "matching attestation should be accepted");
     }
 
     #[test]

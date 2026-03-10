@@ -333,6 +333,7 @@ pub fn ready_membership(
             node_epoch: NodeEpoch::initial(),
             role,
             auth_public_key: String::new(),
+            attestation: None,
         },
         None,
         ClusterMembershipStatus::Ready,

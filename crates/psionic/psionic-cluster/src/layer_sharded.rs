@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    schedule_remote_whole_request, ClusterId, ClusterLink, ClusterLinkClass, ClusterLinkKey,
-    ClusterLinkStatus, ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId,
+    ClusterId, ClusterLink, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus,
+    ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId,
     WholeRequestSchedulingFailure, WholeRequestSchedulingFailureCode,
-    WholeRequestSchedulingRequest,
+    WholeRequestSchedulingRequest, schedule_remote_whole_request,
 };
 
 /// Policy controlling the first truthful layer-sharded cluster lane.
@@ -833,8 +833,8 @@ mod tests {
     };
 
     use super::{
-        schedule_layer_sharded_execution, LayerShardedExecutionPolicy,
-        LayerShardedExecutionRequest, LayerShardedSchedulingFailureCode,
+        LayerShardedExecutionPolicy, LayerShardedExecutionRequest,
+        LayerShardedSchedulingFailureCode, schedule_layer_sharded_execution,
     };
 
     fn fixture_error(detail: &str) -> Error {
@@ -860,6 +860,7 @@ mod tests {
                 node_epoch: NodeEpoch::initial(),
                 role,
                 auth_public_key: String::new(),
+                attestation: None,
             },
             None,
             ClusterMembershipStatus::Ready,
@@ -1037,8 +1038,8 @@ mod tests {
     }
 
     #[test]
-    fn layer_sharded_scheduler_refuses_unsuitable_handoff_link(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn layer_sharded_scheduler_refuses_unsuitable_handoff_link()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.links.insert(
             crate::ClusterLinkKey::new(
@@ -1093,8 +1094,8 @@ mod tests {
     }
 
     #[test]
-    fn layer_sharded_scheduler_refuses_when_second_shard_lacks_resident_artifact(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn layer_sharded_scheduler_refuses_when_second_shard_lacks_resident_artifact()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.artifact_residency.insert(
             ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
