@@ -54,6 +54,7 @@ What these cover:
 - `cluster_validation_matrix`
   - compacted catchup and snapshot-install recovery
   - degraded whole-request scheduling with explicit artifact staging truth
+  - wider-network discovery intake, refusal, expiry, and admission reconciliation
   - replicated serving reroute away from a slow replica
   - layer-sharded and tensor-sharded evidence surfaces
   - allowed versus refused cluster-command authorization coverage
@@ -122,6 +123,26 @@ Interpretation:
   implementation exists
 - configured-peer transport failure means the current wider-than-LAN story is
   no longer backed by real operator-managed transport behavior
+
+## Wider-Network Discovery Drill
+
+Use this sequence before claiming wider-network discovery intake or admission
+reconciliation beyond the current explicit refusal boundary:
+
+1. Run `cargo test -p psionic-cluster --test cluster_validation_matrix discovery_validation_covers_intake_refusal_expiry_and_reconciliation`.
+2. Run `cargo test -p psionic-cluster signed_cluster_introduction_verifies_under_matching_policy signed_cluster_introduction_refuses_untrusted_source signed_cluster_introduction_refuses_ttl_that_exceeds_policy`.
+3. Run `cargo test -p psionic-cluster replay_keeps_discovery_candidates_separate_from_membership_truth snapshot_recovery_preserves_discovery_candidate_truth_and_provenance`.
+4. If any step fails, do not claim wider-network discovery readiness or candidate-admission rollout truth for the current build.
+
+Interpretation:
+
+- discovery validation matrix failure means signed introductions, refusal
+  boundaries, expiry, or admission reconciliation are no longer covered by one
+  operator-repeatable gate
+- introduction-policy failure means wider-network intake is no longer bounded by
+  explicit source trust and TTL policy
+- replay or recovery failure means discovered-candidate truth is no longer
+  staying separate from admitted membership across deterministic rebuilds
 
 ## Rotation Drill
 
