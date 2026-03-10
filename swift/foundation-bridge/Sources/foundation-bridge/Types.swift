@@ -95,6 +95,7 @@ struct SessionCreateResponse: Codable {
 
 struct SessionRespondRequest: Codable {
     let prompt: String
+    let options: GenerationOptionsPayload?
 }
 
 struct SessionRespondResponse: Codable {
@@ -109,6 +110,7 @@ struct ChatCompletionRequest: Codable {
     let messages: [ChatMessage]
     let temperature: Double?
     let maxTokens: Int?
+    let options: GenerationOptionsPayload?
     let stream: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -116,7 +118,39 @@ struct ChatCompletionRequest: Codable {
         case messages
         case temperature
         case maxTokens = "max_tokens"
+        case options
         case stream
+    }
+}
+
+enum SamplingModeType: String, Codable {
+    case greedy
+    case random
+}
+
+struct SamplingMode: Codable {
+    let mode: SamplingModeType
+    let topK: Int?
+    let topP: Double?
+    let seed: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case topK = "top_k"
+        case topP = "top_p"
+        case seed
+    }
+}
+
+struct GenerationOptionsPayload: Codable {
+    let sampling: SamplingMode?
+    let temperature: Double?
+    let maximumResponseTokens: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case sampling
+        case temperature
+        case maximumResponseTokens = "maximum_response_tokens"
     }
 }
 
@@ -155,12 +189,28 @@ struct Usage: Codable {
     let promptTokens: Int?
     let completionTokens: Int?
     let totalTokens: Int?
+    let promptTokensDetail: UsageMeasurement?
+    let completionTokensDetail: UsageMeasurement?
+    let totalTokensDetail: UsageMeasurement?
 
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
         case totalTokens = "total_tokens"
+        case promptTokensDetail = "prompt_tokens_detail"
+        case completionTokensDetail = "completion_tokens_detail"
+        case totalTokensDetail = "total_tokens_detail"
     }
+}
+
+enum UsageTruth: String, Codable {
+    case exact
+    case estimated
+}
+
+struct UsageMeasurement: Codable {
+    let value: Int
+    let truth: UsageTruth
 }
 
 struct ModelsResponse: Codable {

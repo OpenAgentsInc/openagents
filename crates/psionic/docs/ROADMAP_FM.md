@@ -153,7 +153,7 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, and `FM-3` are now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, and `FM-4` are now landed on `main`.
 
 What shipped:
 
@@ -187,14 +187,30 @@ What shipped:
   one hidden shared Swift `LanguageModelSession`
 - the old one-shot `/v1/chat/completions` path no longer depends on a hidden
   long-lived shared session; it now uses an ephemeral session per request
+- `psionic-apple-fm` now exposes first-class Rust `AppleFmGenerationOptions`,
+  `AppleFmSamplingMode`, and `AppleFmSamplingModeType` with Python-SDK-matching
+  validation for temperature, maximum response tokens, and `top` versus
+  `probability_threshold`
+- the reusable Rust lane now has first-class plain-text generation request and
+  response types instead of only the OpenAI-compatible chat envelope
+- session response requests and one-shot chat requests now carry typed Apple FM
+  generation options through the bridge
+- the Swift bridge now applies those generation options to real
+  `LanguageModelSession.respond(..., options: ...)` calls for both one-shot and
+  sessioned text generation
+- the bridge no longer reports derived token counts as authoritative raw usage;
+  usage detail now marks the current counts as `estimated`
+- the compatibility chat endpoint now rejects `stream: true` instead of
+  silently ignoring it before `FM-5`
 
-What `FM-1` through `FM-3` did not close:
+What `FM-1` through `FM-4` did not close:
 
-- generation-options validation beyond the retained minimal bridge shape
 - streaming, structured generation, tools, and typed error taxonomy
 - desktop Mission Control cutover on macOS
 - typed transcript import/export as a first-class Rust surface remains `FM-6`;
   `FM-3` only landed raw transcript JSON restore as the bridge/session substrate
+- raw token counts are now truthfully marked as estimated, but the broader
+  typed metrics/error taxonomy work still remains `FM-9`
 
 ## Mission Control Reality On Main
 
@@ -584,15 +600,14 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-3`, the next-item order is:
+After `FM-4`, the next-item order is:
 
-1. `FM-4` plain text generation plus generation-options coverage
-2. `FM-5` streaming
-3. `FM-6` transcripts and session restore
-4. `FM-7` structured generation and schema support
-5. `FM-8` tools
-6. `FM-9` typed errors and metrics truth
-7. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-5` streaming
+2. `FM-6` transcripts and session restore
+3. `FM-7` structured generation and schema support
+4. `FM-8` tools
+5. `FM-9` typed errors and metrics truth
+6. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

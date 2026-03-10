@@ -5,10 +5,12 @@ use thiserror::Error;
 use crate::contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, AppleFmChatCompletionRequest,
-    AppleFmChatCompletionResponse, AppleFmCompletionResult, AppleFmHealthResponse,
-    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
-    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
-    AppleFmSystemLanguageModelAvailability,
+    AppleFmChatCompletionResponse, AppleFmCompletionResult, AppleFmGenerationOptions,
+    AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelsResponse,
+    AppleFmSession, AppleFmSessionCreateRequest, AppleFmSessionCreateResponse,
+    AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
+    AppleFmSystemLanguageModelAvailability, AppleFmTextGenerationRequest,
+    AppleFmTextGenerationResponse,
 };
 
 /// Reusable blocking client for the current Apple FM bridge contract.
@@ -201,6 +203,12 @@ impl AppleFmBridgeClient {
         session_id: &str,
         request: &AppleFmSessionRespondRequest,
     ) -> Result<AppleFmSessionRespondResponse, AppleFmBridgeClientError> {
+        request
+            .validate()
+            .map_err(|error| AppleFmBridgeClientError::Validation {
+                operation: "respond_in_session",
+                error,
+            })?;
         self.client
             .post(self.endpoint(&session_responses_path(session_id))?)
             .json(request)
@@ -226,6 +234,12 @@ impl AppleFmBridgeClient {
         &self,
         request: &AppleFmChatCompletionRequest,
     ) -> Result<AppleFmChatCompletionResponse, AppleFmBridgeClientError> {
+        request
+            .validate()
+            .map_err(|error| AppleFmBridgeClientError::Validation {
+                operation: "chat_completion",
+                error,
+            })?;
         self.client
             .post(self.endpoint(APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH)?)
             .json(request)
@@ -246,6 +260,28 @@ impl AppleFmBridgeClient {
             })
     }
 
+    /// Executes a first-class plain-text generation request against the bridge.
+    pub fn generate_text(
+        &self,
+        request: &AppleFmTextGenerationRequest,
+    ) -> Result<AppleFmTextGenerationResponse, AppleFmBridgeClientError> {
+        request
+            .validate()
+            .map_err(|error| AppleFmBridgeClientError::Validation {
+                operation: "generate_text",
+                error,
+            })?;
+        let response = self.chat_completion(&request.clone().into_chat_completion_request())?;
+        Ok(AppleFmTextGenerationResponse {
+            model: response.model.clone(),
+            output: response
+                .first_text_content()
+                .unwrap_or_default()
+                .to_string(),
+            usage: response.usage,
+        })
+    }
+
     /// Executes a one-shot user prompt and extracts the first text completion.
     pub fn completion_from_prompt(
         &self,
@@ -254,9 +290,30 @@ impl AppleFmBridgeClient {
         max_tokens: Option<u32>,
         temperature: Option<f64>,
     ) -> Result<AppleFmCompletionResult, AppleFmBridgeClientError> {
-        let request =
-            AppleFmChatCompletionRequest::from_user_prompt(prompt, model, max_tokens, temperature);
-        Ok(self.chat_completion(&request)?.completion_result())
+        self.completion_from_prompt_with_options(
+            prompt,
+            model,
+            Some(AppleFmGenerationOptions {
+                sampling: None,
+                temperature,
+                maximum_response_tokens: max_tokens,
+            }),
+        )
+    }
+
+    /// Executes a one-shot user prompt with typed generation options.
+    pub fn completion_from_prompt_with_options(
+        &self,
+        prompt: impl Into<String>,
+        model: Option<impl Into<String>>,
+        options: Option<AppleFmGenerationOptions>,
+    ) -> Result<AppleFmCompletionResult, AppleFmBridgeClientError> {
+        let request = AppleFmTextGenerationRequest {
+            model: model.map(Into::into),
+            prompt: prompt.into(),
+            options,
+        };
+        Ok(self.generate_text(&request)?.completion_result())
     }
 }
 
@@ -321,6 +378,14 @@ pub enum AppleFmBridgeClientError {
         /// Error detail.
         error: String,
     },
+    /// Local request validation failed before transport.
+    #[error("Apple FM {operation} validation failed: {error}")]
+    Validation {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Validation detail.
+        error: AppleFmGenerationOptionsValidationError,
+    },
 }
 
 #[cfg(test)]
@@ -334,9 +399,9 @@ mod tests {
 
     use super::{AppleFmBridgeClient, AppleFmBridgeClientError};
     use crate::contract::{
-        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest, AppleFmSessionToolMetadata,
-        AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
-        AppleFmSystemLanguageModelUseCase,
+        AppleFmGenerationOptions, AppleFmSamplingMode, AppleFmSessionCreateRequest,
+        AppleFmSessionRespondRequest, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase, AppleFmUsageTruth,
     };
 
     fn spawn_mock_bridge() -> (String, JoinHandle<()>) {
@@ -361,7 +426,7 @@ mod tests {
                     }
                     Err(error) => panic!("accept mock request: {error}"),
                 };
-                let (method, path) = read_request_line(&mut stream);
+                let (method, path, request_body) = read_request(&mut stream);
                 let (status_code, body) = if method == "GET" && path == "/health" {
                     (200, serde_json::json!({
                         "status": "ok",
@@ -456,6 +521,13 @@ mod tests {
                     && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/responses")
                 {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str()).expect("session request json");
+                    assert_eq!(request_json["prompt"], "hello");
+                    assert_eq!(request_json["options"]["temperature"], 0.4);
+                    assert_eq!(request_json["options"]["sampling"]["mode"], "random");
+                    assert_eq!(request_json["options"]["sampling"]["top_k"], 32);
+                    assert_eq!(request_json["options"]["sampling"]["seed"], 7);
                     let session_id = path
                         .trim_start_matches("/v1/sessions/")
                         .trim_end_matches("/responses")
@@ -478,13 +550,22 @@ mod tests {
                         "usage": {
                             "prompt_tokens": 6,
                             "completion_tokens": 5,
-                            "total_tokens": 11
+                            "total_tokens": 11,
+                            "prompt_tokens_detail": { "value": 6, "truth": "exact" },
+                            "completion_tokens_detail": { "value": 5, "truth": "estimated" },
+                            "total_tokens_detail": { "value": 11, "truth": "estimated" }
                         }
                     })
                     .to_string())
                 } else if method == "DELETE" && path.starts_with("/v1/sessions/sess-") {
                     (200, String::new())
                 } else if method == "POST" && path == "/v1/chat/completions" {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str()).expect("chat request json");
+                    assert_eq!(request_json["messages"][0]["content"], "hello");
+                    assert_eq!(request_json["options"]["temperature"], 0.3);
+                    assert_eq!(request_json["options"]["maximum_response_tokens"], 128);
+                    assert_eq!(request_json["options"]["sampling"]["mode"], "greedy");
                     (
                         200,
                         serde_json::json!({
@@ -498,9 +579,9 @@ mod tests {
                                 "finish_reason": "stop"
                             }],
                             "usage": {
-                                "prompt_tokens": 11,
-                                "completion_tokens": 4,
-                                "total_tokens": 15
+                                "prompt_tokens_detail": { "value": 11, "truth": "estimated" },
+                                "completion_tokens_detail": { "value": 4, "truth": "estimated" },
+                                "total_tokens_detail": { "value": 15, "truth": "estimated" }
                             }
                         })
                         .to_string(),
@@ -520,7 +601,7 @@ mod tests {
         (format!("http://{}", address), handle)
     }
 
-    fn read_request_line(stream: &mut TcpStream) -> (String, String) {
+    fn read_request(stream: &mut TcpStream) -> (String, String, String) {
         let mut buffer = [0_u8; 4096];
         let read = stream.read(&mut buffer).expect("read request");
         let request = String::from_utf8_lossy(&buffer[..read]);
@@ -528,7 +609,12 @@ mod tests {
         let mut parts = line.split_whitespace();
         let method = parts.next().unwrap_or_default().to_string();
         let path = parts.next().unwrap_or_default().to_string();
-        (method, path)
+        let body = request
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or_default()
+            .to_string();
+        (method, path, body)
     }
 
     fn write_response(stream: &mut TcpStream, status_code: u16, body: &str) {
@@ -581,12 +667,31 @@ mod tests {
         );
 
         let completion = client
-            .completion_from_prompt("hello", Some("apple-foundation-model"), Some(128), None)
+            .completion_from_prompt_with_options(
+                "hello",
+                Some("apple-foundation-model"),
+                Some(
+                    AppleFmGenerationOptions::new(
+                        Some(AppleFmSamplingMode::greedy()),
+                        Some(0.3),
+                        Some(128),
+                    )
+                    .expect("valid generation options"),
+                ),
+            )
             .expect("completion");
         assert_eq!(completion.model, "apple-foundation-model");
         assert_eq!(completion.output, "hello from apple fm");
-        assert_eq!(completion.prompt_tokens, Some(11));
-        assert_eq!(completion.completion_tokens, Some(4));
+        assert_eq!(completion.prompt_tokens, None);
+        assert_eq!(completion.completion_tokens, None);
+        assert_eq!(
+            completion
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.prompt_tokens_detail.as_ref())
+                .map(|detail| detail.truth),
+            Some(AppleFmUsageTruth::Estimated)
+        );
 
         let session = client
             .create_session(&AppleFmSessionCreateRequest {
@@ -618,6 +723,17 @@ mod tests {
                 "sess-1",
                 &AppleFmSessionRespondRequest {
                     prompt: "hello".to_string(),
+                    options: Some(
+                        AppleFmGenerationOptions::new(
+                            Some(
+                                AppleFmSamplingMode::random(Some(32), None, Some(7))
+                                    .expect("valid random sampling"),
+                            ),
+                            Some(0.4),
+                            Some(64),
+                        )
+                        .expect("valid session options"),
+                    ),
                 },
             )
             .expect("session respond");
@@ -647,6 +763,7 @@ mod tests {
                 "busy",
                 &AppleFmSessionRespondRequest {
                     prompt: "blocked".to_string(),
+                    options: None,
                 },
             )
             .expect_err("busy session should fail");
@@ -654,6 +771,39 @@ mod tests {
             busy_error,
             AppleFmBridgeClientError::Status {
                 operation: "respond_in_session",
+                ..
+            }
+        ));
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_rejects_invalid_generation_options_locally() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let error = client
+            .completion_from_prompt_with_options(
+                "hello",
+                Some("apple-foundation-model"),
+                Some(AppleFmGenerationOptions {
+                    sampling: Some(AppleFmSamplingMode {
+                        mode_type: crate::contract::AppleFmSamplingModeType::Greedy,
+                        top: Some(10),
+                        probability_threshold: None,
+                        seed: None,
+                    }),
+                    temperature: None,
+                    maximum_response_tokens: None,
+                }),
+            )
+            .expect_err("invalid options should fail before transport");
+
+        assert!(matches!(
+            error,
+            AppleFmBridgeClientError::Validation {
+                operation: "generate_text",
                 ..
             }
         ));
