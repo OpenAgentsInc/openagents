@@ -37,7 +37,8 @@ mod session;
 mod types;
 
 use normalizer::{
-    extract_latest_thread_plan_artifact, extract_thread_transcript_messages,
+    extract_latest_thread_compaction_artifact, extract_latest_thread_plan_artifact,
+    extract_latest_thread_review_artifact, extract_thread_transcript_messages,
     normalize_notification, thread_status_label,
 };
 use router::run_codex_lane_loop;
@@ -81,6 +82,33 @@ fn reasoning_effort_label(
             .trim_matches('"')
             .to_string()
     })
+}
+
+fn review_delivery_label(delivery: Option<codex_client::ReviewDelivery>) -> String {
+    match delivery.unwrap_or(codex_client::ReviewDelivery::Inline) {
+        codex_client::ReviewDelivery::Inline => "inline".to_string(),
+        codex_client::ReviewDelivery::Detached => "detached".to_string(),
+    }
+}
+
+fn review_target_label(target: &codex_client::ReviewTarget) -> String {
+    match target {
+        codex_client::ReviewTarget::UncommittedChanges => "uncommitted changes".to_string(),
+        codex_client::ReviewTarget::BaseBranch { branch } => format!("base branch {branch}"),
+        codex_client::ReviewTarget::Commit { sha, title } => title
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|title| format!("commit {} ({title})", sha))
+            .unwrap_or_else(|| format!("commit {sha}")),
+        codex_client::ReviewTarget::Custom { instructions } => {
+            let trimmed = instructions.trim();
+            if trimmed.is_empty() {
+                "custom review".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -524,6 +552,8 @@ pub enum CodexLaneNotification {
         thread_id: String,
         turn_id: String,
         review_thread_id: String,
+        delivery: String,
+        target: String,
     },
     CommandExecCompleted {
         exit_code: i32,
@@ -592,6 +622,8 @@ pub enum CodexLaneNotification {
         thread_id: String,
         messages: Vec<CodexThreadTranscriptMessage>,
         latest_plan: Option<CodexThreadPlanArtifact>,
+        latest_review: Option<CodexThreadReviewArtifact>,
+        latest_compaction: Option<CodexThreadCompactionArtifact>,
     },
     ThreadSelected {
         thread_id: String,
@@ -678,11 +710,21 @@ pub enum CodexLaneNotification {
         turn_id: String,
         diff: String,
     },
+    ReviewProgressUpdated {
+        thread_id: String,
+        turn_id: String,
+        review: String,
+        completed: bool,
+    },
     TurnPlanUpdated {
         thread_id: String,
         turn_id: String,
         explanation: Option<String>,
         plan: Vec<CodexTurnPlanStep>,
+    },
+    ThreadCompacted {
+        thread_id: String,
+        turn_id: String,
     },
     ThreadTokenUsageUpdated {
         thread_id: String,
@@ -1286,12 +1328,17 @@ impl CodexLaneState {
                 let thread_id = response.thread.id.clone();
                 let messages = extract_thread_transcript_messages(&response.thread);
                 let latest_plan = extract_latest_thread_plan_artifact(&response.thread);
+                let latest_review = extract_latest_thread_review_artifact(&response.thread);
+                let latest_compaction =
+                    extract_latest_thread_compaction_artifact(&response.thread);
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
                     notification: Some(CodexLaneNotification::ThreadReadLoaded {
                         thread_id,
                         messages,
                         latest_plan,
+                        latest_review,
+                        latest_compaction,
                     }),
                 })
             }
@@ -1633,6 +1680,8 @@ impl CodexLaneState {
             }
             CodexLaneCommand::ReviewStart(params) => {
                 let thread_id = params.thread_id.clone();
+                let delivery = review_delivery_label(params.delivery);
+                let target = review_target_label(&params.target);
                 let response = runtime.block_on(client.review_start(params))?;
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
@@ -1640,6 +1689,8 @@ impl CodexLaneState {
                         thread_id,
                         turn_id: response.turn.id,
                         review_thread_id: response.review_thread_id,
+                        delivery,
+                        target,
                     }),
                 })
             }

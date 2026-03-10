@@ -904,6 +904,46 @@ pub struct AutopilotPlanArtifact {
     pub restored_from_thread_read: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotDiffFileArtifact {
+    pub path: String,
+    pub added_line_count: u32,
+    pub removed_line_count: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotDiffArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub files: Vec<AutopilotDiffFileArtifact>,
+    pub added_line_count: u32,
+    pub removed_line_count: u32,
+    pub raw_diff: String,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotReviewArtifact {
+    pub thread_id: String,
+    pub source_thread_id: String,
+    pub source_turn_id: String,
+    pub review_thread_id: String,
+    pub delivery: String,
+    pub target: String,
+    pub summary: Option<String>,
+    pub status: String,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotCompactionArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AutopilotTurnMetadata {
     pub submission_seq: u64,
@@ -1187,6 +1227,11 @@ pub struct AutopilotChatState {
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
     thread_plan_artifacts: std::collections::HashMap<String, AutopilotPlanArtifact>,
+    thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
+    thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
+    thread_compaction_artifacts:
+        std::collections::HashMap<String, AutopilotCompactionArtifact>,
+    review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
     thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
@@ -1237,10 +1282,34 @@ pub struct AutopilotChatState {
     pub last_error: Option<String>,
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
+    artifact_projection_file_path: PathBuf,
 }
 
 impl Default for AutopilotChatState {
     fn default() -> Self {
+        let artifact_projection_file_path = codex_artifact_projection_file_path();
+        let (
+            thread_diff_artifacts,
+            thread_review_artifacts,
+            thread_compaction_artifacts,
+            review_thread_source_map,
+            artifact_load_error,
+        ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
+            Ok(projection) => (
+                projection.thread_diff_artifacts,
+                projection.thread_review_artifacts,
+                projection.thread_compaction_artifacts,
+                projection.review_thread_source_map,
+                None,
+            ),
+            Err(error) => (
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                Some(error),
+            ),
+        };
         Self {
             connection_status: "ready".to_string(),
             // "auto" means "let app-server pick the current default model".
@@ -1256,6 +1325,10 @@ impl Default for AutopilotChatState {
             thread_metadata: std::collections::HashMap::new(),
             thread_transcript_cache: std::collections::HashMap::new(),
             thread_plan_artifacts: std::collections::HashMap::new(),
+            thread_diff_artifacts,
+            thread_review_artifacts,
+            thread_compaction_artifacts,
+            review_thread_source_map,
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
             thread_submission_history: std::collections::HashMap::new(),
@@ -1303,11 +1376,283 @@ impl Default for AutopilotChatState {
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
             transcript_selection: None,
-            last_error: None,
+            last_error: artifact_load_error,
             copy_notice: None,
             copy_notice_until: None,
+            artifact_projection_file_path,
         }
     }
+}
+
+const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v1";
+const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CodexArtifactProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+}
+
+struct LoadedCodexArtifactProjection {
+    thread_diff_artifacts: HashMap<String, Vec<AutopilotDiffArtifact>>,
+    thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
+    thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
+    review_thread_source_map: HashMap<String, String>,
+}
+
+fn codex_artifact_projection_file_path() -> PathBuf {
+    if let Ok(override_path) = std::env::var("OPENAGENTS_CODEX_ARTIFACT_PROJECTION_PATH") {
+        if !override_path.trim().is_empty() {
+            return PathBuf::from(override_path);
+        }
+    }
+    #[cfg(test)]
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT_TEST_PROJECTION_ID: AtomicU64 = AtomicU64::new(1);
+        return std::env::temp_dir().join(format!(
+            "openagents-codex-artifacts-test-{}-{}.json",
+            std::process::id(),
+            NEXT_TEST_PROJECTION_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+    }
+    #[cfg(not(test))]
+    {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".openagents")
+            .join("autopilot-codex-artifacts-v1.json")
+    }
+}
+
+fn review_artifact_thread_keys(source_thread_id: &str, review_thread_id: &str) -> Vec<String> {
+    if source_thread_id == review_thread_id {
+        vec![source_thread_id.to_string()]
+    } else {
+        vec![source_thread_id.to_string(), review_thread_id.to_string()]
+    }
+}
+
+fn normalized_review_target(value: Option<String>) -> String {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "review".to_string())
+}
+
+fn normalized_review_delivery(
+    value: Option<String>,
+    source_thread_id: &str,
+    review_thread_id: &str,
+) -> String {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if source_thread_id == review_thread_id {
+                "inline".to_string()
+            } else {
+                "detached".to_string()
+            }
+        })
+}
+
+fn normalize_codex_diff_artifacts(mut artifacts: Vec<AutopilotDiffArtifact>) -> Vec<AutopilotDiffArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+            .then_with(|| lhs.source_turn_id.cmp(&rhs.source_turn_id))
+    });
+    let mut seen_keys = HashSet::new();
+    artifacts.retain(|artifact| {
+        seen_keys.insert(format!("{}|{}", artifact.thread_id, artifact.source_turn_id))
+    });
+    let mut thread_counts = HashMap::<String, usize>::new();
+    artifacts.retain(|artifact| {
+        let count = thread_counts.entry(artifact.thread_id.clone()).or_insert(0);
+        if *count >= CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD {
+            return false;
+        }
+        *count += 1;
+        true
+    });
+    artifacts
+}
+
+fn normalize_codex_review_artifacts(
+    mut artifacts: Vec<AutopilotReviewArtifact>,
+) -> Vec<AutopilotReviewArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+    });
+    let mut seen_thread_ids = HashSet::new();
+    artifacts.retain(|artifact| seen_thread_ids.insert(artifact.thread_id.clone()));
+    artifacts
+}
+
+fn normalize_codex_compaction_artifacts(
+    mut artifacts: Vec<AutopilotCompactionArtifact>,
+) -> Vec<AutopilotCompactionArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+    });
+    let mut seen_thread_ids = HashSet::new();
+    artifacts.retain(|artifact| seen_thread_ids.insert(artifact.thread_id.clone()));
+    artifacts
+}
+
+fn persist_codex_artifact_projection(
+    path: &Path,
+    diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
+    review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
+    compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create Codex artifact dir: {error}"))?;
+    }
+    let document = CodexArtifactProjectionDocumentV1 {
+        schema_version: CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION,
+        stream_id: CODEX_ARTIFACT_PROJECTION_STREAM_ID.to_string(),
+        diff_artifacts: normalize_codex_diff_artifacts(
+            diff_artifacts
+                .values()
+                .flat_map(|artifacts| artifacts.iter().cloned())
+                .collect(),
+        ),
+        review_artifacts: normalize_codex_review_artifacts(
+            review_artifacts.values().cloned().collect(),
+        ),
+        compaction_artifacts: normalize_codex_compaction_artifacts(
+            compaction_artifacts.values().cloned().collect(),
+        ),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write Codex artifact temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist Codex artifacts: {error}"))?;
+    Ok(())
+}
+
+fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProjection, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LoadedCodexArtifactProjection {
+                thread_diff_artifacts: HashMap::new(),
+                thread_review_artifacts: HashMap::new(),
+                thread_compaction_artifacts: HashMap::new(),
+                review_thread_source_map: HashMap::new(),
+            });
+        }
+        Err(error) => return Err(format!("Failed to read Codex artifacts: {error}")),
+    };
+    let document = serde_json::from_str::<CodexArtifactProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse Codex artifacts: {error}"))?;
+    if document.schema_version != CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported Codex artifact schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported Codex artifact stream id: {}",
+            document.stream_id
+        ));
+    }
+
+    let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
+    for artifact in normalize_codex_diff_artifacts(document.diff_artifacts) {
+        thread_diff_artifacts
+            .entry(artifact.thread_id.clone())
+            .or_default()
+            .push(artifact);
+    }
+
+    let mut thread_review_artifacts = HashMap::<String, AutopilotReviewArtifact>::new();
+    let mut review_thread_source_map = HashMap::<String, String>::new();
+    for artifact in normalize_codex_review_artifacts(document.review_artifacts) {
+        review_thread_source_map.insert(
+            artifact.review_thread_id.clone(),
+            artifact.source_thread_id.clone(),
+        );
+        thread_review_artifacts.insert(artifact.thread_id.clone(), artifact);
+    }
+
+    let mut thread_compaction_artifacts = HashMap::<String, AutopilotCompactionArtifact>::new();
+    for artifact in normalize_codex_compaction_artifacts(document.compaction_artifacts) {
+        thread_compaction_artifacts.insert(artifact.thread_id.clone(), artifact);
+    }
+
+    Ok(LoadedCodexArtifactProjection {
+        thread_diff_artifacts,
+        thread_review_artifacts,
+        thread_compaction_artifacts,
+        review_thread_source_map,
+    })
+}
+
+fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
+    let mut files = Vec::<AutopilotDiffFileArtifact>::new();
+    let mut current_file_index = None;
+    for line in raw_diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            current_file_index = Some(ensure_diff_file_entry(&mut files, path.trim()));
+            continue;
+        }
+        if let Some(path) = line.strip_prefix("rename to ") {
+            current_file_index = Some(ensure_diff_file_entry(&mut files, path.trim()));
+            continue;
+        }
+        if line.starts_with("diff --git ") {
+            current_file_index = None;
+            continue;
+        }
+        if line.starts_with("@@")
+            || line.starts_with("--- ")
+            || line.starts_with("index ")
+            || line.starts_with("new file mode ")
+            || line.starts_with("deleted file mode ")
+        {
+            continue;
+        }
+        if let Some(index) = current_file_index {
+            if line.starts_with('+') {
+                files[index].added_line_count = files[index].added_line_count.saturating_add(1);
+            } else if line.starts_with('-') {
+                files[index].removed_line_count =
+                    files[index].removed_line_count.saturating_add(1);
+            }
+        }
+    }
+    files
+}
+
+fn ensure_diff_file_entry(files: &mut Vec<AutopilotDiffFileArtifact>, path: &str) -> usize {
+    if let Some(index) = files.iter().position(|file| file.path == path) {
+        return index;
+    }
+    files.push(AutopilotDiffFileArtifact {
+        path: path.to_string(),
+        added_line_count: 0,
+        removed_line_count: 0,
+    });
+    files.len().saturating_sub(1)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1338,6 +1683,29 @@ impl Default for SidebarState {
 }
 
 impl AutopilotChatState {
+    #[cfg(test)]
+    fn from_artifact_projection_path_for_tests(artifact_projection_file_path: PathBuf) -> Self {
+        let mut state = Self::default();
+        state.artifact_projection_file_path = artifact_projection_file_path.clone();
+        match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
+            Ok(projection) => {
+                state.thread_diff_artifacts = projection.thread_diff_artifacts;
+                state.thread_review_artifacts = projection.thread_review_artifacts;
+                state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
+                state.review_thread_source_map = projection.review_thread_source_map;
+                state.last_error = None;
+            }
+            Err(error) => {
+                state.thread_diff_artifacts.clear();
+                state.thread_review_artifacts.clear();
+                state.thread_compaction_artifacts.clear();
+                state.review_thread_source_map.clear();
+                state.last_error = Some(error);
+            }
+        }
+        state
+    }
+
     pub fn reset_transcript_scroll(&mut self) {
         self.transcript_scroll_offset = 0.0;
         self.transcript_follow_tail = true;
@@ -1399,6 +1767,25 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.thread_plan_artifacts.get(thread_id))
+    }
+
+    pub fn active_diff_artifact(&self) -> Option<&AutopilotDiffArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_diff_artifacts.get(thread_id))
+            .and_then(|artifacts| artifacts.first())
+    }
+
+    pub fn active_review_artifact(&self) -> Option<&AutopilotReviewArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_review_artifacts.get(thread_id))
+    }
+
+    pub fn active_compaction_artifact(&self) -> Option<&AutopilotCompactionArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_compaction_artifacts.get(thread_id))
     }
 
     pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
@@ -2492,6 +2879,12 @@ impl AutopilotChatState {
         self.thread_metadata.remove(thread_id);
         self.thread_transcript_cache.remove(thread_id);
         self.thread_plan_artifacts.remove(thread_id);
+        self.thread_diff_artifacts.remove(thread_id);
+        self.thread_review_artifacts.remove(thread_id);
+        self.thread_compaction_artifacts.remove(thread_id);
+        self.review_thread_source_map.remove(thread_id);
+        self.review_thread_source_map
+            .retain(|_, source_thread_id| source_thread_id != thread_id);
         self.thread_composer_drafts.remove(thread_id);
         self.thread_submission_history.remove(thread_id);
         self.pending_turn_metadata
@@ -2515,6 +2908,7 @@ impl AutopilotChatState {
                 self.apply_active_thread_messages("", Vec::new());
             }
         }
+        self.persist_codex_artifact_projection();
     }
 
     fn apply_active_thread_messages(&mut self, thread_id: &str, messages: Vec<AutopilotMessage>) {
@@ -2565,6 +2959,7 @@ impl AutopilotChatState {
         self.last_error = None;
         if !thread_id.is_empty() {
             self.restore_active_plan_state(thread_id);
+            self.restore_active_diff_state(thread_id);
         }
     }
 
@@ -3476,6 +3871,14 @@ impl AutopilotChatState {
         self.turn_plan = artifact.steps;
     }
 
+    fn restore_active_diff_state(&mut self, thread_id: &str) {
+        self.turn_diff = self
+            .thread_diff_artifacts
+            .get(thread_id)
+            .and_then(|artifacts| artifacts.first())
+            .map(|artifact| artifact.raw_diff.clone());
+    }
+
     fn parse_plan_artifact_text(plan_text: &str) -> (Option<String>, Vec<AutopilotTurnPlanStep>) {
         let mut explanation_lines = Vec::new();
         let mut steps = Vec::new();
@@ -3572,6 +3975,197 @@ impl AutopilotChatState {
         }
 
         None
+    }
+
+    pub fn set_diff_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        raw_diff: String,
+        updated_at_epoch_ms: u64,
+    ) {
+        let trimmed_diff = raw_diff.trim();
+        if trimmed_diff.is_empty() {
+            return;
+        }
+        let source_turn_id = source_turn_id.into();
+        let files = parse_diff_file_artifacts(trimmed_diff);
+        let added_line_count = files.iter().map(|file| file.added_line_count).sum();
+        let removed_line_count = files.iter().map(|file| file.removed_line_count).sum();
+        let artifact = AutopilotDiffArtifact {
+            thread_id: thread_id.to_string(),
+            source_turn_id: source_turn_id.clone(),
+            files,
+            added_line_count,
+            removed_line_count,
+            raw_diff: trimmed_diff.to_string(),
+            updated_at_epoch_ms,
+        };
+        let artifacts = self
+            .thread_diff_artifacts
+            .entry(thread_id.to_string())
+            .or_default();
+        if let Some(existing) = artifacts
+            .iter_mut()
+            .find(|existing| existing.source_turn_id == source_turn_id)
+        {
+            *existing = artifact.clone();
+        } else {
+            artifacts.push(artifact.clone());
+        }
+        *artifacts = normalize_codex_diff_artifacts(std::mem::take(artifacts));
+        if self.is_active_thread(thread_id) {
+            self.turn_diff = Some(artifact.raw_diff.clone());
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn begin_review_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_thread_id: impl Into<String>,
+        delivery: impl Into<String>,
+        target: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) {
+        let source_turn_id = source_turn_id.into();
+        let review_thread_id = review_thread_id.into();
+        let delivery = normalized_review_delivery(
+            Some(delivery.into()),
+            thread_id,
+            review_thread_id.as_str(),
+        );
+        let target = normalized_review_target(Some(target.into()));
+        self.review_thread_source_map
+            .insert(review_thread_id.clone(), thread_id.to_string());
+
+        for artifact_thread_id in review_artifact_thread_keys(thread_id, review_thread_id.as_str()) {
+            self.thread_review_artifacts.insert(
+                artifact_thread_id.clone(),
+                AutopilotReviewArtifact {
+                    thread_id: artifact_thread_id,
+                    source_thread_id: thread_id.to_string(),
+                    source_turn_id: source_turn_id.clone(),
+                    review_thread_id: review_thread_id.clone(),
+                    delivery: delivery.clone(),
+                    target: target.clone(),
+                    summary: None,
+                    status: "running".to_string(),
+                    updated_at_epoch_ms,
+                    restored_from_thread_read: false,
+                },
+            );
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn complete_review_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_text: &str,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        let source_turn_id = source_turn_id.into();
+        let existing = self.thread_review_artifacts.get(thread_id).cloned();
+        let source_thread_id = existing
+            .as_ref()
+            .map(|artifact| artifact.source_thread_id.clone())
+            .or_else(|| self.review_thread_source_map.get(thread_id).cloned())
+            .unwrap_or_else(|| thread_id.to_string());
+        let review_thread_id = existing
+            .as_ref()
+            .map(|artifact| artifact.review_thread_id.clone())
+            .unwrap_or_else(|| thread_id.to_string());
+        let delivery = normalized_review_delivery(
+            existing.as_ref().map(|artifact| artifact.delivery.clone()),
+            source_thread_id.as_str(),
+            review_thread_id.as_str(),
+        );
+        let target =
+            normalized_review_target(existing.as_ref().map(|artifact| artifact.target.clone()));
+        self.review_thread_source_map
+            .insert(review_thread_id.clone(), source_thread_id.clone());
+        let summary = review_text.trim();
+        let summary = (!summary.is_empty()).then(|| summary.to_string());
+
+        for artifact_thread_id in
+            review_artifact_thread_keys(source_thread_id.as_str(), review_thread_id.as_str())
+        {
+            self.thread_review_artifacts.insert(
+                artifact_thread_id.clone(),
+                AutopilotReviewArtifact {
+                    thread_id: artifact_thread_id,
+                    source_thread_id: source_thread_id.clone(),
+                    source_turn_id: source_turn_id.clone(),
+                    review_thread_id: review_thread_id.clone(),
+                    delivery: delivery.clone(),
+                    target: target.clone(),
+                    summary: summary.clone(),
+                    status: "completed".to_string(),
+                    updated_at_epoch_ms,
+                    restored_from_thread_read,
+                },
+            );
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn restore_review_artifact_from_text(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_text: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        self.complete_review_artifact(
+            thread_id,
+            source_turn_id,
+            review_text,
+            updated_at_epoch_ms,
+            true,
+        );
+    }
+
+    pub fn set_compaction_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        self.thread_compaction_artifacts.insert(
+            thread_id.to_string(),
+            AutopilotCompactionArtifact {
+                thread_id: thread_id.to_string(),
+                source_turn_id: source_turn_id.into(),
+                updated_at_epoch_ms,
+                restored_from_thread_read,
+            },
+        );
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn restore_compaction_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) {
+        self.set_compaction_artifact(thread_id, source_turn_id, updated_at_epoch_ms, true);
+    }
+
+    fn persist_codex_artifact_projection(&mut self) {
+        if let Err(error) = persist_codex_artifact_projection(
+            self.artifact_projection_file_path.as_path(),
+            &self.thread_diff_artifacts,
+            &self.thread_review_artifacts,
+            &self.thread_compaction_artifacts,
+        ) {
+            tracing::warn!("failed to persist codex artifacts: {error}");
+        }
     }
 
     pub fn set_turn_diff(&mut self, diff: Option<String>) {
@@ -6692,18 +7286,19 @@ mod tests {
         AutopilotMessageStatus, AutopilotRole, AutopilotTurnPlanStep, BuyerResolutionMode,
         BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap,
         CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection,
-        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
-        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode,
+        CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadThreeDMouseProfile, EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState,
+        EarningsScoreboardState, JobDemandSource, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState,
+        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
+        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection,
+        ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
+        RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState, SettingsState,
+        SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase,
     };
     use crate::bitcoin_display::BitcoinAmountDisplayMode;
     use chrono::TimeZone;
@@ -6714,6 +7309,17 @@ mod tests {
         let sidebar = SidebarState::default();
         assert!(!sidebar.is_open);
         assert_eq!(sidebar.width, 300.0);
+    }
+
+    fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "openagents-codex-artifacts-{label}-{}-{nanos}.json",
+            std::process::id()
+        ))
     }
 
     fn fixture_inbox_request(
@@ -8127,6 +8733,164 @@ mod tests {
         assert_eq!(artifact.steps[1].status, "completed");
         assert!(artifact.restored_from_thread_read);
         assert_eq!(artifact.workspace_cwd.as_deref(), Some("/tmp/a"));
+    }
+
+    #[test]
+    fn chat_state_tracks_diff_artifacts_per_thread() {
+        let projection_path = unique_codex_artifact_projection_path("diff-track");
+        let mut chat = AutopilotChatState::from_artifact_projection_path_for_tests(
+            projection_path.clone(),
+        );
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: Some("/tmp/b.jsonl".to_string()),
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
+            },
+        ]);
+
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-a",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@\n-old\n+new\n"
+                .to_string(),
+            1_700_000_100,
+        );
+        assert_eq!(
+            chat.active_diff_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-a")
+        );
+        assert!(chat.turn_diff.as_deref().is_some_and(|diff| diff.contains("+new")));
+
+        let selected_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        let _ = chat.select_thread_by_index(selected_index);
+        assert!(chat.active_diff_artifact().is_none());
+
+        chat.set_diff_artifact(
+            "thread-b",
+            "turn-b",
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@\n-removed\n+added\n"
+                .to_string(),
+            1_700_000_300,
+        );
+        assert_eq!(
+            chat.active_diff_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-b")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_persists_codex_review_diff_and_compaction_artifacts() {
+        let projection_path = unique_codex_artifact_projection_path("artifact-persist");
+        let mut chat = AutopilotChatState::from_artifact_projection_path_for_tests(
+            projection_path.clone(),
+        );
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@\n-old\n+new\n"
+                .to_string(),
+            1_700_000_100,
+        );
+        chat.begin_review_artifact(
+            "thread-a",
+            "turn-review",
+            "review-thread-1",
+            "detached",
+            "uncommitted changes",
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "review-thread-1",
+            "turn-review",
+            "Looks solid overall.\n- Keep the tests close to the behavior change.",
+            1_700_000_140,
+            false,
+        );
+        chat.set_compaction_artifact("thread-a", "turn-compact", 1_700_000_160, false);
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_diff = reloaded
+            .thread_diff_artifacts
+            .get("thread-a")
+            .and_then(|artifacts| artifacts.first())
+            .expect("reloaded diff artifact");
+        assert_eq!(reloaded_diff.source_turn_id, "turn-diff");
+        assert_eq!(reloaded_diff.added_line_count, 1);
+        assert_eq!(reloaded_diff.removed_line_count, 1);
+        assert_eq!(reloaded_diff.files.len(), 1);
+
+        let reloaded_review = reloaded
+            .thread_review_artifacts
+            .get("thread-a")
+            .expect("reloaded review artifact");
+        assert_eq!(reloaded_review.review_thread_id, "review-thread-1");
+        assert_eq!(reloaded_review.delivery, "detached");
+        assert_eq!(reloaded_review.status, "completed");
+        assert_eq!(
+            reloaded_review.summary.as_deref(),
+            Some("Looks solid overall.\n- Keep the tests close to the behavior change.")
+        );
+        assert_eq!(
+            reloaded
+                .thread_review_artifacts
+                .get("review-thread-1")
+                .expect("reloaded detached review artifact")
+                .source_thread_id,
+            "thread-a"
+        );
+        assert_eq!(
+            reloaded.review_thread_source_map.get("review-thread-1"),
+            Some(&"thread-a".to_string())
+        );
+        assert_eq!(
+            reloaded
+                .thread_compaction_artifacts
+                .get("thread-a")
+                .expect("reloaded compaction artifact")
+                .source_turn_id,
+            "turn-compact"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
     }
 
     #[test]

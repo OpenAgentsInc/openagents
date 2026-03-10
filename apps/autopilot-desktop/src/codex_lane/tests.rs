@@ -1,7 +1,8 @@
 use super::{
     CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
     CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime, CodexLaneUpdate,
-    CodexLaneWorker, CodexThreadTranscriptRole, extract_latest_thread_plan_artifact,
+    CodexLaneWorker, CodexThreadTranscriptRole, extract_latest_thread_compaction_artifact,
+    extract_latest_thread_plan_artifact, extract_latest_thread_review_artifact,
     extract_thread_transcript_messages, normalize_notification,
 };
 
@@ -1182,6 +1183,109 @@ fn thread_read_extracts_latest_plan_artifact() {
     let artifact = extract_latest_thread_plan_artifact(&thread).expect("plan artifact");
     assert_eq!(artifact.turn_id, "turn-latest");
     assert_eq!(artifact.text, "latest plan");
+}
+
+#[test]
+fn thread_read_extracts_latest_review_and_compaction_artifacts() {
+    let thread = codex_client::ThreadSnapshot {
+        id: "thread-1".to_string(),
+        preview: String::new(),
+        turns: vec![
+            codex_client::ThreadTurn {
+                id: "turn-older".to_string(),
+                items: vec![json!({
+                    "type": "enteredReviewMode",
+                    "review": "reviewing older changes"
+                })],
+            },
+            codex_client::ThreadTurn {
+                id: "turn-latest".to_string(),
+                items: vec![
+                    json!({
+                        "type": "contextCompaction"
+                    }),
+                    json!({
+                        "type": "exitedReviewMode",
+                        "review": "Looks solid overall."
+                    }),
+                ],
+            },
+        ],
+    };
+
+    let review = extract_latest_thread_review_artifact(&thread).expect("review artifact");
+    assert_eq!(review.turn_id, "turn-latest");
+    assert_eq!(review.review, "Looks solid overall.");
+    assert!(review.completed);
+
+    let compaction =
+        extract_latest_thread_compaction_artifact(&thread).expect("compaction artifact");
+    assert_eq!(compaction.turn_id, "turn-latest");
+}
+
+#[test]
+fn review_progress_and_compaction_notifications_are_normalized() {
+    let review_started = normalize_notification(codex_client::AppServerNotification {
+        method: "item/started".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-a",
+            "item": {
+                "type": "enteredReviewMode",
+                "id": "item-1",
+                "review": "current changes"
+            }
+        })),
+    })
+    .expect("review started notification");
+    assert_eq!(
+        review_started,
+        CodexLaneNotification::ReviewProgressUpdated {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-a".to_string(),
+            review: "current changes".to_string(),
+            completed: false,
+        }
+    );
+
+    let review_completed = normalize_notification(codex_client::AppServerNotification {
+        method: "item/completed".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-a",
+            "item": {
+                "type": "exitedReviewMode",
+                "id": "item-2",
+                "review": "Looks good."
+            }
+        })),
+    })
+    .expect("review completed notification");
+    assert_eq!(
+        review_completed,
+        CodexLaneNotification::ReviewProgressUpdated {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-a".to_string(),
+            review: "Looks good.".to_string(),
+            completed: true,
+        }
+    );
+
+    let compacted = normalize_notification(codex_client::AppServerNotification {
+        method: "thread/compacted".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-compact"
+        })),
+    })
+    .expect("thread compacted notification");
+    assert_eq!(
+        compacted,
+        CodexLaneNotification::ThreadCompacted {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-compact".to_string(),
+        }
+    );
 }
 
 #[test]

@@ -47,6 +47,18 @@ pub struct CodexThreadPlanArtifact {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadReviewArtifact {
+    pub turn_id: String,
+    pub review: String,
+    pub completed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadCompactionArtifact {
+    pub turn_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexModelCatalogEntry {
     pub model: String,
     pub display_name: String,

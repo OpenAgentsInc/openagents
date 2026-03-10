@@ -968,15 +968,25 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 thread_id,
                 turn_id,
                 review_thread_id,
+                delivery,
+                target,
             } => {
                 state.codex_labs.load_state = PaneLoadState::Ready;
                 state.codex_labs.review_last_thread_id = Some(review_thread_id.clone());
                 state.codex_labs.review_last_turn_id = Some(turn_id.clone());
                 state.codex_labs.last_action = Some(format!(
-                    "Review started for thread={} turn={} reviewThread={}",
-                    thread_id, turn_id, review_thread_id
+                    "Review started for thread={} turn={} reviewThread={} delivery={} target={}",
+                    thread_id, turn_id, review_thread_id, delivery, target
                 ));
                 state.codex_labs.last_error = None;
+                state.autopilot_chat.begin_review_artifact(
+                    &thread_id,
+                    turn_id,
+                    review_thread_id,
+                    delivery,
+                    target,
+                    super::super::actions::current_epoch_millis(),
+                );
             }
             CodexLaneNotification::CommandExecCompleted {
                 exit_code,
@@ -1181,6 +1191,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 thread_id,
                 messages,
                 latest_plan,
+                latest_review,
+                latest_compaction,
             } => {
                 state.autopilot_chat.remember_thread(thread_id.clone());
                 if let Some(latest_plan) = latest_plan {
@@ -1200,6 +1212,48 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     );
                 } else {
                     state.autopilot_chat.clear_plan_artifact(&thread_id);
+                }
+                if let Some(latest_review) = latest_review {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    if latest_review.completed {
+                        state.autopilot_chat.restore_review_artifact_from_text(
+                            &thread_id,
+                            latest_review.turn_id,
+                            &latest_review.review,
+                            updated_at_epoch_ms,
+                        );
+                    } else {
+                        state.autopilot_chat.begin_review_artifact(
+                            &thread_id,
+                            latest_review.turn_id,
+                            thread_id.clone(),
+                            "inline",
+                            latest_review.review,
+                            updated_at_epoch_ms,
+                        );
+                    }
+                }
+                if let Some(latest_compaction) = latest_compaction {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    state.autopilot_chat.restore_compaction_artifact(
+                        &thread_id,
+                        latest_compaction.turn_id,
+                        updated_at_epoch_ms,
+                    );
                 }
                 if state.autopilot_chat.is_active_thread(&thread_id) {
                     let transcript = messages
@@ -1767,13 +1821,46 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 }
             }
             CodexLaneNotification::TurnDiffUpdated {
-                thread_id, diff, ..
+                thread_id,
+                turn_id,
+                diff,
             } => {
                 let thread_id = resolve_thread_id(state, thread_id);
                 state.autopilot_chat.remember_thread(thread_id.clone());
-                if state.autopilot_chat.is_active_thread(&thread_id) {
-                    state.autopilot_chat.set_turn_diff(Some(diff));
+                state.autopilot_chat.set_diff_artifact(
+                    &thread_id,
+                    turn_id,
+                    diff,
+                    super::super::actions::current_epoch_millis(),
+                );
+            }
+            CodexLaneNotification::ReviewProgressUpdated {
+                thread_id,
+                turn_id,
+                review,
+                completed,
+            } => {
+                let thread_id = resolve_thread_id(state, thread_id);
+                state.autopilot_chat.remember_thread(thread_id.clone());
+                if completed {
+                    state.autopilot_chat.complete_review_artifact(
+                        &thread_id,
+                        turn_id,
+                        &review,
+                        super::super::actions::current_epoch_millis(),
+                        false,
+                    );
                 }
+            }
+            CodexLaneNotification::ThreadCompacted { thread_id, turn_id } => {
+                let thread_id = resolve_thread_id(state, thread_id);
+                state.autopilot_chat.remember_thread(thread_id.clone());
+                state.autopilot_chat.set_compaction_artifact(
+                    &thread_id,
+                    turn_id,
+                    super::super::actions::current_epoch_millis(),
+                    false,
+                );
             }
             CodexLaneNotification::TurnPlanUpdated {
                 thread_id,
@@ -2731,7 +2818,11 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         }
         CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
         CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),
+        CodexLaneNotification::ReviewProgressUpdated { .. } => {
+            "item/review/progress".to_string()
+        }
         CodexLaneNotification::TurnPlanUpdated { .. } => "turn/plan/updated".to_string(),
+        CodexLaneNotification::ThreadCompacted { .. } => "thread/compacted".to_string(),
         CodexLaneNotification::ThreadTokenUsageUpdated { .. } => {
             "thread/tokenUsage/updated".to_string()
         }

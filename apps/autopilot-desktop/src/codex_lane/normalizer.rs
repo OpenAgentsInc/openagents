@@ -153,6 +153,14 @@ pub(super) fn normalize_notification(
         }
         "item/started" => {
             let params = params?;
+            if let Some((review, completed)) = review_progress_from_item_params(&params) {
+                return Some(CodexLaneNotification::ReviewProgressUpdated {
+                    thread_id: thread_id_field(&params)?,
+                    turn_id: turn_id_field(&params)?,
+                    review,
+                    completed,
+                });
+            }
             Some(CodexLaneNotification::ItemStarted {
                 thread_id: thread_id_field(&params)?,
                 turn_id: turn_id_field(&params)?,
@@ -162,6 +170,14 @@ pub(super) fn normalize_notification(
         }
         "item/completed" => {
             let params = params?;
+            if let Some((review, completed)) = review_progress_from_item_params(&params) {
+                return Some(CodexLaneNotification::ReviewProgressUpdated {
+                    thread_id: thread_id_field(&params)?,
+                    turn_id: turn_id_field(&params)?,
+                    review,
+                    completed,
+                });
+            }
             Some(CodexLaneNotification::ItemCompleted {
                 thread_id: thread_id_field(&params)?,
                 turn_id: turn_id_field(&params)?,
@@ -368,6 +384,13 @@ pub(super) fn normalize_notification(
                 plan: turn_plan_from_params(&params),
             })
         }
+        "thread/compacted" => {
+            let params = params?;
+            Some(CodexLaneNotification::ThreadCompacted {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+            })
+        }
         "thread/tokenUsage/updated" => {
             let params = params?;
             let token_usage = params.get("tokenUsage")?;
@@ -513,6 +536,39 @@ pub(super) fn extract_latest_thread_plan_artifact(
     None
 }
 
+pub(super) fn extract_latest_thread_review_artifact(
+    thread: &codex_client::ThreadSnapshot,
+) -> Option<CodexThreadReviewArtifact> {
+    for turn in thread.turns.iter().rev() {
+        for item in turn.items.iter().rev() {
+            if let Some((review, completed)) = review_progress_from_item_value(item) {
+                return Some(CodexThreadReviewArtifact {
+                    turn_id: turn.id.clone(),
+                    review,
+                    completed,
+                });
+            }
+        }
+    }
+    None
+}
+
+pub(super) fn extract_latest_thread_compaction_artifact(
+    thread: &codex_client::ThreadSnapshot,
+) -> Option<CodexThreadCompactionArtifact> {
+    for turn in thread.turns.iter().rev() {
+        for item in turn.items.iter().rev() {
+            if item_type_from_item_value(item).is_some_and(|item_type| item_type == "contextCompaction")
+            {
+                return Some(CodexThreadCompactionArtifact {
+                    turn_id: turn.id.clone(),
+                });
+            }
+        }
+    }
+    None
+}
+
 pub(super) fn extract_plan_text_from_item(value: &Value) -> Option<String> {
     let Some(object) = value.as_object() else {
         return None;
@@ -528,6 +584,37 @@ pub(super) fn extract_plan_text_from_item(value: &Value) -> Option<String> {
         Some("plan") => string_field(value, "text").and_then(non_empty_text),
         _ => None,
     }
+}
+
+fn review_progress_from_item_params(value: &Value) -> Option<(String, bool)> {
+    let item = item_value_from_params(value)?;
+    review_progress_from_item_value(item)
+}
+
+fn review_progress_from_item_value(value: &Value) -> Option<(String, bool)> {
+    let item_type = item_type_from_item_value(value)?;
+    let completed = match item_type.as_str() {
+        "enteredReviewMode" => false,
+        "exitedReviewMode" => true,
+        _ => return None,
+    };
+    let review = string_field(value, "review").and_then(non_empty_text)?;
+    Some((review, completed))
+}
+
+fn item_type_from_item_value(value: &Value) -> Option<String> {
+    let Some(object) = value.as_object() else {
+        return None;
+    };
+    if let Some(payload) = object.get("payload") {
+        if let Some(item_type) = item_type_from_item_value(payload) {
+            return Some(item_type);
+        }
+    }
+    object
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 pub(super) fn collect_transcript_messages(

@@ -3244,6 +3244,22 @@ pub(super) fn run_chat_implement_plan_action(state: &mut crate::app_state::Rende
     )
 }
 
+pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to review".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
+        thread_id,
+        target: codex_client::ReviewTarget::UncommittedChanges,
+        delivery: Some(codex_client::ReviewDelivery::Inline),
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
 pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
