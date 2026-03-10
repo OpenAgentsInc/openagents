@@ -42,7 +42,16 @@
 > `crates/psionic/docs/ROADMAP.md`, and the referenced issues. The current
 > benchmark script now explicitly unsets `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS`
 > before launching Psionic so perf receipts and extra JSON serialization cannot
-> silently contaminate the benchmark.
+> silently contaminate the benchmark. The newest checkpoint in this file makes
+> the official-GPT-OSS-aligned selected4 MoE project-plus-accumulate path the
+> default decode path for the tracked NVIDIA workload, moves its down-project
+> launch to a six-warp threadgroup that matches the official `192`-thread
+> small-token matmul shape more closely, and lifts the repeated
+> `prompt_cache_hit` lane into the low `123 tok/s` range on this host while
+> also correcting the roadmap direction: the official grouped
+> routing-metadata / scatter / gather path is prefill-oriented, while the
+> decode-hot-path work on this benchmark tracks the official small-token
+> `moe_matmul_swiglu -> moe_matmul -> accumulate` path instead.
 
 ## Scope
 
@@ -1049,4 +1058,77 @@ What should happen next:
 - treat `134.62 tok/s` as the new floor to beat on `#3276`
 - keep the router32 specialization and the split-router GPT-OSS path
 - focus the next work on the remaining `llama.cpp`-parity gaps:
+  ids-enabled grouped expert execution and decode attention dispatch
+
+## 2026-03-09 Official GPT-OSS Small-Token MoE Checkpoint
+
+The next kept improvement came from re-reading the official `~/code/gpt-oss`
+Metal path more carefully and correcting which part of that repo actually
+matches the benchmarked workload.
+
+What changed in the reading and in Psionic:
+
+- the earlier grouped `routing metadata -> scatter -> grouped expert compute ->
+  gather/accumulate` interpretation is real in the official repo, but it is the
+  dense-prefill path used once token count is large enough
+- the exact `prompt_cache_hit` benchmark here is decode-dominated, so the
+  closer official reference is the small-token path:
+  `gptoss_f32_mf4w_moe_matmul_swiglu -> gptoss_f32_mf4w_moe_matmul ->
+  gptoss_f32_accumulate`
+- Psionic already had a truthful split `selected4` q8_1
+  project-plus-accumulate substrate behind the old experimental path; this
+  checkpoint makes that path the default for the tracked GPT-OSS decode case
+- the selected4 down-project launcher now uses a dedicated six-warp CUDA
+  threadgroup for the MXFP4/Q8_1 project stage, which better matches the
+  official `192`-thread small-token matmul shape than the old four-warp launch
+
+Measured on the exact benchmark contract after making that path the default:
+
+- Psionic `prompt_cache_hit` repeated range:
+  - `121.85 tok/s`
+  - `121.80 tok/s`
+  - `124.12 tok/s`
+- Psionic repeated average:
+  - `122.59 tok/s`
+- comparison control from the same build before enabling the default path:
+  - `120.69 tok/s`
+  - `122.31 tok/s`
+  - `121.49 tok/s`
+  - average `121.50 tok/s`
+- `llama.cpp` `prompt_cache_hit`:
+  - `168.45 tok/s`
+
+Interpretation:
+
+- this is a small but real shipped gain on the exact tracked lane:
+  about `+1.09 tok/s` versus the same-build control average
+- the gain is not large enough to change the broader audit conclusion:
+  Psionic is still well behind `llama.cpp`, and the main remaining gap is still
+  decode-side CUDA execution quality rather than request-path or metadata
+  bookkeeping
+- the roadmap direction needed correction:
+  the grouped routing-metadata / scatter / gather structure from the official
+  `gpt-oss` repo is still relevant for dense-prefill work, but it is not the
+  first-order decode bottleneck on this exact benchmark
+
+What was explicitly ruled out in the same investigation wave:
+
+- forcing the official small-token path all the way onto Psionic's existing
+  generic float kernels regressed badly into the `~20 tok/s` range, which shows
+  that semantic alignment alone is not enough if the CUDA kernel shape is still
+  generic
+- enabling the fused `add_residual_rms_norm_q8_1_router_topk` path also
+  regressed into roughly the `113 tok/s` range on this host
+- alternate selected4 down-project launch shapes that grouped multiple rows or
+  multiple experts per block stayed flat or regressed; the six-warp one-row
+  launcher was the only kept variant from this wave
+
+What should happen next:
+
+- treat `~123 tok/s` as the truthful current floor to beat on `#3276`
+- keep the default selected4 project-plus-accumulate path
+- update the active GPT-OSS alignment work so it follows the official
+  small-token MoE path first, then returns to dense grouped prefill work only
+  where that actually matters for the measured contract
+- keep the bigger throughput push focused on the remaining heavy CUDA paths:
   ids-enabled grouped expert execution and decode attention dispatch
