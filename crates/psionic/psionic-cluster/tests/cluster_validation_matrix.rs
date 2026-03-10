@@ -12,13 +12,14 @@ use psionic_cluster::{
     ClusterIntroductionVerificationError, ClusterLeaseTick, ClusterRecoveryDisposition,
     ClusterRecoveryReason, ClusterReplicaLifecyclePolicy, ClusterServingPolicy, ClusterTerm,
     IndexedClusterEvent, LayerShardedSchedulingFailureCode, NodeId, NodeRole,
-    SignedClusterIntroductionEnvelope, TensorShardedSchedulingFailureCode, plan_replicated_serving,
-    schedule_layer_sharded_execution, schedule_remote_whole_request,
-    schedule_tensor_sharded_execution,
+    SignedClusterIntroductionEnvelope, TensorShardedSchedulingFailureCode,
+    WholeRequestSchedulingFailureCode, plan_replicated_serving, schedule_layer_sharded_execution,
+    schedule_remote_whole_request, schedule_tensor_sharded_execution,
 };
 use psionic_runtime::{
-    ClusterAdmissionFactKind, ClusterPolicyDigestKind, ClusterReplicaRoutingDisposition,
-    ClusterSettlementProvenanceInput, ClusterShardHandoffKind, ExecutionTopologyKind,
+    ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterPolicyDigestKind,
+    ClusterReplicaRoutingDisposition, ClusterSettlementProvenanceInput, ClusterShardHandoffKind,
+    ExecutionTopologyKind,
 };
 use support::{
     ClusterValidationFault, ClusterValidationFixture, recovery_policy, sample_cluster_id,
@@ -175,6 +176,50 @@ fn scheduling_validation_covers_staging_and_degraded_candidate()
             .commit_authority
             .as_ref()
             .map(|authority| authority.authority_digest.clone())
+    );
+    Ok(())
+}
+
+#[test]
+fn scheduling_validation_refuses_metal_cluster_dispatch_explicitly()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = ClusterValidationFixture::new();
+    for (node_id, free_memory_bytes) in [
+        ("worker-a", 24 * 1024 * 1024 * 1024),
+        ("worker-b", 32 * 1024 * 1024 * 1024),
+        ("worker-c", 40 * 1024 * 1024 * 1024),
+    ] {
+        fixture.snapshot.telemetry.insert(
+            NodeId::new(node_id),
+            psionic_cluster::ClusterNodeTelemetry::new(NodeId::new(node_id))
+                .with_memory(Some(64 * 1024 * 1024 * 1024), Some(free_memory_bytes))
+                .with_cpu_logical_cores(16)
+                .with_accelerator_count(1)
+                .with_backend_readiness(
+                    "metal",
+                    psionic_cluster::ClusterBackendReadinessStatus::Ready,
+                ),
+        );
+    }
+    let request =
+        psionic_cluster::WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "metal");
+
+    let failure = schedule_remote_whole_request(&fixture.state(), &request)
+        .expect_err("metal cluster dispatch should remain refused");
+
+    assert_eq!(
+        failure.code,
+        WholeRequestSchedulingFailureCode::CommunicationClassIneligible
+    );
+    assert_eq!(
+        failure.communication_eligibility.required_class,
+        ClusterCommunicationClass::RemoteDispatch
+    );
+    assert!(!failure.communication_eligibility.eligible);
+    assert!(
+        failure
+            .detail
+            .contains("`#3286` -> `#3285` -> `#3269` -> `#3262`")
     );
     Ok(())
 }

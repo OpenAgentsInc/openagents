@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
-    ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
-    ClusterPolicyDigest, ClusterPolicyDigestKind,
+    ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility, ClusterExecutionContext,
+    ClusterExecutionDisposition, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
     ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
     ExecutionTopologyPlan,
@@ -14,7 +14,7 @@ use crate::{
     ClusterId, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus, ClusterStabilityPosture,
     ClusterState, ClusterTransportClass, NodeId, WholeRequestSchedulingFailure,
     WholeRequestSchedulingFailureCode, WholeRequestSchedulingRequest,
-    schedule_remote_whole_request,
+    schedule_remote_whole_request, tensor_collective_communication_eligibility,
 };
 
 /// Explicit model-eligibility flags for the first tensor-sharded CUDA lane.
@@ -258,6 +258,8 @@ impl TensorShardedExecutionRequest {
 pub enum TensorShardedSchedulingFailureCode {
     /// The request asked for a backend outside the first truthful CUDA scope.
     UnsupportedBackend,
+    /// The backend does not satisfy the required communication class for tensor sharding.
+    CommunicationClassIneligible,
     /// The model or artifact is ineligible for tensor sharding.
     ModelIneligible,
     /// The requested tensor geometry cannot be partitioned honestly.
@@ -303,6 +305,8 @@ pub struct TensorShardedSchedulingFailure {
     /// Policy digests constraining the failed decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit backend communication-class eligibility for the failed path.
+    pub communication_eligibility: ClusterCommunicationEligibility,
     /// Nodes already selected before the failure occurred.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_node_ids: Vec<NodeId>,
@@ -343,19 +347,24 @@ pub fn schedule_tensor_sharded_execution(
     let cluster_state_digest = state.stable_digest();
     let topology_digest = state.topology_digest();
     let artifact_residency_digest = Some(state.artifact_residency_digest());
+    let communication_eligibility =
+        tensor_collective_communication_eligibility(request.requested_backend.as_str());
 
-    if request.requested_backend != "cuda" {
+    if !communication_eligibility.eligible {
         return Err(Box::new(tensor_sharded_failure(
-            TensorShardedSchedulingFailureCode::UnsupportedBackend,
-            format!(
-                "tensor-sharded execution currently supports only homogeneous `cuda` nodes, not `{}`",
-                request.requested_backend
-            ),
+            TensorShardedSchedulingFailureCode::CommunicationClassIneligible,
+            communication_eligibility.detail.clone().unwrap_or_else(|| {
+                format!(
+                    "backend `{}` does not satisfy tensor-sharded communication eligibility",
+                    request.requested_backend
+                )
+            }),
             state,
             request,
             &cluster_state_digest,
             &topology_digest,
             artifact_residency_digest.clone(),
+            communication_eligibility.clone(),
             Vec::new(),
             None,
         )));
@@ -374,6 +383,7 @@ pub fn schedule_tensor_sharded_execution(
             &cluster_state_digest,
             &topology_digest,
             artifact_residency_digest.clone(),
+            communication_eligibility.clone(),
             Vec::new(),
             None,
         )));
@@ -400,6 +410,7 @@ pub fn schedule_tensor_sharded_execution(
                 &cluster_state_digest,
                 &topology_digest,
                 artifact_residency_digest.clone(),
+                communication_eligibility.clone(),
                 Vec::new(),
                 None,
             )));
@@ -430,11 +441,15 @@ pub fn schedule_tensor_sharded_execution(
                             &cluster_state_digest,
                             &topology_digest,
                             artifact_residency_digest.clone(),
+                            communication_eligibility.clone(),
                             selected_node_ids,
                             Some(scheduler_failure),
                         )));
                     }
                     let failure_code = match scheduler_failure.code {
+                        WholeRequestSchedulingFailureCode::CommunicationClassIneligible => {
+                            TensorShardedSchedulingFailureCode::CommunicationClassIneligible
+                        }
                         WholeRequestSchedulingFailureCode::NoEligibleRemoteNode => {
                             TensorShardedSchedulingFailureCode::InsufficientShardNodes
                         }
@@ -456,6 +471,7 @@ pub fn schedule_tensor_sharded_execution(
                         &cluster_state_digest,
                         &topology_digest,
                         artifact_residency_digest.clone(),
+                        communication_eligibility.clone(),
                         selected_node_ids,
                         Some(scheduler_failure),
                     )));
@@ -533,6 +549,7 @@ pub fn schedule_tensor_sharded_execution(
         cluster_transport_for_sharded_path(&shard_schedules, &shard_handoffs),
         ClusterExecutionDisposition::Sharded,
     )
+    .with_communication_eligibility(communication_eligibility)
     .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(selected_nodes)
     .with_shard_handoffs(shard_handoffs.clone());
@@ -765,6 +782,8 @@ fn build_tensor_collectives(
                             tensor_ranges.last().map_or(0, |(_, end)| *end),
                         ),
                         policy_digests: Vec::new(),
+                        communication_eligibility:
+                            tensor_collective_communication_eligibility("cuda"),
                         selected_node_ids: shard_node_ids.to_vec(),
                         scheduler_failure: None,
                     })
@@ -834,6 +853,7 @@ fn tensor_sharded_failure(
     cluster_state_digest: &str,
     topology_digest: &str,
     artifact_residency_digest: Option<String>,
+    communication_eligibility: ClusterCommunicationEligibility,
     selected_node_ids: Vec<NodeId>,
     scheduler_failure: Option<Box<WholeRequestSchedulingFailure>>,
 ) -> TensorShardedSchedulingFailure {
@@ -851,6 +871,7 @@ fn tensor_sharded_failure(
         shard_count: request.shard_count,
         model_eligibility: request.model_eligibility.clone(),
         policy_digests: request.policy_digests.clone(),
+        communication_eligibility,
         selected_node_ids,
         scheduler_failure,
     }
@@ -899,7 +920,10 @@ const fn link_class_name(link_class: ClusterLinkClass) -> &'static str {
 mod tests {
     use std::io::Error;
 
-    use psionic_runtime::{ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind};
+    use psionic_runtime::{
+        ClusterCommunicationClass, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ExecutionTopologyKind,
+    };
 
     use crate::{
         AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyKey,
@@ -1092,6 +1116,44 @@ mod tests {
                 .policy_digests
                 .iter()
                 .any(|digest| digest.kind == ClusterPolicyDigestKind::Sharding)
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .communication_eligibility
+                .as_ref()
+                .map(|eligibility| eligibility.required_class),
+            Some(ClusterCommunicationClass::TensorCollectiveMesh)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_sharded_scheduler_refuses_metal_backend_explicitly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let state = ClusterState::from_snapshot(sample_snapshot());
+        let request = TensorShardedExecutionRequest::new(
+            crate::NodeId::new("scheduler"),
+            "artifact-1",
+            TensorShardedModelEligibility::new(1, 64).with_minimum_partition_size(16),
+            2,
+        )
+        .with_requested_backend("metal");
+
+        let failure = schedule_tensor_sharded_execution(
+            &state,
+            &request,
+            &TensorShardedTransportPolicy::cuda_default(),
+        )
+        .expect_err("metal tensor sharding should be refused");
+
+        assert_eq!(
+            failure.code,
+            TensorShardedSchedulingFailureCode::CommunicationClassIneligible
+        );
+        assert_eq!(
+            failure.communication_eligibility.required_class,
+            ClusterCommunicationClass::TensorCollectiveMesh
         );
         Ok(())
     }

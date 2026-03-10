@@ -13,6 +13,7 @@ use crate::{
     ClusterId, ClusterServingDecision, ClusterServingFailure, ClusterServingLoadSnapshot,
     ClusterServingPolicy, ClusterServingRequest, ClusterState, NodeId,
     WholeRequestSchedulingRequest, plan_cluster_serving_admission,
+    replica_routing_communication_eligibility,
 };
 
 /// Stable identity for one replicated serving lane.
@@ -348,6 +349,9 @@ pub fn plan_replicated_serving(
         .schedule
         .cluster_execution
         .clone()
+        .with_communication_eligibility(replica_routing_communication_eligibility(
+            replica_snapshot.lane.runtime_backend.as_str(),
+        ))
         .with_replica_state_digest(replica_state_digest.clone())
         .with_execution_topology(replicated_topology)
         .with_policy_digest(ClusterPolicyDigest::new(
