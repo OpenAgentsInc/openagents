@@ -246,6 +246,335 @@ impl NodeAttestationEvidence {
     }
 }
 
+/// Candidate node surfaced by a wider-network discovery artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterDiscoveryCandidate {
+    /// Candidate cluster identity.
+    pub cluster_id: ClusterId,
+    /// Candidate cluster namespace.
+    pub namespace: ClusterNamespace,
+    /// Candidate node identity.
+    pub node_id: NodeId,
+    /// Candidate execution role.
+    pub role: NodeRole,
+    /// Candidate message-signing public key.
+    pub auth_public_key: String,
+    /// Candidate attestation facts, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<NodeAttestationEvidence>,
+    /// Candidate transport addresses advertised for later contact.
+    pub advertised_addrs: Vec<SocketAddr>,
+}
+
+impl ClusterDiscoveryCandidate {
+    /// Creates a new discovered cluster candidate.
+    #[must_use]
+    pub fn new(
+        cluster_id: ClusterId,
+        namespace: ClusterNamespace,
+        node_id: NodeId,
+        role: NodeRole,
+        auth_public_key: impl Into<String>,
+        mut advertised_addrs: Vec<SocketAddr>,
+    ) -> Self {
+        advertised_addrs.sort_unstable();
+        advertised_addrs.dedup();
+        Self {
+            cluster_id,
+            namespace,
+            node_id,
+            role,
+            auth_public_key: auth_public_key.into(),
+            attestation: None,
+            advertised_addrs,
+        }
+    }
+
+    /// Attaches candidate attestation facts.
+    #[must_use]
+    pub fn with_attestation(mut self, attestation: NodeAttestationEvidence) -> Self {
+        self.attestation = Some(attestation);
+        self
+    }
+
+    /// Returns a stable digest for the candidate discovery record.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_discovery_candidate|");
+        hasher.update(self.cluster_id.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.namespace.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.node_id.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.role {
+            NodeRole::CoordinatorOnly => b"coordinator_only".as_slice(),
+            NodeRole::ExecutorOnly => b"executor_only".as_slice(),
+            NodeRole::Mixed => b"mixed".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(self.auth_public_key.as_bytes());
+        if let Some(attestation) = &self.attestation {
+            hasher.update(b"|attestation_issuer|");
+            hasher.update(attestation.issuer.as_bytes());
+            hasher.update(b"|attestation_digest|");
+            hasher.update(attestation.attestation_digest.as_bytes());
+            if let Some(device_identity_digest) = &attestation.device_identity_digest {
+                hasher.update(b"|device_identity_digest|");
+                hasher.update(device_identity_digest.as_bytes());
+            }
+        }
+        for advertised_addr in &self.advertised_addrs {
+            hasher.update(b"|addr|");
+            hasher.update(advertised_addr.to_string().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// One operator-approved introduction source for wider-network discovery.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterIntroductionSource {
+    /// Stable source identifier for policy and audit.
+    pub source_id: String,
+    /// Public key expected for the introduction source.
+    pub public_key: String,
+}
+
+impl ClusterIntroductionSource {
+    /// Creates one accepted introduction source.
+    #[must_use]
+    pub fn new(source_id: impl Into<String>, public_key: impl Into<String>) -> Self {
+        Self {
+            source_id: source_id.into(),
+            public_key: public_key.into(),
+        }
+    }
+}
+
+/// Operator-managed policy for accepted cluster introduction sources.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterIntroductionPolicy {
+    /// Accepted signed introduction sources.
+    pub accepted_sources: Vec<ClusterIntroductionSource>,
+    /// Maximum validity window accepted for one candidate introduction.
+    pub maximum_candidate_ttl_ms: u64,
+}
+
+impl ClusterIntroductionPolicy {
+    /// Creates a new introduction policy.
+    #[must_use]
+    pub fn new(
+        mut accepted_sources: Vec<ClusterIntroductionSource>,
+        maximum_candidate_ttl_ms: u64,
+    ) -> Self {
+        accepted_sources.sort_unstable();
+        accepted_sources.dedup();
+        Self {
+            accepted_sources,
+            maximum_candidate_ttl_ms,
+        }
+    }
+
+    /// Returns a stable digest for this introduction policy.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_introduction_policy|");
+        hasher.update(self.maximum_candidate_ttl_ms.to_string().as_bytes());
+        for source in &self.accepted_sources {
+            hasher.update(b"|source|");
+            hasher.update(source.source_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(source.public_key.as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    fn accepts_source(&self, source_id: &str, public_key: &str) -> bool {
+        self.accepted_sources
+            .iter()
+            .any(|source| source.source_id == source_id && source.public_key == public_key)
+    }
+}
+
+/// Unsigned discovery payload that introduces a future wider-network cluster candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterIntroductionPayload {
+    /// Candidate node introduced by this payload.
+    pub candidate: ClusterDiscoveryCandidate,
+    /// Inclusive issuance timestamp in milliseconds since epoch.
+    pub issued_at_ms: u64,
+    /// Inclusive expiry timestamp in milliseconds since epoch.
+    pub expires_at_ms: u64,
+}
+
+impl ClusterIntroductionPayload {
+    /// Creates a new discovery introduction payload.
+    #[must_use]
+    pub const fn new(
+        candidate: ClusterDiscoveryCandidate,
+        issued_at_ms: u64,
+        expires_at_ms: u64,
+    ) -> Self {
+        Self {
+            candidate,
+            issued_at_ms,
+            expires_at_ms,
+        }
+    }
+
+    /// Returns a stable digest for the introduction payload.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_introduction_payload|");
+        hasher.update(self.candidate.stable_digest().as_bytes());
+        hasher.update(b"|issued_at_ms|");
+        hasher.update(self.issued_at_ms.to_string().as_bytes());
+        hasher.update(b"|expires_at_ms|");
+        hasher.update(self.expires_at_ms.to_string().as_bytes());
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// Signature metadata for one signed cluster introduction.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterIntroductionSignature {
+    /// Stable identifier for the introduction source.
+    pub source_id: String,
+    /// Public key that signed the introduction payload.
+    pub signer_public_key: String,
+    /// Stable digest for the signed payload.
+    pub payload_digest: String,
+    /// Hex-encoded Ed25519 signature over `payload_digest`.
+    pub signature_hex: String,
+}
+
+/// Signed discovery artifact for future wider-network candidate intake.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedClusterIntroductionEnvelope {
+    /// Unsigned introduction payload.
+    pub payload: ClusterIntroductionPayload,
+    /// Signature metadata for the payload.
+    pub signature: ClusterIntroductionSignature,
+}
+
+impl SignedClusterIntroductionEnvelope {
+    /// Signs an introduction payload with one accepted introduction source key.
+    #[must_use]
+    pub fn sign(
+        payload: ClusterIntroductionPayload,
+        source_id: impl Into<String>,
+        signing_key: &SigningKey,
+    ) -> Self {
+        let payload_digest = payload.stable_digest();
+        let signature = signing_key.sign(payload_digest.as_bytes());
+        Self {
+            payload,
+            signature: ClusterIntroductionSignature {
+                source_id: source_id.into(),
+                signer_public_key: hex::encode(signing_key.verifying_key().to_bytes()),
+                payload_digest,
+                signature_hex: hex::encode(signature.to_bytes()),
+            },
+        }
+    }
+
+    /// Verifies one signed introduction envelope under the current introduction policy.
+    pub fn verify(
+        &self,
+        policy: &ClusterIntroductionPolicy,
+    ) -> Result<(), ClusterIntroductionVerificationError> {
+        if !policy.accepts_source(&self.signature.source_id, &self.signature.signer_public_key) {
+            return Err(ClusterIntroductionVerificationError::UntrustedSource {
+                source_id: self.signature.source_id.clone(),
+                public_key: self.signature.signer_public_key.clone(),
+            });
+        }
+        if self.payload.expires_at_ms < self.payload.issued_at_ms {
+            return Err(
+                ClusterIntroductionVerificationError::InvalidValidityWindow {
+                    issued_at_ms: self.payload.issued_at_ms,
+                    expires_at_ms: self.payload.expires_at_ms,
+                },
+            );
+        }
+        let ttl_ms = self.payload.expires_at_ms - self.payload.issued_at_ms;
+        if ttl_ms > policy.maximum_candidate_ttl_ms {
+            return Err(
+                ClusterIntroductionVerificationError::CandidateTtlExceedsPolicy {
+                    ttl_ms,
+                    maximum_ttl_ms: policy.maximum_candidate_ttl_ms,
+                },
+            );
+        }
+        let expected_payload_digest = self.payload.stable_digest();
+        if self.signature.payload_digest != expected_payload_digest {
+            return Err(
+                ClusterIntroductionVerificationError::PayloadDigestMismatch {
+                    expected: expected_payload_digest,
+                    actual: self.signature.payload_digest.clone(),
+                },
+            );
+        }
+        let verifying_key = decode_introduction_verifying_key(&self.signature.signer_public_key)?;
+        let signature = decode_introduction_signature(&self.signature.signature_hex)?;
+        verifying_key
+            .verify(self.signature.payload_digest.as_bytes(), &signature)
+            .map_err(|_| ClusterIntroductionVerificationError::SignatureVerificationFailed)
+    }
+}
+
+/// Verification failure while validating one signed cluster introduction envelope.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterIntroductionVerificationError {
+    /// The envelope was signed by a source not accepted by policy.
+    #[error("cluster introduction source `{source_id}` with key `{public_key}` is not accepted")]
+    UntrustedSource {
+        /// Stable source identifier carried by the envelope.
+        source_id: String,
+        /// Public key carried by the envelope.
+        public_key: String,
+    },
+    /// The payload validity window is malformed.
+    #[error(
+        "cluster introduction validity window is invalid: issued_at_ms={issued_at_ms}, expires_at_ms={expires_at_ms}"
+    )]
+    InvalidValidityWindow {
+        /// Inclusive issuance timestamp.
+        issued_at_ms: u64,
+        /// Inclusive expiry timestamp.
+        expires_at_ms: u64,
+    },
+    /// The payload validity window exceeds current operator policy.
+    #[error("cluster introduction TTL {ttl_ms} exceeds maximum allowed {maximum_ttl_ms} ms")]
+    CandidateTtlExceedsPolicy {
+        /// Observed payload time-to-live.
+        ttl_ms: u64,
+        /// Maximum time-to-live allowed by policy.
+        maximum_ttl_ms: u64,
+    },
+    /// The carried payload digest did not match the actual payload.
+    #[error("cluster introduction payload digest mismatch: expected {expected}, found {actual}")]
+    PayloadDigestMismatch {
+        /// Digest derived from the payload.
+        expected: String,
+        /// Digest carried by the signature metadata.
+        actual: String,
+    },
+    /// The source public key could not be decoded.
+    #[error("invalid cluster introduction source public key: {0}")]
+    InvalidSourcePublicKey(String),
+    /// The signature could not be decoded.
+    #[error("invalid cluster introduction signature: {0}")]
+    InvalidSignatureEncoding(String),
+    /// The signature did not verify against the payload digest.
+    #[error("cluster introduction signature verification failed")]
+    SignatureVerificationFailed,
+}
+
 /// One explicitly configured peer for the authenticated cluster posture.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfiguredClusterPeer {
@@ -1095,6 +1424,8 @@ pub struct LocalClusterConfig {
     pub identity_persistence: NodeIdentityPersistence,
     /// Optional local attestation facts to attach to node identity.
     pub node_attestation: Option<NodeAttestationEvidence>,
+    /// Optional operator-managed policy for future wider-network introductions.
+    pub introduction_policy: Option<ClusterIntroductionPolicy>,
     /// Machine-checkable trust policy for this node's transport.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -1115,6 +1446,7 @@ impl LocalClusterConfig {
             role,
             identity_persistence: NodeIdentityPersistence::Ephemeral,
             node_attestation: None,
+            introduction_policy: None,
             trust_policy: ClusterTrustPolicy::trusted_lan(),
         }
     }
@@ -1138,6 +1470,22 @@ impl LocalClusterConfig {
     pub fn with_node_attestation(mut self, node_attestation: NodeAttestationEvidence) -> Self {
         self.node_attestation = Some(node_attestation);
         self
+    }
+
+    /// Attaches an operator-managed introduction policy for future wider-network discovery.
+    #[must_use]
+    pub fn with_introduction_policy(
+        mut self,
+        introduction_policy: ClusterIntroductionPolicy,
+    ) -> Self {
+        self.introduction_policy = Some(introduction_policy);
+        self
+    }
+
+    /// Returns the current introduction policy, when one is configured.
+    #[must_use]
+    pub fn introduction_policy(&self) -> Option<&ClusterIntroductionPolicy> {
+        self.introduction_policy.as_ref()
     }
 
     /// Returns the current discovery posture for this node config.
@@ -1360,6 +1708,7 @@ pub struct LocalClusterNode {
     local_addr: SocketAddr,
     local_identity: ClusterNodeIdentity,
     trust_policy: ClusterTrustPolicy,
+    introduction_policy: Option<ClusterIntroductionPolicy>,
     state: Arc<Mutex<SharedState>>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<Result<(), String>>>,
@@ -1372,6 +1721,7 @@ impl LocalClusterNode {
         let local_identity = loaded_identity.identity.clone();
         let transport_config = TransportConfig::from_config(config, loaded_identity);
         let trust_policy = transport_config.trust_policy.clone();
+        let introduction_policy = transport_config.introduction_policy.clone();
         let socket = Arc::new(
             UdpSocket::bind(transport_config.bind_addr)
                 .await
@@ -1393,6 +1743,7 @@ impl LocalClusterNode {
             local_addr,
             local_identity,
             trust_policy,
+            introduction_policy,
             state,
             shutdown_tx: Some(shutdown_tx),
             task: Some(task),
@@ -1415,6 +1766,12 @@ impl LocalClusterNode {
     #[must_use]
     pub fn trust_policy(&self) -> &ClusterTrustPolicy {
         &self.trust_policy
+    }
+
+    /// Returns the current introduction policy for this node, when one is configured.
+    #[must_use]
+    pub fn introduction_policy(&self) -> Option<&ClusterIntroductionPolicy> {
+        self.introduction_policy.as_ref()
     }
 
     /// Returns the current discovery posture for this node.
@@ -1481,6 +1838,7 @@ struct TransportConfig {
     seed_peers: BTreeSet<SocketAddr>,
     local_identity: ClusterNodeIdentity,
     local_signing_key: SigningKey,
+    introduction_policy: Option<ClusterIntroductionPolicy>,
     trust_policy: ClusterTrustPolicy,
 }
 
@@ -1493,6 +1851,7 @@ impl TransportConfig {
             seed_peers: config.seed_peers.into_iter().collect(),
             local_identity: local_identity.identity,
             local_signing_key: local_identity.signing_key,
+            introduction_policy: config.introduction_policy,
             trust_policy: config.trust_policy,
         }
     }
@@ -1942,6 +2301,36 @@ fn decode_signature(signature_hex: &str) -> Result<Signature, ClusterJoinRefusal
     let signature_bytes: [u8; SIGNATURE_BYTES] = bytes
         .try_into()
         .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
+    Ok(Signature::from_bytes(&signature_bytes))
+}
+
+fn decode_introduction_verifying_key(
+    auth_public_key: &str,
+) -> Result<VerifyingKey, ClusterIntroductionVerificationError> {
+    let bytes = hex::decode(auth_public_key).map_err(|error| {
+        ClusterIntroductionVerificationError::InvalidSourcePublicKey(error.to_string())
+    })?;
+    let verifying_key_bytes: [u8; VERIFYING_KEY_BYTES] = bytes.try_into().map_err(|_| {
+        ClusterIntroductionVerificationError::InvalidSourcePublicKey(String::from(
+            "invalid public key length",
+        ))
+    })?;
+    VerifyingKey::from_bytes(&verifying_key_bytes).map_err(|error| {
+        ClusterIntroductionVerificationError::InvalidSourcePublicKey(error.to_string())
+    })
+}
+
+fn decode_introduction_signature(
+    signature_hex: &str,
+) -> Result<Signature, ClusterIntroductionVerificationError> {
+    let bytes = hex::decode(signature_hex).map_err(|error| {
+        ClusterIntroductionVerificationError::InvalidSignatureEncoding(error.to_string())
+    })?;
+    let signature_bytes: [u8; SIGNATURE_BYTES] = bytes.try_into().map_err(|_| {
+        ClusterIntroductionVerificationError::InvalidSignatureEncoding(String::from(
+            "invalid signature length",
+        ))
+    })?;
     Ok(Signature::from_bytes(&signature_bytes))
 }
 
@@ -2452,8 +2841,26 @@ mod tests {
             seed_peers: BTreeSet::new(),
             local_identity,
             local_signing_key,
+            introduction_policy: None,
             trust_policy,
         }
+    }
+
+    fn sample_discovery_candidate(
+        admission: &ClusterAdmissionConfig,
+        node_id: &str,
+        role: NodeRole,
+        signing_key: &SigningKey,
+        advertised_addrs: Vec<SocketAddr>,
+    ) -> ClusterDiscoveryCandidate {
+        ClusterDiscoveryCandidate::new(
+            ClusterId::new(&admission.namespace, &admission.admission_token),
+            admission.namespace.clone(),
+            NodeId::new(node_id),
+            role,
+            encode_auth_public_key(&signing_key.verifying_key()),
+            advertised_addrs,
+        )
     }
 
     fn signed_ping_envelope(
@@ -2606,6 +3013,155 @@ mod tests {
         assert_eq!(
             assessment.refusal_reasons,
             vec![ClusterNonLanDiscoveryRefusalReason::WiderNetworkDiscoveryUnimplemented]
+        );
+    }
+
+    #[test]
+    fn introduction_policy_digest_changes_with_sources_and_ttl() {
+        let policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new("introducer-a", "key-a")],
+            30_000,
+        );
+        let other_source = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new("introducer-b", "key-a")],
+            30_000,
+        );
+        let other_ttl = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new("introducer-a", "key-a")],
+            60_000,
+        );
+
+        assert_ne!(policy.stable_digest(), other_source.stable_digest());
+        assert_ne!(policy.stable_digest(), other_ttl.stable_digest());
+    }
+
+    #[test]
+    fn signed_cluster_introduction_verifies_under_matching_policy() {
+        let admission = sample_admission();
+        let candidate_signing_key = sample_signing_key(30);
+        let candidate = sample_discovery_candidate(
+            &admission,
+            "candidate-a",
+            NodeRole::ExecutorOnly,
+            &candidate_signing_key,
+            vec![loopback_addr(32001)],
+        );
+        let introducer_signing_key = sample_signing_key(31);
+        let policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new(
+                "introducer-a",
+                encode_auth_public_key(&introducer_signing_key.verifying_key()),
+            )],
+            30_000,
+        );
+        let envelope = SignedClusterIntroductionEnvelope::sign(
+            ClusterIntroductionPayload::new(candidate, 10_000, 20_000),
+            "introducer-a",
+            &introducer_signing_key,
+        );
+
+        assert_eq!(envelope.verify(&policy), Ok(()));
+    }
+
+    #[test]
+    fn signed_cluster_introduction_refuses_untrusted_source() {
+        let admission = sample_admission();
+        let candidate_signing_key = sample_signing_key(32);
+        let candidate = sample_discovery_candidate(
+            &admission,
+            "candidate-a",
+            NodeRole::Mixed,
+            &candidate_signing_key,
+            vec![loopback_addr(32002)],
+        );
+        let introducer_signing_key = sample_signing_key(33);
+        let policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new(
+                "introducer-a",
+                "different-key",
+            )],
+            30_000,
+        );
+        let envelope = SignedClusterIntroductionEnvelope::sign(
+            ClusterIntroductionPayload::new(candidate, 10_000, 20_000),
+            "introducer-a",
+            &introducer_signing_key,
+        );
+
+        assert_eq!(
+            envelope.verify(&policy),
+            Err(ClusterIntroductionVerificationError::UntrustedSource {
+                source_id: String::from("introducer-a"),
+                public_key: encode_auth_public_key(&introducer_signing_key.verifying_key()),
+            })
+        );
+    }
+
+    #[test]
+    fn signed_cluster_introduction_refuses_tampered_payload_digest() {
+        let admission = sample_admission();
+        let candidate_signing_key = sample_signing_key(34);
+        let candidate = sample_discovery_candidate(
+            &admission,
+            "candidate-a",
+            NodeRole::Mixed,
+            &candidate_signing_key,
+            vec![loopback_addr(32003)],
+        );
+        let introducer_signing_key = sample_signing_key(35);
+        let policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new(
+                "introducer-a",
+                encode_auth_public_key(&introducer_signing_key.verifying_key()),
+            )],
+            30_000,
+        );
+        let mut envelope = SignedClusterIntroductionEnvelope::sign(
+            ClusterIntroductionPayload::new(candidate, 10_000, 20_000),
+            "introducer-a",
+            &introducer_signing_key,
+        );
+        envelope.signature.payload_digest = String::from("tampered");
+
+        assert!(matches!(
+            envelope.verify(&policy),
+            Err(ClusterIntroductionVerificationError::PayloadDigestMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn signed_cluster_introduction_refuses_ttl_that_exceeds_policy() {
+        let admission = sample_admission();
+        let candidate_signing_key = sample_signing_key(36);
+        let candidate = sample_discovery_candidate(
+            &admission,
+            "candidate-a",
+            NodeRole::Mixed,
+            &candidate_signing_key,
+            vec![loopback_addr(32004)],
+        );
+        let introducer_signing_key = sample_signing_key(37);
+        let policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new(
+                "introducer-a",
+                encode_auth_public_key(&introducer_signing_key.verifying_key()),
+            )],
+            5_000,
+        );
+        let envelope = SignedClusterIntroductionEnvelope::sign(
+            ClusterIntroductionPayload::new(candidate, 10_000, 20_000),
+            "introducer-a",
+            &introducer_signing_key,
+        );
+
+        assert_eq!(
+            envelope.verify(&policy),
+            Err(
+                ClusterIntroductionVerificationError::CandidateTtlExceedsPolicy {
+                    ttl_ms: 10_000,
+                    maximum_ttl_ms: 5_000,
+                }
+            )
         );
     }
 
