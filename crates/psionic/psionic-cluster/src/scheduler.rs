@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use psionic_runtime::{
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
     ClusterExecutionContext, ClusterExecutionDisposition, ClusterPolicyDigest,
@@ -36,6 +38,9 @@ pub struct WholeRequestSchedulingRequest {
     /// Stable policy digests that constrained the decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit nodes that this scheduling attempt must exclude.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub excluded_node_ids: BTreeSet<NodeId>,
 }
 
 impl WholeRequestSchedulingRequest {
@@ -51,6 +56,7 @@ impl WholeRequestSchedulingRequest {
             allow_copy_staging: true,
             allow_pull_staging: true,
             policy_digests: Vec::new(),
+            excluded_node_ids: BTreeSet::new(),
         }
     }
 
@@ -96,6 +102,23 @@ impl WholeRequestSchedulingRequest {
         self.policy_digests.push(policy_digest);
         self
     }
+
+    /// Excludes one node from the current scheduling attempt.
+    #[must_use]
+    pub fn excluding_node(mut self, node_id: NodeId) -> Self {
+        self.excluded_node_ids.insert(node_id);
+        self
+    }
+
+    /// Excludes multiple nodes from the current scheduling attempt.
+    #[must_use]
+    pub fn excluding_nodes<I>(mut self, node_ids: I) -> Self
+    where
+        I: IntoIterator<Item = NodeId>,
+    {
+        self.excluded_node_ids.extend(node_ids);
+        self
+    }
 }
 
 /// Stable refusal code for one remote whole-request candidate.
@@ -128,6 +151,8 @@ pub enum WholeRequestSchedulingRefusalCode {
     TransportMissing,
     /// The transport fact exists, but is not usable for scheduling.
     TransportUnavailable,
+    /// The scheduler excluded this node before evaluating it.
+    PolicyExcluded,
 }
 
 /// One explicit candidate refusal emitted by the whole-request scheduler.
@@ -261,12 +286,12 @@ pub struct WholeRequestClusterSchedule {
 pub fn schedule_remote_whole_request(
     state: &ClusterState,
     request: &WholeRequestSchedulingRequest,
-) -> Result<WholeRequestClusterSchedule, WholeRequestSchedulingFailure> {
+) -> Result<WholeRequestClusterSchedule, Box<WholeRequestSchedulingFailure>> {
     let cluster_state_digest = state.stable_digest();
     let topology_digest = state.topology_digest();
     let artifact_residency_digest = Some(state.artifact_residency_digest());
     let Some(scheduler_membership) = state.memberships().get(&request.scheduler_node_id) else {
-        return Err(WholeRequestSchedulingFailure {
+        return Err(Box::new(WholeRequestSchedulingFailure {
             code: WholeRequestSchedulingFailureCode::SchedulerNodeUnknown,
             detail: format!(
                 "scheduler node `{}` is not present in authoritative cluster membership",
@@ -280,10 +305,10 @@ pub fn schedule_remote_whole_request(
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
             refusals: Vec::new(),
-        });
+        }));
     };
     if scheduler_membership.status != ClusterMembershipStatus::Ready {
-        return Err(WholeRequestSchedulingFailure {
+        return Err(Box::new(WholeRequestSchedulingFailure {
             code: WholeRequestSchedulingFailureCode::SchedulerNodeNotReady,
             detail: format!(
                 "scheduler node `{}` is not ready for remote scheduling",
@@ -297,7 +322,7 @@ pub fn schedule_remote_whole_request(
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
             refusals: Vec::new(),
-        });
+        }));
     }
 
     let mut refusals = Vec::new();
@@ -308,6 +333,17 @@ pub fn schedule_remote_whole_request(
                 node_id.clone(),
                 WholeRequestSchedulingRefusalCode::LocalNodeExcluded,
                 "whole-request remote scheduling excludes the scheduler node itself",
+            ));
+            continue;
+        }
+        if request.excluded_node_ids.contains(node_id) {
+            refusals.push(WholeRequestSchedulingRefusal::for_node(
+                node_id.clone(),
+                WholeRequestSchedulingRefusalCode::PolicyExcluded,
+                format!(
+                    "candidate node `{}` was excluded by the current serving-policy attempt",
+                    node_id.as_str()
+                ),
             ));
             continue;
         }
@@ -510,7 +546,7 @@ pub fn schedule_remote_whole_request(
 
     candidates.sort_by(candidate_order);
     let Some(best) = candidates.into_iter().next() else {
-        return Err(WholeRequestSchedulingFailure {
+        return Err(Box::new(WholeRequestSchedulingFailure {
             code: WholeRequestSchedulingFailureCode::NoEligibleRemoteNode,
             detail: format!(
                 "no remote candidate satisfies whole-request scheduling for backend `{}`",
@@ -524,7 +560,7 @@ pub fn schedule_remote_whole_request(
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
             refusals,
-        });
+        }));
     };
 
     let selected_device = remote_device_inventory_for_candidate(
@@ -770,7 +806,7 @@ fn selection_notes_for_candidate(
                     "selected node `{}` requires peer-copy artifact staging before execution",
                     candidate.node_id.as_str()
                 ),
-            ))
+            ));
         }
         Some(ClusterArtifactResidencyStatus::PullRequired) => {
             notes.push(WholeRequestSchedulingSelectionNote::new(
@@ -779,7 +815,7 @@ fn selection_notes_for_candidate(
                     "selected node `{}` requires pull-based artifact staging before execution",
                     candidate.node_id.as_str()
                 ),
-            ))
+            ));
         }
         Some(
             ClusterArtifactResidencyStatus::Resident | ClusterArtifactResidencyStatus::Refused,
@@ -834,7 +870,10 @@ const fn link_status_name(status: ClusterLinkStatus) -> &'static str {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
+    use std::io::Error;
+
     use psionic_runtime::{ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind};
 
     use crate::{
@@ -850,6 +889,10 @@ mod tests {
         WholeRequestSchedulingRefusalCode, WholeRequestSchedulingRequest,
         schedule_remote_whole_request,
     };
+
+    fn fixture_error(detail: &str) -> Error {
+        Error::other(detail.to_owned())
+    }
 
     fn sample_cluster_id() -> crate::ClusterId {
         crate::ClusterId::new(
@@ -937,7 +980,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology() {
+    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.artifact_residency.insert(
             crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
@@ -966,8 +1010,8 @@ mod tests {
                 "placement-policy-digest",
             ));
 
-        let schedule =
-            schedule_remote_whole_request(&state, &request).expect("schedule should succeed");
+        let schedule = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
 
         assert_eq!(schedule.selected_node_id, crate::NodeId::new("worker-a"));
         assert_eq!(schedule.runtime_backend, "cuda");
@@ -995,10 +1039,12 @@ mod tests {
                 .and_then(|node| node.artifact_residency),
             Some(psionic_runtime::ClusterArtifactResidencyDisposition::Resident)
         );
+        Ok(())
     }
 
     #[test]
-    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically() {
+    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot
             .links
@@ -1006,7 +1052,7 @@ mod tests {
                 crate::NodeId::new("scheduler"),
                 crate::NodeId::new("worker-a"),
             ))
-            .expect("worker-a link")
+            .ok_or_else(|| fixture_error("worker-a link"))?
             .latency_us = Some(500);
         snapshot.artifact_residency.insert(
             crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
@@ -1035,12 +1081,15 @@ mod tests {
 
         let WholeRequestClusterSchedule {
             selected_node_id, ..
-        } = schedule_remote_whole_request(&state, &request).expect("schedule should succeed");
+        } = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
         assert_eq!(selected_node_id, crate::NodeId::new("worker-a"));
+        Ok(())
     }
 
     #[test]
-    fn whole_request_scheduler_surfaces_degraded_selection_reasons() {
+    fn whole_request_scheduler_surfaces_degraded_selection_reasons()
+    -> Result<(), Box<dyn std::error::Error>> {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
         snapshot.memberships.insert(
@@ -1076,7 +1125,7 @@ mod tests {
                 crate::NodeId::new("scheduler"),
                 crate::NodeId::new("worker-a"),
             ))
-            .expect("worker-a link")
+            .ok_or_else(|| fixture_error("worker-a link"))?
             .status = ClusterLinkStatus::Degraded;
         snapshot.artifact_residency.insert(
             crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
@@ -1092,8 +1141,8 @@ mod tests {
             .with_served_artifact_digest("artifact-1")
             .requiring_accelerator();
 
-        let schedule =
-            schedule_remote_whole_request(&state, &request).expect("schedule should succeed");
+        let schedule = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
         assert_eq!(schedule.selected_node_id, crate::NodeId::new("worker-a"));
         assert!(schedule.selection_notes.iter().any(|note| {
             note.code == super::WholeRequestSchedulingSelectionCode::ArtifactCopyRequired
@@ -1110,10 +1159,12 @@ mod tests {
                 "selected node `worker-a` requires peer-copy artifact staging before execution; selected node `worker-a` is only backend-ready in degraded posture; selected node `worker-a` is reachable only over a degraded transport path; selected node `worker-a` is only marked flaky rather than stable"
             )
         );
+        Ok(())
     }
 
     #[test]
-    fn whole_request_scheduler_emits_machine_checkable_refusals() {
+    fn whole_request_scheduler_emits_machine_checkable_refusals()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.telemetry.insert(
             crate::NodeId::new("worker-a"),
@@ -1134,7 +1185,7 @@ mod tests {
                 crate::NodeId::new("scheduler"),
                 crate::NodeId::new("worker-b"),
             ))
-            .expect("worker-b link")
+            .ok_or_else(|| fixture_error("worker-b link"))?
             .status = ClusterLinkStatus::Disconnected;
 
         let state = ClusterState::from_snapshot(snapshot);
@@ -1143,8 +1194,15 @@ mod tests {
             .with_minimum_free_memory_bytes(16 * 1024 * 1024 * 1024)
             .requiring_accelerator();
 
-        let failure =
-            schedule_remote_whole_request(&state, &request).expect_err("schedule should fail");
+        let failure = match schedule_remote_whole_request(&state, &request) {
+            Ok(schedule) => {
+                return Err(fixture_error(&format!(
+                    "expected scheduling failure, got {schedule:?}"
+                ))
+                .into());
+            }
+            Err(failure) => failure,
+        };
 
         assert_eq!(
             failure.code,
@@ -1158,5 +1216,6 @@ mod tests {
             refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-b"))
                 && refusal.code == WholeRequestSchedulingRefusalCode::TransportUnavailable
         }));
+        Ok(())
     }
 }

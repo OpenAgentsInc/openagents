@@ -2,6 +2,7 @@
 
 mod ordered_state;
 mod scheduler;
+mod serving_policy;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -25,6 +26,7 @@ use tokio::{
 
 pub use ordered_state::*;
 pub use scheduler::*;
+pub use serving_policy::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "trusted-lan cluster control-plane substrate";
