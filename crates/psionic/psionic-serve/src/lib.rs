@@ -43,9 +43,9 @@ pub use psionic_models::{
 use psionic_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
     CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile, ExecutionDeliveryProof,
-    HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-    KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+    ClusterExecutionContext, CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile,
+    ExecutionDeliveryProof, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
+    KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
     LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
     LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
     ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
@@ -692,6 +692,9 @@ impl EmbeddingResponse {
 pub struct EmbeddingProvenance {
     /// Stable execution-plan digest for the active model graph.
     pub execution_plan_digest: String,
+    /// Explicit clustered execution or scheduling context for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// Explicit warm/cold compile-path evidence for the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_path: Option<CompilePathEvidence>,
@@ -701,6 +704,15 @@ pub struct EmbeddingProvenance {
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+}
+
+impl EmbeddingProvenance {
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
+    }
 }
 
 /// Minimal embeddings execution interface.
@@ -1232,6 +1244,9 @@ pub struct GenerationProvenance {
     pub served_artifact: ServedArtifactIdentity,
     /// Stable execution-plan digest for the active model graph.
     pub execution_plan_digest: String,
+    /// Explicit clustered execution or scheduling context for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// Whether the request took the warm or cold model path.
     pub load_state: GenerationLoadState,
     /// Explicit local-serving isolation policy for the active runtime.
@@ -1269,6 +1284,15 @@ pub struct GenerationProvenance {
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+}
+
+impl GenerationProvenance {
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
+    }
 }
 
 /// Terminal reason for a generation response.
@@ -4710,6 +4734,7 @@ where
         let provenance = GenerationProvenance {
             served_artifact: self.served_artifact.clone(),
             execution_plan_digest: self.execution_plan_digest.clone(),
+            cluster_execution: None,
             load_state: self.load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: streaming_policy.then(|| self.streaming_policy.clone()),
@@ -5293,6 +5318,7 @@ where
         let provenance = GenerationProvenance {
             served_artifact,
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
@@ -6085,6 +6111,7 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             compile_path: compile_path.clone(),
             delivery_proof: build_delivery_proof(
                 delivery_plan_digest,
@@ -6235,6 +6262,7 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             compile_path: compile_path.clone(),
             delivery_proof: build_delivery_proof(
                 delivery_plan_digest,
@@ -6412,6 +6440,7 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             compile_path: compile_path.clone(),
             delivery_proof: build_delivery_proof(
                 delivery_plan_digest,
@@ -6589,6 +6618,7 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
             .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             compile_path: compile_path.clone(),
             delivery_proof: build_delivery_proof(
                 delivery_plan_digest,

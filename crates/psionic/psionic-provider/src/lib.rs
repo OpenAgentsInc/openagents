@@ -7,16 +7,16 @@ use psionic_runtime::{
     AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
-    CacheInvalidationTrigger, CacheKind, CacheObservation, CompilePathEvidence,
-    DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
-    ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy,
-    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
-    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
-    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
-    SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
-    ValidationMatrixReference, validation_reference_for_served_product,
-    validation_reference_for_text_generation_model,
+    CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterExecutionContext,
+    CompilePathEvidence, DeliveredExecutionContext, DeviceInventoryQualifiers,
+    ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus,
+    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
+    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
+    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, SandboxExecutionCapabilityProfile,
+    SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
+    ServedArtifactIdentity, SettlementLinkageInput, ValidationMatrixReference,
+    validation_reference_for_served_product, validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -152,6 +152,20 @@ fn generation_delivery_proof(response: &GenerationResponse) -> Option<ExecutionD
         .provenance
         .as_ref()
         .and_then(|value| value.delivery_proof.clone())
+}
+
+fn embedding_cluster_execution(response: &EmbeddingResponse) -> Option<ClusterExecutionContext> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.cluster_execution.clone())
+}
+
+fn generation_cluster_execution(response: &GenerationResponse) -> Option<ClusterExecutionContext> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.cluster_execution.clone())
 }
 
 fn settlement_linkage(
@@ -506,6 +520,9 @@ pub struct SandboxExecutionCapabilityEnvelope {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context when this lane is advertised through a cluster.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -534,12 +551,20 @@ impl SandboxExecutionCapabilityEnvelope {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             execution_profile,
             readiness,
         }
+    }
+
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
     }
 }
 
@@ -565,6 +590,9 @@ pub struct SandboxExecutionReceipt {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -624,6 +652,7 @@ impl SandboxExecutionReceipt {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -645,9 +674,21 @@ impl SandboxExecutionReceipt {
         mut self,
         requirement: AcceleratorExecutionRequirement,
     ) -> Self {
-        self.accelerator_deliverability = Some(requirement.evaluate(
-            DeliveredExecutionContext::from_backend_selection(&self.backend_selection),
-        ));
+        let delivered = self.cluster_execution.clone().map_or_else(
+            || DeliveredExecutionContext::from_backend_selection(&self.backend_selection),
+            |cluster_execution| {
+                DeliveredExecutionContext::from_backend_selection(&self.backend_selection)
+                    .with_cluster_execution(cluster_execution)
+            },
+        );
+        self.accelerator_deliverability = Some(requirement.evaluate(delivered));
+        self
+    }
+
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
         self
     }
 }
@@ -676,6 +717,9 @@ pub struct CapabilityEnvelope {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context when this lane is advertised through a cluster.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -721,6 +765,7 @@ pub struct CapabilityEnvelope {
 
 impl CapabilityEnvelope {
     /// Creates a capability envelope for an embeddings model.
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn embeddings(
         backend_selection: BackendSelection,
@@ -760,6 +805,7 @@ impl CapabilityEnvelope {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -781,6 +827,13 @@ impl CapabilityEnvelope {
             supports_input_truncation: false,
             readiness,
         }
+    }
+
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
     }
 
     /// Creates a capability envelope directly from an embeddings model descriptor.
@@ -864,6 +917,9 @@ pub struct ExecutionReceipt {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -964,6 +1020,7 @@ impl ExecutionReceipt {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: embedding_cluster_execution(response),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1042,6 +1099,7 @@ impl ExecutionReceipt {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1085,6 +1143,13 @@ impl ExecutionReceipt {
         self.diagnostic = Some(diagnostic);
         self
     }
+
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
+    }
 }
 
 /// KV-cache mode exposed to provider capability consumers.
@@ -1123,6 +1188,9 @@ pub struct TextGenerationCapabilityEnvelope {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context when this lane is advertised through a cluster.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -1201,6 +1269,7 @@ impl TextGenerationCapabilityEnvelope {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1224,6 +1293,13 @@ impl TextGenerationCapabilityEnvelope {
             execution_profile,
             readiness,
         }
+    }
+
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
     }
 }
 
@@ -1251,6 +1327,9 @@ pub struct TextGenerationReceipt {
     /// Explicit multi-device or sharded execution topology when the path is planned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Explicit clustered execution or scheduling context for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -1402,6 +1481,7 @@ impl TextGenerationReceipt {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: generation_cluster_execution(response),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1526,6 +1606,7 @@ impl TextGenerationReceipt {
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             selected_devices: selected_devices_inventory_for_selection(&backend_selection),
             execution_topology: execution_topology_for_selection(&backend_selection),
+            cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1579,6 +1660,13 @@ impl TextGenerationReceipt {
         self
     }
 
+    /// Attaches explicit clustered execution or scheduling context.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
+    }
+
     /// Creates a receipt from a terminal streaming event, preserving partial output when present.
     #[must_use]
     pub fn from_stream_terminal(
@@ -1602,7 +1690,7 @@ impl TextGenerationReceipt {
             GenerationStreamStatus::Succeeded => receipt,
             GenerationStreamStatus::Cancelled => {
                 receipt.status = ReceiptStatus::Cancelled;
-                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt.failure_reason.clone_from(&terminal.failure_reason);
                 if let Some(diagnostic) = terminal.diagnostic.clone() {
                     receipt = receipt.with_diagnostic(diagnostic);
                 }
@@ -1610,7 +1698,7 @@ impl TextGenerationReceipt {
             }
             GenerationStreamStatus::Disconnected => {
                 receipt.status = ReceiptStatus::Disconnected;
-                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt.failure_reason.clone_from(&terminal.failure_reason);
                 if let Some(diagnostic) = terminal.diagnostic.clone() {
                     receipt = receipt.with_diagnostic(diagnostic);
                 }
@@ -1618,7 +1706,7 @@ impl TextGenerationReceipt {
             }
             GenerationStreamStatus::Failed => {
                 receipt.status = ReceiptStatus::Failed;
-                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt.failure_reason.clone_from(&terminal.failure_reason);
                 if let Some(diagnostic) = terminal.diagnostic.clone() {
                     receipt = receipt.with_diagnostic(diagnostic);
                 }
@@ -1932,17 +2020,20 @@ mod tests {
         AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata, AmdDriverBinding,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport, BackendProbeState,
-        BackendRuntimeResources, BackendSelection, BackendToolchainIdentity, DeviceDescriptor,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof,
-        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
-        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
-        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
-        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
+        ClusterArtifactResidencyDisposition, ClusterExecutionContext, ClusterExecutionDisposition,
+        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
+        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
@@ -3155,6 +3246,39 @@ mod tests {
     }
 
     #[test]
+    fn capability_envelope_can_surface_cluster_execution_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let cluster_execution = sample_cluster_execution_context();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection(),
+            &model,
+            ProviderReadiness::ready("cluster lane ready"),
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            encoded["cluster_execution"]["cluster_state_digest"],
+            json!("cluster-state-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["policy_digests"][0]["kind"],
+            json!("admission")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["selected_nodes"][1]["artifact_residency"],
+            json!("copy_required")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["fallback_history"][0]["reason"],
+            json!("node_unavailable")
+        );
+        assert_eq!(envelope.cluster_execution, Some(cluster_execution));
+        Ok(())
+    }
+
+    #[test]
     fn capability_envelope_without_probe_reports_compiled_only_toolchain_truth() {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
@@ -3748,6 +3872,87 @@ mod tests {
     }
 
     #[test]
+    fn text_generation_receipt_preserves_cluster_execution_from_provenance()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "gen-cluster-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-cluster-1")),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let cluster_execution = sample_cluster_execution_context();
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            psionic_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(75),
+                load_duration_ns: Some(25),
+                prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(15),
+                context_window: None,
+                eval_count: Some(1),
+                eval_duration_ns: Some(60),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
+            },
+            GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
+                execution_plan_digest: String::from("cluster-plan"),
+                cluster_execution: Some(cluster_execution.clone()),
+                load_state: GenerationLoadState::Cold,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+                streaming_policy: None,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: None,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+                compile_path: None,
+                delivery_proof: None,
+                cache_observations: Vec::new(),
+            },
+        );
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            "cluster-plan",
+            100,
+            120,
+        );
+
+        assert_eq!(receipt.cluster_execution, Some(cluster_execution.clone()));
+        let encoded = serde_json::to_value(&receipt)?;
+        assert_eq!(
+            encoded["cluster_execution"]["selected_nodes"][0]["node_id"],
+            json!("worker-a")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["degraded_reason"],
+            json!("scheduler routed to the remaining healthy worker")
+        );
+        assert_eq!(
+            serde_json::from_value::<TextGenerationReceipt>(encoded)?,
+            receipt
+        );
+        Ok(())
+    }
+
+    #[test]
     fn text_generation_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-3",
@@ -3795,6 +4000,7 @@ mod tests {
                     &cpu_backend_selection(),
                 ),
                 execution_plan_digest: String::from("plan-digest-from-response"),
+                cluster_execution: None,
                 load_state: GenerationLoadState::Cold,
                 isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
                 streaming_policy: None,
@@ -4096,6 +4302,7 @@ mod tests {
                     &cpu_backend_selection(),
                 ),
                 execution_plan_digest: String::from("stream-plan"),
+                cluster_execution: None,
                 load_state: GenerationLoadState::Cold,
                 isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
                 streaming_policy: Some(default_generation_streaming_policy()),
@@ -4458,6 +4665,41 @@ mod tests {
                 String::from("add"),
             ],
         )
+    }
+
+    fn sample_cluster_execution_context() -> ClusterExecutionContext {
+        ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::RemoteWholeRequest,
+        )
+        .with_artifact_residency_digest("artifact-residency-digest")
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Admission,
+            "admission-policy-digest",
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Placement,
+            "placement-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+            ClusterSelectedNode::new("worker-b", "cuda")
+                .with_role("worker")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::CopyRequired),
+        ])
+        .with_fallback(
+            ClusterFallbackStep::new("worker-a", ClusterFallbackReason::NodeUnavailable)
+                .from_node("worker-b")
+                .with_detail("initial worker dropped during admission"),
+        )
+        .with_degraded_reason("scheduler routed to the remaining healthy worker")
     }
 
     fn sample_backend_runtime_resources() -> BackendRuntimeResources {
