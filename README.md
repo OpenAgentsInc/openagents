@@ -160,11 +160,21 @@ Planning and diagrams:
 
 ## Run Locally
 
-Requires the Rust toolchain (`cargo`/`rustc`) to be installed.
+Requires the Rust toolchain (`cargo`/`rustc`) and `protoc` (Protocol Buffers compiler) to be installed.
 
+**Install protoc on macOS:**
+```bash
+brew install protobuf
+```
+
+**Install protoc on Debian/Ubuntu:**
+```bash
+sudo apt-get install -y protobuf-compiler
+```
+
+**Run:**
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
-cargo install --path .
 cargo autopilot
 ```
