@@ -13,6 +13,8 @@ This runbook validates two cluster trust postures:
   multi-subnet or otherwise non-LAN-assumed deployments
 - persisted operator manifests as the rollout artifact for authenticated
   configured-peer clusters
+- explicit non-LAN discovery posture and refusal diagnostics for LAN-only,
+  configured-peer-only, and future wider-network-requested cluster claims
 - trust-bundle version overlap and stale-bundle refusal during key rotation
 - coordinator lease expiry and stale-leader diagnostics for operator-managed
   multi-subnet clusters
@@ -45,6 +47,7 @@ What these cover:
   - authenticated configured-peer discovery with signed control-plane messages
   - refusal of unknown peers under configured-peer posture
   - authenticated boot from persisted operator manifests
+  - explicit discovery posture truth for LAN-only and configured-peer-only transport
   - explicit configured-peer health, backoff, and late-join recovery
   - key-rotation overlap acceptance and stale trust-bundle refusal diagnostics
   - coordinator lease freshness, expiry, and stale-leader diagnostics
@@ -96,6 +99,29 @@ Interpretation:
   enough to support operator-managed rollout decisions
 - tamper or replay failure means widened cluster trust is not machine-checkable
   enough for multi-subnet posture claims
+
+## Discovery Posture Drill
+
+Use this sequence before claiming explicit non-LAN discovery posture or any
+future wider-network discovery story:
+
+1. Run `cargo test -p psionic-cluster non_lan_discovery_assessment_refuses_trusted_lan_seed_peers`.
+2. Run `cargo test -p psionic-cluster non_lan_discovery_assessment_refuses_operator_managed_configured_peers`.
+3. Run `cargo test -p psionic-cluster explicit_wider_network_discovery_request_is_bounded_until_implemented`.
+4. Run `cargo test -p psionic-cluster --test local_cluster_transport authenticated_configured_peers_discover_each_other_with_signed_control_plane_messages`.
+5. If any step fails, do not claim non-LAN discovery posture truth or future wider-network discovery readiness for the current build.
+
+Interpretation:
+
+- trusted-LAN posture failure means LAN-only discovery is no longer being
+  surfaced as an explicit bounded posture
+- configured-peer posture failure means operator-managed multi-subnet discovery
+  is no longer distinguished from wider-network discovery claims
+- explicit wider-network request failure means the code no longer keeps future
+  non-LAN discovery requests machine-checkably refused until a real transport
+  implementation exists
+- configured-peer transport failure means the current wider-than-LAN story is
+  no longer backed by real operator-managed transport behavior
 
 ## Rotation Drill
 

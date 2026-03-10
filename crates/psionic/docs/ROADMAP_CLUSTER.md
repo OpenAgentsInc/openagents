@@ -33,7 +33,8 @@
 > `#3322` for the compute-market trust hardening follow-on queue, after
 > landing `PSI-210` / `#3319` in `37fb246f1`, after landing `PSI-211` /
 > `#3320` in `4a21d6947`, after landing `PSI-212` / `#3321` in
-> `d0f3e7891`, and after checking live
+> `d0f3e7891`, after landing `PSI-213` / `#3322` in `b0601f662`, and after
+> checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -140,11 +141,11 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is landed on `main`
     - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is landed on `main`
     - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is landed on `main`
-  - the compute-market trust hardening follow-on queue is now in flight
+  - the compute-market trust hardening follow-on queue is now landed on `main`
     - `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) is landed on `main`
     - `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) is landed on `main`
     - `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) is landed on `main`
-    - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is open
+    - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -634,7 +635,7 @@ Required outcome:
 Tracked by landed `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319)
 and `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320),
 plus landed `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321)
-and open `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322).
+and `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322).
 
 Current truth:
 
@@ -646,11 +647,12 @@ Current truth:
   market discovery fabric
 - `ClusterTrustPolicy` now exposes a machine-checkable compute-market refusal
   contract, runtime/provider/cluster now expose a signed cluster evidence
-  bundle export, and attested configured-peer admission now exists as an
-  explicit seam, but there is still no non-LAN discovery posture suitable for
-  a distributed-cluster claim
+  bundle export, attested configured-peer admission now exists as an explicit
+  seam, and cluster policy/config now surface explicit discovery posture plus a
+  bounded non-LAN discovery assessment
 - any compute-market distributed-cluster language would still outrun the code
-  unless that boundary is made machine-checkable
+  unless a future wider-network discovery queue replaces the current
+  machine-checkable refusal boundary with a real discovery fabric
 
 Required outcome:
 
@@ -659,8 +661,10 @@ Required outcome:
   talking about audit or dispute handling outside operator-managed posture
 - keep attestation-aware admission explicit and refusal-capable for market-
   facing node identity claims
-- add explicit non-LAN discovery posture before widening cluster claims toward
-  a compute-market fabric
+- keep current non-LAN discovery posture and refusal boundary explicit before
+  widening cluster claims toward a compute-market fabric
+- open a fresh GitHub-backed queue instead of mutating D4 in place when wider-
+  network discovery implementation work actually starts
 
 ## GitHub-Backed Roadmap Items
 
@@ -778,7 +782,7 @@ clusters now that signed transport and coordinator authority truth exist on
 | `PSI-210` | [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) | Closed | Define compute-market trust posture and refusal diagnostics | `psionic-cluster`, docs/tests | Landed in `37fb246f1`: `ClusterTrustPolicy` now derives a stable `ClusterComputeMarketTrustAssessment` with explicit refusal reasons for current non-market-safe trust postures and the remaining D4 hardening gaps. |
 | `PSI-211` | [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) | Closed | Add signed cluster evidence bundle export | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Landed in `4a21d6947`: Psionic now has stable `ClusterEvidenceBundlePayload` and `SignedClusterEvidenceBundle` types, receipt-export helpers in `psionic-provider`, and cluster-identity verification against control-plane signing keys. |
 | `PSI-212` | [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) | Closed | Add attested node-identity admission seams | `psionic-cluster`, docs/tests | Landed in `d0f3e7891`: Psionic now has explicit attested configured-peer posture, persisted node-attestation evidence, configured-peer attestation requirements, and machine-checkable refusal diagnostics for missing or mismatched attestation during market-facing cluster admission. |
-| `PSI-213` | [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) | Open | Add non-LAN discovery posture diagnostics | `psionic-cluster`, docs/tests | Current discovery assumptions are still LAN or configured-peer shaped, so a future distributed-cluster claim needs an explicit wider-network posture and refusal boundary. |
+| `PSI-213` | [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) | Closed | Add non-LAN discovery posture diagnostics | `psionic-cluster`, docs/tests | Landed in `b0601f662`: Psionic now carries explicit `ClusterDiscoveryPosture`, a stable `ClusterNonLanDiscoveryAssessment`, config/node helpers that report current discovery truth, and validation coverage that keeps LAN-only, operator-managed configured-peer, and explicitly requested-but-unimplemented wider-network discovery claims machine-checkably bounded. |
 
 ## Recommended Order
 
@@ -792,8 +796,8 @@ The shortest honest path from today's `main` is:
    closing in `4732fbc26`.
 4. Treat D3 as landed on `main`, with the authorization and payout-provenance
    queue closing in `715539147`.
-5. Treat `#3319` through `#3321` as the current D4 floor on `main`; finish the
-   remaining compute-market hardening queue with `#3322`.
+5. Treat D4 as landed on `main`, with the compute-market hardening queue now
+   closing in `b0601f662`.
 6. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
