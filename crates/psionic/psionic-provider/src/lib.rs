@@ -9,17 +9,17 @@ use psionic_runtime::{
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
     CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterEvidenceBundlePayload,
-    ClusterEvidenceBundleStatus, ClusterExecutionContext, ClusterSettlementProvenanceInput,
-    CompilePathEvidence, DeliveredExecutionContext, DeviceInventoryQualifiers,
-    ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus,
-    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
-    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
-    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, SandboxExecutionCapabilityProfile,
-    SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
-    ServedArtifactIdentity, SettlementLinkageInput, SignedClusterEvidenceBundle,
-    ValidationMatrixReference, validation_reference_for_served_product,
-    validation_reference_for_text_generation_model,
+    ClusterEvidenceBundleStatus, ClusterExecutionCapabilityProfile, ClusterExecutionContext,
+    ClusterSettlementProvenanceInput, CompilePathEvidence, DeliveredExecutionContext,
+    DeviceInventoryQualifiers, ExecutionCapabilityProfile, ExecutionDeliveryProof,
+    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
+    SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
+    SignedClusterEvidenceBundle, ValidationMatrixReference,
+    validation_reference_for_served_product, validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -655,6 +655,18 @@ impl SandboxExecutionCapabilityEnvelope {
         self.cluster_execution = Some(cluster_execution);
         self
     }
+
+    /// Attaches advertised clustered-lane capability truth independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_execution_capability_profile(
+        mut self,
+        cluster_execution_capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
+        self
+    }
 }
 
 /// Provider-facing receipt for one bounded sandbox-execution request.
@@ -934,6 +946,18 @@ impl CapabilityEnvelope {
             &cluster_execution,
         );
         self.cluster_execution = Some(cluster_execution);
+        self
+    }
+
+    /// Attaches advertised clustered-lane capability truth independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_execution_capability_profile(
+        mut self,
+        cluster_execution_capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
         self
     }
 
@@ -1460,6 +1484,18 @@ impl TextGenerationCapabilityEnvelope {
             &cluster_execution,
         );
         self.cluster_execution = Some(cluster_execution);
+        self
+    }
+
+    /// Attaches advertised clustered-lane capability truth independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_execution_capability_profile(
+        mut self,
+        cluster_execution_capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
         self
     }
 }
@@ -2227,6 +2263,10 @@ fn failed_generation_cache_observations(request: &GenerationRequest) -> Vec<Cach
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::SigningKey;
+    use psionic_cluster::{
+        LayerShardedExecutionRequest, NodeId, TensorShardedExecutionRequest,
+        TensorShardedModelEligibility, WholeRequestSchedulingRequest,
+    };
     use psionic_core::{
         BackendExtensionKind, DType, Device, DeviceKind,
         QuantizationMode as RuntimeQuantizationMode,
@@ -3511,15 +3551,16 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
-            cpu_backend_selection().with_cluster_execution_capability_profile(
-                ClusterExecutionCapabilityProfile::new("cpu")
-                    .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
-                    .with_detail(
-                        "backend `cpu` declares remote whole-request cluster dispatch for trusted operator lanes",
-                    ),
-            ),
+            cpu_backend_selection(),
             &model,
             ProviderReadiness::ready("cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(
+            ClusterExecutionCapabilityProfile::new("cpu")
+                .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+                .with_detail(
+                    "backend `cpu` declares remote whole-request cluster dispatch for trusted operator lanes",
+                ),
         );
 
         let encoded = serde_json::to_value(&envelope)?;
@@ -3536,6 +3577,145 @@ mod tests {
             json!(["remote_dispatch"])
         );
         assert_eq!(encoded.get("cluster_execution"), None);
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn capability_envelope_publishes_whole_request_cluster_profile_from_cluster_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let request = WholeRequestSchedulingRequest::new(sample_scheduler_node_id(), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile());
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cuda_backend_selection(),
+            &model,
+            ProviderReadiness::ready("whole-request cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(request.capability_profile.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_execution_capability_profile,
+            Some(request.capability_profile.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch"])
+        );
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn text_generation_capability_envelope_publishes_replica_profile_from_cluster_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_decoder_descriptor();
+        let request = WholeRequestSchedulingRequest::new(sample_scheduler_node_id(), "cuda")
+            .with_capability_profile(cuda_replica_routed_capability_profile());
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            cuda_backend_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("replicated cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(request.capability_profile.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_execution_capability_profile,
+            Some(request.capability_profile.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request", "replica_routed"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch", "replica_routing"])
+        );
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn text_generation_capability_envelope_publishes_layer_sharded_profile_from_cluster_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_decoder_descriptor();
+        let request =
+            LayerShardedExecutionRequest::new(sample_scheduler_node_id(), "served-artifact", 80, 2);
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            cuda_backend_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("layer-sharded cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(request.capability_profile.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_execution_capability_profile,
+            Some(request.capability_profile.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request", "layer_sharded"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch", "layer_shard_handoff"])
+        );
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_capability_envelope_publishes_tensor_sharded_profile_from_cluster_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = TensorShardedExecutionRequest::new(
+            sample_scheduler_node_id(),
+            "served-artifact",
+            TensorShardedModelEligibility::new(0, 1024),
+            2,
+        );
+        let envelope = SandboxExecutionCapabilityEnvelope::new(
+            cuda_backend_selection(),
+            SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2),
+            ProviderReadiness::ready("tensor-sharded cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(request.capability_profile.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_execution_capability_profile,
+            Some(request.capability_profile.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request", "tensor_sharded"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch", "tensor_collective_mesh"])
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -5459,6 +5639,10 @@ mod tests {
 
     fn sample_embedding_descriptor() -> psionic_serve::EmbeddingModelDescriptor {
         SmokeByteEmbedder::new().descriptor().clone()
+    }
+
+    fn sample_scheduler_node_id() -> NodeId {
+        NodeId::new("scheduler-node")
     }
 
     fn cpu_backend_selection() -> BackendSelection {
