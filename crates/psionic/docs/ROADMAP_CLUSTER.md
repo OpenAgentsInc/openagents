@@ -44,7 +44,7 @@
 > after landing `PSI-219` / `#3331` in `98dc1bdc3`, after opening
 > `PSI-220` through `PSI-222` as `#3332` through `#3334` for the cluster
 > benchmark-receipt follow-on queue, after landing `PSI-220` / `#3332` in
-> `84d312497`, and after checking live GitHub issue search so this roadmap
+> `4f64525b4`, and after checking live GitHub issue search so this roadmap
 > reflects the current GitHub queue rather than local placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
@@ -848,7 +848,7 @@ be tied to explicit machine-checkable benchmark receipts.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-220` | [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) | Closed | Add typed cluster benchmark receipts and gate JSON schema | `psionic-cluster`, tests | Landed in `84d312497`: `psionic-cluster` now exposes typed `ClusterBenchmarkReceipt` models plus topology/recovery benchmark contexts and stable digest helpers, while the benchmark gates now emit receipt-shaped JSON instead of anonymous summary blobs and release-gate artifacts now preserve benchmark identity, budget truth, context, and pass/fail outcome. |
+| `PSI-220` | [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) | Closed | Add typed cluster benchmark receipts and gate JSON schema | `psionic-cluster`, tests | Landed in `4f64525b4`: `psionic-cluster` now exposes typed `ClusterBenchmarkReceipt` models plus topology/recovery benchmark contexts and stable digest helpers, while the benchmark gates now emit receipt-shaped JSON instead of anonymous summary blobs and release-gate artifacts now preserve benchmark identity, budget truth, context, and pass/fail outcome. |
 | `PSI-221` | [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) | Open | Wire cluster benchmark gate script and outputs to typed receipts | `psionic-cluster`, scripts/docs | Once typed receipts exist, the script and persisted output path must also become explicit receipt artifacts rather than generic JSON summaries. |
 | `PSI-222` | [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) | Open | Add benchmark receipt validation drill and roadmap closeout | docs/tests/validation plus cluster crates | The roadmap and validation runbook still need an explicit operator drill and exit criteria for typed benchmark receipts before stronger performance claims are honest. |
 
@@ -875,7 +875,7 @@ The shortest honest path from today's `main` is:
    cluster execution while the Metal roadmap queue stays open.
 9. Continue G1 in order: land `#3334`, then `#3333`, so the benchmark gate
    script, runbook, and roadmap closeout catch up to the typed receipt output
-   now shipped in `84d312497`.
+   now shipped in `4f64525b4`.
 10. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 11. If stronger trust or wider network claims are needed beyond G1, open a new
