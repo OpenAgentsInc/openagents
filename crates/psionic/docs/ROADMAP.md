@@ -1793,3 +1793,20 @@ The right near-term target is smaller:
   do not spend another cycle on small cache-shape or scratch-copy tweaks.
   The remaining honest path is to reduce or fundamentally restructure
   selected-expert staging itself.
+- New exact `nsys` checkpoint on the same kept branch:
+  a real cold / warm-non-hit / prompt-cache-hit capture on
+  `/tmp/psionic_120b_nsys.nsys-rep` showed `190,411` host-to-device copies
+  totaling about `333 GB`, with `cudaMemcpy` alone consuming about
+  `25.09 s` of CUDA API time and `cudaStreamSynchronize` another `4.70 s`.
+  The dominant host-to-device copy size was `4,406,400` bytes, repeated
+  `71,678` times. That matches the staged selected-expert weight path, so the
+  next honest 120B work should stay pinned to reducing those large repeated
+  selected4 uploads rather than retuning kernel math.
+- More ruled-out follow-ups after that capture:
+  an async host-region rewrite of the decode-lane selected4 cache-fill path
+  compiled and passed targeted tests but still lost on the real benchmark at
+  about `1.65 / 5.53 / 10.46 tok/s`, a direct top-miss sixth-slot reallocation
+  regressed to about `1.65 / 5.51 / 10.39 tok/s`, a narrower
+  ratio-guided expanded-layer swap regressed to about
+  `2.23 / 6.41 / 10.45 tok/s`, and a more aggressive `0/5/6/7` slot-skew
+  layout failed on the first cold request and was reverted immediately.

@@ -1449,6 +1449,22 @@ What the remaining gap now points to:
   caches entirely on the historically low-hit 120B layers cratered the exact
   contract to about `1.64 tok/s` cold, `4.68 tok/s` warm-non-hit, and
   `7.43 tok/s` prompt-cache-hit.
+- a follow-up `nsys` capture on the restored kept branch sharpened the same
+  conclusion:
+  the exact cold / warm-non-hit / prompt-cache-hit trace recorded `190,411`
+  host-to-device copies totaling about `333 GB`, with `cudaMemcpy` itself
+  consuming about `25.09 s` of CUDA API time and `cudaStreamSynchronize`
+  another `4.70 s`. The dominant copy size was `4,406,400` bytes, repeated
+  `71,678` times. That is the surviving selected-expert staging traffic in the
+  hybrid host-backed MoE lane, not the dense CUDA kernels.
+- three more 120B follow-ups are now ruled out after that capture:
+  a decode-lane async host-region selected4 cache-fill rewrite still lost on
+  the real benchmark at about `1.65 / 5.53 / 10.46 tok/s`, a direct
+  top-miss-based sixth-slot reallocation regressed to about
+  `1.65 / 5.51 / 10.39 tok/s`, and a narrower ratio-guided sixth-slot swap
+  regressed to about `2.23 / 6.41 / 10.45 tok/s`. A more aggressive
+  `0/5/6/7` cache layout failed on the very first cold request and was
+  reverted immediately.
 - updated conclusion:
   `#3345` should stay focused on cutting or restructuring selected-expert
   staging itself. The new evidence argues against retrying small cache-geometry
