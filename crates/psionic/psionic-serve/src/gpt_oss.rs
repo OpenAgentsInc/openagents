@@ -2948,6 +2948,7 @@ struct GptOssCudaStepPlanLayer {
     selected_weights_buffer: CudaBuffer,
     activated_buffer: CudaBuffer,
     activated_q8_1_buffer: CudaBuffer,
+    moe_projected_buffer: CudaBuffer,
     moe_buffer: CudaBuffer,
 }
 
@@ -3057,6 +3058,8 @@ impl GptOssCudaModelInner {
                 selected_weights_buffer: backend.f32_buffer(selected_count)?,
                 activated_buffer: backend.f32_buffer(selected_count.saturating_mul(gate_rows))?,
                 activated_q8_1_buffer: backend.byte_buffer(&vec![0_u8; activated_q8_1_bytes])?,
+                moe_projected_buffer: backend
+                    .f32_buffer(selected_count.saturating_mul(layer.feed_forward_down_experts_weight.rows))?,
                 moe_buffer: backend.f32_buffer(hidden_size)?,
             });
         }
@@ -3463,16 +3466,17 @@ impl GptOssCudaModelInner {
                         &layer_plan.selected_ids_buffer,
                         &layer_plan.selected_weights_buffer,
                     )?;
-                    submission.quantize_f32_to_q8_1(
-                        &layer_plan.ffn_norm_buffer,
-                        1,
-                        layer.feed_forward_gate_up_experts_weight.columns,
-                        &plan.vector_q8_1_buffer,
-                    )?;
                 }
                 let use_selected4_quantized_gate_up = selected_count <= 4
                     && !experimental_fused_selected4_moe_down_enabled()
                     && layer.feed_forward_gate_up_experts_weight.columns % 32 == 0;
+                let use_official_selected4_moe_down = use_selected4_quantized_gate_up;
+                submission.quantize_f32_to_q8_1(
+                    &layer_plan.ffn_norm_buffer,
+                    1,
+                    layer.feed_forward_gate_up_experts_weight.columns,
+                    &plan.vector_q8_1_buffer,
+                )?;
                 if use_selected4_quantized_gate_up {
                     submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
                         &layer.feed_forward_gate_up_experts_weight.storage,
@@ -3522,20 +3526,43 @@ impl GptOssCudaModelInner {
                         &layer_plan.moe_buffer,
                     )?;
                 } else if use_selected4_quantized_gate_up {
-                    submission.moe_down_aggregate_q8_1(
-                        &layer.feed_forward_down_experts_weight.storage,
-                        layer.feed_forward_down_experts_weight.mode,
-                        layer.feed_forward_down_experts_weight.row_byte_len,
-                        layer.feed_forward_down_experts_weight.rows,
-                        layer.feed_forward_down_experts_weight.columns,
-                        &layer_plan.selected_ids_buffer,
-                        &layer_plan.selected_weights_buffer,
-                        selected_count,
-                        &layer_plan.activated_q8_1_buffer,
-                        layer.feed_forward_down_experts_bias_device.as_ref(),
-                        Some(&layer_plan.projected_buffer),
-                        &layer_plan.moe_buffer,
-                    )?;
+                    if use_official_selected4_moe_down {
+                        submission.moe_down_project_q8_1_selected4(
+                            &layer.feed_forward_down_experts_weight.storage,
+                            layer.feed_forward_down_experts_weight.mode,
+                            layer.feed_forward_down_experts_weight.row_byte_len,
+                            layer.feed_forward_down_experts_weight.rows,
+                            layer.feed_forward_down_experts_weight.columns,
+                            &layer_plan.selected_ids_buffer,
+                            selected_count,
+                            &layer_plan.activated_q8_1_buffer,
+                            layer.feed_forward_down_experts_bias_device.as_ref(),
+                            &layer_plan.moe_projected_buffer,
+                        )?;
+                        submission.accumulate_selected4(
+                            &layer_plan.moe_projected_buffer,
+                            &layer_plan.selected_weights_buffer,
+                            selected_count,
+                            layer.feed_forward_down_experts_weight.rows,
+                            Some(&layer_plan.projected_buffer),
+                            &layer_plan.moe_buffer,
+                        )?;
+                    } else {
+                        submission.moe_down_aggregate_q8_1(
+                            &layer.feed_forward_down_experts_weight.storage,
+                            layer.feed_forward_down_experts_weight.mode,
+                            layer.feed_forward_down_experts_weight.row_byte_len,
+                            layer.feed_forward_down_experts_weight.rows,
+                            layer.feed_forward_down_experts_weight.columns,
+                            &layer_plan.selected_ids_buffer,
+                            &layer_plan.selected_weights_buffer,
+                            selected_count,
+                            &layer_plan.activated_q8_1_buffer,
+                            layer.feed_forward_down_experts_bias_device.as_ref(),
+                            Some(&layer_plan.projected_buffer),
+                            &layer_plan.moe_buffer,
+                        )?;
+                    }
                 } else {
                     submission.quantize_f32_to_q8_1(
                         &layer_plan.activated_buffer,

@@ -1605,6 +1605,61 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Executes the GPT-OSS selected4 down projection into expert-specific
+    /// output rows, leaving route-weighted accumulation as a separate step.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_down_project_q8_1_selected4(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows: usize,
+        columns: usize,
+        selected_ids: &CudaBuffer,
+        selected_count: usize,
+        activated_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_moe_down_project_q8_1_selected4(
+            &weights.platform,
+            mode,
+            row_stride,
+            rows,
+            columns,
+            &selected_ids.platform,
+            selected_count,
+            &activated_q8_1.platform,
+            bias.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Accumulates up to four expert-specific output rows using route weights
+    /// and an optional residual vector.
+    pub fn accumulate_selected4(
+        &mut self,
+        input: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        selected_count: usize,
+        rows: usize,
+        residual: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_accumulate_selected4(
+            &input.platform,
+            &selected_weights.platform,
+            selected_count,
+            rows,
+            residual.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
     pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
         if self.capturing {
@@ -3537,6 +3592,28 @@ mod platform {
             selected_count: c_int,
             activated: *const c_void,
             bias: *const c_void,
+            residual: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_moe_down_project_q8_1_selected4(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows: c_int,
+            columns: c_int,
+            selected_ids: *const c_void,
+            selected_count: c_int,
+            activated_q8_1: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_accumulate_selected4(
+            input: *const c_void,
+            selected_weights: *const c_void,
+            selected_count: c_int,
+            rows: c_int,
             residual: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
@@ -5856,6 +5933,117 @@ mod platform {
             )
         }
 
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_project_q8_1_selected4(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows: usize,
+            columns: usize,
+            selected_ids: &PlatformBuffer,
+            selected_count: usize,
+            activated_q8_1: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if selected_count > 4 {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda selected4 moe down projection requires selected_count <= 4",
+                )));
+            }
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda selected4 moe down projection does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda selected4 moe down projection row stride exceeds c_int",
+                ))
+            })?;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda selected4 moe down projection rows exceed c_int",
+                ))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda selected4 moe down projection columns exceed c_int",
+                ))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda selected4 moe down projection selected_count exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_moe_down_project_q8_1_selected4(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows,
+                        columns,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_count,
+                        activated_q8_1.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_moe_down_project_q8_1_selected4",
+            )
+        }
+
+        pub(super) fn encode_accumulate_selected4(
+            &mut self,
+            input: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+            selected_count: usize,
+            rows: usize,
+            residual: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if selected_count > 4 {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda selected4 accumulate requires selected_count <= 4",
+                )));
+            }
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda selected4 accumulate selected_count exceeds c_int",
+                ))
+            })?;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda selected4 accumulate rows exceed c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_accumulate_selected4(
+                        input.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        selected_count,
+                        rows,
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_accumulate_selected4",
+            )
+        }
+
         pub(super) fn commit(
             mut self,
             wait: CudaCommandWait,
@@ -6919,6 +7107,39 @@ mod platform {
             _selected_count: usize,
             _activated: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_project_q8_1_selected4(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows: usize,
+            _columns: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_count: usize,
+            _activated_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_accumulate_selected4(
+            &mut self,
+            _input: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+            _selected_count: usize,
+            _rows: usize,
             _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
@@ -8775,6 +8996,85 @@ mod tests {
     }
 
     #[test]
+    fn cuda_submission_executes_mxfp4_selected4_moe_down_project_and_accumulate_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let selected_ids = [3_i32, 1_i32, 0_i32, 2_i32];
+        let selected_weights = [0.40_f32, 0.27_f32, 0.19_f32, 0.14_f32];
+        let activated = sample_selected_activated_vectors_for_count(selected_ids.len());
+        let weights_bytes = sample_mxfp4_expert_down_weights(selected_ids.len(), 32, 32);
+        let weights = backend.byte_buffer(&weights_bytes)?;
+        let activated_buffer =
+            backend.input_buffer(Shape::new(vec![activated.len()]), activated.clone())?;
+        let activated_q8_1 =
+            backend.byte_buffer(&vec![
+                0_u8;
+                crate::ggml_q8_1_storage_bytes(selected_ids.len(), 32)?
+            ])?;
+        let selected_ids_buffer = backend.byte_buffer(&i32_slice_to_bytes(&selected_ids))?;
+        let selected_weights_buffer = backend.input_buffer(
+            Shape::new(vec![selected_weights.len()]),
+            selected_weights.to_vec(),
+        )?;
+        let projected = backend.f32_buffer(selected_ids.len() * 32)?;
+        let output = backend.f32_buffer(32)?;
+
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(
+            &activated_buffer,
+            selected_ids.len(),
+            32,
+            &activated_q8_1,
+        )?;
+        submission.moe_down_project_q8_1_selected4(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            32,
+            32,
+            &selected_ids_buffer,
+            selected_ids.len(),
+            &activated_q8_1,
+            None,
+            &projected,
+        )?;
+        submission.accumulate_selected4(
+            &projected,
+            &selected_weights_buffer,
+            selected_ids.len(),
+            32,
+            None,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 3);
+
+        let actual_projected = projected.read_f32()?;
+        let expected_projected =
+            expected_moe_down_project_outputs(&activated, &weights_bytes, selected_ids.as_slice(), 32)?;
+        assert_close(&actual_projected, &expected_projected, 1e-4);
+
+        let actual = output.read_f32()?;
+        let expected = expected_moe_down_outputs(
+            &activated,
+            &weights_bytes,
+            selected_ids.as_slice(),
+            selected_weights.as_slice(),
+            32,
+        )?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
     fn cuda_backend_rejects_non_cuda_tensor_specs_when_available() {
         let mut backend = CudaBackend::new();
         let Some(_) = backend.selected_device() else {
@@ -8927,22 +9227,35 @@ mod tests {
         selected_weights: &[f32],
         rows: usize,
     ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+        let projected = expected_moe_down_project_outputs(activated, weights, selected_ids, rows)?;
+        let mut outputs = vec![0.0_f32; rows];
+        for (selected_slot, &route) in selected_weights.iter().enumerate() {
+            for row_index in 0..rows {
+                outputs[row_index] += projected[selected_slot * rows + row_index] * route;
+            }
+        }
+        Ok(outputs)
+    }
+
+    fn expected_moe_down_project_outputs(
+        activated: &[f32],
+        weights: &[u8],
+        selected_ids: &[i32],
+        rows: usize,
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         let row_byte_len = 17usize;
         let columns = 32usize;
-        let mut outputs = vec![0.0_f32; rows];
-        for (selected_slot, (&selected_id, &route)) in
-            selected_ids.iter().zip(selected_weights.iter()).enumerate()
-        {
+        let mut outputs = vec![0.0_f32; selected_ids.len() * rows];
+        for (selected_slot, &selected_id) in selected_ids.iter().enumerate() {
             let expert_index = usize::try_from(selected_id)?;
             let activated_row = &activated[selected_slot * columns..(selected_slot + 1) * columns];
-            for (row_index, output) in outputs.iter_mut().enumerate() {
+            for row_index in 0..rows {
                 let row_start = (expert_index * rows + row_index) * row_byte_len;
-                let value = quantized_row_dot(
+                outputs[selected_slot * rows + row_index] = quantized_row_dot(
                     activated_row,
                     QuantizationMode::GgmlMxfp4,
                     &weights[row_start..row_start + row_byte_len],
                 )?;
-                *output += value * route;
             }
         }
         Ok(outputs)
