@@ -344,6 +344,12 @@ pub struct ClusterSelectedNode {
     pub node_id: String,
     /// Runtime backend promised or delivered on this node.
     pub runtime_backend: String,
+    /// Stable selected-device identifier when the scheduler can surface one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stable_device_id: Option<String>,
+    /// Stable topology key such as PCI BDF when the scheduler can surface one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_key: Option<String>,
     /// Stable node role when the scheduler can surface it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -365,11 +371,27 @@ impl ClusterSelectedNode {
         Self {
             node_id: node_id.into(),
             runtime_backend: runtime_backend.into(),
+            stable_device_id: None,
+            topology_key: None,
             role: None,
             topology_digest: None,
             served_artifact_digest: None,
             artifact_residency: None,
         }
+    }
+
+    /// Attaches a stable selected-device identifier.
+    #[must_use]
+    pub fn with_stable_device_id(mut self, stable_device_id: impl Into<String>) -> Self {
+        self.stable_device_id = Some(stable_device_id.into());
+        self
+    }
+
+    /// Attaches a stable topology key.
+    #[must_use]
+    pub fn with_topology_key(mut self, topology_key: impl Into<String>) -> Self {
+        self.topology_key = Some(topology_key.into());
+        self
     }
 
     /// Attaches a stable node role.

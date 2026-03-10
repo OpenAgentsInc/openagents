@@ -1001,6 +1001,31 @@ impl ClusterSnapshot {
                 .to_string()
                 .as_bytes(),
         );
+        hasher.update(self.artifact_residency_digest().as_bytes());
+        hasher.update(b"|");
+        if let Some(leadership) = &self.leadership {
+            hasher.update(b"|leadership|");
+            hasher.update(leadership.term.as_u64().to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(leadership.leader_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(
+                leadership
+                    .committed_event_index
+                    .as_u64()
+                    .to_string()
+                    .as_bytes(),
+            );
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    /// Returns a stable digest of artifact residency and staging facts only.
+    #[must_use]
+    pub fn artifact_residency_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.cluster_id.as_str().as_bytes());
+        hasher.update(b"|artifact_residency|");
         for residency in self.artifact_residency.values() {
             hasher.update(b"|artifact|");
             hasher.update(residency.key.node_id.as_str().as_bytes());
@@ -1045,20 +1070,6 @@ impl ClusterSnapshot {
             );
             hasher.update(b"|");
             hasher.update(residency.detail.as_deref().unwrap_or_default().as_bytes());
-        }
-        if let Some(leadership) = &self.leadership {
-            hasher.update(b"|leadership|");
-            hasher.update(leadership.term.as_u64().to_string().as_bytes());
-            hasher.update(b"|");
-            hasher.update(leadership.leader_id.as_str().as_bytes());
-            hasher.update(b"|");
-            hasher.update(
-                leadership
-                    .committed_event_index
-                    .as_u64()
-                    .to_string()
-                    .as_bytes(),
-            );
         }
         hex::encode(hasher.finalize())
     }
@@ -1169,6 +1180,12 @@ impl ClusterState {
     #[must_use]
     pub fn stable_digest(&self) -> String {
         self.snapshot.stable_digest()
+    }
+
+    /// Returns a stable digest of artifact residency and staging facts only.
+    #[must_use]
+    pub fn artifact_residency_digest(&self) -> String {
+        self.snapshot.artifact_residency_digest()
     }
 
     /// Applies one indexed authoritative event using contiguous-index discipline.
