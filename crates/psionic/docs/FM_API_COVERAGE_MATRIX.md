@@ -1,10 +1,11 @@
 # Apple FM API Coverage Matrix
 
-Status: `FM-1` and `FM-2` landed matrix, updated 2026-03-10 from the retained
+Status: `FM-1`, `FM-2`, and `FM-3` landed matrix, updated 2026-03-10 from the retained
 Apple FM audit plus a direct scan of `~/code/python-apple-fm-sdk`, after
 moving the current bridge contract and reusable client into
-`psionic-apple-fm`, and after landing typed system-model availability,
-use-case, and guardrail coverage.
+`psionic-apple-fm`, after landing typed system-model availability, use-case,
+and guardrail coverage, and after landing explicit session handles and
+transcript-backed restore via raw transcript JSON.
 
 This is the living coverage matrix for the Psionic Apple Foundation Models
 lane. It maps the exported Python SDK surface and its major behavioral families
@@ -25,7 +26,7 @@ Legend:
 | `SystemLanguageModelUseCase` | `psionic-apple-fm::AppleFmSystemLanguageModelUseCase` | landed | `FM-2` / `#3347` | Includes typed bridge decode plus unknown-value fallback. |
 | `SystemLanguageModelGuardrails` | `psionic-apple-fm::AppleFmSystemLanguageModelGuardrails` | landed | `FM-2` / `#3347` | Includes typed bridge decode plus unknown-value fallback. |
 | `SystemLanguageModelUnavailableReason` | `psionic-apple-fm::AppleFmSystemLanguageModelUnavailableReason` | landed | `FM-2` / `#3347` | Bridge and desktop now carry typed reason codes instead of only strings. |
-| `LanguageModelSession` | Reusable Rust session handle and APIs | planned | `FM-3` / `#3348` | Current retained Swift bridge uses one shared hidden session. |
+| `LanguageModelSession` | `psionic-apple-fm::AppleFmSession` + session client APIs | landed | `FM-3` / `#3348` | Reusable bridge client now creates, inspects, resets, deletes, and responds through explicit session IDs. |
 | `Transcript` | Reusable transcript type + bridge coverage | planned | `FM-6` / `#3351` | No transcript bridge support on `main` yet. |
 | `GenerationOptions` | Rust generation-options type | planned | `FM-4` / `#3349` | Current bridge accepts only minimal lossy request fields. |
 | `SamplingMode` | Rust sampling-mode type | planned | `FM-4` / `#3349` | Not yet implemented. |
@@ -50,7 +51,8 @@ Legend:
 | Reusable current bridge client | `psionic-apple-fm::AppleFmBridgeClient` | landed | `FM-1` / `#3346` | Desktop now consumes the shared client instead of owning the transport types. |
 | Typed system-model availability/configuration contract | `psionic-apple-fm::AppleFmSystemLanguageModelAvailability` | landed | `FM-2` / `#3347` | Health payload now reconstructs typed availability + configuration truth. |
 | Typed model listing config/availability fields | `psionic-apple-fm::AppleFmModelInfo` | landed | `FM-2` / `#3347` | `/v1/models` now carries typed use-case/guardrail fields and availability detail. |
-| Session-aware bridge protocol | Reusable bridge/session contract | planned | `FM-3` / `#3348` | Current bridge is still one-shot and hidden-session-oriented. |
+| Session create/get/delete/reset/respond contract | `psionic-apple-fm::{AppleFmSession*, AppleFmBridgeClient}` | landed | `FM-3` / `#3348` | Bridge now owns explicit session IDs instead of one hidden shared `LanguageModelSession`. |
+| Session-aware bridge protocol | Reusable bridge/session contract | landed | `FM-3` / `#3348` | The bridge now uses explicit session handles; the old one-shot path remains only as a compatibility wrapper. |
 | Streaming bridge protocol | Reusable stream contract | planned | `FM-5` / `#3350` | Not yet present in retained bridge. |
 | Transcript bridge protocol | Reusable transcript contract | planned | `FM-6` / `#3351` | Not yet present in retained bridge. |
 | Structured-generation bridge protocol | Reusable structured-generation contract | planned | `FM-7` / `#3352` | Not yet present in retained bridge. |
@@ -62,19 +64,19 @@ Legend:
 | --- | --- | --- | --- |
 | Current minimal bridge contract captured in reusable Rust types and client | landed | `FM-1` / `#3346` | The desktop no longer owns the transport contract types for the current retained endpoints. |
 | Typed model availability/use-case/guardrail truth | landed | `FM-2` / `#3347` | Desktop/provider runtime now carries typed system-model status instead of relying only on free-form strings. |
-| Session serialization semantics | planned | `FM-3` / `#3348` | Must match the Python SDK contract. |
-| Reset-after-cancel/failure semantics | planned | `FM-3` / `#3348` | Must not erase transcript history. |
+| Session-scoped request serialization semantics | landed | `FM-3` / `#3348` | Each session now has an explicit in-flight contract and rejects overlapping same-session requests with `concurrent_requests`; separate sessions remain independent. |
+| Reset-after-failure semantics | landed | `FM-3` / `#3348` | Sessions expose a reusable reset hook without clearing transcript history; typed cancellation transport is still future work. |
 | Streaming snapshot semantics | planned | `FM-5` / `#3350` | Python SDK yields full response-so-far snapshots, not deltas. |
 | Transcript update timing | planned | `FM-5` / `#3350`, `FM-6` / `#3351` | Transcript updates after successful completion. |
-| Restore-from-transcript semantics | planned | `FM-6` / `#3351` | Historical tool mentions must not auto-enable new tool calls. |
+| Raw transcript-backed restore semantics | landed | `FM-3` / `#3348` | Sessions can now be recreated from bridge transcript JSON; typed transcript import/export remains `FM-6`. |
 | Typed, structured-generation behavior | planned | `FM-7` / `#3352` | Must not be reduced to “ask for JSON in the prompt”. |
 | Real tool-calling flow | planned | `FM-8` / `#3353` | Must be session-aware, not prompt flattening. |
 | Typed error mapping | planned | `FM-9` / `#3354` | Must replace generic string failures. |
 | Desktop/macOS Mission Control Apple FM truth | planned | `FM-10` / `#3355` | Mission Control is still GPT-OSS-first on `main`. |
 
-## FM-1 And FM-2 Landed Scope
+## FM-1 Through FM-3 Landed Scope
 
-The following is explicitly landed by `FM-1` and `FM-2` and should remain the
+The following is explicitly landed by `FM-1` through `FM-3` and should remain the
 starting point for later issues:
 
 - `crates/psionic/psionic-apple-fm` exists as the reusable crate for the Apple
@@ -89,10 +91,14 @@ starting point for later issues:
   configuration and availability truth
 - desktop/provider runtime state now carries typed Apple FM system-model
   readiness fields instead of only free-form availability text
+- the bridge now owns explicit Apple FM session IDs and session lifecycle
+  endpoints for create/get/respond/reset/delete
+- session restore from raw transcript JSON is now real in the bridge and client
+- the hidden shared Swift `LanguageModelSession` assumption is gone from the
+  bridge session path
 
-What is intentionally **not** closed by `FM-1` and `FM-2`:
+What is intentionally **not** closed by `FM-1` through `FM-3`:
 
-- session handles
 - streaming
 - transcripts
 - structured generation

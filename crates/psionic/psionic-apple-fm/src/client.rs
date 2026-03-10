@@ -4,8 +4,10 @@ use thiserror::Error;
 
 use crate::contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
-    APPLE_FM_BRIDGE_MODELS_PATH, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
-    AppleFmCompletionResult, AppleFmHealthResponse, AppleFmModelsResponse,
+    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, AppleFmChatCompletionRequest,
+    AppleFmChatCompletionResponse, AppleFmCompletionResult, AppleFmHealthResponse,
+    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
     AppleFmSystemLanguageModelAvailability,
 };
 
@@ -105,6 +107,120 @@ impl AppleFmBridgeClient {
         Ok(self.health()?.system_model_availability())
     }
 
+    /// Creates a new Apple FM session or restores one from transcript JSON.
+    pub fn create_session(
+        &self,
+        request: &AppleFmSessionCreateRequest,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        self.client
+            .post(self.endpoint(APPLE_FM_BRIDGE_SESSIONS_PATH)?)
+            .json(request)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "create_session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "create_session",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmSessionCreateResponse>()
+            .map(|response| response.session)
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "create_session",
+                error: error.to_string(),
+            })
+    }
+
+    /// Fetches current session state.
+    pub fn session(&self, session_id: &str) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        self.client
+            .get(self.endpoint(&session_path(session_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "session",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmSession>()
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "session",
+                error: error.to_string(),
+            })
+    }
+
+    /// Deletes a session handle.
+    pub fn delete_session(&self, session_id: &str) -> Result<(), AppleFmBridgeClientError> {
+        self.client
+            .delete(self.endpoint(&session_path(session_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "delete_session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "delete_session",
+                error: error.to_string(),
+            })?;
+        Ok(())
+    }
+
+    /// Resets a session after failure/cancellation semantics.
+    pub fn reset_session(
+        &self,
+        session_id: &str,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        self.client
+            .post(self.endpoint(&session_reset_path(session_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "reset_session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "reset_session",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmSession>()
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "reset_session",
+                error: error.to_string(),
+            })
+    }
+
+    /// Executes a prompt inside a persistent Apple FM session.
+    pub fn respond_in_session(
+        &self,
+        session_id: &str,
+        request: &AppleFmSessionRespondRequest,
+    ) -> Result<AppleFmSessionRespondResponse, AppleFmBridgeClientError> {
+        self.client
+            .post(self.endpoint(&session_responses_path(session_id))?)
+            .json(request)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "respond_in_session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "respond_in_session",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmSessionRespondResponse>()
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "respond_in_session",
+                error: error.to_string(),
+            })
+    }
+
     /// Executes a raw chat-completion request against the bridge.
     pub fn chat_completion(
         &self,
@@ -154,6 +270,18 @@ fn canonical_base_url(base_url: String) -> Result<String, AppleFmBridgeClientErr
     Ok(trimmed.trim_end_matches('/').to_string())
 }
 
+fn session_path(session_id: &str) -> String {
+    format!("{APPLE_FM_BRIDGE_SESSIONS_PATH}/{session_id}")
+}
+
+fn session_reset_path(session_id: &str) -> String {
+    format!("{}/reset", session_path(session_id))
+}
+
+fn session_responses_path(session_id: &str) -> String {
+    format!("{}/responses", session_path(session_id))
+}
+
 /// Reusable Apple FM bridge client error.
 #[derive(Debug, Error)]
 pub enum AppleFmBridgeClientError {
@@ -199,12 +327,16 @@ pub enum AppleFmBridgeClientError {
 mod tests {
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
 
     use super::{AppleFmBridgeClient, AppleFmBridgeClientError};
     use crate::contract::{
-        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
+        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest, AppleFmSessionToolMetadata,
+        AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+        AppleFmSystemLanguageModelUseCase,
     };
 
     fn spawn_mock_bridge() -> (String, JoinHandle<()>) {
@@ -213,6 +345,8 @@ mod tests {
             .set_nonblocking(true)
             .expect("set mock bridge nonblocking");
         let address = listener.local_addr().expect("bridge addr");
+        let session_counter = Arc::new(AtomicUsize::new(0));
+        let session_counter_handle = Arc::clone(&session_counter);
         let handle = std::thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(2);
             loop {
@@ -228,8 +362,8 @@ mod tests {
                     Err(error) => panic!("accept mock request: {error}"),
                 };
                 let (method, path) = read_request_line(&mut stream);
-                let body = match (method.as_str(), path.as_str()) {
-                    ("GET", "/health") => serde_json::json!({
+                let (status_code, body) = if method == "GET" && path == "/health" {
+                    (200, serde_json::json!({
                         "status": "ok",
                         "model_available": true,
                         "availability_message": "Foundation Models is available",
@@ -238,8 +372,9 @@ mod tests {
                         "supported_use_cases": ["general", "content_tagging"],
                         "supported_guardrails": ["default", "permissive_content_transformations"]
                     })
-                    .to_string(),
-                    ("GET", "/v1/models") => serde_json::json!({
+                    .to_string())
+                } else if method == "GET" && path == "/v1/models" {
+                    (200, serde_json::json!({
                         "object": "list",
                         "data": [{
                             "id": "apple-foundation-model",
@@ -251,30 +386,135 @@ mod tests {
                             "available": true
                         }]
                     })
-                    .to_string(),
-                    ("POST", "/v1/chat/completions") => serde_json::json!({
-                        "model": "apple-foundation-model",
-                        "choices": [{
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": "hello from apple fm"
+                    .to_string())
+                } else if method == "POST" && path == "/v1/sessions" {
+                    let next_id = session_counter_handle.fetch_add(1, Ordering::SeqCst) + 1;
+                    (200, serde_json::json!({
+                        "session": {
+                            "id": format!("sess-{next_id}"),
+                            "instructions": "You are a helper",
+                            "model": {
+                                "id": "apple-foundation-model",
+                                "use_case": "general",
+                                "guardrails": "default"
                             },
-                            "finish_reason": "stop"
-                        }],
-                        "usage": {
-                            "prompt_tokens": 11,
-                            "completion_tokens": 4,
-                            "total_tokens": 15
+                            "tools": [{ "name": "search", "description": "Search docs" }],
+                            "is_responding": false,
+                            "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
                         }
                     })
-                    .to_string(),
-                    _ => serde_json::json!({
-                        "error": { "message": "not found", "type": "error" }
+                    .to_string())
+                } else if method == "GET" && path.starts_with("/v1/sessions/sess-") {
+                    let session_id = path.trim_start_matches("/v1/sessions/");
+                    (200, serde_json::json!({
+                        "id": session_id,
+                        "instructions": "You are a helper",
+                        "model": {
+                            "id": "apple-foundation-model",
+                            "use_case": "general",
+                            "guardrails": "default"
+                        },
+                        "tools": [{ "name": "search", "description": "Search docs" }],
+                        "is_responding": false,
+                        "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
                     })
-                    .to_string(),
+                    .to_string())
+                } else if method == "POST"
+                    && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/reset")
+                {
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/reset")
+                        .trim_end_matches('/');
+                    (200, serde_json::json!({
+                        "id": session_id,
+                        "instructions": "You are a helper",
+                        "model": {
+                            "id": "apple-foundation-model",
+                            "use_case": "general",
+                            "guardrails": "default"
+                        },
+                        "tools": [{ "name": "search", "description": "Search docs" }],
+                        "is_responding": false,
+                        "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
+                    })
+                    .to_string())
+                } else if method == "POST" && path == "/v1/sessions/busy/responses" {
+                    (
+                        409,
+                        serde_json::json!({
+                            "error": {
+                                "message": "session busy",
+                                "type": "concurrent_requests",
+                                "code": "concurrent_requests"
+                            }
+                        })
+                        .to_string(),
+                    )
+                } else if method == "POST"
+                    && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/responses")
+                {
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/responses")
+                        .trim_end_matches('/');
+                    (200, serde_json::json!({
+                        "session": {
+                            "id": session_id,
+                            "instructions": "You are a helper",
+                            "model": {
+                                "id": "apple-foundation-model",
+                                "use_case": "general",
+                                "guardrails": "default"
+                            },
+                            "tools": [{ "name": "search", "description": "Search docs" }],
+                            "is_responding": false,
+                            "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+                        },
+                        "model": "apple-foundation-model",
+                        "output": "session hello from apple fm",
+                        "usage": {
+                            "prompt_tokens": 6,
+                            "completion_tokens": 5,
+                            "total_tokens": 11
+                        }
+                    })
+                    .to_string())
+                } else if method == "DELETE" && path.starts_with("/v1/sessions/sess-") {
+                    (200, String::new())
+                } else if method == "POST" && path == "/v1/chat/completions" {
+                    (
+                        200,
+                        serde_json::json!({
+                            "model": "apple-foundation-model",
+                            "choices": [{
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "hello from apple fm"
+                                },
+                                "finish_reason": "stop"
+                            }],
+                            "usage": {
+                                "prompt_tokens": 11,
+                                "completion_tokens": 4,
+                                "total_tokens": 15
+                            }
+                        })
+                        .to_string(),
+                    )
+                } else {
+                    (
+                        404,
+                        serde_json::json!({
+                            "error": { "message": "not found", "type": "error" }
+                        })
+                        .to_string(),
+                    )
                 };
-                write_response(&mut stream, &body);
+                write_response(&mut stream, status_code, &body);
             }
         });
         (format!("http://{}", address), handle)
@@ -291,9 +531,9 @@ mod tests {
         (method, path)
     }
 
-    fn write_response(stream: &mut TcpStream, body: &str) {
+    fn write_response(stream: &mut TcpStream, status_code: u16, body: &str) {
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            "HTTP/1.1 {status_code} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
             body
         );
@@ -347,6 +587,76 @@ mod tests {
         assert_eq!(completion.output, "hello from apple fm");
         assert_eq!(completion.prompt_tokens, Some(11));
         assert_eq!(completion.completion_tokens, Some(4));
+
+        let session = client
+            .create_session(&AppleFmSessionCreateRequest {
+                instructions: Some("You are a helper".to_string()),
+                model: Some(AppleFmSystemLanguageModel::default()),
+                tools: vec![AppleFmSessionToolMetadata {
+                    name: "search".to_string(),
+                    description: Some("Search docs".to_string()),
+                }],
+                transcript_json: None,
+            })
+            .expect("create session");
+        assert_eq!(session.id, "sess-1");
+        assert_eq!(
+            session.model.use_case,
+            AppleFmSystemLanguageModelUseCase::General
+        );
+        assert_eq!(session.tools.len(), 1);
+
+        let fetched_session = client.session("sess-1").expect("get session");
+        assert_eq!(fetched_session.id, "sess-1");
+        assert_eq!(
+            fetched_session.model.guardrails,
+            AppleFmSystemLanguageModelGuardrails::Default
+        );
+
+        let response = client
+            .respond_in_session(
+                "sess-1",
+                &AppleFmSessionRespondRequest {
+                    prompt: "hello".to_string(),
+                },
+            )
+            .expect("session respond");
+        assert_eq!(response.output, "session hello from apple fm");
+        assert_eq!(response.session.id, "sess-1");
+        assert_eq!(
+            response.usage.as_ref().and_then(|usage| usage.total_tokens),
+            Some(11)
+        );
+
+        let reset_session = client.reset_session("sess-1").expect("reset session");
+        assert_eq!(reset_session.id, "sess-1");
+
+        client.delete_session("sess-1").expect("delete session");
+
+        let restored_session = client
+            .create_session(&AppleFmSessionCreateRequest::from_transcript_json(
+                "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}",
+                Some(AppleFmSystemLanguageModel::default()),
+                vec![],
+            ))
+            .expect("restore session");
+        assert_eq!(restored_session.id, "sess-2");
+
+        let busy_error = client
+            .respond_in_session(
+                "busy",
+                &AppleFmSessionRespondRequest {
+                    prompt: "blocked".to_string(),
+                },
+            )
+            .expect_err("busy session should fail");
+        assert!(matches!(
+            busy_error,
+            AppleFmBridgeClientError::Status {
+                operation: "respond_in_session",
+                ..
+            }
+        ));
 
         handle.join().expect("mock bridge thread");
     }

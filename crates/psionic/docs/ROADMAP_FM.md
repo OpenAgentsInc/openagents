@@ -153,7 +153,7 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1` and `FM-2` are now landed on `main`.
+`FM-1`, `FM-2`, and `FM-3` are now landed on `main`.
 
 What shipped:
 
@@ -180,13 +180,21 @@ What shipped:
 - `apps/autopilot-desktop` Apple FM runtime state now carries typed system-model
   readiness/configuration fields instead of collapsing everything into a single
   availability string
+- the bridge now owns explicit Apple FM session IDs, per-session model/instruction
+  binding, reset/get/delete/respond endpoints, and transcript-backed restore from
+  raw transcript JSON
+- the reusable Rust client now owns session lifecycle APIs instead of relying on
+  one hidden shared Swift `LanguageModelSession`
+- the old one-shot `/v1/chat/completions` path no longer depends on a hidden
+  long-lived shared session; it now uses an ephemeral session per request
 
-What `FM-1` and `FM-2` did not close:
+What `FM-1` through `FM-3` did not close:
 
-- sessions and transcript lifecycle
 - generation-options validation beyond the retained minimal bridge shape
 - streaming, structured generation, tools, and typed error taxonomy
 - desktop Mission Control cutover on macOS
+- typed transcript import/export as a first-class Rust surface remains `FM-6`;
+  `FM-3` only landed raw transcript JSON restore as the bridge/session substrate
 
 ## Mission Control Reality On Main
 
@@ -576,16 +584,15 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-2`, the next-item order is:
+After `FM-3`, the next-item order is:
 
-1. `FM-3` session lifecycle and isolation
-2. `FM-4` plain text generation plus generation-options coverage
-3. `FM-5` streaming
-4. `FM-6` transcripts and session restore
-5. `FM-7` structured generation and schema support
-6. `FM-8` tools
-7. `FM-9` typed errors and metrics truth
-8. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-4` plain text generation plus generation-options coverage
+2. `FM-5` streaming
+3. `FM-6` transcripts and session restore
+4. `FM-7` structured generation and schema support
+5. `FM-8` tools
+6. `FM-9` typed errors and metrics truth
+7. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

@@ -9,6 +9,9 @@ pub const APPLE_FM_BRIDGE_HEALTH_PATH: &str = "/health";
 /// Model-list endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_MODELS_PATH: &str = "/v1/models";
 
+/// Session-management endpoint path exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_SESSIONS_PATH: &str = "/v1/sessions";
+
 /// Chat-completions endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 
@@ -473,13 +476,107 @@ pub struct AppleFmCompletionResult {
     pub total_tokens: Option<u64>,
 }
 
+/// Session-scoped tool metadata carried ahead of real tool-calling support.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionToolMetadata {
+    /// Stable tool name.
+    pub name: String,
+    /// Optional human-readable description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Reusable Apple FM session state.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSession {
+    /// Stable bridge session identifier.
+    pub id: String,
+    /// Optional system instructions bound to this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    /// Session-bound model configuration.
+    pub model: AppleFmSystemLanguageModel,
+    /// Registered tool metadata.
+    #[serde(default)]
+    pub tools: Vec<AppleFmSessionToolMetadata>,
+    /// Whether a request is currently queued or executing for this session.
+    #[serde(default)]
+    pub is_responding: bool,
+    /// Serialized transcript snapshot if the bridge included one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_json: Option<String>,
+}
+
+/// Session-creation / session-restore request.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionCreateRequest {
+    /// Optional system instructions for the new session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    /// Optional model configuration. Defaults to the Apple system default model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<AppleFmSystemLanguageModel>,
+    /// Tool metadata registered for this session.
+    #[serde(default)]
+    pub tools: Vec<AppleFmSessionToolMetadata>,
+    /// Optional transcript JSON used to restore a session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_json: Option<String>,
+}
+
+impl AppleFmSessionCreateRequest {
+    /// Builds a session-restore request from a transcript snapshot.
+    #[must_use]
+    pub fn from_transcript_json(
+        transcript_json: impl Into<String>,
+        model: Option<AppleFmSystemLanguageModel>,
+        tools: Vec<AppleFmSessionToolMetadata>,
+    ) -> Self {
+        Self {
+            instructions: None,
+            model,
+            tools,
+            transcript_json: Some(transcript_json.into()),
+        }
+    }
+}
+
+/// Session-creation response.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionCreateResponse {
+    /// Created session state.
+    pub session: AppleFmSession,
+}
+
+/// Session-scoped prompt request.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionRespondRequest {
+    /// User-authored prompt content.
+    pub prompt: String,
+}
+
+/// Session-scoped response result.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionRespondResponse {
+    /// Updated session state after the response completes.
+    pub session: AppleFmSession,
+    /// Served model identifier.
+    pub model: String,
+    /// First assistant text payload.
+    pub output: String,
+    /// Optional usage details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AppleFmChatUsage>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessageRole,
-        AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSystemLanguageModelGuardrails,
-        AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
-        DEFAULT_APPLE_FM_MODEL_ID,
+        AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSessionCreateRequest,
+        AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
+        AppleFmSystemLanguageModelUseCase, DEFAULT_APPLE_FM_MODEL_ID,
     };
 
     #[test]
@@ -641,5 +738,26 @@ mod tests {
                 AppleFmSystemLanguageModelGuardrails::Unknown,
             ]
         );
+    }
+
+    #[test]
+    fn session_restore_request_preserves_transcript_model_and_tools() {
+        let request = AppleFmSessionCreateRequest::from_transcript_json(
+            "{\"type\":\"FoundationModels.Transcript\"}",
+            Some(AppleFmSystemLanguageModel::default()),
+            vec![AppleFmSessionToolMetadata {
+                name: "search".to_string(),
+                description: Some("Search the local index".to_string()),
+            }],
+        );
+
+        assert!(request.instructions.is_none());
+        assert_eq!(
+            request.transcript_json.as_deref(),
+            Some("{\"type\":\"FoundationModels.Transcript\"}")
+        );
+        assert_eq!(request.model, Some(AppleFmSystemLanguageModel::default()));
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, "search");
     }
 }
