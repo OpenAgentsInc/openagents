@@ -74,14 +74,16 @@
 > throughput parity and is already closed, while the active remaining NVIDIA
 > work is 120B throughput on the same host. The truthful 20B benchmark floor
 > remains in the low `171 tok/s` class for Psionic on the exact same contract,
-> and the current 120B hybrid host-backed stateless floor is now in the
-> `~10 tok/s` class on the exact contract: repeated runs on the current kept
-> branch measured about `10.23-10.26 tok/s` cold, `10.09-10.10 tok/s`
-> warm-non-hit, and `10.29-10.34 tok/s` prompt-cache-hit on
+> and the current 120B hybrid host-backed floor on the exact contract remains
+> in the old `2 / 6 / 10 tok/s` shape on clean reruns: the current kept branch
+> is reproducing about `2.23 tok/s` cold, `6.42-6.46 tok/s` warm-non-hit, and
+> `10.44 tok/s` prompt-cache-hit on
 > `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`. The next
 > 120B work should stay on `#3345`: the generation-only hidden-state
 > residency checkpoint and the stateless host-KV-materialization skip are now
-> both landed, so the next honest gap is the remaining host-to-device
+> both landed, but the latter did not produce a durable three-lane throughput
+> shift on a fresh clean rerun, so the next honest gap is still the remaining
+> host-to-device
 > selected4 expert staging inside that hybrid path, not the already-ruled-out
 > registered-host-buffer experiments or more cache-slot reshaping.
 
@@ -761,7 +763,7 @@ state:
 | 87 | `GPT-OSS-PERF-6G` | [#3296](https://github.com/OpenAgentsInc/openagents/issues/3296) | Closed | Closed after parity was already reached on the tracked benchmark without needing an attention-dispatch rewrite. Keep `fattn.cu` alignment as future headroom work, not as the current blocker for this host contract. |
 | 88 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Closed | Closed after the benchmark script itself was made contract-clean on both servers and Psionic still measured ahead of the local `llama.cpp` control with the same visible output on the exact prompt-cache-hit lane. |
 | 89 | `GPT-OSS-120B-PERF-1` | [#3338](https://github.com/OpenAgentsInc/openagents/issues/3338) | Closed | Closed after direct registered-host expert execution and registered-host cache-fill copies both regressed the 120B prompt-cache-hit lane into the `6.4 tok/s` class on this host. Keep it only as a ruled-out history marker. |
-| 90 | `GPT-OSS-120B-PERF-2` | [#3345](https://github.com/OpenAgentsInc/openagents/issues/3345) | Open | The active NVIDIA throughput issue on this host is still the hybrid 120B path. The newest kept checkpoint now skips stateless host-KV materialization on the no-session hybrid CUDA fast path, moving repeated exact-contract 120B runs into the `~10 tok/s` class across cold, warm-non-hit, and prompt-cache-hit (`10.23-10.26`, `10.09-10.10`, and `10.29-10.34 tok/s`). The next honest direction is no longer host-KV readback; it is the remaining host-to-device selected4 expert staging inside the host-backed MoE lane. |
+| 90 | `GPT-OSS-120B-PERF-2` | [#3345](https://github.com/OpenAgentsInc/openagents/issues/3345) | Open | The active NVIDIA throughput issue on this host is still the hybrid 120B path. The stateless host-KV-materialization skip is landed, but fresh clean reruns corrected the earlier too-fast sample: the truthful exact-contract floor is still about `2.23 tok/s` cold, `6.42-6.46 tok/s` warm-non-hit, and `10.44 tok/s` prompt-cache-hit. The next honest direction is still the remaining host-to-device selected4 expert staging inside the host-backed MoE lane. |
 | 91 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
 | 92 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
 | 93 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
@@ -803,9 +805,9 @@ baseline on `main` is:
   tok/s`, and `170.05 tok/s`
 - the 20B NVIDIA parity chain is closed, but the active remaining NVIDIA work
   is now the hybrid 120B path under `#3345`
-  - current truthful 120B stateless band on the exact contract is now
-    `10.23-10.26 tok/s` cold, `10.09-10.10 tok/s` warm-non-hit, and
-    `10.29-10.34 tok/s` prompt-cache-hit
+  - current truthful 120B floor on the exact contract is still about
+    `2.23 tok/s` cold, `6.42-6.46 tok/s` warm-non-hit, and `10.44 tok/s`
+    prompt-cache-hit
   - quick cache-shape retunes around the current kept branch were already
     measured and rejected: `7` expanded slots on the last `4` layers fell to
     `9.89 tok/s`, and `6` expanded slots on the last `8` layers fell to
@@ -815,8 +817,9 @@ baseline on `main` is:
     copies both regressed into the `6.4 tok/s` class
   - the next honest 120B direction is now narrower:
     the generation-only hidden-state-residency checkpoint and stateless
-    host-KV-materialization skip are both landed, so Psionic now needs to
-    reduce the remaining host-to-device selected4 expert staging inside the
+    host-KV-materialization skip are both landed, but only the former has
+    shown a durable throughput shift on clean reruns, so Psionic still needs
+    to reduce the remaining host-to-device selected4 expert staging inside the
     hybrid host-backed MoE lane
 - the Apple Silicon Metal groundwork from `#3250` and `#3252` through `#3260`
   is already landed in-tree, but the 2026-03-09 audit shows the native serve
@@ -1720,10 +1723,9 @@ The right near-term target is smaller:
 - Closed `#3338` after the registered-host-buffer experiments lost on this
   host, and opened `#3345` as the new active NVIDIA throughput issue for the
   local `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf` path.
-- Current truthful 120B stateless band on the exact cold / warm-non-hit /
+- Current truthful 120B floor on the exact cold / warm-non-hit /
   prompt-cache-hit contract on the current kept branch:
-  Psionic `10.23-10.26 tok/s`, `10.09-10.10 tok/s`, and
-  `10.29-10.34 tok/s`.
+  Psionic `2.23 tok/s`, `6.42-6.46 tok/s`, and `10.44 tok/s`.
 - Current kept implementation direction:
   the hybrid 120B path already keeps more of feed-forward prep and decode
   attention on CUDA, trims single-expert cache repacking, and reuses hybrid
@@ -1738,6 +1740,12 @@ The right near-term target is smaller:
   when the hybrid CUDA device-argmax fast path is available, so the 120B path
   no longer reads each generated token's KV entry back to host just to serve a
   stateless request.
+- Benchmark correction after fresh clean reruns:
+  the earlier `~10 tok/s`-across-all-three-lanes readout was not reproducible
+  on the clean branch. Repeated reruns after rebuilding the release binary
+  restored the older `2 / 6 / 10 tok/s` shape, with prompt-cache-hit at about
+  `10.44 tok/s`, so do not treat the earlier `10.23-10.34 tok/s` band as the
+  truthful floor.
 - Ruled-out nearby branches:
   cache-shape probes with `7` expanded slots on the last `4` layers and `6`
   expanded slots on the last `8` layers were both slower than the kept branch,
@@ -1750,6 +1758,7 @@ The right near-term target is smaller:
 - Next honest step:
   keep pushing on the remaining host-to-device selected4 expert staging inside
   that hybrid lane: the hidden update itself now stays device-resident and the
-  stateless host-KV readback is gone, so the next likely wins are reducing or
-  restructuring the surviving selected-expert staging traffic from host-backed
-  MoE storage into CUDA caches.
+  stateless host-KV readback is gone, but those changes did not materially
+  change the clean 120B floor, so the next likely wins are still in reducing
+  or restructuring the surviving selected-expert staging traffic from
+  host-backed MoE storage into CUDA caches.
