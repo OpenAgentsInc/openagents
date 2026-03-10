@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    schedule_remote_whole_request, ClusterId, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus,
-    ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId,
-    WholeRequestSchedulingFailure, WholeRequestSchedulingFailureCode,
-    WholeRequestSchedulingRequest,
+    ClusterId, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus, ClusterStabilityPosture,
+    ClusterState, ClusterTransportClass, NodeId, WholeRequestSchedulingFailure,
+    WholeRequestSchedulingFailureCode, WholeRequestSchedulingRequest,
+    schedule_remote_whole_request,
 };
 
 /// Explicit model-eligibility flags for the first tensor-sharded CUDA lane.
@@ -911,9 +911,9 @@ mod tests {
     };
 
     use super::{
-        schedule_tensor_sharded_execution, TensorShardedExecutionRequest,
-        TensorShardedModelEligibility, TensorShardedSchedulingFailureCode,
-        TensorShardedTransportPolicy,
+        TensorShardedExecutionRequest, TensorShardedModelEligibility,
+        TensorShardedSchedulingFailureCode, TensorShardedTransportPolicy,
+        schedule_tensor_sharded_execution,
     };
 
     fn fixture_error(detail: &str) -> Error {
@@ -939,6 +939,7 @@ mod tests {
                 node_epoch: NodeEpoch::initial(),
                 role,
                 auth_public_key: String::new(),
+                attestation: None,
             },
             None,
             ClusterMembershipStatus::Ready,
@@ -1044,8 +1045,8 @@ mod tests {
     }
 
     #[test]
-    fn tensor_sharded_scheduler_builds_two_shard_cuda_plan(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn tensor_sharded_scheduler_builds_two_shard_cuda_plan()
+    -> Result<(), Box<dyn std::error::Error>> {
         let state = ClusterState::from_snapshot(sample_snapshot());
         let policy = TensorShardedTransportPolicy::cuda_default();
         let request = TensorShardedExecutionRequest::new(
@@ -1085,17 +1086,19 @@ mod tests {
         assert_eq!(schedule.shard_handoffs[0].tensor_axis, Some(1));
         assert_eq!(schedule.shard_handoffs[0].tensor_range_start, Some(0));
         assert_eq!(schedule.shard_handoffs[0].tensor_range_end, Some(32));
-        assert!(schedule
-            .cluster_execution
-            .policy_digests
-            .iter()
-            .any(|digest| digest.kind == ClusterPolicyDigestKind::Sharding));
+        assert!(
+            schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Sharding)
+        );
         Ok(())
     }
 
     #[test]
-    fn tensor_sharded_scheduler_refuses_model_ineligibility(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn tensor_sharded_scheduler_refuses_model_ineligibility()
+    -> Result<(), Box<dyn std::error::Error>> {
         let state = ClusterState::from_snapshot(sample_snapshot());
         let request = TensorShardedExecutionRequest::new(
             crate::NodeId::new("scheduler"),
@@ -1121,8 +1124,8 @@ mod tests {
     }
 
     #[test]
-    fn tensor_sharded_scheduler_refuses_invalid_tensor_geometry(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn tensor_sharded_scheduler_refuses_invalid_tensor_geometry()
+    -> Result<(), Box<dyn std::error::Error>> {
         let state = ClusterState::from_snapshot(sample_snapshot());
         let request = TensorShardedExecutionRequest::new(
             crate::NodeId::new("scheduler"),
@@ -1146,8 +1149,8 @@ mod tests {
     }
 
     #[test]
-    fn tensor_sharded_scheduler_refuses_unsuitable_mesh_transport(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn tensor_sharded_scheduler_refuses_unsuitable_mesh_transport()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         for (left, right) in [
             ("worker-a", "worker-b"),

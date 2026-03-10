@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ClusterAdmissionConfig, ClusterError, ClusterTrustPolicy, LocalClusterConfig, NodeRole,
+    ClusterAdmissionConfig, ClusterError, ClusterTrustPolicy, LocalClusterConfig,
+    NodeAttestationEvidence, NodeRole,
 };
 
 /// Schema version for persisted operator cluster manifests.
@@ -23,6 +24,9 @@ pub struct ClusterOperatorManifest {
     pub seed_peers: Vec<SocketAddr>,
     /// Declared role for this node.
     pub role: NodeRole,
+    /// Optional attestation facts attached to the local node identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_attestation: Option<NodeAttestationEvidence>,
     /// Machine-checkable trust policy for the node.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -40,6 +44,7 @@ impl ClusterOperatorManifest {
             bind_addr: config.bind_addr,
             seed_peers,
             role: config.role,
+            node_attestation: config.node_attestation.clone(),
             trust_policy: config.trust_policy.clone(),
         }
     }
@@ -62,6 +67,16 @@ impl ClusterOperatorManifest {
             NodeRole::ExecutorOnly => b"executor_only".as_slice(),
             NodeRole::Mixed => b"mixed".as_slice(),
         });
+        if let Some(node_attestation) = &self.node_attestation {
+            hasher.update(b"|node_attestation_issuer|");
+            hasher.update(node_attestation.issuer.as_bytes());
+            hasher.update(b"|node_attestation_digest|");
+            hasher.update(node_attestation.attestation_digest.as_bytes());
+            if let Some(device_identity_digest) = &node_attestation.device_identity_digest {
+                hasher.update(b"|node_device_identity_digest|");
+                hasher.update(device_identity_digest.as_bytes());
+            }
+        }
         for seed_peer in &self.seed_peers {
             hasher.update(b"|seed|");
             hasher.update(seed_peer.to_string().as_bytes());
@@ -110,6 +125,7 @@ impl From<ClusterOperatorManifest> for LocalClusterConfig {
             seed_peers: manifest.seed_peers,
             role: manifest.role,
             identity_persistence: crate::NodeIdentityPersistence::Ephemeral,
+            node_attestation: manifest.node_attestation,
             trust_policy: manifest.trust_policy,
         }
     }
@@ -122,7 +138,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{ClusterTrustPosture, ConfiguredClusterPeer, NodeId};
+    use crate::{ClusterTrustPosture, ConfiguredClusterPeer, NodeAttestationRequirement, NodeId};
 
     fn loopback_addr(port: u16) -> SocketAddr {
         SocketAddr::from(([127, 0, 0, 1], port))
@@ -135,8 +151,16 @@ mod tests {
             bind_addr: loopback_addr(31011),
             seed_peers: vec![loopback_addr(31012)],
             role: NodeRole::Mixed,
-            trust_policy: ClusterTrustPolicy::authenticated_configured_peers(vec![
-                ConfiguredClusterPeer::new(NodeId::new("peer-b"), loopback_addr(31012), "peer-key"),
+            node_attestation: Some(
+                NodeAttestationEvidence::new("issuer-a", "attestation-a")
+                    .with_device_identity_digest("device-a"),
+            ),
+            trust_policy: ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(NodeId::new("peer-b"), loopback_addr(31012), "peer-key")
+                    .with_attestation_requirement(
+                        NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                            .with_device_identity_digest("device-b"),
+                    ),
             ]),
         }
     }
@@ -181,10 +205,11 @@ mod tests {
         assert_eq!(config.bind_addr, manifest.bind_addr);
         assert_eq!(config.seed_peers, manifest.seed_peers);
         assert_eq!(config.role, manifest.role);
+        assert_eq!(config.node_attestation, manifest.node_attestation);
         assert_eq!(config.trust_policy, manifest.trust_policy);
         assert_eq!(
             config.trust_policy.posture,
-            ClusterTrustPosture::AuthenticatedConfiguredPeers
+            ClusterTrustPosture::AttestedConfiguredPeers
         );
     }
 
