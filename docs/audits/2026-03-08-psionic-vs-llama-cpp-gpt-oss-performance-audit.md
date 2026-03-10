@@ -1341,13 +1341,13 @@ The 20B parity queue is closed, but the same host still exposes a separate
 headroom problem on the larger hybrid 120B model:
 `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`.
 
-Current truthful 120B stateless band on the exact cold / warm-non-hit /
+Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `10.23-10.26 tok/s`
-  - `10.09-10.10 tok/s`
-  - `10.29-10.34 tok/s`
+  - `2.23 tok/s`
+  - `6.42-6.46 tok/s`
+  - `10.44 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1390,14 +1390,18 @@ What the newest kept checkpoint proved:
   documented `10.07 tok/s` floor to `10.42` and `10.44 tok/s`
 - that means the old host hidden-vector bounce was part of the problem, but it
   was not the whole problem
-- the next stateless follow-up was real too: once the no-session hybrid CUDA
-  device-argmax lane stopped materializing generated KV entries back onto the
-  host cache, repeated exact-contract 120B runs moved the cold and
-  warm-non-hit lanes into the same `~10 tok/s` class as the prompt-cache-hit
-  lane instead of leaving them in the old `2-6 tok/s` class
-- the prompt-cache-hit lane itself stayed roughly flat at `10.29-10.34 tok/s`,
-  which is strong evidence that the remaining limiter is no longer the
-  stateless host-KV readback
+- the next stateless follow-up was directionally plausible: once the
+  no-session hybrid CUDA device-argmax lane stopped materializing generated KV
+  entries back onto the host cache, one local run appeared to move the cold
+  and warm-non-hit lanes into the same `~10 tok/s` class as the
+  prompt-cache-hit lane
+- that apparent three-lane lift did not survive a fresh clean rebuild and
+  rerun; the kept branch still reproduces the older `2.23 / 6.42-6.46 / 10.44`
+  shape, so the earlier `~10 tok/s`-across-all-three-lanes reading should be
+  treated as a bad sample, not as the truthful floor
+- the prompt-cache-hit lane itself stays around `10.44 tok/s`, which is still
+  strong evidence that the remaining limiter is no longer the stateless
+  host-KV readback
 
 What the remaining gap now points to:
 
