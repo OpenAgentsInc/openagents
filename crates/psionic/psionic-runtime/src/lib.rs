@@ -882,6 +882,9 @@ pub struct ClusterExecutionContext {
     /// Stable policy digests that constrained the decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit placement diagnostics that explain optional external hint intake.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub placement_diagnostics: Vec<String>,
     /// Explicit selected nodes for the planned or realized path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_nodes: Vec<ClusterSelectedNode>,
@@ -925,6 +928,7 @@ impl ClusterExecutionContext {
             disposition,
             execution_topology: None,
             policy_digests: Vec::new(),
+            placement_diagnostics: Vec::new(),
             selected_nodes: Vec::new(),
             replica_nodes: Vec::new(),
             shard_handoffs: Vec::new(),
@@ -969,6 +973,20 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_policy_digest(mut self, policy_digest: ClusterPolicyDigest) -> Self {
         self.policy_digests.push(policy_digest);
+        self
+    }
+
+    /// Replaces placement diagnostics associated with optional external hints.
+    #[must_use]
+    pub fn with_placement_diagnostics(mut self, placement_diagnostics: Vec<String>) -> Self {
+        self.placement_diagnostics = placement_diagnostics;
+        self
+    }
+
+    /// Appends one placement diagnostic associated with optional external hints.
+    #[must_use]
+    pub fn with_placement_diagnostic(mut self, placement_diagnostic: impl Into<String>) -> Self {
+        self.placement_diagnostics.push(placement_diagnostic.into());
         self
     }
 
