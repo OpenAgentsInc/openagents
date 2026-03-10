@@ -742,6 +742,7 @@ pub enum PaneHitAction {
     ChatCycleApprovalMode,
     ChatCycleSandboxMode,
     ChatInterruptTurn,
+    ChatImplementPlan,
     ChatToggleArchivedFilter,
     ChatCycleSortFilter,
     ChatCycleSourceFilter,
@@ -1502,6 +1503,16 @@ pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         cycle.max_x() + CHAT_HEADER_BUTTON_GAP,
         cycle.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_implement_plan_button_bounds(content_bounds: Bounds) -> Bounds {
+    let interrupt = chat_interrupt_button_bounds(content_bounds);
+    Bounds::new(
+        interrupt.max_x() + CHAT_HEADER_BUTTON_GAP,
+        interrupt.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
@@ -3790,6 +3801,11 @@ fn pane_hit_action_for_pane(
                 }
                 if chat_interrupt_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatInterruptTurn);
+                }
+                if state.autopilot_chat.active_plan_artifact().is_some()
+                    && chat_implement_plan_button_bounds(content_bounds).contains(point)
+                {
+                    return Some(PaneHitAction::ChatImplementPlan);
                 }
                 if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatToggleArchivedFilter);

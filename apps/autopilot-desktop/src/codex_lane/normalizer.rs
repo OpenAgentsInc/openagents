@@ -497,6 +497,39 @@ pub(super) fn extract_thread_transcript_messages(
     messages
 }
 
+pub(super) fn extract_latest_thread_plan_artifact(
+    thread: &codex_client::ThreadSnapshot,
+) -> Option<CodexThreadPlanArtifact> {
+    for turn in thread.turns.iter().rev() {
+        for item in turn.items.iter().rev() {
+            if let Some(text) = extract_plan_text_from_item(item) {
+                return Some(CodexThreadPlanArtifact {
+                    turn_id: turn.id.clone(),
+                    text,
+                });
+            }
+        }
+    }
+    None
+}
+
+pub(super) fn extract_plan_text_from_item(value: &Value) -> Option<String> {
+    let Some(object) = value.as_object() else {
+        return None;
+    };
+
+    if let Some(payload) = object.get("payload") {
+        if let Some(text) = extract_plan_text_from_item(payload) {
+            return Some(text);
+        }
+    }
+
+    match object.get("type").and_then(Value::as_str) {
+        Some("plan") => string_field(value, "text").and_then(non_empty_text),
+        _ => None,
+    }
+}
+
 pub(super) fn collect_transcript_messages(
     value: &Value,
     messages: &mut Vec<CodexThreadTranscriptMessage>,

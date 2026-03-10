@@ -3204,6 +3204,46 @@ pub(super) fn run_chat_rollback_thread_action(state: &mut crate::app_state::Rend
     true
 }
 
+pub(super) fn run_chat_implement_plan_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(artifact) = state.autopilot_chat.active_plan_artifact().cloned() else {
+        state.autopilot_chat.last_error =
+            Some("No saved plan artifact available for this thread".to_string());
+        return true;
+    };
+
+    let mut prompt = String::from(
+        "Implement the saved plan artifact for this thread. Use the steps below as the source of truth, execute them in order, and report progress as you go.\n",
+    );
+    if let Some(explanation) = artifact.explanation.as_deref() {
+        if !explanation.trim().is_empty() {
+            prompt.push_str("\nPlan context:\n");
+            prompt.push_str(explanation.trim());
+            prompt.push('\n');
+        }
+    }
+    if !artifact.steps.is_empty() {
+        prompt.push_str("\nSaved steps:\n");
+        for step in &artifact.steps {
+            prompt.push_str("- [");
+            prompt.push_str(match step.status.as_str() {
+                "completed" => "x",
+                "inProgress" => "~",
+                _ => " ",
+            });
+            prompt.push_str("] ");
+            prompt.push_str(step.step.trim());
+            prompt.push('\n');
+        }
+    }
+
+    state.chat_inputs.composer.set_value(prompt.clone());
+    state.autopilot_chat.record_composer_draft(prompt);
+    run_chat_submit_action_with_trigger(
+        state,
+        crate::labor_orchestrator::CodexRunTrigger::PersonalAgent,
+    )
+}
+
 pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
