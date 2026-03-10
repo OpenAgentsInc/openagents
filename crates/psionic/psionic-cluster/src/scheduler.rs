@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
+    ClusterAdmissionFactKind,
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
+    ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
     ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode,
@@ -604,6 +606,8 @@ pub fn schedule_remote_whole_request(
     )
     .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(vec![selected_node]);
+    cluster_execution = cluster_execution
+        .with_command_provenance(command_provenance_for_request(state, request, &best));
     if let Some(artifact_residency_digest) = artifact_residency_digest {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
@@ -687,6 +691,87 @@ fn candidate_order(
                 .cmp(&left.link.bandwidth_mbps.unwrap_or(0))
         })
         .then_with(|| left.node_id.as_str().cmp(right.node_id.as_str()))
+}
+
+fn command_provenance_for_request(
+    state: &ClusterState,
+    request: &WholeRequestSchedulingRequest,
+    best: &SchedulerCandidate<'_>,
+) -> Vec<ClusterCommandProvenanceEvidence> {
+    let mut provenance = Vec::new();
+
+    if let Some(authorization) = state.membership_provenance(&request.scheduler_node_id) {
+        provenance.push(
+            runtime_command_provenance(
+                ClusterAdmissionFactKind::SchedulerMembership,
+                authorization,
+            )
+            .with_target_node_id(request.scheduler_node_id.as_str()),
+        );
+    }
+    if let Some(authorization) = state.membership_provenance(&best.node_id) {
+        provenance.push(
+            runtime_command_provenance(ClusterAdmissionFactKind::SelectedMembership, authorization)
+                .with_target_node_id(best.node_id.as_str()),
+        );
+    }
+    if let Some(served_artifact_digest) = &request.served_artifact_digest {
+        let artifact_key =
+            ClusterArtifactResidencyKey::new(best.node_id.clone(), served_artifact_digest.clone());
+        if let Some(authorization) = state.artifact_residency_provenance(&artifact_key) {
+            provenance.push(
+                runtime_command_provenance(
+                    ClusterAdmissionFactKind::ArtifactResidency,
+                    authorization,
+                )
+                .with_target_node_id(best.node_id.as_str()),
+            );
+        }
+    }
+    if let Some(authorization) = state.leadership_provenance() {
+        provenance.push(runtime_command_provenance(
+            ClusterAdmissionFactKind::Leadership,
+            authorization,
+        ));
+    }
+
+    provenance
+}
+
+fn runtime_command_provenance(
+    fact_kind: ClusterAdmissionFactKind,
+    authorization: &crate::ClusterCommandAuthorization,
+) -> ClusterCommandProvenanceEvidence {
+    ClusterCommandProvenanceEvidence::new(
+        fact_kind,
+        authorization.submitter_node_id.as_str(),
+        runtime_authority_scope(authorization.authority_scope),
+        authorization.command_digest.clone(),
+        authorization.stable_digest(),
+        authorization.authorization_policy_digest.clone(),
+    )
+}
+
+const fn runtime_authority_scope(
+    scope: crate::ClusterCommandAuthorityScope,
+) -> ClusterCommandAuthorityScopeEvidence {
+    match scope {
+        crate::ClusterCommandAuthorityScope::CoordinatorOnly => {
+            ClusterCommandAuthorityScopeEvidence::CoordinatorOnly
+        }
+        crate::ClusterCommandAuthorityScope::ClusterMember => {
+            ClusterCommandAuthorityScopeEvidence::ClusterMember
+        }
+        crate::ClusterCommandAuthorityScope::SelfNode => {
+            ClusterCommandAuthorityScopeEvidence::SelfNode
+        }
+        crate::ClusterCommandAuthorityScope::LinkPeer => {
+            ClusterCommandAuthorityScopeEvidence::LinkPeer
+        }
+        crate::ClusterCommandAuthorityScope::ProposedLeader => {
+            ClusterCommandAuthorityScopeEvidence::ProposedLeader
+        }
+    }
 }
 
 const fn candidate_backend_rank(readiness: ClusterBackendReadinessStatus) -> u8 {
@@ -891,20 +976,25 @@ const fn link_status_name(status: ClusterLinkStatus) -> &'static str {
 mod tests {
     use std::io::Error;
 
-    use psionic_runtime::{ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind};
+    use psionic_runtime::{
+        ClusterAdmissionFactKind, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ExecutionTopologyKind,
+    };
 
     use crate::{
-        AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyStatus,
-        ClusterBackendReadinessStatus, ClusterLeadershipRecord, ClusterLink, ClusterLinkStatus,
-        ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity,
-        ClusterNodeTelemetry, ClusterSnapshot, ClusterStabilityPosture, ClusterState, ClusterTerm,
-        ClusterTransportClass, NodeEpoch, NodeRole,
+        AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyKey,
+        ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
+        ClusterCommandAuthorityScope, ClusterCommandAuthorization, ClusterLeadershipRecord,
+        ClusterLink, ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus,
+        ClusterNamespace, ClusterNodeIdentity, ClusterNodeTelemetry, ClusterSnapshot,
+        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass, NodeEpoch,
+        NodeRole,
     };
 
     use super::{
-        WholeRequestClusterSchedule, WholeRequestSchedulingFailureCode,
-        WholeRequestSchedulingRefusalCode, WholeRequestSchedulingRequest,
-        schedule_remote_whole_request,
+        schedule_remote_whole_request, WholeRequestClusterSchedule,
+        WholeRequestSchedulingFailureCode, WholeRequestSchedulingRefusalCode,
+        WholeRequestSchedulingRequest,
     };
 
     fn fixture_error(detail: &str) -> Error {
@@ -953,6 +1043,22 @@ mod tests {
             .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready)
     }
 
+    fn sample_command_authorization(
+        submitter_node_id: &str,
+        authority_scope: ClusterCommandAuthorityScope,
+        command_digest: &str,
+    ) -> ClusterCommandAuthorization {
+        ClusterCommandAuthorization {
+            command_digest: String::from(command_digest),
+            authorization_policy_digest: String::from("command-authorization-policy"),
+            authority_scope,
+            submitter_node_id: crate::NodeId::new(submitter_node_id),
+            submitter_role: NodeRole::Mixed,
+            submitter_membership_status: ClusterMembershipStatus::Ready,
+            coordinator_authority: None,
+        }
+    }
+
     fn sample_snapshot() -> ClusterSnapshot {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
@@ -998,8 +1104,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.leadership = Some(ClusterLeadershipRecord::new(
             ClusterTerm::initial(),
@@ -1022,6 +1128,35 @@ mod tests {
                 ClusterArtifactResidencyStatus::CopyRequired,
             ),
         );
+        snapshot.membership_provenance.insert(
+            crate::NodeId::new("scheduler"),
+            sample_command_authorization(
+                "scheduler",
+                ClusterCommandAuthorityScope::SelfNode,
+                "scheduler-membership-command",
+            ),
+        );
+        snapshot.membership_provenance.insert(
+            crate::NodeId::new("worker-a"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-membership-command",
+            ),
+        );
+        snapshot.artifact_residency_provenance.insert(
+            ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-artifact-command",
+            ),
+        );
+        snapshot.leadership_provenance = Some(sample_command_authorization(
+            "scheduler",
+            ClusterCommandAuthorityScope::ProposedLeader,
+            "leadership-command",
+        ));
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
@@ -1086,12 +1221,29 @@ mod tests {
                 .and_then(|node| node.artifact_residency),
             Some(psionic_runtime::ClusterArtifactResidencyDisposition::Resident)
         );
+        assert_eq!(schedule.cluster_execution.command_provenance.len(), 4);
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[0].fact_kind,
+            ClusterAdmissionFactKind::SchedulerMembership
+        );
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[1].fact_kind,
+            ClusterAdmissionFactKind::SelectedMembership
+        );
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[2].fact_kind,
+            ClusterAdmissionFactKind::ArtifactResidency
+        );
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[3].fact_kind,
+            ClusterAdmissionFactKind::Leadership
+        );
         Ok(())
     }
 
     #[test]
-    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_breaks_ties_by_node_id_deterministically(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot
             .links
@@ -1135,8 +1287,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_surfaces_degraded_selection_reasons()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_surfaces_degraded_selection_reasons(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
         snapshot.memberships.insert(
@@ -1210,8 +1362,8 @@ mod tests {
     }
 
     #[test]
-    fn whole_request_scheduler_emits_machine_checkable_refusals()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn whole_request_scheduler_emits_machine_checkable_refusals(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.telemetry.insert(
             crate::NodeId::new("worker-a"),

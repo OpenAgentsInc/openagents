@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ClusterId, ClusterLink, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus,
-    ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId,
+    schedule_remote_whole_request, ClusterId, ClusterLink, ClusterLinkClass, ClusterLinkKey,
+    ClusterLinkStatus, ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId,
     WholeRequestSchedulingFailure, WholeRequestSchedulingFailureCode,
-    WholeRequestSchedulingRequest, schedule_remote_whole_request,
+    WholeRequestSchedulingRequest,
 };
 
 /// Policy controlling the first truthful layer-sharded cluster lane.
@@ -471,6 +471,11 @@ pub fn schedule_layer_sharded_execution(
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
     }
+    cluster_execution = cluster_execution.with_command_provenance(merged_command_provenance(
+        shard_schedules
+            .iter()
+            .map(|schedule| &schedule.cluster_execution),
+    ));
     if let Some(commit_authority) = state.commit_authority() {
         cluster_execution = cluster_execution
             .with_commit_authority(ClusterCommitAuthorityEvidence::new(
@@ -523,6 +528,23 @@ fn split_layers(total_layers: usize, shard_count: usize) -> Option<Vec<(usize, u
         start_layer = end_layer;
     }
     Some(layer_ranges)
+}
+
+fn merged_command_provenance<'a, I>(
+    cluster_executions: I,
+) -> Vec<psionic_runtime::ClusterCommandProvenanceEvidence>
+where
+    I: IntoIterator<Item = &'a ClusterExecutionContext>,
+{
+    let mut merged = Vec::new();
+    for cluster_execution in cluster_executions {
+        for provenance in &cluster_execution.command_provenance {
+            if !merged.contains(provenance) {
+                merged.push(provenance.clone());
+            }
+        }
+    }
+    merged
 }
 
 fn validate_handoff_link<'a>(
@@ -811,8 +833,8 @@ mod tests {
     };
 
     use super::{
-        LayerShardedExecutionPolicy, LayerShardedExecutionRequest,
-        LayerShardedSchedulingFailureCode, schedule_layer_sharded_execution,
+        schedule_layer_sharded_execution, LayerShardedExecutionPolicy,
+        LayerShardedExecutionRequest, LayerShardedSchedulingFailureCode,
     };
 
     fn fixture_error(detail: &str) -> Error {
@@ -1015,8 +1037,8 @@ mod tests {
     }
 
     #[test]
-    fn layer_sharded_scheduler_refuses_unsuitable_handoff_link()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn layer_sharded_scheduler_refuses_unsuitable_handoff_link(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.links.insert(
             crate::ClusterLinkKey::new(
@@ -1071,8 +1093,8 @@ mod tests {
     }
 
     #[test]
-    fn layer_sharded_scheduler_refuses_when_second_shard_lacks_resident_artifact()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn layer_sharded_scheduler_refuses_when_second_shard_lacks_resident_artifact(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
         snapshot.artifact_residency.insert(
             ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
