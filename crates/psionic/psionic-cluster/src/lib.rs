@@ -160,6 +160,18 @@ pub enum ClusterTrustPosture {
     AttestedConfiguredPeers,
 }
 
+/// Discovery posture for one cluster transport configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterDiscoveryPosture {
+    /// Discovery is limited to local seed peers on the first trusted-LAN seam.
+    TrustedLanSeedPeers,
+    /// Discovery is limited to explicitly configured operator-managed peers.
+    OperatorManagedConfiguredPeers,
+    /// A future wider-network discovery posture was requested explicitly.
+    ExplicitWiderNetworkRequested,
+}
+
 /// Expected attestation facts for one configured market-facing peer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeAttestationRequirement {
@@ -418,11 +430,101 @@ pub struct ClusterTrustRolloutDiagnostic {
     pub disposition: ClusterTrustRolloutDisposition,
 }
 
+/// Current non-LAN discovery disposition derived from cluster policy truth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterNonLanDiscoveryDisposition {
+    /// The current discovery posture is still bounded and not ready for wider-network claims.
+    Refused,
+    /// The current discovery posture is explicit enough for wider-network claims.
+    Eligible,
+}
+
+/// Explicit refusal reasons for non-LAN discovery claims.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterNonLanDiscoveryRefusalReason {
+    /// Discovery remains tied to LAN-scoped seed peers.
+    TrustedLanSeedPeersOnly,
+    /// Discovery remains tied to operator-managed configured peers.
+    OperatorManagedConfiguredPeersOnly,
+    /// A wider-network discovery posture was requested, but the transport/runtime seam is not implemented yet.
+    WiderNetworkDiscoveryUnimplemented,
+}
+
+/// Machine-checkable assessment for whether a cluster policy supports non-LAN discovery claims.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterNonLanDiscoveryAssessment {
+    /// Discovery posture active for the underlying cluster policy.
+    pub discovery_posture: ClusterDiscoveryPosture,
+    /// Trust posture active for the underlying cluster policy.
+    pub trust_posture: ClusterTrustPosture,
+    /// Stable digest of the underlying trust policy.
+    pub trust_policy_digest: String,
+    /// Effective non-LAN discovery disposition for the current policy.
+    pub disposition: ClusterNonLanDiscoveryDisposition,
+    /// Explicit reasons why wider-network discovery claims remain refused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal_reasons: Vec<ClusterNonLanDiscoveryRefusalReason>,
+}
+
+impl ClusterNonLanDiscoveryAssessment {
+    /// Returns a stable digest for the current non-LAN discovery assessment.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_non_lan_discovery_assessment|");
+        hasher.update(match self.discovery_posture {
+            ClusterDiscoveryPosture::TrustedLanSeedPeers => b"trusted_lan_seed_peers".as_slice(),
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
+                b"operator_managed_configured_peers".as_slice()
+            }
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
+                b"explicit_wider_network_requested".as_slice()
+            }
+        });
+        hasher.update(b"|");
+        hasher.update(match self.trust_posture {
+            ClusterTrustPosture::TrustedLanSharedAdmission => {
+                b"trusted_lan_shared_admission".as_slice()
+            }
+            ClusterTrustPosture::AuthenticatedConfiguredPeers => {
+                b"authenticated_configured_peers".as_slice()
+            }
+            ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(self.trust_policy_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.disposition {
+            ClusterNonLanDiscoveryDisposition::Refused => b"refused".as_slice(),
+            ClusterNonLanDiscoveryDisposition::Eligible => b"eligible".as_slice(),
+        });
+        for refusal_reason in &self.refusal_reasons {
+            hasher.update(b"|refusal|");
+            hasher.update(match refusal_reason {
+                ClusterNonLanDiscoveryRefusalReason::TrustedLanSeedPeersOnly => {
+                    b"trusted_lan_seed_peers_only".as_slice()
+                }
+                ClusterNonLanDiscoveryRefusalReason::OperatorManagedConfiguredPeersOnly => {
+                    b"operator_managed_configured_peers_only".as_slice()
+                }
+                ClusterNonLanDiscoveryRefusalReason::WiderNetworkDiscoveryUnimplemented => {
+                    b"wider_network_discovery_unimplemented".as_slice()
+                }
+            });
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
 /// Machine-checkable trust policy for one local cluster transport.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterTrustPolicy {
     /// Trust posture active for this configuration.
     pub posture: ClusterTrustPosture,
+    /// Discovery posture active for this configuration.
+    pub discovery_posture: ClusterDiscoveryPosture,
     /// Whether wire messages must carry verifiable signatures.
     pub require_message_authentication: bool,
     /// Sliding replay window size per authenticated peer.
@@ -446,6 +548,7 @@ impl ClusterTrustPolicy {
     pub const fn trusted_lan() -> Self {
         Self {
             posture: ClusterTrustPosture::TrustedLanSharedAdmission,
+            discovery_posture: ClusterDiscoveryPosture::TrustedLanSeedPeers,
             require_message_authentication: false,
             replay_window_size: 0,
             trust_bundle_version: 1,
@@ -460,6 +563,7 @@ impl ClusterTrustPolicy {
     pub fn authenticated_configured_peers(configured_peers: Vec<ConfiguredClusterPeer>) -> Self {
         Self {
             posture: ClusterTrustPosture::AuthenticatedConfiguredPeers,
+            discovery_posture: ClusterDiscoveryPosture::OperatorManagedConfiguredPeers,
             require_message_authentication: true,
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
             trust_bundle_version: 1,
@@ -474,6 +578,7 @@ impl ClusterTrustPolicy {
     pub fn attested_configured_peers(configured_peers: Vec<ConfiguredClusterPeer>) -> Self {
         Self {
             posture: ClusterTrustPosture::AttestedConfiguredPeers,
+            discovery_posture: ClusterDiscoveryPosture::OperatorManagedConfiguredPeers,
             require_message_authentication: true,
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
             trust_bundle_version: 1,
@@ -502,6 +607,13 @@ impl ClusterTrustPolicy {
         self
     }
 
+    /// Overrides the discovery posture for this cluster config.
+    #[must_use]
+    pub fn with_discovery_posture(mut self, discovery_posture: ClusterDiscoveryPosture) -> Self {
+        self.discovery_posture = discovery_posture;
+        self
+    }
+
     /// Overrides the dial policy for configured peers.
     #[must_use]
     pub fn with_configured_peer_dial_policy(
@@ -525,6 +637,16 @@ impl ClusterTrustPolicy {
                 b"authenticated_configured_peers".as_slice()
             }
             ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.discovery_posture {
+            ClusterDiscoveryPosture::TrustedLanSeedPeers => b"trusted_lan_seed_peers".as_slice(),
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
+                b"operator_managed_configured_peers".as_slice()
+            }
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
+                b"explicit_wider_network_requested".as_slice()
+            }
         });
         hasher.update(b"|");
         hasher.update(if self.require_message_authentication {
@@ -595,29 +717,56 @@ impl ClusterTrustPolicy {
         hex::encode(hasher.finalize())
     }
 
+    /// Derives the current wider-network discovery posture from the shipped cluster policy.
+    #[must_use]
+    pub fn non_lan_discovery_assessment(&self) -> ClusterNonLanDiscoveryAssessment {
+        let refusal_reasons = match self.discovery_posture {
+            ClusterDiscoveryPosture::TrustedLanSeedPeers => {
+                vec![ClusterNonLanDiscoveryRefusalReason::TrustedLanSeedPeersOnly]
+            }
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
+                vec![ClusterNonLanDiscoveryRefusalReason::OperatorManagedConfiguredPeersOnly]
+            }
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
+                vec![ClusterNonLanDiscoveryRefusalReason::WiderNetworkDiscoveryUnimplemented]
+            }
+        };
+        ClusterNonLanDiscoveryAssessment {
+            discovery_posture: self.discovery_posture,
+            trust_posture: self.posture,
+            trust_policy_digest: self.stable_digest(),
+            disposition: if refusal_reasons.is_empty() {
+                ClusterNonLanDiscoveryDisposition::Eligible
+            } else {
+                ClusterNonLanDiscoveryDisposition::Refused
+            },
+            refusal_reasons,
+        }
+    }
+
     /// Derives the current compute-market trust posture from the shipped cluster policy.
     #[must_use]
     pub fn compute_market_trust_assessment(&self) -> ClusterComputeMarketTrustAssessment {
-        let mut refusal_reasons =
-            vec![ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture];
+        let discovery_assessment = self.non_lan_discovery_assessment();
+        let mut refusal_reasons = Vec::new();
         match self.posture {
             ClusterTrustPosture::TrustedLanSharedAdmission => {
-                refusal_reasons.insert(
-                    0,
-                    ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly,
-                );
-                refusal_reasons.insert(
-                    1,
+                refusal_reasons
+                    .push(ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly);
+                if !self.require_message_authentication {
+                    refusal_reasons.push(
+                        ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport,
+                    );
+                }
+                refusal_reasons.push(
                     ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                 );
             }
             ClusterTrustPosture::AuthenticatedConfiguredPeers => {
-                refusal_reasons.insert(
-                    0,
+                refusal_reasons.push(
                     ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly,
                 );
-                refusal_reasons.insert(
-                    1,
+                refusal_reasons.push(
                     ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                 );
             }
@@ -627,21 +776,29 @@ impl ClusterTrustPolicy {
                     .iter()
                     .any(|peer| peer.attestation_requirement.is_none())
                 {
-                    refusal_reasons.insert(
-                        0,
+                    refusal_reasons.push(
                         ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission,
                     );
                 }
             }
         }
-        if !self.require_message_authentication {
-            refusal_reasons.insert(
-                1,
-                ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport,
-            );
+        if !self.require_message_authentication
+            && !refusal_reasons
+                .contains(&ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport)
+        {
+            refusal_reasons
+                .push(ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport);
+        }
+        if matches!(
+            discovery_assessment.disposition,
+            ClusterNonLanDiscoveryDisposition::Refused
+        ) {
+            refusal_reasons
+                .push(ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture);
         }
         ClusterComputeMarketTrustAssessment {
             posture: self.posture,
+            discovery_posture: self.discovery_posture,
             trust_policy_digest: self.stable_digest(),
             disposition: if refusal_reasons.is_empty() {
                 ClusterComputeMarketTrustDisposition::Eligible
@@ -703,6 +860,8 @@ pub enum ClusterComputeMarketTrustRefusalReason {
 pub struct ClusterComputeMarketTrustAssessment {
     /// Trust posture active for the underlying cluster policy.
     pub posture: ClusterTrustPosture,
+    /// Discovery posture active for the underlying cluster policy.
+    pub discovery_posture: ClusterDiscoveryPosture,
     /// Stable digest of the underlying trust policy.
     pub trust_policy_digest: String,
     /// Effective compute-market disposition for the current policy.
@@ -726,6 +885,16 @@ impl ClusterComputeMarketTrustAssessment {
                 b"authenticated_configured_peers".as_slice()
             }
             ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.discovery_posture {
+            ClusterDiscoveryPosture::TrustedLanSeedPeers => b"trusted_lan_seed_peers".as_slice(),
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
+                b"operator_managed_configured_peers".as_slice()
+            }
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
+                b"explicit_wider_network_requested".as_slice()
+            }
         });
         hasher.update(b"|");
         hasher.update(self.trust_policy_digest.as_bytes());
@@ -971,6 +1140,18 @@ impl LocalClusterConfig {
         self
     }
 
+    /// Returns the current discovery posture for this node config.
+    #[must_use]
+    pub const fn discovery_posture(&self) -> ClusterDiscoveryPosture {
+        self.trust_policy.discovery_posture
+    }
+
+    /// Returns the current non-LAN discovery assessment for this node config.
+    #[must_use]
+    pub fn non_lan_discovery_assessment(&self) -> ClusterNonLanDiscoveryAssessment {
+        self.trust_policy.non_lan_discovery_assessment()
+    }
+
     /// Attaches an explicit trust policy.
     #[must_use]
     pub fn with_trust_policy(mut self, trust_policy: ClusterTrustPolicy) -> Self {
@@ -1016,6 +1197,16 @@ impl LocalClusterConfig {
             .trust_policy
             .clone()
             .with_configured_peer_dial_policy(configured_peer_dial_policy);
+        self
+    }
+
+    /// Overrides the cluster discovery posture without changing the current transport seam.
+    #[must_use]
+    pub fn with_discovery_posture(mut self, discovery_posture: ClusterDiscoveryPosture) -> Self {
+        self.trust_policy = self
+            .trust_policy
+            .clone()
+            .with_discovery_posture(discovery_posture);
         self
     }
 
@@ -1224,6 +1415,18 @@ impl LocalClusterNode {
     #[must_use]
     pub fn trust_policy(&self) -> &ClusterTrustPolicy {
         &self.trust_policy
+    }
+
+    /// Returns the current discovery posture for this node.
+    #[must_use]
+    pub const fn discovery_posture(&self) -> ClusterDiscoveryPosture {
+        self.trust_policy.discovery_posture
+    }
+
+    /// Returns the current non-LAN discovery assessment for this node.
+    #[must_use]
+    pub fn non_lan_discovery_assessment(&self) -> ClusterNonLanDiscoveryAssessment {
+        self.trust_policy.non_lan_discovery_assessment()
     }
 
     /// Returns the currently discovered peers.
@@ -2310,6 +2513,9 @@ mod tests {
                 loopback_addr(31002),
                 "peer-key-a",
             )]);
+        let configured_other_discovery = configured
+            .clone()
+            .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested);
 
         assert_ne!(trusted_lan.stable_digest(), configured.stable_digest());
         assert_ne!(configured.stable_digest(), attested.stable_digest());
@@ -2324,6 +2530,82 @@ mod tests {
         assert_ne!(
             configured.stable_digest(),
             configured_other_version.stable_digest()
+        );
+        assert_ne!(
+            configured.stable_digest(),
+            configured_other_discovery.stable_digest()
+        );
+    }
+
+    #[test]
+    fn non_lan_discovery_assessment_refuses_trusted_lan_seed_peers() {
+        let assessment = ClusterTrustPolicy::trusted_lan().non_lan_discovery_assessment();
+
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::TrustedLanSeedPeers
+        );
+        assert_eq!(
+            assessment.trust_posture,
+            ClusterTrustPosture::TrustedLanSharedAdmission
+        );
+        assert_eq!(
+            assessment.disposition,
+            ClusterNonLanDiscoveryDisposition::Refused
+        );
+        assert_eq!(
+            assessment.refusal_reasons,
+            vec![ClusterNonLanDiscoveryRefusalReason::TrustedLanSeedPeersOnly]
+        );
+    }
+
+    #[test]
+    fn non_lan_discovery_assessment_refuses_operator_managed_configured_peers() {
+        let assessment =
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                NodeId::new("node-b"),
+                loopback_addr(31001),
+                "peer-key-a",
+            )])
+            .non_lan_discovery_assessment();
+
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers
+        );
+        assert_eq!(
+            assessment.disposition,
+            ClusterNonLanDiscoveryDisposition::Refused
+        );
+        assert_eq!(
+            assessment.refusal_reasons,
+            vec![ClusterNonLanDiscoveryRefusalReason::OperatorManagedConfiguredPeersOnly]
+        );
+    }
+
+    #[test]
+    fn explicit_wider_network_discovery_request_is_bounded_until_implemented() {
+        let assessment = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ])
+        .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
+        .non_lan_discovery_assessment();
+
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested
+        );
+        assert_eq!(
+            assessment.disposition,
+            ClusterNonLanDiscoveryDisposition::Refused
+        );
+        assert_eq!(
+            assessment.refusal_reasons,
+            vec![ClusterNonLanDiscoveryRefusalReason::WiderNetworkDiscoveryUnimplemented]
         );
     }
 
@@ -2340,6 +2622,10 @@ mod tests {
         assert_eq!(
             assessment.posture,
             ClusterTrustPosture::TrustedLanSharedAdmission
+        );
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::TrustedLanSeedPeers
         );
         assert_eq!(assessment.trust_policy_digest, trusted_lan.stable_digest());
         assert_eq!(
@@ -2372,6 +2658,10 @@ mod tests {
             assessment.posture,
             ClusterTrustPosture::AuthenticatedConfiguredPeers
         );
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers
+        );
         assert_eq!(assessment.trust_policy_digest, configured.stable_digest());
         assert_eq!(
             assessment.refusal_reasons,
@@ -2402,6 +2692,10 @@ mod tests {
         assert_eq!(
             assessment.posture,
             ClusterTrustPosture::AttestedConfiguredPeers
+        );
+        assert_eq!(
+            assessment.discovery_posture,
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers
         );
         assert_eq!(
             assessment.refusal_reasons,

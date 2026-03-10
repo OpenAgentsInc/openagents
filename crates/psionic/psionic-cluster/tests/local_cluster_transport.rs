@@ -6,10 +6,11 @@ use std::{
 
 use ed25519_dalek::SigningKey;
 use psionic_cluster::{
-    ClusterJoinRefusalReason, ClusterOperatorManifest, ClusterTrustPolicy, ClusterTrustPosture,
-    ClusterTrustRolloutDisposition, ConfiguredClusterPeer, ConfiguredPeerDialPolicy,
-    ConfiguredPeerKeyMatch, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
-    NodeRole,
+    ClusterDiscoveryPosture, ClusterJoinRefusalReason, ClusterNonLanDiscoveryDisposition,
+    ClusterNonLanDiscoveryRefusalReason, ClusterOperatorManifest, ClusterTrustPolicy,
+    ClusterTrustPosture, ClusterTrustRolloutDisposition, ConfiguredClusterPeer,
+    ConfiguredPeerDialPolicy, ConfiguredPeerKeyMatch, ConfiguredPeerReachability,
+    LocalClusterConfig, LocalClusterNode, NodeRole,
 };
 use tempfile::tempdir;
 use tokio::time::{Instant, sleep, timeout};
@@ -228,6 +229,18 @@ async fn seeded_local_nodes_discover_each_other_and_exchange_hello_and_ping() {
     assert_eq!(coordinator_peer.identity.role, NodeRole::ExecutorOnly);
     assert_eq!(executor_peer.identity.node_epoch.as_u64(), 1);
     assert_eq!(coordinator_peer.identity.node_epoch.as_u64(), 1);
+    assert_eq!(
+        executor.discovery_posture(),
+        ClusterDiscoveryPosture::TrustedLanSeedPeers
+    );
+    assert_eq!(
+        coordinator.non_lan_discovery_assessment().disposition,
+        ClusterNonLanDiscoveryDisposition::Refused
+    );
+    assert_eq!(
+        coordinator.non_lan_discovery_assessment().refusal_reasons,
+        vec![ClusterNonLanDiscoveryRefusalReason::TrustedLanSeedPeersOnly]
+    );
 
     let coordinator_shutdown = coordinator.shutdown().await;
     assert!(
@@ -550,6 +563,18 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
         ClusterTrustPosture::AuthenticatedConfiguredPeers
     );
     assert!(sender.trust_policy().require_message_authentication);
+    assert_eq!(
+        receiver.discovery_posture(),
+        ClusterDiscoveryPosture::OperatorManagedConfiguredPeers
+    );
+    assert_eq!(
+        receiver.non_lan_discovery_assessment().refusal_reasons,
+        vec![ClusterNonLanDiscoveryRefusalReason::OperatorManagedConfiguredPeersOnly]
+    );
+    assert_eq!(
+        sender.discovery_posture(),
+        ClusterDiscoveryPosture::OperatorManagedConfiguredPeers
+    );
 
     let receiver_peer = wait_for_single_peer(&receiver).await;
     let sender_peer = wait_for_single_peer(&sender).await;
