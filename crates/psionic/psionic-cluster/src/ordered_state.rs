@@ -687,6 +687,21 @@ pub struct ClusterStaleLeadershipDiagnostic {
     pub observed_tick: ClusterLeaseTick,
 }
 
+/// Stable coordinator-authority truth derived from the current leadership record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommitAuthority {
+    /// Coordinator currently holding commit authority.
+    pub leader_id: NodeId,
+    /// Election term that fences this coordinator epoch.
+    pub term: ClusterTerm,
+    /// Highest committed global event index visible to the coordinator.
+    pub committed_event_index: ClusterEventIndex,
+    /// Stable fencing token that changes across coordinator turnover.
+    pub fence_token: String,
+    /// Stable digest of the effective coordinator-authority record.
+    pub authority_digest: String,
+}
+
 /// Leader/coordinator fact recorded in authoritative cluster state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterLeadershipRecord {
@@ -766,6 +781,54 @@ impl ClusterLeadershipRecord {
                 expired_at_tick,
                 observed_tick,
             }),
+        }
+    }
+
+    /// Returns the stable coordinator fence token for this leadership record.
+    #[must_use]
+    pub fn fence_token(&self, cluster_id: &ClusterId) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(cluster_id.as_str().as_bytes());
+        hasher.update(b"|commit_fence|");
+        hasher.update(self.term.as_u64().to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.leader_id.as_str().as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// Returns a stable digest of the full coordinator-authority record.
+    #[must_use]
+    pub fn authority_digest(&self, cluster_id: &ClusterId) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(cluster_id.as_str().as_bytes());
+        hasher.update(b"|commit_authority|");
+        hasher.update(self.term.as_u64().to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.leader_id.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.committed_event_index.as_u64().to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(
+            self.lease
+                .heartbeat_observed_tick
+                .as_u64()
+                .to_string()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(self.lease.expires_at_tick.as_u64().to_string().as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// Returns the full coordinator-authority record derived from this leadership fact.
+    #[must_use]
+    pub fn commit_authority(&self, cluster_id: &ClusterId) -> ClusterCommitAuthority {
+        ClusterCommitAuthority {
+            leader_id: self.leader_id.clone(),
+            term: self.term,
+            committed_event_index: self.committed_event_index,
+            fence_token: self.fence_token(cluster_id),
+            authority_digest: self.authority_digest(cluster_id),
         }
     }
 }
@@ -1889,6 +1952,15 @@ impl ClusterState {
             .and_then(|leadership| leadership.stale_diagnostic_at(observed_tick))
     }
 
+    /// Returns current coordinator-authority truth derived from leadership.
+    #[must_use]
+    pub fn commit_authority(&self) -> Option<ClusterCommitAuthority> {
+        self.snapshot
+            .leadership
+            .as_ref()
+            .map(|leadership| leadership.commit_authority(self.cluster_id()))
+    }
+
     /// Returns a cloned authoritative snapshot of the current state.
     #[must_use]
     pub fn snapshot(&self) -> ClusterSnapshot {
@@ -2675,6 +2747,62 @@ mod tests {
             renewed_snapshot.stable_digest(),
             "leadership lease changes should affect snapshot digests"
         );
+    }
+
+    #[test]
+    fn commit_authority_fence_token_changes_after_failover() {
+        let cluster_id = sample_cluster_id();
+        let first_leader = ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            crate::NodeId::new("leader-alpha"),
+            ClusterEventIndex::initial(),
+        )
+        .with_lease_policy(ClusterLeaseTick::new(40), sample_leadership_lease_policy());
+        let second_leader = ClusterLeadershipRecord::new(
+            ClusterTerm::initial().next(),
+            crate::NodeId::new("leader-beta"),
+            ClusterEventIndex::initial().next(),
+        )
+        .with_lease_policy(ClusterLeaseTick::new(45), sample_leadership_lease_policy());
+
+        let first_authority = first_leader.commit_authority(&cluster_id);
+        let second_authority = second_leader.commit_authority(&cluster_id);
+
+        assert_ne!(first_authority.fence_token, second_authority.fence_token);
+        assert_ne!(
+            first_authority.authority_digest,
+            second_authority.authority_digest
+        );
+
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: first_leader,
+                },
+            ))
+            .expect("first leader should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id,
+                ClusterEventIndex::initial().next(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: second_leader,
+                },
+            ))
+            .expect("next-term failover should apply");
+
+        let current_authority = state
+            .commit_authority()
+            .expect("current authority should exist after failover");
+        assert_eq!(
+            current_authority.leader_id,
+            crate::NodeId::new("leader-beta")
+        );
+        assert_eq!(current_authority.term, ClusterTerm::initial().next());
+        assert_eq!(current_authority.fence_token, second_authority.fence_token);
     }
 
     #[test]
