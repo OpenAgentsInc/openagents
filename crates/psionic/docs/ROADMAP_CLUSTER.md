@@ -186,7 +186,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is landed on `main`
     - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is landed on `main`
   - the cluster trust-publication follow-on queue is now open on GitHub
-    - `PSI-229` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is open
+    - `PSI-229` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is landed on `main`
     - `PSI-230` / [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) is open
     - `PSI-231` / [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) is open
 - the current backend execution gates are still real and must remain visible
@@ -908,7 +908,7 @@ cluster trust posture and compute-market trust refusal truth.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-229` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Open | Add runtime-owned cluster trust publication types | `psionic-runtime`, `psionic-cluster`, tests | Cluster trust posture and compute-market trust assessment currently live only in `psionic-cluster`, which blocks capability-side publication without a dependency inversion. This issue moves the publication model into a runtime-owned seam first. |
+| `PSI-229` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Closed | Add runtime-owned cluster trust publication types | `psionic-runtime`, `psionic-cluster`, tests | Landed in `f1e40e88d`: `psionic-runtime` now owns `ClusterTrustPosture`, `ClusterDiscoveryPosture`, and `ClusterComputeMarketTrustAssessment` plus its stable digest, while `psionic-cluster` now derives and re-exports those runtime-owned publication types instead of keeping a private duplicate model. |
 | `PSI-230` | [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) | Open | Publish cluster trust assessments through provider capability surfaces | `psionic-provider`, `psionic-cluster`, tests | Advertised cluster capability claims are still missing the trust posture that bounds them. Provider capability surfaces need to publish whether cluster support is trusted-LAN-only, operator-managed, attested, or otherwise refused for compute-market claims. |
 | `PSI-231` | [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) | Open | Add cluster trust-publication validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once trust posture publishes through capability surfaces, the runbook and roadmap need explicit validation commands and closeout criteria so those bounded trust claims remain repeatable instead of doc-only. |
 
@@ -940,9 +940,10 @@ The shortest honest path from today's `main` is:
     and queue closeout now anchored in `efa52005e`.
 11. Treat H2 as landed on `main`, with the advertised capability-publication
     validation drill and queue closeout now anchored in `478387b58`.
-12. Work H3 in order: land `#3342`, then `#3343`, then `#3344`, so provider-
-    published cluster capability claims stay explicitly bounded by trust
-    posture before any stronger market-facing interpretation leaks in.
+12. Work the rest of H3 in order: land `#3343`, then `#3344`, now that
+    `#3342` has moved the trust-publication model into a runtime-owned seam
+    that capability-side consumers can use without depending directly on
+    `psionic-cluster`.
 13. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 14. If stronger trust or wider network claims are needed beyond H3, open a new
