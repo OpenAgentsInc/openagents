@@ -45,9 +45,11 @@
 > `PSI-220` through `PSI-222` as `#3332` through `#3334` for the cluster
 > benchmark-receipt follow-on queue, after landing `PSI-220` / `#3332` in
 > `4f64525b4`, after landing `PSI-221` / `#3334` in `a524658b8`, after
-> landing `PSI-222` / `#3333` in `3fe872c96`, and after checking live GitHub issue
+> landing `PSI-222` / `#3333` in `3fe872c96`, after opening `PSI-223`
+> through `PSI-225` as `#3335` through `#3337` for the declared cluster
+> capability-profile follow-on queue, and after checking live GitHub issue
 > search so this roadmap reflects the current GitHub queue rather than local
-> placeholders and no open cluster roadmap issues remain.
+> placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
 > `crates/psionic/*`. It is intentionally narrower than
@@ -169,7 +171,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-220` / [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) is landed on `main`
     - `PSI-221` / [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) is landed on `main`
     - `PSI-222` / [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) is landed on `main`
-  - no open `psionic` cluster roadmap issues remain on GitHub
+  - the declared cluster capability-profile follow-on queue is now open on GitHub
+    - `PSI-223` / [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) is open
+    - `PSI-224` / [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) is open
+    - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is open
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -854,6 +859,18 @@ claims be tied to explicit machine-checkable benchmark receipts.
 | `PSI-221` | [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) | Closed | Wire cluster benchmark gate script and outputs to typed receipts | `psionic-cluster`, scripts/docs | Landed in `a524658b8`: the cluster benchmark gate script now documents typed benchmark receipts instead of generic summaries, validates the stable receipt filenames and core schema fields after the release gate runs, emits explicit receipt artifact paths for CI and operator consumers, and the runbook now points at receipt artifacts rather than anonymous summary JSON. |
 | `PSI-222` | [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) | Closed | Add benchmark receipt validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `3fe872c96`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit benchmark receipt drill with exact commands, expected receipt files, and failure interpretation, while this roadmap now closes the G1 queue explicitly instead of leaving typed benchmark receipts as an open-ended follow-on note. |
 
+### Phase H1: declared cluster capability-profile follow-on
+
+This is the current active post-G1 queue. It closes the remaining gap between
+typed cluster execution evidence and the current backend-name-based planner
+heuristics by introducing a declared capability contract for clustered lanes.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-223` | [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) | Open | Add runtime-owned cluster execution capability profile | `psionic-runtime`, tests | Cluster communication and sharding eligibility still start from backend strings in `psionic-cluster`. This issue adds a typed runtime-owned profile with stable digests so clustered lane support can be declared explicitly instead of inferred from backend labels. |
+| `PSI-224` | [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) | Open | Make cluster planners consume declared execution capability profiles | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Once the profile exists, the planners and evidence surfaces still need to consume it. Otherwise clustered lane support and refusal details remain partly tied to ad hoc backend-name heuristics. |
+| `PSI-225` | [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) | Open | Add capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | The queue is not complete until the runbook and roadmap make the declared capability contract operator-repeatable and close the follow-on queue explicitly. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -878,11 +895,14 @@ The shortest honest path from today's `main` is:
 9. Treat G1 as landed on `main` in `3fe872c96`, so benchmark-backed
    performance claims now have typed receipts, a script-level output contract,
    and an operator drill instead of a vague follow-on gap.
-10. Keep current authenticated configured-peer posture explicit and bounded;
+10. Work H1 in order: land `#3335`, then `#3336`, then `#3337`, so declared
+    cluster capability truth exists before planner eligibility and validation
+    claims depend on it.
+11. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-11. If stronger trust or wider network claims are needed beyond G1, open a new
+12. If stronger trust or wider network claims are needed beyond H1, open a new
     GitHub-backed queue instead of extending this roadmap with local placeholders.
-12. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+13. Keep current Metal GPT-OSS nodes refused for cluster execution until the
     Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
