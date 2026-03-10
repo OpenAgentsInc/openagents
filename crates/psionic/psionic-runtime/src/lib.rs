@@ -297,6 +297,8 @@ pub enum ClusterPolicyDigestKind {
     Admission,
     /// Placement and scheduling policy.
     Placement,
+    /// Queueing, fairness, cancellation, or backpressure policy.
+    Serving,
     /// Artifact staging or residency policy.
     Residency,
     /// Catchup, compaction, or recovery policy.
@@ -436,6 +438,12 @@ pub enum ClusterFallbackReason {
     ArtifactUnavailable,
     /// The candidate node or backend was degraded.
     BackendDegraded,
+    /// The candidate node was rerouted because queue or admission pressure was too high.
+    QueueBackpressure,
+    /// The candidate node was rerouted because decode fairness reserved capacity.
+    DecodeFairness,
+    /// The candidate node was rerouted because its observed service health was too slow.
+    SlowNodeBackpressure,
     /// The candidate node became unavailable.
     NodeUnavailable,
     /// The candidate node no longer matched required topology facts.
