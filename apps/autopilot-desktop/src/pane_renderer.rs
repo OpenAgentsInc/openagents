@@ -61,7 +61,7 @@ use crate::panes::{
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
-use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
 
 pub struct PaneRenderer;
 
@@ -541,42 +541,60 @@ fn paint_go_online_pane(
         crate::app_state::ProviderMode::Degraded => theme::status::ERROR,
     };
 
-    let status_x = (layout.status_row.max_x() - 180.0).max(layout.status_row.origin.x);
+    let status_y = layout.status_row.origin.y + 4.0;
+    let status_font_size = 12.0;
+    let status_right = layout.status_row.max_x() - 12.0;
+    let status_gap = 8.0;
+    let status_value_width = paint
+        .text
+        .layout_mono(&status_label, Point::ZERO, status_font_size, status_color)
+        .bounds()
+        .size
+        .width;
+    let status_label_width = paint
+        .text
+        .layout_mono("STATUS:", Point::ZERO, status_font_size, theme::text::MUTED)
+        .bounds()
+        .size
+        .width;
+    let status_value_x = status_right - status_value_width;
+    let status_label_x =
+        (status_value_x - status_gap - status_label_width).max(layout.status_row.origin.x);
     paint.scene.draw_text(paint.text.layout_mono(
         "STATUS:",
-        Point::new(status_x, layout.status_row.origin.y + 4.0),
-        12.0,
+        Point::new(status_label_x, status_y),
+        status_font_size,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         &status_label,
-        Point::new(status_x + 60.0, layout.status_row.origin.y + 4.0),
-        12.0,
+        Point::new(status_value_x, status_y),
+        status_font_size,
         status_color,
     ));
 
     paint_mission_control_section_panel(
         layout.sell_panel,
-        "\\\\ SELL COMPUTE",
+        "SELL COMPUTE",
         theme::accent::PRIMARY,
         paint,
     );
     paint_mission_control_section_panel(
         layout.earnings_panel,
-        "\\\\ EARNINGS",
+        "EARNINGS",
         theme::status::SUCCESS,
         paint,
     );
     paint_mission_control_section_panel(
         layout.wallet_panel,
-        "\\\\ WALLET",
+        "WALLET",
         theme::accent::PRIMARY,
         paint,
     );
     paint_mission_control_section_panel(layout.actions_panel, "", theme::border::DEFAULT, paint);
     paint_mission_control_section_panel(
         layout.active_jobs_panel,
-        "\\\\ ACTIVE JOBS",
+        "ACTIVE JOBS",
         theme::accent::PRIMARY,
         paint,
     );
@@ -586,22 +604,17 @@ fn paint_go_online_pane(
         provider_runtime.mode,
         crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
     );
-    let go_online_enabled = !wants_online || local_inference_runtime.is_ready();
     let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
         "GO OFFLINE"
     };
-    if go_online_enabled {
-        paint_primary_button(toggle_bounds, toggle_label, paint);
-    } else {
-        paint_disabled_button(toggle_bounds, toggle_label, paint);
-    }
+    paint_mission_control_go_online_button(toggle_bounds, toggle_label, paint);
 
     let sell_clip = mission_control_section_clip_bounds(layout.sell_panel);
     let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
     paint.scene.push_clip(sell_clip);
-    let mut sell_y = toggle_bounds.max_y() + 14.0;
+    let mut sell_y = toggle_bounds.max_y() + 19.0;
     sell_y = paint_wrapped_label_line(
         paint,
         layout.sell_panel.origin.x + 12.0,
@@ -715,15 +728,15 @@ fn paint_go_online_pane(
     paint.scene.pop_clip();
 
     let toggle_display_bounds = mission_control_amount_toggle_button_bounds(content_bounds);
-    paint_secondary_button(
+    paint_mission_control_amount_toggle(
         toggle_display_bounds,
-        mission_control.amount_display_mode.button_label(),
+        mission_control.amount_display_mode,
         paint,
     );
     let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
     paint.scene.push_clip(earnings_clip);
-    let mut earnings_y = layout.earnings_panel.origin.y + 48.0;
-    earnings_y = paint_wrapped_label_line(
+    let mut earnings_y = layout.earnings_panel.origin.y + 53.0;
+    earnings_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
@@ -733,8 +746,10 @@ fn paint_go_online_pane(
             mission_control.amount_display_mode,
         ),
         mission_control_value_chunk_len(layout.earnings_panel),
+        layout.earnings_panel.size.width - 24.0,
+        true,
     );
-    earnings_y = paint_wrapped_label_line(
+    earnings_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
@@ -744,6 +759,8 @@ fn paint_go_online_pane(
             mission_control.amount_display_mode,
         ),
         mission_control_value_chunk_len(layout.earnings_panel),
+        layout.earnings_panel.size.width - 24.0,
+        true,
     );
     earnings_y = paint_mission_control_amount_line(
         paint,
@@ -754,7 +771,10 @@ fn paint_go_online_pane(
             earnings_scoreboard.lifetime_sats,
             mission_control.amount_display_mode,
         ),
-        theme::accent::PRIMARY,
+        Hsla::from_hex(0x6FD7D2),
+        14.0,
+        layout.earnings_panel.size.width - 24.0,
+        false,
     );
     paint_first_sats_progress(
         Bounds::new(
@@ -790,30 +810,36 @@ fn paint_go_online_pane(
         .map(mask_secret)
         .unwrap_or_else(|| "not generated".to_string());
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let mut wallet_y = layout.wallet_panel.origin.y + 36.0;
-    wallet_y = paint_wrapped_label_line(
+    let mut wallet_y = layout.wallet_panel.origin.y + 41.0;
+    wallet_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
         "Status",
         wallet_status,
         wallet_value_chunk_len,
+        layout.wallet_panel.size.width - 24.0,
+        true,
     );
-    wallet_y = paint_wrapped_label_line(
+    wallet_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
         "Address",
         &wallet_address,
         wallet_value_chunk_len,
+        layout.wallet_panel.size.width - 24.0,
+        false,
     );
-    let _ = paint_wrapped_label_line(
+    let _ = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
         "Balance",
         &wallet_balance,
         wallet_value_chunk_len,
+        layout.wallet_panel.size.width - 24.0,
+        true,
     );
     paint.scene.pop_clip();
 
@@ -858,7 +884,7 @@ fn paint_go_online_pane(
             &line,
             Point::new(
                 layout.active_jobs_panel.origin.x + 12.0,
-                layout.active_jobs_panel.origin.y + 38.0 + index as f32 * 16.0,
+                layout.active_jobs_panel.origin.y + 43.0 + index as f32 * 16.0,
             ),
             11.0,
             if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
@@ -881,28 +907,55 @@ fn paint_go_online_pane(
     }
     paint.scene.pop_clip();
 
-    mission_control.log_stream.set_title("\\\\ LOG STREAM");
-    mission_control.log_stream.paint(layout.log_stream, paint);
+    paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", theme::border::DEFAULT, paint);
+    let log_body_bounds = Bounds::new(
+        layout.log_stream.origin.x,
+        layout.log_stream.origin.y + 24.0,
+        layout.log_stream.size.width,
+        (layout.log_stream.size.height - 24.0).max(0.0),
+    );
+    mission_control.log_stream.set_title("");
+    mission_control.log_stream.paint(log_body_bounds, paint);
 }
 
 fn paint_mission_control_section_panel(
     bounds: Bounds,
     title: &str,
-    accent: Hsla,
+    _accent: Hsla,
     paint: &mut PaintContext,
 ) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.52))
-            .with_border(accent.with_alpha(0.72), 1.0)
-            .with_corner_radius(8.0),
+    let width = bounds.size.width.max(0.0);
+    let height = bounds.size.height.max(0.0);
+    if width <= 1.0 || height <= 1.0 {
+        return;
+    }
+
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+<defs>
+<linearGradient id="sectionBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#21242C"/>
+<stop offset="100%" stop-color="#6FD7D2" stop-opacity="0.25"/>
+</linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="{rw}" height="{rh}" rx="10" ry="10" fill="#1A1E27" fill-opacity="0.70" stroke="url(#sectionBorderGrad)" stroke-width="1"/>
+</svg>"##,
+        w = width,
+        h = height,
+        rw = (width - 1.0).max(0.0),
+        rh = (height - 1.0).max(0.0),
     );
+    paint.scene.draw_svg(SvgQuad::new(
+        bounds,
+        std::sync::Arc::<[u8]>::from(svg.into_bytes()),
+    ));
+
     if !title.is_empty() {
         paint.scene.draw_text(paint.text.layout_mono(
-            title,
+            &format!("// {title}"),
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
-            11.0,
-            theme::text::PRIMARY,
+            12.0,
+            Hsla::from_hex(0xD8DFF0),
         ));
     }
 }
@@ -923,20 +976,40 @@ fn paint_mission_control_amount_line(
     label: &str,
     value: &str,
     value_color: Hsla,
+    value_font_size: f32,
+    row_width: f32,
+    show_divider: bool,
 ) -> f32 {
-    paint.scene.draw_text(paint.text.layout(
+    paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
         Point::new(x, y),
-        theme::font_size::SM,
-        theme::text::MUTED,
+        12.0,
+        Hsla::from_hex(0x8A909E),
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        value,
-        Point::new(x + mission_control_value_x_offset(label), y - 1.0),
-        13.0,
-        value_color,
-    ));
-    y + 20.0
+    let value_x = x + mission_control_value_x_offset(label);
+    let value_right = x + row_width.max(0.0);
+    let value_width = paint
+        .text
+        .layout_mono(value, Point::ZERO, value_font_size, value_color)
+        .bounds()
+        .size
+        .width;
+    let target_x = (value_right - value_width).max(value_x);
+    paint.scene.draw_text(
+        paint.text
+            .layout_mono(
+                value,
+                Point::new(target_x, y - 1.0),
+                value_font_size,
+                value_color,
+            ),
+    );
+    let row_bottom = y + 20.0;
+    if show_divider {
+        paint_mission_control_row_divider(paint, x, row_bottom, row_width)
+    } else {
+        row_bottom + 20.0
+    }
 }
 
 fn mission_control_download_button_label(
@@ -4141,49 +4214,19 @@ pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &m
 }
 
 pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
-    paint_secondary_button(bounds, label, paint);
+    paint_button(bounds, label, ButtonStyle::Secondary, paint);
 }
 
 pub(crate) fn paint_primary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::accent::PRIMARY)
-            .with_border(theme::accent::PRIMARY, 1.0)
-            .with_corner_radius(6.0),
-    );
-    paint_button_label(bounds, label, theme::font_size::SM, theme::bg::APP, paint);
+    paint_button(bounds, label, ButtonStyle::Primary, paint);
 }
 
 pub(crate) fn paint_secondary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::HOVER)
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(6.0),
-    );
-    paint_button_label(
-        bounds,
-        label,
-        theme::font_size::SM,
-        theme::text::PRIMARY,
-        paint,
-    );
+    paint_button(bounds, label, ButtonStyle::Secondary, paint);
 }
 
 pub(crate) fn paint_tertiary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.0))
-            .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
-            .with_corner_radius(6.0),
-    );
-    paint_button_label(
-        bounds,
-        label,
-        theme::font_size::SM,
-        theme::text::SECONDARY,
-        paint,
-    );
+    paint_button(bounds, label, ButtonStyle::Tertiary, paint);
 }
 
 fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
@@ -4195,19 +4238,220 @@ fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut Pa
 }
 
 fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint_button(bounds, label, ButtonStyle::Disabled, paint);
+}
+
+fn paint_mission_control_go_online_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    let base_layer = paint.scene.layer();
+    let button_layer = base_layer.saturating_add(1);
+    paint.scene.set_layer(button_layer);
+
+    let glow = Hsla::from_hex(0x0891B2);
+    let mut glow_outer_spread = 6.0;
+    let mut glow_inner_spread = 3.0;
+    if label == "GO ONLINE" {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f32())
+            .unwrap_or(0.0);
+        let pulse = ((now_secs * 2.4).sin() * 0.5) + 0.5;
+        glow_outer_spread = 6.0 + pulse * 2.0;
+        glow_inner_spread = 3.0 + pulse * 1.0;
+    }
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x - glow_outer_spread,
+            bounds.origin.y - glow_outer_spread,
+            bounds.size.width + glow_outer_spread * 2.0,
+            bounds.size.height + glow_outer_spread * 2.0,
+        ))
+        .with_border(glow.with_alpha(0.16), 1.0)
+        .with_corner_radius(10.0 + glow_outer_spread),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x - glow_inner_spread,
+            bounds.origin.y - glow_inner_spread,
+            bounds.size.width + glow_inner_spread * 2.0,
+            bounds.size.height + glow_inner_spread * 2.0,
+        ))
+        .with_border(glow.with_alpha(0.30), 1.0)
+        .with_corner_radius(10.0 + glow_inner_spread),
+    );
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.72))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(6.0),
+            .with_background(Hsla::from_hex(0x0A5F78))
+            .with_border(Hsla::from_hex(0x0891B2), 1.0)
+            .with_corner_radius(10.0),
     );
-    paint_button_label(
-        bounds,
-        label,
-        theme::font_size::SM,
-        theme::text::MUTED,
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 1.0,
+            bounds.origin.y + 1.0,
+            (bounds.size.width - 2.0).max(0.0),
+            (bounds.size.height * 0.5 - 1.0).max(0.0),
+        ))
+        .with_background(Hsla::from_hex(0x0891B2))
+        .with_corner_radius(9.0),
+    );
+    paint_button_label_mono(bounds, label, 24.0, Hsla::from_hex(0xFFFFFF), paint);
+
+    paint.scene.set_layer(base_layer);
+}
+
+fn paint_mission_control_amount_toggle(
+    bounds: Bounds,
+    mode: BitcoinAmountDisplayMode,
+    paint: &mut PaintContext,
+) {
+    let integer_active = matches!(mode, BitcoinAmountDisplayMode::Integer);
+    let outer = bounds;
+    let segment_width = (outer.size.width / 2.0).max(0.0);
+    let active_segment = if integer_active {
+        Bounds::new(outer.origin.x + 1.0, outer.origin.y + 1.0, (segment_width - 2.0).max(0.0), (outer.size.height - 2.0).max(0.0))
+    } else {
+        Bounds::new(outer.origin.x + segment_width + 1.0, outer.origin.y + 1.0, (segment_width - 2.0).max(0.0), (outer.size.height - 2.0).max(0.0))
+    };
+
+    paint.scene.draw_quad(
+        Quad::new(outer)
+            .with_background(Hsla::from_hex(0x121419))
+            .with_border(Hsla::from_hex(0x8A909E), 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(active_segment)
+            .with_background(Hsla::from_hex(0x0891B2))
+            .with_corner_radius(9.0),
+    );
+
+    let left_label = "INTEGER";
+    let right_label = "LEGACY";
+    let left_color = if integer_active {
+        Hsla::from_hex(0xFFFFFF)
+    } else {
+        Hsla::from_hex(0x8A909E)
+    };
+    let right_color = if integer_active {
+        Hsla::from_hex(0x8A909E)
+    } else {
+        Hsla::from_hex(0xFFFFFF)
+    };
+    paint_button_label_mono(
+        Bounds::new(outer.origin.x, outer.origin.y, segment_width, outer.size.height),
+        left_label,
+        10.0,
+        left_color,
         paint,
     );
+    paint_button_label_mono(
+        Bounds::new(
+            outer.origin.x + segment_width,
+            outer.origin.y,
+            segment_width,
+            outer.size.height,
+        ),
+        right_label,
+        10.0,
+        right_color,
+        paint,
+    );
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ButtonStyle {
+    Primary,
+    Secondary,
+    Tertiary,
+    Disabled,
+}
+
+fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut PaintContext) {
+    match style {
+        ButtonStyle::Primary => {
+            let glow = Hsla::from_hex(0x0891B2);
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    bounds.origin.x - 4.0,
+                    bounds.origin.y - 4.0,
+                    bounds.size.width + 8.0,
+                    bounds.size.height + 8.0,
+                ))
+                .with_background(glow.with_alpha(0.08))
+                .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
+                .with_corner_radius(14.0),
+            );
+            let w = bounds.size.width.max(0.0);
+            let h = bounds.size.height.max(0.0);
+            if w > 1.0 && h > 1.0 {
+                let svg = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+<defs>
+<radialGradient id="primaryButtonFill" cx="50%" cy="50%" r="50%">
+<stop offset="2.4%" stop-color="#03857F" stop-opacity="0.60"/>
+<stop offset="100%" stop-color="#121419" stop-opacity="0.20"/>
+</radialGradient>
+</defs>
+<rect x="0.5" y="0.5" width="{rw}" height="{rh}" rx="10" ry="10" fill="url(#primaryButtonFill)" stroke="#0891B2" stroke-width="1"/>
+</svg>"##,
+                    w = w,
+                    h = h,
+                    rw = (w - 1.0).max(0.0),
+                    rh = (h - 1.0).max(0.0),
+                );
+                paint.scene.draw_svg(SvgQuad::new(
+                    bounds,
+                    std::sync::Arc::<[u8]>::from(svg.into_bytes()),
+                ));
+            }
+            paint_button_label_mono(bounds, label, 18.0, Hsla::from_hex(0xFFFFFF), paint);
+        }
+        ButtonStyle::Secondary => {
+            paint.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(theme::bg::HOVER)
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(6.0),
+            );
+            paint_button_label(
+                bounds,
+                label,
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+                paint,
+            );
+        }
+        ButtonStyle::Tertiary => {
+            paint.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(theme::bg::APP.with_alpha(0.0))
+                    .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
+                    .with_corner_radius(6.0),
+            );
+            paint_button_label(
+                bounds,
+                label,
+                theme::font_size::SM,
+                theme::text::SECONDARY,
+                paint,
+            );
+        }
+        ButtonStyle::Disabled => {
+            paint.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(theme::bg::SURFACE.with_alpha(0.72))
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(6.0),
+            );
+            paint_button_label(
+                bounds,
+                label,
+                theme::font_size::SM,
+                theme::text::MUTED,
+                paint,
+            );
+        }
+    }
 }
 
 fn paint_button_label(
@@ -4218,6 +4462,25 @@ fn paint_button_label(
     paint: &mut PaintContext,
 ) {
     let mut run = paint.text.layout(label, Point::ZERO, font_size, color);
+    let run_bounds = run.bounds();
+    let origin = Point::new(
+        bounds.origin.x + ((bounds.size.width - run_bounds.size.width).max(0.0) * 0.5)
+            - run_bounds.origin.x,
+        bounds.origin.y + ((bounds.size.height - run_bounds.size.height).max(0.0) * 0.5)
+            - run_bounds.origin.y,
+    );
+    run.origin = origin;
+    paint.scene.draw_text(run);
+}
+
+fn paint_button_label_mono(
+    bounds: Bounds,
+    label: &str,
+    font_size: f32,
+    color: Hsla,
+    paint: &mut PaintContext,
+) {
+    let mut run = paint.text.layout_mono(label, Point::ZERO, font_size, color);
     let run_bounds = run.bounds();
     let origin = Point::new(
         bounds.origin.x + ((bounds.size.width - run_bounds.size.width).max(0.0) * 0.5)
@@ -4259,13 +4522,102 @@ pub(crate) fn paint_wrapped_label_line(
     value: &str,
     value_chunk_len: usize,
 ) -> f32 {
+    paint_wrapped_label_line_with_style(
+        paint,
+        x,
+        y,
+        label,
+        value,
+        value_chunk_len,
+        theme::text::MUTED,
+        false,
+    )
+}
+
+fn paint_wrapped_label_line_mission_control_label(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    row_width: f32,
+    show_divider: bool,
+) -> f32 {
     let value_x = x + mission_control_value_x_offset(label);
-    paint.scene.draw_text(paint.text.layout(
+    let value_right = x + row_width.max(0.0);
+    paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
         Point::new(x, y),
-        theme::font_size::SM,
-        theme::text::MUTED,
+        12.0,
+        Hsla::from_hex(0x8A909E),
     ));
+
+    let mut line_y = y;
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        let value_width = paint
+            .text
+            .layout_mono(&chunk, Point::ZERO, 12.0, theme::text::PRIMARY)
+            .bounds()
+            .size
+            .width;
+        let target_x = (value_right - value_width).max(value_x);
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(target_x, line_y),
+            12.0,
+            theme::text::PRIMARY,
+        ));
+        line_y += 18.0;
+    }
+    let row_bottom = line_y.max(y + 18.0);
+    if show_divider {
+        paint_mission_control_row_divider(paint, x, row_bottom, row_width)
+    } else {
+        row_bottom + 20.0
+    }
+}
+
+fn paint_mission_control_row_divider(
+    paint: &mut PaintContext,
+    x: f32,
+    row_bottom: f32,
+    row_width: f32,
+) -> f32 {
+    let divider_y = row_bottom + 10.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
+            .with_background(Hsla::from_hex(0x0E0E0F)),
+    );
+    divider_y + 1.0 + 10.0
+}
+
+fn paint_wrapped_label_line_with_style(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    label_color: Hsla,
+    label_mono: bool,
+) -> f32 {
+    let value_x = x + mission_control_value_x_offset(label);
+    if label_mono {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("{label}:"),
+            Point::new(x, y),
+            theme::font_size::SM,
+            label_color,
+        ));
+    } else {
+        paint.scene.draw_text(paint.text.layout(
+            &format!("{label}:"),
+            Point::new(x, y),
+            theme::font_size::SM,
+            label_color,
+        ));
+    }
 
     let mut line_y = y;
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
