@@ -202,7 +202,7 @@ Codex CLI/TUI in practice, not just by protocol completeness.
 
 ### Phase A. Codex Session Parity
 
-### CX-1. Codex Readiness, Auth, And Config Truth
+### CX-1. Codex Readiness, Auth, And Config Truth ([#3357](https://github.com/OpenAgentsInc/openagents/issues/3357))
 
 Scope:
 
