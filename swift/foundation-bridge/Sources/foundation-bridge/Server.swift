@@ -549,7 +549,15 @@ actor HTTPServer {
     }
 
     private func buildErrorResponse(status: Int, message: String) -> Data {
-        let error = ErrorResponse(error: ErrorDetail(message: message, type: "error", code: nil))
+        let error = ErrorResponse(
+            error: ErrorDetail(
+                message: message,
+                type: "error",
+                code: nil,
+                toolName: nil,
+                underlyingError: nil
+            )
+        )
         return buildJSONResponse(status: status, body: error)
     }
 
@@ -559,6 +567,8 @@ actor HTTPServer {
             return 503
         case .concurrentRequests:
             return 409
+        case .toolCallFailed:
+            return 502
         case .requestFailed, .serverError:
             return 500
         case .invalidRequest:

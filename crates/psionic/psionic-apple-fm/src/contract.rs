@@ -1,5 +1,6 @@
 use crate::structured::{
-    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmStructuredValueError,
+    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmStructuredType,
+    AppleFmStructuredValueError,
 };
 use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 use serde::{Deserialize, Serialize};
@@ -771,6 +772,12 @@ pub struct AppleFmErrorDetail {
     /// Optional machine-readable code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Optional failed tool name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Optional underlying tool error detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlying_error: Option<String>,
 }
 
 /// Simplified one-shot completion result derived from the bridge response.
@@ -894,7 +901,7 @@ impl AppleFmTextStreamEvent {
     }
 }
 
-/// Session-scoped tool metadata carried ahead of real tool-calling support.
+/// Tool metadata surfaced in session state and transcript history.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AppleFmSessionToolMetadata {
     /// Stable tool name.
@@ -902,6 +909,106 @@ pub struct AppleFmSessionToolMetadata {
     /// Optional human-readable description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+/// Full tool definition registered for active Apple FM sessions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmToolDefinition {
+    /// Stable tool name.
+    pub name: String,
+    /// Optional human-readable description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Structured schema for tool arguments.
+    pub arguments_schema: AppleFmGenerationSchema,
+}
+
+impl AppleFmToolDefinition {
+    /// Builds a tool definition from explicit schema input.
+    #[must_use]
+    pub fn new(
+        name: impl Into<String>,
+        description: Option<impl Into<String>>,
+        arguments_schema: AppleFmGenerationSchema,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.map(Into::into),
+            arguments_schema,
+        }
+    }
+
+    /// Builds a tool definition from a typed Rust schema.
+    pub fn typed<T>(
+        name: impl Into<String>,
+        description: Option<impl Into<String>>,
+    ) -> Result<Self, AppleFmStructuredValueError>
+    where
+        T: AppleFmStructuredType,
+    {
+        Ok(Self::new(
+            name,
+            description,
+            AppleFmGenerationSchema::from_type::<T>()?,
+        ))
+    }
+
+    /// Drops callback-only detail and returns user-facing metadata.
+    #[must_use]
+    pub fn metadata(&self) -> AppleFmSessionToolMetadata {
+        AppleFmSessionToolMetadata {
+            name: self.name.clone(),
+            description: self.description.clone(),
+        }
+    }
+}
+
+/// Session-scoped loopback callback configuration for tool execution.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmToolCallbackConfiguration {
+    /// Absolute callback URL the bridge should POST tool calls to.
+    pub url: String,
+    /// Stable opaque token identifying the Rust-side tool registry for this session.
+    pub session_token: String,
+}
+
+/// Callback request emitted by the Swift bridge when Apple FM invokes a tool.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmToolCallRequest {
+    /// Stable opaque session token identifying the Rust-side tool registry.
+    pub session_token: String,
+    /// The invoked tool's stable name.
+    pub tool_name: String,
+    /// Structured tool arguments decoded by Apple's guided-generation surface.
+    pub arguments: AppleFmGeneratedContent,
+}
+
+/// Successful tool-call response returned by the Rust-side callback runtime.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmToolCallResponse {
+    /// Tool output returned to the model.
+    pub output: String,
+}
+
+/// Typed tool-call failure surfaced by the reusable Apple FM lane.
+#[derive(Clone, Debug, Error, PartialEq, Serialize, Deserialize)]
+#[error("tool '{tool_name}' failed: {underlying_error}")]
+pub struct AppleFmToolCallError {
+    /// Stable failed tool name.
+    pub tool_name: String,
+    /// Underlying tool failure detail.
+    pub underlying_error: String,
+}
+
+impl AppleFmToolCallError {
+    /// Builds a typed tool-call failure.
+    #[must_use]
+    pub fn new(tool_name: impl Into<String>, underlying_error: impl Into<String>) -> Self {
+        Self {
+            tool_name: tool_name.into(),
+            underlying_error: underlying_error.into(),
+        }
+    }
 }
 
 /// Reusable Apple FM session state.
@@ -944,9 +1051,12 @@ pub struct AppleFmSessionCreateRequest {
     /// Optional model configuration. Defaults to the Apple system default model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<AppleFmSystemLanguageModel>,
-    /// Tool metadata registered for this session.
+    /// Active tool definitions registered for this session.
     #[serde(default)]
-    pub tools: Vec<AppleFmSessionToolMetadata>,
+    pub tools: Vec<AppleFmToolDefinition>,
+    /// Optional loopback callback configuration for tool execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_callback: Option<AppleFmToolCallbackConfiguration>,
     /// Optional transcript JSON used to restore a session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_json: Option<String>,
@@ -961,12 +1071,13 @@ impl AppleFmSessionCreateRequest {
     pub fn from_transcript_json(
         transcript_json: impl Into<String>,
         model: Option<AppleFmSystemLanguageModel>,
-        tools: Vec<AppleFmSessionToolMetadata>,
+        tools: Vec<AppleFmToolDefinition>,
     ) -> Self {
         Self {
             instructions: None,
             model,
             tools,
+            tool_callback: None,
             transcript_json: Some(transcript_json.into()),
             transcript: None,
         }
@@ -977,12 +1088,13 @@ impl AppleFmSessionCreateRequest {
     pub fn from_transcript(
         transcript: AppleFmTranscript,
         model: Option<AppleFmSystemLanguageModel>,
-        tools: Vec<AppleFmSessionToolMetadata>,
+        tools: Vec<AppleFmToolDefinition>,
     ) -> Self {
         Self {
             instructions: None,
             model,
             tools,
+            tool_callback: None,
             transcript_json: None,
             transcript: Some(transcript),
         }
@@ -1143,17 +1255,28 @@ mod tests {
         AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessageRole,
         AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,
         AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType,
-        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest, AppleFmSessionToolMetadata,
+        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
         AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
-        AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmUsageTruth,
-        DEFAULT_APPLE_FM_MODEL_ID,
+        AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmToolDefinition,
+        AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
     };
     use crate::structured::{AppleFmGenerationSchema, AppleFmStructuredValueError};
     use crate::transcript::{
         APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
         AppleFmTranscriptEntry, AppleFmTranscriptError, AppleFmTranscriptPayload,
     };
+
+    fn search_tool_definition() -> AppleFmToolDefinition {
+        AppleFmToolDefinition::new(
+            "search",
+            Some("Search the local index"),
+            AppleFmGenerationSchema::from_json_str(
+                r#"{"type":"object","properties":{"query":{"type":"string"}}}"#,
+            )
+            .expect("tool schema"),
+        )
+    }
 
     #[test]
     fn user_prompt_builder_matches_bridge_shape() {
@@ -1396,10 +1519,7 @@ mod tests {
         let request = AppleFmSessionCreateRequest::from_transcript_json(
             "{\"type\":\"FoundationModels.Transcript\"}",
             Some(AppleFmSystemLanguageModel::default()),
-            vec![AppleFmSessionToolMetadata {
-                name: "search".to_string(),
-                description: Some("Search the local index".to_string()),
-            }],
+            vec![search_tool_definition()],
         );
 
         assert!(request.instructions.is_none());
@@ -1458,6 +1578,7 @@ mod tests {
             instructions: None,
             model: None,
             tools: vec![],
+            tool_callback: None,
             transcript_json: Some(
                 r#"{"version":1,"type":"FoundationModels.Transcript","transcript":{"entries":[]}}"#
                     .to_string(),

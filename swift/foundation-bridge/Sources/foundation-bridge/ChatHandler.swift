@@ -1,12 +1,74 @@
 import Foundation
 import FoundationModels
 
+struct RemoteToolCallError: Error {
+    let toolName: String
+    let underlyingError: String
+}
+
+final class RemoteTool: Tool {
+    let name: String
+    let description: String
+    let parameters: GenerationSchema
+
+    private let callbackURL: URL
+    private let sessionToken: String
+
+    init(
+        definition: ToolDefinition,
+        callback: ToolCallbackConfiguration
+    ) throws {
+        self.name = definition.name
+        self.description = definition.description ?? definition.name
+        self.parameters = try ChatHandler.decodeGenerationSchema(from: definition.argumentsSchema)
+        guard let callbackURL = URL(string: callback.url) else {
+            throw FMError.invalidRequest("Invalid Apple FM tool callback URL '\(callback.url)'")
+        }
+        self.callbackURL = callbackURL
+        self.sessionToken = callback.sessionToken
+    }
+
+    func call(arguments: GeneratedContent) async throws -> String {
+        let argumentsPayload = try ChatHandler.generatedContentPayload(from: arguments)
+        let payload = ToolCallRequestPayload(
+            sessionToken: sessionToken,
+            toolName: name,
+            arguments: argumentsPayload
+        )
+        let requestData = try JSONEncoder().encode(payload)
+
+        var request = URLRequest(url: callbackURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = requestData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+        if (200..<300).contains(statusCode) {
+            let payload = try JSONDecoder().decode(ToolCallResponsePayload.self, from: data)
+            return payload.output
+        }
+
+        if let toolError = try? JSONDecoder().decode(ToolCallErrorPayload.self, from: data) {
+            throw RemoteToolCallError(
+                toolName: toolError.toolName,
+                underlyingError: toolError.underlyingError
+            )
+        }
+
+        let errorMessage = String(data: data, encoding: .utf8) ?? "unknown tool callback failure"
+        throw RemoteToolCallError(toolName: name, underlyingError: errorMessage)
+    }
+}
+
 actor ChatHandler {
     private struct SessionRecord {
         let session: LanguageModelSession
         let instructions: String?
         let model: SessionModelConfiguration
         let tools: [SessionToolMetadata]
+        let toolDefinitions: [ToolDefinition]
+        let toolCallback: ToolCallbackConfiguration?
         var isResponding: Bool
         var transcriptJSONSnapshot: String?
     }
@@ -81,6 +143,8 @@ actor ChatHandler {
         let session = try makeSession(
             instructions: request.instructions,
             model: model,
+            toolDefinitions: request.tools,
+            toolCallback: request.toolCallback,
             transcriptJSON: request.transcriptJSON,
             transcript: request.transcript
         )
@@ -89,7 +153,9 @@ actor ChatHandler {
             session: session,
             instructions: request.instructions,
             model: model,
-            tools: request.tools,
+            tools: request.tools.map(\.metadata),
+            toolDefinitions: request.tools,
+            toolCallback: request.toolCallback,
             isResponding: false,
             transcriptJSONSnapshot: transcriptJSONSnapshot
         )
@@ -161,6 +227,12 @@ actor ChatHandler {
                 output: content,
                 usage: estimatedUsage(prompt: request.prompt, output: content)
             )
+        } catch let error as LanguageModelSession.ToolCallError {
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+            throw FMError.toolCallFailed(
+                toolName: "unknown_tool",
+                underlyingError: error.underlyingError.localizedDescription
+            )
         } catch let error as LanguageModelSession.GenerationError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
             if case .concurrentRequests = error {
@@ -197,7 +269,7 @@ actor ChatHandler {
 
         let startTime = Date()
         let options = try bridgeGenerationOptions(from: request.options)
-        let schema = try generationSchema(from: request.schema)
+        let schema = try Self.decodeGenerationSchema(from: request.schema)
         do {
             let response: LanguageModelSession.Response<GeneratedContent> = try await record.session
                 .respond(
@@ -205,7 +277,7 @@ actor ChatHandler {
                     schema: schema,
                     options: options
                 )
-            let payload = try generatedContentPayload(from: response.content)
+            let payload = try Self.generatedContentPayload(from: response.content)
             let outputJSON = try payload.contentJSONString()
 
             record.isResponding = false
@@ -217,6 +289,12 @@ actor ChatHandler {
                 model: record.model.id,
                 content: payload,
                 usage: estimatedUsage(prompt: request.prompt, output: outputJSON)
+            )
+        } catch let error as LanguageModelSession.ToolCallError {
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+            throw FMError.toolCallFailed(
+                toolName: "unknown_tool",
+                underlyingError: error.underlyingError.localizedDescription
             )
         } catch let error as LanguageModelSession.GenerationError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
@@ -346,6 +424,8 @@ actor ChatHandler {
         let session = try makeSession(
             instructions: nil,
             model: defaultSessionModelConfiguration(),
+            toolDefinitions: [],
+            toolCallback: nil,
             transcriptJSON: nil,
             transcript: nil
         )
@@ -389,6 +469,8 @@ actor ChatHandler {
     private func makeSession(
         instructions: String?,
         model: SessionModelConfiguration,
+        toolDefinitions: [ToolDefinition],
+        toolCallback: ToolCallbackConfiguration?,
         transcriptJSON: String?,
         transcript: Transcript?
     ) throws -> LanguageModelSession {
@@ -396,7 +478,10 @@ actor ChatHandler {
             useCase: model.useCase.foundationModelsValue,
             guardrails: model.guardrails.foundationModelsValue
         )
-        let tools: [any Tool] = []
+        let tools = try makeTools(
+            definitions: toolDefinitions,
+            callback: toolCallback
+        )
         if let transcript {
             return LanguageModelSession(
                 model: foundationModel,
@@ -438,7 +523,7 @@ actor ChatHandler {
         return String(data: transcriptData, encoding: .utf8)
     }
 
-    private func generationSchema(from value: JSONValue) throws -> GenerationSchema {
+    fileprivate static func decodeGenerationSchema(from value: JSONValue) throws -> GenerationSchema {
         let schemaData = try JSONEncoder().encode(value)
         do {
             return try JSONDecoder().decode(GenerationSchema.self, from: schemaData)
@@ -449,9 +534,9 @@ actor ChatHandler {
         }
     }
 
-    private func generatedContentPayload(from content: GeneratedContent) throws -> GeneratedContentPayload {
+    fileprivate static func generatedContentPayload(from content: GeneratedContent) throws -> GeneratedContentPayload {
         let jsonString = content.jsonString
-        let jsonValue = try decodedJSONValue(fromJSONString: jsonString)
+        let jsonValue = try decodeJSONValue(fromJSONString: jsonString)
         return GeneratedContentPayload(
             generationID: "gen-\(UUID().uuidString.lowercased())",
             content: jsonValue,
@@ -459,7 +544,7 @@ actor ChatHandler {
         )
     }
 
-    private func decodedJSONValue(fromJSONString jsonString: String) throws -> JSONValue {
+    fileprivate static func decodeJSONValue(fromJSONString jsonString: String) throws -> JSONValue {
         do {
             return try JSONDecoder().decode(
                 JSONValue.self,
@@ -469,6 +554,18 @@ actor ChatHandler {
             throw FMError.serverError(
                 "Failed to decode Apple FM structured content: \(error.localizedDescription)"
             )
+        }
+    }
+
+    private func makeTools(
+        definitions: [ToolDefinition],
+        callback: ToolCallbackConfiguration?
+    ) throws -> [any Tool] {
+        guard let callback else {
+            return []
+        }
+        return try definitions.map { definition in
+            try RemoteTool(definition: definition, callback: callback)
         }
     }
 
@@ -489,6 +586,8 @@ actor ChatHandler {
         let session = try makeSession(
             instructions: record.instructions,
             model: record.model,
+            toolDefinitions: record.toolDefinitions,
+            toolCallback: record.toolCallback,
             transcriptJSON: record.transcriptJSONSnapshot,
             transcript: nil
         )
@@ -497,6 +596,8 @@ actor ChatHandler {
             instructions: record.instructions,
             model: record.model,
             tools: record.tools,
+            toolDefinitions: record.toolDefinitions,
+            toolCallback: record.toolCallback,
             isResponding: false,
             transcriptJSONSnapshot: record.transcriptJSONSnapshot
         )

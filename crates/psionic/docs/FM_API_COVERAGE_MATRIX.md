@@ -1,6 +1,6 @@
 # Apple FM API Coverage Matrix
 
-Status: `FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, and `FM-7` landed matrix, updated 2026-03-10 from the retained
+Status: `FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, and `FM-8` landed matrix, updated 2026-03-10 from the retained
 Apple FM audit plus a direct scan of `~/code/python-apple-fm-sdk`, after
 moving the current bridge contract and reusable client into
 `psionic-apple-fm`, after landing typed system-model availability, use-case,
@@ -10,7 +10,8 @@ generation-options coverage plus truthful estimated usage detail, and after
 landing SSE session streaming with snapshot semantics, and after landing typed
 transcript export/import and `from_transcript`-style restore coverage, and
 after landing structured generation with schema-guided typed decode plus a real
-live-bridge receipt.
+live-bridge receipt, and after landing tool calling with a reusable Rust tool
+trait, loopback callback transport, and a real multi-tool live receipt.
 
 This is the living coverage matrix for the Psionic Apple Foundation Models
 lane. It maps the exported Python SDK surface and its major behavioral families
@@ -42,7 +43,8 @@ Legend:
 | `Generable` | `psionic-apple-fm::AppleFmStructuredType` + `schemars::JsonSchema` | landed | `FM-7` / `#3352` | Rust maps typed structured generation to `JsonSchema`-derived types instead of Python decorators. |
 | `GenerationGuide` / `guide` | `schemars` constraint annotations in typed Rust schemas | landed | `FM-7` / `#3352` | Enum/choice, numeric-range, list-count, and regex guidance now map through schema metadata instead of prompt hacks. |
 | `generable` | Rust-native typed-schema derive path | landed | `FM-7` / `#3352` | Syntax differs from Python, but the typed-schema semantics are now covered. |
-| `Tool` | Rust tool trait / callback contract | planned | `FM-8` / `#3353` | Not yet implemented. |
+| `Tool` | `psionic-apple-fm::AppleFmTool` + typed tool definitions | landed | `FM-8` / `#3353` | Rust now registers typed tool definitions and executes real Apple FM tool callbacks through the reusable client runtime. |
+| `ToolCallError` | `psionic-apple-fm::AppleFmToolCallError` | landed | `FM-8` / `#3353` | Explicit tool-call failures now carry typed tool name + underlying error detail. |
 | Foundation Models error family | Rust typed error hierarchy | planned | `FM-9` / `#3354` | Current retained lane collapses most failures into strings. |
 
 ## Bridge Contract Ownership
@@ -63,7 +65,7 @@ Legend:
 | Streaming bridge protocol | `psionic-apple-fm::{AppleFmAsyncBridgeClient, AppleFmTextResponseStream}` + SSE session stream contract | landed | `FM-5` / `#3350` | Session streaming now uses `/v1/sessions/{id}/responses/stream` with snapshot events and terminal completion payloads. |
 | Transcript bridge protocol | `psionic-apple-fm::{AppleFmTranscript, AppleFmBridgeClient}` + `/v1/sessions/{id}/transcript` | landed | `FM-6` / `#3351` | Bridge now exports typed transcripts and accepts either typed transcript objects or raw transcript JSON on restore. |
 | Structured-generation bridge protocol | `psionic-apple-fm::{AppleFmStructuredGenerationRequest, AppleFmSessionStructuredGenerationRequest}` + `/v1/sessions/{id}/responses/structured` | landed | `FM-7` / `#3352` | The bridge now exposes a real structured-generation route backed by Apple FM schema responses. |
-| Tool-calling bridge protocol | Reusable tool callback contract | planned | `FM-8` / `#3353` | Not yet present in retained bridge. |
+| Tool-calling bridge protocol | `AppleFmToolDefinition` + session loopback callback contract | landed | `FM-8` / `#3353` | The bridge now builds real Apple FM `Tool` objects and calls back into the Rust-side runtime for tool execution. |
 
 ## Behavioral Contract
 
@@ -81,13 +83,13 @@ Legend:
 | Raw transcript-backed restore semantics | landed | `FM-3` / `#3348` | Sessions can still be recreated from bridge transcript JSON for compatibility. |
 | Typed transcript export/import and restore semantics | landed | `FM-6` / `#3351` | The Rust lane now exports typed transcript snapshots, restores from typed transcript objects or raw transcript JSON, and preserves the rule that transcript tool history does not enable new tools by itself. |
 | Typed, structured-generation behavior | landed | `FM-7` / `#3352` | Structured generation now uses the Apple FM schema path, with nested/list coverage and a real ignored live-bridge receipt. |
-| Real tool-calling flow | planned | `FM-8` / `#3353` | Must be session-aware, not prompt flattening. |
+| Real tool-calling flow | landed | `FM-8` / `#3353` | Tool-enabled sessions now use a session-aware callback contract, with unit coverage and a real ignored multi-tool live receipt. |
 | Typed error mapping | planned | `FM-9` / `#3354` | Must replace generic string failures. |
 | Desktop/macOS Mission Control Apple FM truth | planned | `FM-10` / `#3355` | Mission Control is still GPT-OSS-first on `main`. |
 
-## FM-1 Through FM-7 Landed Scope
+## FM-1 Through FM-8 Landed Scope
 
-The following is explicitly landed by `FM-1` through `FM-7` and should remain the
+The following is explicitly landed by `FM-1` through `FM-8` and should remain the
 starting point for later issues:
 
 - `crates/psionic/psionic-apple-fm` exists as the reusable crate for the Apple
@@ -141,9 +143,16 @@ starting point for later issues:
   structured generation plus typed decode helpers
 - structured-generation coverage now includes nested objects, lists,
   validation failures, and an ignored real live-bridge receipt on macOS
+- the reusable crate now exposes a Rust `AppleFmTool` trait, typed tool
+  definitions, tool-call callback request/response types, and typed
+  `AppleFmToolCallError`
+- the bridge now constructs real Apple FM tools from Rust-provided definitions
+  and calls back into a loopback Rust-side tool runtime for execution
+- tool coverage now includes direct invocation, typed registration, complex
+  argument payloads, explicit failure mapping, session registration behavior,
+  and an ignored real multi-tool live receipt on macOS
 
-What is intentionally **not** closed by `FM-1` through `FM-7`:
+What is intentionally **not** closed by `FM-1` through `FM-8`:
 
-- tools
 - typed error taxonomy
 - desktop Mission Control cutover
