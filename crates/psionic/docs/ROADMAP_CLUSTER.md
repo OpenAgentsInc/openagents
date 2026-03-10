@@ -8,7 +8,8 @@
 > landed on `main`, after confirming that the active NVIDIA local-runtime gate
 > remains `#3276` -> `#3288` -> `#3248`, after confirming that the active
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
-> after opening the Phase C1 cluster issues `#3289` through `#3292`, and after
+> after landing `PSI-184` / `#3289` in `64c2a8fc6`, after confirming that
+> `#3290` through `#3292` are now the active remaining C1 queue, and after
 > checking live GitHub issue search and confirming that later cluster phases
 > `PSI-188` through `PSI-197` still do not appear to be opened yet.
 >
@@ -94,10 +95,10 @@ roadmaps.
 As of 2026-03-10, the current issue reality is:
 
 - the first dedicated cluster queue now exists on GitHub
-  - `PSI-184` / [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289)
-  - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290)
-  - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291)
-  - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292)
+  - `PSI-184` / [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) is landed on `main`
+  - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) is open
+  - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) is open
+  - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is open
 - later cluster phases `PSI-188` through `PSI-197` are still proposed rather
   than opened
 - the current backend execution gates are still real and must remain visible
@@ -135,6 +136,12 @@ on:
   - delivery-proof and settlement-linkage inputs
 - `PSI-179` through `PSI-183`
   - truthful local GPT-OSS/NVIDIA enablement now exists on `main`
+- `PSI-184` / [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289)
+  - landed in `64c2a8fc6`
+  - initial `psionic-cluster` crate, trusted-LAN namespace/admission config,
+    typed UDP `hello`/`ping` handshake, generated `ClusterId`/`NodeId`,
+    surfaced node-role truth, and integration coverage proving seeded local
+    nodes discover each other without claiming scheduling or execution behavior
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -331,7 +338,7 @@ Already on `main`:
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Open | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Establish the crate seam and prove that two Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution yet. |
+| `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Closed | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Landed in `64c2a8fc6`: established the crate seam and proved that seeded local Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution behavior. |
 | `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Open | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Cluster identity must be persistent, refusal-capable, and distinct from session-local discovery IDs. |
 | `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Open | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | This is the minimum control-plane vocabulary needed for deterministic, replayable cluster truth. |
 | `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Open | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Event sourcing is not operationally real until replay bounds, catchup windows, and recovery semantics are explicit. |
@@ -377,8 +384,8 @@ The shortest honest path from today's `main` is:
 
 1. Open the missing cluster issue queue and keep the IDs aligned to
    `PSI-188` through `PSI-197`.
-2. Execute the now-open C1 queue
-   `#3289` -> `#3290` -> `#3291` -> `#3292`, then open and execute
+2. Execute the remaining open C1 queue
+   `#3290` -> `#3291` -> `#3292`, then open and execute
    `PSI-188` through `PSI-190`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
