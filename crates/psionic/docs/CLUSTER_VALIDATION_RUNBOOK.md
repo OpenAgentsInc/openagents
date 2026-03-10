@@ -22,6 +22,8 @@ This runbook validates two cluster trust postures:
   managed failover paths
 - declared cluster execution capability profiles and their stable digest linkage
   to planner refusals plus provider-facing execution evidence
+- advertised cluster execution capability profiles published through provider
+  capability envelopes before any request executes
 - command-authorization refusal truth and payout-facing cluster provenance
   surfaces for operator-managed multi-subnet clusters
 
@@ -270,6 +272,31 @@ Interpretation:
 - provider capability or receipt failure means declared capability-profile
   digests are no longer preserved through operator-facing execution evidence
 
+## Advertised Capability Publication Drill
+
+Use this sequence before claiming that provider capability surfaces truthfully
+publish declared clustered-lane support before any request executes:
+
+1. Run `cargo test -p psionic-runtime backend_selection_can_publish_declared_cluster_capability_profile_truth`.
+2. Run `cargo test -p psionic-provider capability_envelope_can_publish_declared_cluster_capability_profile_without_execution`.
+3. Run `cargo test -p psionic-provider capability_envelope_publishes_whole_request_cluster_profile_from_cluster_request text_generation_capability_envelope_publishes_replica_profile_from_cluster_request text_generation_capability_envelope_publishes_layer_sharded_profile_from_cluster_request sandbox_capability_envelope_publishes_tensor_sharded_profile_from_cluster_request`.
+4. Run `cargo test -p psionic-provider capability_envelope_can_surface_cluster_execution_context text_generation_receipt_preserves_cluster_execution_from_provenance`.
+5. If any step fails, do not claim advertised capability-profile publication truth for the current build.
+
+Interpretation:
+
+- runtime advertised-profile failure means the capability-side model is no
+  longer stable enough to publish declared cluster-lane support before
+  execution
+- provider standalone publication failure means capability envelopes can no
+  longer advertise declared cluster support without fabricating realized
+  `cluster_execution` evidence
+- planner-alignment failure means whole-request, replica-routed, or sharded
+  cluster request builders no longer agree with the provider-advertised
+  clustered-lane profile
+- realized-evidence failure means provider surfaces may be conflating advertised
+  capability claims with realized cluster execution truth
+
 ## Recovery Drill
 
 Use this sequence when validating recovery behavior intentionally:
@@ -362,6 +389,8 @@ The current cluster claim remains evidence-backed only when:
 - the coordinator failover drill is green before claiming fenced failover truth
 - the capability profile drill is green before claiming declared clustered-lane
   support or refusal truth
+- the advertised capability publication drill is green before claiming provider-
+  published clustered-lane support ahead of execution
 - the authorization and payout provenance drill is green before claiming
   stronger operator audit or payout/dispute posture
 - the benchmark receipt drill is green before claiming benchmark-backed
