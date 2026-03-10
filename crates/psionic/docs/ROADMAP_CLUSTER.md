@@ -41,9 +41,9 @@
 > through `PSI-219` as `#3329` through `#3331` for the post-E1 follow-on
 > queue, after landing `PSI-217` / `#3329` in `7aa76a2a9`, after landing
 > `PSI-218` / `#3330` as the explicit decision memo in `EXO_INTEROPERABILITY_DECISION.md`,
-> and after checking live
+> after landing `PSI-219` / `#3331` in `98dc1bdc3`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
-> than local placeholders.
+> than local placeholders and no open cluster roadmap issues remain.
 >
 > This is the live roadmap for truthful Psionic cluster support in
 > `crates/psionic/*`. It is intentionally narrower than
@@ -157,10 +157,11 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-214` / [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) is landed on `main`
     - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is landed on `main`
     - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is landed on `main`
-  - the post-E1 follow-on queue now exists on GitHub
+  - the post-E1 follow-on queue is now landed on `main`
     - `PSI-217` / [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) is landed on `main`
     - `PSI-218` / [#3330](https://github.com/OpenAgentsInc/openagents/issues/3330) is landed on `main`
-    - `PSI-219` / [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) is open
+    - `PSI-219` / [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) is landed on `main`
+  - no open `psionic` cluster roadmap issues remain on GitHub
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -824,14 +825,14 @@ evidence truth.
 
 ### Phase F2: post-Metal communication-class eligibility follow-on
 
-This queue stays blocked on the Metal roadmap queue
-`#3286` -> `#3285` -> `#3269` -> `#3262`. The point is to define the truthful
-eligibility contract future Apple clustered execution would need without
-claiming the lane is ready today.
+This queue is now landed on `main`. The Metal roadmap queue
+`#3286` -> `#3285` -> `#3269` -> `#3262` still blocks any honest Apple cluster
+claim; what landed here is the explicit eligibility contract and refusal
+surface, not Metal cluster readiness.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-219` | [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) | Open | Add communication-class eligibility and keep Apple cluster refusal explicit | `psionic-cluster`, runtime/provider evidence/tests | Future Apple cluster claims need explicit communication-class eligibility and refusal diagnostics; backend-label-only refusal is not enough to make later Apple placement honest. |
+| `PSI-219` | [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) | Closed | Add communication-class eligibility and keep Apple cluster refusal explicit | `psionic-cluster`, runtime/provider evidence/tests | Landed in `98dc1bdc3`: `psionic-runtime` now carries explicit cluster communication-class eligibility evidence, whole-request and replica lanes now retain backend communication truth in receipts/evidence, sharded planners now refuse by required communication class instead of by backend label alone, and current Metal cluster execution remains explicitly refused with diagnostics pointing at the still-open Metal roadmap gate. |
 
 ## Recommended Order
 
@@ -851,9 +852,9 @@ The shortest honest path from today's `main` is:
    closing in `7c0f34503`.
 7. Treat the former local CUDA truth gate `#3276` -> `#3288` -> `#3248` as
    closed on `main`, and treat F1 as landed on `main`.
-8. Keep `#3331` explicitly blocked on the Metal roadmap queue
-   `#3286` -> `#3285` -> `#3269` -> `#3262`; do not use Exo or generic cluster
-   work to backdoor Apple cluster eligibility claims.
+8. Treat F2 as landed on `main` in `98dc1bdc3`: communication-class
+   eligibility is now explicit, and current Metal nodes remain refused for
+   cluster execution while the Metal roadmap queue stays open.
 9. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 10. If stronger trust or wider network claims are needed beyond F2, open a new
