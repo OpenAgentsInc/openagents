@@ -16,8 +16,9 @@
 > `PSI-192` / `#3301` in `327944c08`, after landing `PSI-193` / `#3302` in
 > `d88d284c5`, after landing `PSI-194` / `#3303` in `fa7523ada`, after
 > landing `PSI-195` / `#3304` in `1cdcf3058`, after landing `PSI-196` /
-> `#3305` in `7124eefd7`, after confirming that `#3306` is now the next open
-> cluster queue item, and after checking live
+> `#3305` in `7124eefd7`, after landing `PSI-197` / `#3306` in `d424ab1cf`,
+> after confirming that the current cluster GitHub queue is now closed, and
+> after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -108,8 +109,8 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) are landed on `main`
-  - `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remains open
+    `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are landed on `main`
+  - there are currently no remaining open cluster roadmap issues
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -236,6 +237,16 @@ on:
     replication/sharding coverage, a release benchmark gate script for cluster
     planners, and an operator runbook in
     `crates/psionic/docs/CLUSTER_VALIDATION_RUNBOOK.md`
+- `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306)
+  - landed in `d424ab1cf`
+  - `psionic-cluster` now exposes machine-checkable trust posture via
+    `ClusterTrustPolicy` and `ConfiguredClusterPeer`, persists node signing
+    identity beside node ID and epoch, authenticates configured peers with
+    signed control-plane messages, rejects duplicate replay counters, and
+    extends transport coverage plus the validation runbook to prove signed
+    configured-peer discovery, unknown-peer refusal, tamper refusal, and
+    replay refusal without pretending the default cluster posture is now
+    internet-safe
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -259,9 +270,12 @@ one:
   policy, truthful replicated serving for one lane, and first homogeneous CUDA
   layer-sharded and tensor-sharded lanes with explicit handoff truth, but
   there is still no widened-backend sharding path
-- the first honest cluster scope is still a trusted same-network LAN cluster
+- the first honest cluster scope remains a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
+- there is now an explicit operator-managed configured-peer posture for wider
+  networks, but it is opt-in, signed, replay-protected, and still not an
+  internet-wide adversarial trust model
 - real cluster execution claims must remain gated on a stable local backend lane
   rather than on design-doc optimism
   - first likely lane: homogeneous CUDA GPT-OSS after `#3276`, `#3288`, and
@@ -415,24 +429,28 @@ Required outcome:
 ### Validation, security, and rollout
 
 Tracked by landed `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305)
-and open `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306).
+and landed `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306).
 
 Current truth:
 
 - there is now a reusable cluster validation matrix, fault-injected coverage,
-  a release benchmark gate, and an operator runbook for the first shipped
-  trusted-LAN scope
-- there is no authenticated cluster membership story beyond a local trusted-LAN
-  assumption
+  a release benchmark gate, and an operator runbook for both the shipped
+  trusted-LAN scope and the widened authenticated configured-peer posture
+- authenticated cluster membership now exists through machine-checkable trust
+  policy, configured peers, signed control-plane messages, and replay
+  protection
+- adversarial or compute-market trust claims are still out of scope
 
 Required outcome:
 
-- keep the new validation and benchmark assets authoritative while the next
-  phase hardens trust posture beyond the first LAN-only admission model
+- keep the validation and benchmark assets authoritative for both trust
+  postures instead of letting rollout claims outrun the tests
+- keep wider trust claims bounded to operator-managed configured peers until a
+  new GitHub-backed queue proves anything stronger
 
 ## GitHub-Backed Roadmap Items
 
-Phases C1 through C6 are now opened on GitHub. The local `PSI-*` IDs below
+Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs below
 still come from the 2026-03-09 cluster audit, but this roadmap now maps them to
 their real GitHub issue numbers directly.
 
@@ -496,25 +514,24 @@ Already on `main`:
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-196` | [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) | Closed | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Landed in `7124eefd7`: Psionic now ships a reusable cluster validation matrix, restart/rejoin transport coverage, fault-injected recovery/scheduling/replication/sharding tests, a release benchmark gate script, and an operator runbook so cluster claims stay repeatable and evidence-backed. |
-| `PSI-197` | [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) | Open | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | The first shipped cluster scope is LAN-trusted only; wider cluster claims need explicit authentication, replay protection, and stronger admission rules. |
+| `PSI-197` | [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) | Closed | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | Landed in `d424ab1cf`: Psionic now exposes machine-checkable trust posture, authenticated configured-peer membership, signed control-plane messages, replay protection, and runbook-backed validation for widened operator-managed cluster posture without retroactively claiming internet-wide safety. |
 
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
 
-1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
-2. Keep the opened later-phase queue aligned to the roadmap and only pull work
-   forward when its dependency notes are actually satisfied:
-   `#3306`.
-3. Keep the active local CUDA throughput queue
+1. Treat C1 through C6 as landed on `main`, with the queue closing in
+   `d424ab1cf`.
+2. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-4. Treat closure of that local CUDA lane as the gate for widening cluster
+3. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-5. Execute `#3306` before widening scope beyond the first trusted-LAN cluster
-   claim.
-6. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+4. Keep current authenticated configured-peer posture explicit and bounded; if
+   stronger trust or wider network claims are needed, open new GitHub-backed
+   issues instead of extending this roadmap with local placeholders.
+5. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
