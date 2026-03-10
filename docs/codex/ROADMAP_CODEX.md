@@ -3,7 +3,7 @@
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-5` on `main`.
+> turn-input surfaces on `main`, and after landing `CX-6` on `main`.
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -168,6 +168,11 @@ than replace:
   context; restores it from `thread/read` plan items after reconnect; renders a
   compact plan summary in chat; and exposes an explicit implement action that
   turns the saved plan into a same-thread follow-up or steer prompt
+- `CX-6` landed on `main`: desktop chat now exposes first-class `Review changes`
+  and `Compact thread` actions, persists diff/review/compaction artifacts in an
+  app-owned local projection, restores review/compaction context from
+  `thread/read`, and renders compact latest-review/latest-diff/latest-compact
+  sections directly in the main coding transcript
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -180,13 +185,8 @@ The roadmap below is about product-layer gaps around that existing strength.
 These are the current gaps that matter most:
 
 - we do not expose many already-supported lane capabilities as a coherent
-  operator workflow in desktop chat; this is especially true for session
-  controls, status, and coding-shell actions
-- review/compact and diff state are still not durable first-class Codex
-  artifacts, and we do not yet have review-centered artifact UX
-- we do not yet have an explicit local replacement for the main Codex TUI
-  session controls such as model/effort/personality/permission selection and
-  session-status visibility inside the main coding flow
+  operator workflow in desktop chat; this is especially true for coding-shell
+  actions beyond the current chat/session/review/compact surface
 - we do not yet have minimal workspace identity, project identity, or git
   context attached to Codex threads
 - we do not yet have the T3 Code-class coding shell: branch/worktree/PR
@@ -231,7 +231,7 @@ Status:
 
 Next:
 
-- `CX-6` is now the first open execution item for Codex replacement work
+- `CX-7` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -355,6 +355,20 @@ Acceptance:
 - the user can reopen and act on the plan after the original turn scrolls away
 
 ### CX-6. Review, Compact, And Structured Diff Parity ([#3363](https://github.com/OpenAgentsInc/openagents/issues/3363))
+
+Status:
+
+- shipped on `main`
+- desktop chat now exposes first-class `Review changes` and `Compact thread`
+  actions in the main coding header instead of leaving review behind the Codex
+  labs pane
+- the latest diff is now a durable per-thread artifact with source turn id,
+  file list, added/removed counts, raw diff body, and restart-safe local
+  persistence
+- review output and compaction events are now durable desktop artifacts,
+  `thread/read` restores review/compaction context when Codex can provide it,
+  and the transcript renders compact latest-review/latest-diff/latest-compact
+  summaries directly above the conversation
 
 Scope:
 

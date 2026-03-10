@@ -743,6 +743,7 @@ pub enum PaneHitAction {
     ChatCycleSandboxMode,
     ChatInterruptTurn,
     ChatImplementPlan,
+    ChatReviewThread,
     ChatToggleArchivedFilter,
     ChatCycleSortFilter,
     ChatCycleSourceFilter,
@@ -1513,6 +1514,26 @@ pub fn chat_implement_plan_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         interrupt.max_x() + CHAT_HEADER_BUTTON_GAP,
         interrupt.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
+    let implement_plan = chat_implement_plan_button_bounds(content_bounds);
+    Bounds::new(
+        implement_plan.max_x() + CHAT_HEADER_BUTTON_GAP,
+        implement_plan.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
+    let review = chat_review_button_bounds(content_bounds);
+    Bounds::new(
+        review.max_x() + CHAT_HEADER_BUTTON_GAP,
+        review.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
@@ -3806,6 +3827,12 @@ fn pane_hit_action_for_pane(
                     && chat_implement_plan_button_bounds(content_bounds).contains(point)
                 {
                     return Some(PaneHitAction::ChatImplementPlan);
+                }
+                if chat_review_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatReviewThread);
+                }
+                if chat_compact_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCompactThread);
                 }
                 if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatToggleArchivedFilter);

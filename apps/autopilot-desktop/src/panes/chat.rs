@@ -4,8 +4,9 @@ use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
-    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotPlanArtifact,
-    AutopilotProgressBlock, AutopilotProgressRow, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
+    AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact,
+    AutopilotMessage, AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock,
+    AutopilotProgressRow, AutopilotReviewArtifact, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
     ChatTranscriptSelectionState, DirectMessageMessageProjection, DirectMessageRoomProjection,
     ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
     ManagedChatMessageProjection, PaneKind, RenderState,
@@ -17,7 +18,8 @@ use crate::pane_system::{
     chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
     chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
     chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_implement_plan_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
+    chat_compact_button_bounds, chat_implement_plan_button_bounds, chat_interrupt_button_bounds,
+    chat_new_thread_button_bounds, chat_review_button_bounds,
     chat_refresh_threads_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
     chat_thread_action_fork_button_bounds, chat_thread_action_reload_button_bounds,
@@ -1785,6 +1787,106 @@ fn active_plan_markdown_source(artifact: &AutopilotPlanArtifact) -> String {
     lines.join("\n")
 }
 
+fn active_diff_meta_line(artifact: &AutopilotDiffArtifact) -> String {
+    let mut parts = vec![format!(
+        "turn:{}",
+        compact_display_token(artifact.source_turn_id.as_str(), 18)
+    )];
+    parts.push(format!(
+        "files:{} +{} -{}",
+        artifact.files.len(),
+        artifact.added_line_count,
+        artifact.removed_line_count
+    ));
+    if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_diff_markdown_source(artifact: &AutopilotDiffArtifact) -> String {
+    let mut lines = Vec::new();
+    for file in artifact.files.iter().take(6) {
+        lines.push(format!(
+            "- `{}` (+{} / -{})",
+            file.path, file.added_line_count, file.removed_line_count
+        ));
+    }
+    if artifact.files.len() > 6 {
+        lines.push(format!("_{} more files changed_", artifact.files.len() - 6));
+    }
+    let diff_lines = artifact.raw_diff.lines().collect::<Vec<_>>();
+    if !diff_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push("```diff".to_string());
+        for line in diff_lines.iter().take(24) {
+            lines.push((*line).to_string());
+        }
+        if diff_lines.len() > 24 {
+            lines.push("...".to_string());
+        }
+        lines.push("```".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_review_meta_line(artifact: &AutopilotReviewArtifact) -> String {
+    let mut parts = vec![format!(
+        "turn:{}",
+        compact_display_token(artifact.source_turn_id.as_str(), 18)
+    )];
+    parts.push(format!("delivery:{}", artifact.delivery));
+    parts.push(format!(
+        "review:{}",
+        compact_display_token(artifact.review_thread_id.as_str(), 18)
+    ));
+    parts.push(format!("status:{}", artifact.status));
+    if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    if artifact.restored_from_thread_read {
+        parts.push("restored".to_string());
+    }
+    parts.join("  •  ")
+}
+
+fn active_review_markdown_source(artifact: &AutopilotReviewArtifact) -> String {
+    let mut lines = vec![format!("Target: {}", artifact.target)];
+    if let Some(summary) = artifact.summary.as_deref() {
+        let summary_lines = summary.lines().collect::<Vec<_>>();
+        if !summary_lines.is_empty() {
+            lines.push(String::new());
+            for line in summary_lines.iter().take(16) {
+                lines.push((*line).to_string());
+            }
+            if summary_lines.len() > 16 {
+                lines.push(String::new());
+                lines.push("_review output truncated_".to_string());
+            }
+        }
+    } else {
+        lines.push(String::new());
+        lines.push("_review in progress_".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_compaction_meta_line(artifact: &AutopilotCompactionArtifact) -> String {
+    let mut parts = vec![format!(
+        "turn:{}",
+        compact_display_token(artifact.source_turn_id.as_str(), 18)
+    )];
+    if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    if artifact.restored_from_thread_read {
+        parts.push("restored".to_string());
+    }
+    parts.join("  •  ")
+}
+
 fn format_thread_timestamp(raw: i64) -> Option<String> {
     if raw <= 0 {
         return None;
@@ -2737,6 +2839,18 @@ fn paint_chat_shell(
                     paint,
                 );
             }
+            paint_header_chip(
+                chat_review_button_bounds(content_bounds),
+                "Review changes",
+                theme::status::WARNING,
+                paint,
+            );
+            paint_header_chip(
+                chat_compact_button_bounds(content_bounds),
+                "Compact thread",
+                theme::accent::PRIMARY,
+                paint,
+            );
         }
         ChatBrowseMode::Managed => {
             let status_text = managed_status_text(autopilot_chat);
@@ -3115,6 +3229,74 @@ pub fn paint(
             }
         }
         ChatBrowseMode::Autopilot => {
+            if let Some(review_artifact) = autopilot_chat.active_review_artifact() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[latest review]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::status::WARNING,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_review_meta_line(review_artifact),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let review_markdown = active_review_markdown_source(review_artifact);
+                if !review_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&review_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
+            if let Some(diff_artifact) = autopilot_chat.active_diff_artifact() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[latest diff]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::status::INFO,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_diff_meta_line(diff_artifact),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let diff_markdown = active_diff_markdown_source(diff_artifact);
+                if !diff_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&diff_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(plan_artifact) = autopilot_chat.active_plan_artifact() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     "[latest plan]",
@@ -3148,6 +3330,23 @@ pub fn paint(
                     y += markdown_height;
                 }
                 y += 10.0;
+            }
+            if let Some(compaction_artifact) = autopilot_chat.active_compaction_artifact() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[latest compact]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::accent::PRIMARY,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_compaction_meta_line(compaction_artifact),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT + 10.0;
             }
             if autopilot_chat.messages.is_empty() {
                 let empty_state = "Ask me to do anything...";
