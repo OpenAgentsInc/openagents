@@ -36,7 +36,8 @@
 > `d0f3e7891`, after landing `PSI-213` / `#3322` in `b0601f662`, after
 > opening `PSI-214` through `PSI-216` as `#3323` through `#3325` for the
 > wider-network discovery follow-on queue, after landing `PSI-214` / `#3323`
-> in `1102bffa4`, after landing `PSI-215` / `#3324` in `47410298a`, and after checking live
+> in `1102bffa4`, after landing `PSI-215` / `#3324` in `47410298a`, after
+> landing `PSI-216` / `#3325` in `7c0f34503`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -148,10 +149,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) is landed on `main`
     - `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) is landed on `main`
     - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is landed on `main`
-  - the wider-network discovery follow-on queue now exists on GitHub
+  - the wider-network discovery follow-on queue is now landed on `main`
     - `PSI-214` / [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) is landed on `main`
     - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is landed on `main`
-    - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is open
+    - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -792,17 +793,18 @@ clusters now that signed transport and coordinator authority truth exist on
 
 ### Phase E1: wider-network discovery substrate follow-on
 
-These issues are the next honest queue after D4, but they remain blocked on the
-active local CUDA truth gate `#3276` -> `#3288` -> `#3248`. The point of this
-queue is to replace the current explicit discovery refusal boundary with real,
-bounded wider-network discovery truth without turning the discovery substrate
-into the cluster control plane itself.
+This queue is now landed on `main`, but it still does not widen cluster
+execution claims past the active local CUDA truth gate
+`#3276` -> `#3288` -> `#3248`. The point of this queue was to replace the
+current explicit discovery refusal boundary with real, bounded wider-network
+discovery truth without turning the discovery substrate into the cluster
+control plane itself.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-214` | [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) | Closed | Add signed cluster introduction envelopes and policy digests | `psionic-cluster`, docs/tests | Landed in `1102bffa4`: Psionic now has `ClusterDiscoveryCandidate`, signed `SignedClusterIntroductionEnvelope`, explicit `ClusterIntroductionPolicy` digests, verification/refusal diagnostics for untrusted or malformed introduction artifacts, and manifest/config surfaces that keep future wider-network introductions separate from admitted membership truth. |
 | `PSI-215` | [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) | Closed | Add bounded discovery-candidate ledger and admission reconciliation | `psionic-cluster`, ordered-state/tests | Landed in `47410298a`: Psionic now keeps `ClusterDiscoveredCandidateRecord` state and provenance separate from admitted membership, exposes deterministic candidate status transitions for introduced/accepted/refused/expired discovery truth, and replays, compacts, and recovers explicit candidate admission into membership without silently widening cluster membership. |
-| `PSI-216` | [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) | Open | Add wider-network discovery validation drills and rollout gates | docs/tests/validation plus cluster crates | Broader distributed-discovery claims should not land without a validation matrix, operator drill, and explicit rollout gate comparable to the existing transport, recovery, and failover gates. |
+| `PSI-216` | [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) | Closed | Add wider-network discovery validation drills and rollout gates | docs/tests/validation plus cluster crates | Landed in `7c0f34503`: `cluster_validation_matrix` now carries an explicit wider-network discovery gate covering signed introduction intake, untrusted-source refusal, expiry, and admission reconciliation, while `CLUSTER_VALIDATION_RUNBOOK.md` now defines the wider-network discovery drill and rollout boundary before any broader discovery claims. |
 
 ## Recommended Order
 
@@ -818,20 +820,20 @@ The shortest honest path from today's `main` is:
    queue closing in `715539147`.
 5. Treat D4 as landed on `main`, with the compute-market hardening queue now
    closing in `b0601f662`.
-6. Keep the active local CUDA throughput queue
+6. Treat E1 as landed on `main`, with the wider-network discovery queue now
+   closing in `7c0f34503`.
+7. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-7. After that local CUDA gate closes, work the remaining wider-network
-   discovery queue in order: `#3325`.
 8. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
 9. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-10. If stronger trust or wider network claims are needed beyond E1, open a new GitHub-
-   backed queue instead of extending this roadmap with local placeholders.
+10. If stronger trust or wider network claims are needed beyond E1, open a new
+    GitHub-backed queue instead of extending this roadmap with local placeholders.
 11. Keep current Metal GPT-OSS nodes refused for cluster execution until the
-   Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
+    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
 
