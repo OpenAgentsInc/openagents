@@ -1425,6 +1425,29 @@ What the remaining gap now points to:
   keep the hybrid hidden state resident on CUDA across the host-backed
   selected4 lane and now reduce or restructure the remaining selected-expert
   staging that still forces heavy per-token PCIe traffic
+- new debug-enabled prompt-cache-hit evidence on that kept branch makes the
+  remaining gap sharper:
+  `step_wall_ns` was about `8.76 s` for `49` generated tokens, while the
+  timed kernel buckets only covered about `0.86 s` total
+  (`router_ns ~117 ms`, `attention_ns ~118 ms`,
+  `attention_output_projection_ns ~69 ms`,
+  `expert_projection_ns ~476 ms`, `logits_projection_ns ~50 ms`).
+  That means the surviving 120B wall time is still dominated by work outside
+  the timed kernels, and the selected4 cache-fill path remains the most
+  credible culprit.
+- newly ruled out after that timing check:
+  an LFU/LRU mixed selected4 eviction policy regressed prompt-cache-hit to
+  about `10.32 tok/s`, a reprofiled sixth-slot layer set built from the newest
+  per-layer staged-byte trace regressed to about `10.41 tok/s`, a
+  memory-neutral hot/mid/cold `7/6/4` slot rebalance regressed to about
+  `10.35 tok/s`, and a pinned-host async region-copy rewrite of the decode-lane
+  selected4 cache-fill path cratered the cold and warm lanes while leaving
+  prompt-cache-hit essentially flat at about `10.30 tok/s`.
+- updated conclusion:
+  `#3345` should stay focused on cutting or restructuring selected-expert
+  staging itself. The new evidence argues against retrying small cache-geometry
+  tweaks or scratch-copy rewrites blindly; those are now ruled-out branches on
+  this host.
 
 Relevant `llama.cpp` references for that next step:
 
