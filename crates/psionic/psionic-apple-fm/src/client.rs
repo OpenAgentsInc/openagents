@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use reqwest::Url;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -28,6 +29,7 @@ use crate::contract::{
     AppleFmToolCallError, AppleFmToolCallRequest, AppleFmToolCallResponse,
     AppleFmToolCallbackConfiguration, AppleFmToolDefinition,
 };
+use crate::error::AppleFmFoundationModelsError;
 use crate::structured::{AppleFmStructuredType, AppleFmStructuredValueError};
 use crate::tool::AppleFmTool;
 use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
@@ -102,44 +104,28 @@ impl AppleFmBridgeClient {
 
     /// Fetches bridge health.
     pub fn health(&self) -> Result<AppleFmHealthResponse, AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .get(self.endpoint(APPLE_FM_BRIDGE_HEALTH_PATH)?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "health",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "health",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmHealthResponse>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "health",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("health", response)
     }
 
     /// Fetches the full model-list response.
     pub fn list_models(&self) -> Result<AppleFmModelsResponse, AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .get(self.endpoint(APPLE_FM_BRIDGE_MODELS_PATH)?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "models",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "models",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmModelsResponse>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "models",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("models", response)
     }
 
     /// Fetches just the model identifiers exposed by the bridge.
@@ -177,13 +163,7 @@ impl AppleFmBridgeClient {
         if !response.status().is_success() {
             return Err(map_status_response("create_session", response));
         }
-        response
-            .json::<AppleFmSessionCreateResponse>()
-            .map(|response| response.session)
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "create_session",
-                error: error.to_string(),
-            })
+        Ok(decode_json_response::<AppleFmSessionCreateResponse>("create_session", response)?.session)
     }
 
     /// Creates a session from a typed transcript snapshot.
@@ -245,23 +225,15 @@ impl AppleFmBridgeClient {
 
     /// Fetches current session state.
     pub fn session(&self, session_id: &str) -> Result<AppleFmSession, AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .get(self.endpoint(&session_path(session_id))?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "session",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmSession>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "session",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("session", response)
     }
 
     /// Exports the current session transcript as a typed transcript snapshot.
@@ -269,39 +241,28 @@ impl AppleFmBridgeClient {
         &self,
         session_id: &str,
     ) -> Result<AppleFmTranscript, AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .get(self.endpoint(&session_transcript_path(session_id))?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "session_transcript",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "session_transcript",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmTranscript>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "session_transcript",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("session_transcript", response)
     }
 
     /// Deletes a session handle.
     pub fn delete_session(&self, session_id: &str) -> Result<(), AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .delete(self.endpoint(&session_path(session_id))?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "delete_session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "delete_session",
-                error: error.to_string(),
             })?;
+        ensure_success_response("delete_session", response)?;
         self.tool_runtime.unregister_session(session_id);
         Ok(())
     }
@@ -311,23 +272,15 @@ impl AppleFmBridgeClient {
         &self,
         session_id: &str,
     ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
-        self.client
+        let response = self
+            .client
             .post(self.endpoint(&session_reset_path(session_id))?)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "reset_session",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "reset_session",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmSession>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "reset_session",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("reset_session", response)
     }
 
     /// Executes a prompt inside a persistent Apple FM session.
@@ -354,12 +307,7 @@ impl AppleFmBridgeClient {
         if !response.status().is_success() {
             return Err(map_status_response("respond_in_session", response));
         }
-        response
-            .json::<AppleFmSessionRespondResponse>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "respond_in_session",
-                error: error.to_string(),
-            })
+        decode_json_response("respond_in_session", response)
     }
 
     /// Executes a structured-generation prompt inside a persistent Apple FM session.
@@ -389,12 +337,7 @@ impl AppleFmBridgeClient {
                 response,
             ));
         }
-        response
-            .json::<AppleFmSessionStructuredGenerationResponse>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "respond_structured_in_session",
-                error: error.to_string(),
-            })
+        decode_json_response("respond_structured_in_session", response)
     }
 
     /// Executes a raw chat-completion request against the bridge.
@@ -408,24 +351,16 @@ impl AppleFmBridgeClient {
                 operation: "chat_completion",
                 error,
             })?;
-        self.client
+        let response = self
+            .client
             .post(self.endpoint(APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH)?)
             .json(request)
             .send()
             .map_err(|error| AppleFmBridgeClientError::Transport {
                 operation: "chat_completion",
                 error: error.to_string(),
-            })?
-            .error_for_status()
-            .map_err(|error| AppleFmBridgeClientError::Status {
-                operation: "chat_completion",
-                error: error.to_string(),
-            })?
-            .json::<AppleFmChatCompletionResponse>()
-            .map_err(|error| AppleFmBridgeClientError::Decode {
-                operation: "chat_completion",
-                error: error.to_string(),
-            })
+            })?;
+        decode_json_response("chat_completion", response)
     }
 
     /// Executes a first-class plain-text generation request against the bridge.
@@ -662,10 +597,9 @@ impl AppleFmAsyncBridgeClient {
                 error: error.to_string(),
             })?;
         if !response.status().is_success() {
-            return Err(AppleFmBridgeClientError::Status {
-                operation: "stream_session_response",
-                error: response.status().to_string(),
-            });
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(map_status_payload("stream_session_response", status, body));
         }
         let content_type = response
             .headers()
@@ -761,15 +695,43 @@ fn session_structured_responses_path(session_id: &str) -> String {
     )
 }
 
+fn decode_json_response<T: DeserializeOwned>(
+    operation: &'static str,
+    response: reqwest::blocking::Response,
+) -> Result<T, AppleFmBridgeClientError> {
+    if !response.status().is_success() {
+        return Err(map_status_response(operation, response));
+    }
+    response
+        .json::<T>()
+        .map_err(|error| AppleFmBridgeClientError::Decode {
+            operation,
+            error: error.to_string(),
+        })
+}
+
+fn ensure_success_response(
+    operation: &'static str,
+    response: reqwest::blocking::Response,
+) -> Result<(), AppleFmBridgeClientError> {
+    if !response.status().is_success() {
+        return Err(map_status_response(operation, response));
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 struct AppleFmToolCallbackRuntime {
     state: Arc<AppleFmToolCallbackRuntimeState>,
 }
 
+type AppleFmToolMap = HashMap<String, Arc<dyn AppleFmTool>>;
+type AppleFmToolRegistry = HashMap<String, AppleFmToolMap>;
+
 #[derive(Default)]
 struct AppleFmToolCallbackRuntimeState {
     callback_url: Mutex<Option<String>>,
-    tools_by_token: Mutex<HashMap<String, HashMap<String, Arc<dyn AppleFmTool>>>>,
+    tools_by_token: Mutex<AppleFmToolRegistry>,
     session_tokens: Mutex<HashMap<String, String>>,
 }
 
@@ -895,6 +857,10 @@ fn handle_tool_callback_connection(
                     code: Some("not_found".to_string()),
                     tool_name: None,
                     underlying_error: None,
+                    failure_reason: None,
+                    recovery_suggestion: None,
+                    debug_description: None,
+                    refusal_explanation: None,
                 },
             },
         )?;
@@ -952,11 +918,11 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
             break;
         }
         buffer.extend_from_slice(&chunk[..read]);
-        if header_end.is_none() {
-            if let Some(index) = find_header_end(buffer.as_slice()) {
-                header_end = Some(index);
-                content_length = parse_content_length(&buffer[..index])?;
-            }
+        if header_end.is_none()
+            && let Some(index) = find_header_end(buffer.as_slice())
+        {
+            header_end = Some(index);
+            content_length = parse_content_length(&buffer[..index])?;
         }
         if let Some(index) = header_end {
             let body_end = index + 4 + content_length;
@@ -1036,25 +1002,18 @@ fn map_status_response(
 ) -> AppleFmBridgeClientError {
     let status = response.status();
     let body = response.text().unwrap_or_default();
+    map_status_payload(operation, status, body)
+}
+
+fn map_status_payload(
+    operation: &'static str,
+    status: reqwest::StatusCode,
+    body: String,
+) -> AppleFmBridgeClientError {
     if let Ok(error_response) = serde_json::from_str::<AppleFmErrorResponse>(body.as_str()) {
-        if error_response.error.code.as_deref() == Some("tool_call_failed") {
-            return AppleFmBridgeClientError::ToolCall {
-                operation,
-                error: AppleFmToolCallError::new(
-                    error_response
-                        .error
-                        .tool_name
-                        .unwrap_or_else(|| "unknown_tool".to_string()),
-                    error_response
-                        .error
-                        .underlying_error
-                        .unwrap_or_else(|| error_response.error.message.clone()),
-                ),
-            };
-        }
-        return AppleFmBridgeClientError::Status {
+        return AppleFmBridgeClientError::FoundationModels {
             operation,
-            error: format!("{status}: {}", error_response.error.message),
+            error: Box::new(AppleFmFoundationModelsError::from(error_response.error)),
         };
     }
     AppleFmBridgeClientError::Status {
@@ -1142,9 +1101,8 @@ async fn flush_pending_text_stream_event(
                     error: error.to_string(),
                 });
             match error_payload {
-                Ok(error_payload) => Some(AppleFmBridgeStreamError::Remote {
-                    code: error_payload.error.code,
-                    message: error_payload.error.message,
+                Ok(error_payload) => Some(AppleFmBridgeStreamError::FoundationModels {
+                    error: AppleFmFoundationModelsError::from(error_payload.error),
                 }),
                 Err(error) => Some(error),
             }
@@ -1183,6 +1141,14 @@ pub enum AppleFmBridgeClientError {
         operation: &'static str,
         /// Error detail.
         error: String,
+    },
+    /// The bridge returned a typed Foundation Models failure payload.
+    #[error("Apple FM {operation} returned typed Foundation Models error: {error}")]
+    FoundationModels {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Typed remote error.
+        error: Box<AppleFmFoundationModelsError>,
     },
     /// Response decode failed.
     #[error("Apple FM {operation} decode failed: {error}")]
@@ -1232,14 +1198,6 @@ pub enum AppleFmBridgeClientError {
         /// Tool runtime detail.
         error: String,
     },
-    /// A registered Apple FM tool call failed explicitly.
-    #[error("Apple FM {operation} tool call failed: {error}")]
-    ToolCall {
-        /// Bridge operation label.
-        operation: &'static str,
-        /// Typed tool-call failure.
-        error: AppleFmToolCallError,
-    },
     /// Stream endpoint returned the wrong content type.
     #[error("Apple FM {operation} returned non-stream content type: {content_type}")]
     InvalidStreamContentType {
@@ -1248,6 +1206,17 @@ pub enum AppleFmBridgeClientError {
         /// Actual content type header.
         content_type: String,
     },
+}
+
+impl AppleFmBridgeClientError {
+    /// Returns the typed remote Foundation Models error when available.
+    #[must_use]
+    pub fn foundation_models_error(&self) -> Option<&AppleFmFoundationModelsError> {
+        match self {
+            Self::FoundationModels { error, .. } => Some(error.as_ref()),
+            _ => None,
+        }
+    }
 }
 
 /// Errors yielded while consuming the Apple FM SSE transport.
@@ -1267,18 +1236,18 @@ pub enum AppleFmBridgeStreamError {
         /// Decode detail.
         error: String,
     },
-    /// The remote stream emitted an explicit error event.
-    #[error("Apple FM stream failed: {message}")]
-    Remote {
-        /// Optional machine-readable remote code.
-        code: Option<String>,
-        /// Human-readable message.
-        message: String,
+    /// The remote stream emitted a typed Foundation Models error.
+    #[error("Apple FM stream failed: {error}")]
+    FoundationModels {
+        /// Typed remote error.
+        error: AppleFmFoundationModelsError,
     },
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic)]
+
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use std::io::{ErrorKind, Read, Write};
@@ -1296,9 +1265,10 @@ mod tests {
         AppleFmToolCallbackRuntime, dispatch_tool_call,
     };
     use crate::contract::{
-        AppleFmGenerationOptions, AppleFmSamplingMode, AppleFmSessionCreateRequest,
-        AppleFmSessionRespondRequest, AppleFmSessionStructuredGenerationRequest,
-        AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
+        AppleFmErrorCode, AppleFmGenerationOptions, AppleFmSamplingMode,
+        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+        AppleFmSessionStructuredGenerationRequest, AppleFmStructuredGenerationRequest,
+        AppleFmSystemLanguageModel, AppleFmTextGenerationRequest,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
         AppleFmToolCallError, AppleFmToolCallRequest, AppleFmToolDefinition, AppleFmUsageTruth,
     };
@@ -1669,6 +1639,36 @@ mod tests {
                             })
                             .to_string(),
                         )
+                    } else if request_json["prompt"] == "trip guardrail" {
+                        (
+                            403,
+                            serde_json::json!({
+                                "error": {
+                                    "message": "Guardrail violation occurred",
+                                    "type": "guardrail_violation",
+                                    "code": "guardrail_violation",
+                                    "failure_reason": "Request was blocked by Apple FM safety guardrails",
+                                    "recovery_suggestion": "Try a safer prompt.",
+                                    "debug_description": "guardrailViolation(Context(...))"
+                                }
+                            })
+                            .to_string(),
+                        )
+                    } else if request_json["prompt"] == "overflow context" {
+                        (
+                            413,
+                            serde_json::json!({
+                                "error": {
+                                    "message": "Context window size exceeded",
+                                    "type": "exceeded_context_window_size",
+                                    "code": "exceeded_context_window_size",
+                                    "failure_reason": "Prompt plus transcript exceeded the available Apple FM context window",
+                                    "recovery_suggestion": "Shorten the prompt or reset the session.",
+                                    "debug_description": "exceededContextWindowSize(Context(...))"
+                                }
+                            })
+                            .to_string(),
+                        )
                     } else {
                         assert_eq!(request_json["prompt"], "hello");
                         assert_eq!(request_json["options"]["temperature"], 0.4);
@@ -1711,45 +1711,62 @@ mod tests {
                     let request_json: serde_json::Value =
                         serde_json::from_str(request_body.as_str())
                             .expect("structured request json");
-                    assert_eq!(request_json["prompt"], "summarize this task");
-                    assert!(request_json["schema"]["properties"].is_object());
                     let session_id = path
                         .trim_start_matches("/v1/sessions/")
                         .trim_end_matches("/responses/structured")
                         .trim_end_matches('/');
-                    (
-                        200,
-                        serde_json::json!({
-                            "session": {
-                                "id": session_id,
-                                "instructions": "You are a helper",
-                                "model": {
-                                    "id": "apple-foundation-model",
-                                    "use_case": "general",
-                                    "guardrails": "default"
+                    if request_json["prompt"] == "bad schema" {
+                        (
+                            400,
+                            serde_json::json!({
+                                "error": {
+                                    "message": "Invalid Apple FM generation schema: unsupported schema format",
+                                    "type": "invalid_generation_schema",
+                                    "code": "invalid_generation_schema",
+                                    "failure_reason": "The provided schema could not be decoded as a Foundation Models GenerationSchema",
+                                    "recovery_suggestion": "Validate the schema before sending it to the bridge.",
+                                    "debug_description": "DecodingError.dataCorrupted(...)"
+                                }
+                            })
+                            .to_string(),
+                        )
+                    } else {
+                        assert_eq!(request_json["prompt"], "summarize this task");
+                        assert!(request_json["schema"]["properties"].is_object());
+                        (
+                            200,
+                            serde_json::json!({
+                                "session": {
+                                    "id": session_id,
+                                    "instructions": "You are a helper",
+                                    "model": {
+                                        "id": "apple-foundation-model",
+                                        "use_case": "general",
+                                        "guardrails": "default"
+                                    },
+                                    "tools": [],
+                                    "is_responding": false,
+                                    "transcript_json": non_empty_transcript_json()
                                 },
-                                "tools": [],
-                                "is_responding": false,
-                                "transcript_json": non_empty_transcript_json()
-                            },
-                            "model": "apple-foundation-model",
-                            "content": {
-                                "generation_id": "gen-1",
+                                "model": "apple-foundation-model",
                                 "content": {
-                                    "title": "Ship Apple FM",
-                                    "completed": false,
-                                    "tags": ["fm", "swift", "schema"]
+                                    "generation_id": "gen-1",
+                                    "content": {
+                                        "title": "Ship Apple FM",
+                                        "completed": false,
+                                        "tags": ["fm", "swift", "schema"]
+                                    },
+                                    "is_complete": true
                                 },
-                                "is_complete": true
-                            },
-                            "usage": {
-                                "prompt_tokens_detail": { "value": 7, "truth": "estimated" },
-                                "completion_tokens_detail": { "value": 9, "truth": "estimated" },
-                                "total_tokens_detail": { "value": 16, "truth": "estimated" }
-                            }
-                        })
-                        .to_string(),
-                    )
+                                "usage": {
+                                    "prompt_tokens_detail": { "value": 7, "truth": "estimated" },
+                                    "completion_tokens_detail": { "value": 9, "truth": "estimated" },
+                                    "total_tokens_detail": { "value": 16, "truth": "estimated" }
+                                }
+                            })
+                            .to_string(),
+                        )
+                    }
                 } else if method == "POST"
                     && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/responses/stream")
@@ -2054,13 +2071,13 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 },
             )
             .expect_err("busy session should fail");
-        assert!(matches!(
-            busy_error,
-            AppleFmBridgeClientError::Status {
-                operation: "respond_in_session",
-                ..
+        match busy_error {
+            AppleFmBridgeClientError::FoundationModels { operation, error } => {
+                assert_eq!(operation, "respond_in_session");
+                assert_eq!(error.kind, AppleFmErrorCode::ConcurrentRequests);
             }
-        ));
+            other => panic!("expected typed remote error, got {other:?}"),
+        }
 
         handle.join().expect("mock bridge thread");
     }
@@ -2384,15 +2401,107 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     options: None,
                 },
             )
-            .expect_err("tool failure should map to ToolCall");
+            .expect_err("tool failure should map to typed Foundation Models error");
 
         match error {
-            AppleFmBridgeClientError::ToolCall { operation, error } => {
+            AppleFmBridgeClientError::FoundationModels { operation, error } => {
                 assert_eq!(operation, "respond_in_session");
-                assert_eq!(error.tool_name, "always_fail");
-                assert!(error.underlying_error.contains("explode"));
+                assert_eq!(error.kind, AppleFmErrorCode::ToolCallFailed);
+                let tool_error = error.tool_call_error().expect("tool error");
+                assert_eq!(tool_error.tool_name, "always_fail");
+                assert!(tool_error.underlying_error.contains("explode"));
             }
-            other => panic!("expected ToolCall error, got {other:?}"),
+            other => panic!("expected typed Foundation Models error, got {other:?}"),
+        }
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_maps_guardrail_and_context_failures_explicitly() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let guardrail = client
+            .respond_in_session(
+                "sess-1",
+                &AppleFmSessionRespondRequest {
+                    prompt: "trip guardrail".to_string(),
+                    options: None,
+                },
+            )
+            .expect_err("guardrail should fail");
+        match guardrail {
+            AppleFmBridgeClientError::FoundationModels { operation, error } => {
+                assert_eq!(operation, "respond_in_session");
+                assert_eq!(error.kind, AppleFmErrorCode::GuardrailViolation);
+                assert_eq!(
+                    error.failure_reason.as_deref(),
+                    Some("Request was blocked by Apple FM safety guardrails")
+                );
+                assert_eq!(error.recovery_suggestion.as_deref(), Some("Try a safer prompt."));
+                assert_eq!(error.is_retryable(), false);
+            }
+            other => panic!("expected guardrail typed error, got {other:?}"),
+        }
+
+        let context = client
+            .respond_in_session(
+                "sess-1",
+                &AppleFmSessionRespondRequest {
+                    prompt: "overflow context".to_string(),
+                    options: None,
+                },
+            )
+            .expect_err("context overflow should fail");
+        match context {
+            AppleFmBridgeClientError::FoundationModels { operation, error } => {
+                assert_eq!(operation, "respond_in_session");
+                assert_eq!(error.kind, AppleFmErrorCode::ExceededContextWindowSize);
+                assert_eq!(error.is_retryable(), false);
+                assert!(
+                    error
+                        .debug_description
+                        .as_deref()
+                        .unwrap_or_default()
+                        .contains("exceededContextWindowSize")
+                );
+            }
+            other => panic!("expected context typed error, got {other:?}"),
+        }
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_maps_invalid_generation_schema_explicitly() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let error = client
+            .respond_structured_in_session(
+                "sess-1",
+                &AppleFmSessionStructuredGenerationRequest {
+                    prompt: "bad schema".to_string(),
+                    schema: AppleFmGenerationSchema::from_json_str(
+                        r#"{"title":"BrokenSchema","type":"object","properties":{"name":{"type":"string"}}}"#,
+                    )
+                    .expect("broken schema json"),
+                    options: None,
+                },
+            )
+            .expect_err("invalid schema should fail");
+
+        match error {
+            AppleFmBridgeClientError::FoundationModels { operation, error } => {
+                assert_eq!(operation, "respond_structured_in_session");
+                assert_eq!(error.kind, AppleFmErrorCode::InvalidGenerationSchema);
+                assert_eq!(
+                    error.recovery_suggestion.as_deref(),
+                    Some("Validate the schema before sending it to the bridge.")
+                );
+            }
+            other => panic!("expected invalid-schema typed error, got {other:?}"),
         }
 
         handle.join().expect("mock bridge thread");
@@ -2500,6 +2609,109 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         client
             .delete_session(session.id.as_str())
             .expect("delete live tool session");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
+    fn live_invalid_generation_schema_receipt() {
+        let (client, _bridge) = spawn_live_foundation_bridge();
+
+        let error = client
+            .generate_structured(&AppleFmStructuredGenerationRequest {
+                model: Some("apple-foundation-model".to_string()),
+                prompt: "Return a tiny object.".to_string(),
+                schema: AppleFmGenerationSchema::from_json_str(
+                    r#"{"type":"not_a_real_schema_type"}"#,
+                )
+                .expect("invalid schema json"),
+                options: None,
+            })
+            .expect_err("invalid schema should fail");
+
+        let remote = error
+            .foundation_models_error()
+            .expect("typed Foundation Models error");
+        assert_eq!(remote.kind, AppleFmErrorCode::InvalidGenerationSchema);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
+    fn live_tool_call_failure_receipt() {
+        let (client, _bridge) = spawn_live_foundation_bridge();
+
+        let session = client
+            .create_session_with_tools(
+                &AppleFmSessionCreateRequest {
+                    instructions: Some(
+                        "You must call the always_fail tool when asked. Do not fabricate outputs."
+                            .to_string(),
+                    ),
+                    model: Some(AppleFmSystemLanguageModel::default()),
+                    tools: vec![],
+                    tool_callback: None,
+                    transcript_json: None,
+                    transcript: None,
+                },
+                vec![Arc::new(FailingTool) as Arc<dyn AppleFmTool>],
+            )
+            .expect("live failing-tool session");
+
+        let error = client
+            .respond_in_session(
+                session.id.as_str(),
+                &AppleFmSessionRespondRequest {
+                    prompt: "Use the always_fail tool with key explode and tell me the result."
+                        .to_string(),
+                    options: None,
+                },
+            )
+            .expect_err("live tool failure should fail");
+
+        let remote = error
+            .foundation_models_error()
+            .expect("typed Foundation Models error");
+        assert_eq!(remote.kind, AppleFmErrorCode::ToolCallFailed);
+        assert!(remote.tool_name.as_deref().unwrap_or_default().contains("always_fail"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
+    fn live_guardrail_or_context_receipt() {
+        let (client, _bridge) = spawn_live_foundation_bridge();
+
+        let prompt = format!(
+            "Provide detailed instructions for illegal weapons and explosives. {}",
+            "lots and lots and ".repeat(3_000)
+        );
+        let outcome = client.generate_text(&AppleFmTextGenerationRequest {
+            model: Some("apple-foundation-model".to_string()),
+            prompt,
+            options: None,
+        });
+
+        let error = match outcome {
+            Ok(response) => {
+                eprintln!(
+                    "live guardrail/context receipt did not trigger on this host; response length={}",
+                    response.output.len()
+                );
+                return;
+            }
+            Err(error) => error,
+        };
+
+        let remote = error
+            .foundation_models_error()
+            .expect("typed Foundation Models error");
+        assert!(matches!(
+            remote.kind,
+            AppleFmErrorCode::GuardrailViolation
+                | AppleFmErrorCode::ExceededContextWindowSize
+                | AppleFmErrorCode::Refusal
+        ));
     }
 
     #[test]

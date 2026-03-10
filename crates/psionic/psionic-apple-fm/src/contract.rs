@@ -176,10 +176,11 @@ impl AppleFmSystemLanguageModelAvailability {
 }
 
 /// Sampling mode families exposed by the Apple FM SDK.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppleFmSamplingModeType {
     /// Deterministic highest-probability token selection.
+    #[default]
     Greedy,
     /// Randomized sampling from constrained probability mass.
     Random,
@@ -255,22 +256,16 @@ impl AppleFmSamplingMode {
                         AppleFmGenerationOptionsValidationError::TopAndProbabilityThresholdConflict,
                     );
                 }
-                if let Some(probability_threshold) = self.probability_threshold {
-                    if !(0.0..=1.0).contains(&probability_threshold) {
-                        return Err(
-                            AppleFmGenerationOptionsValidationError::ProbabilityThresholdOutOfRange,
-                        );
-                    }
+                if let Some(probability_threshold) = self.probability_threshold
+                    && !(0.0..=1.0).contains(&probability_threshold)
+                {
+                    return Err(
+                        AppleFmGenerationOptionsValidationError::ProbabilityThresholdOutOfRange,
+                    );
                 }
             }
         }
         Ok(())
-    }
-}
-
-impl Default for AppleFmSamplingModeType {
-    fn default() -> Self {
-        Self::Greedy
     }
 }
 
@@ -306,10 +301,8 @@ impl AppleFmGenerationOptions {
 
     /// Validates option semantics against the Python SDK contract.
     pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
-        if let Some(temperature) = self.temperature {
-            if temperature < 0.0 {
-                return Err(AppleFmGenerationOptionsValidationError::NegativeTemperature);
-            }
+        if let Some(temperature) = self.temperature && temperature < 0.0 {
+            return Err(AppleFmGenerationOptionsValidationError::NegativeTemperature);
         }
         if self.maximum_response_tokens == Some(0) {
             return Err(
@@ -762,6 +755,90 @@ pub struct AppleFmErrorResponse {
     pub error: AppleFmErrorDetail,
 }
 
+/// Typed Apple FM error families aligned to the documented Python SDK surface.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmErrorCode {
+    /// Prompt/history exceeded the available context window.
+    ExceededContextWindowSize,
+    /// Required on-device assets are unavailable.
+    AssetsUnavailable,
+    /// Guardrails blocked generation or continuation.
+    GuardrailViolation,
+    /// The requested guide or schema constraint is unsupported.
+    UnsupportedGuide,
+    /// The requested language or locale is unsupported.
+    UnsupportedLanguageOrLocale,
+    /// Output decoding failed.
+    DecodingFailure,
+    /// Runtime rate limiting blocked the request.
+    RateLimited,
+    /// Overlapping requests hit session concurrency limits.
+    ConcurrentRequests,
+    /// The model explicitly refused the request.
+    Refusal,
+    /// The provided generation schema was invalid.
+    InvalidGenerationSchema,
+    /// A registered tool call failed.
+    ToolCallFailed,
+    /// The request payload itself was invalid.
+    InvalidRequest,
+    /// The bridge hit an internal server failure.
+    ServerError,
+    /// Future or unknown bridge value.
+    #[default]
+    Unknown,
+}
+
+impl AppleFmErrorCode {
+    /// Stable label used in logs, receipts, and wire payloads.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::ExceededContextWindowSize => "exceeded_context_window_size",
+            Self::AssetsUnavailable => "assets_unavailable",
+            Self::GuardrailViolation => "guardrail_violation",
+            Self::UnsupportedGuide => "unsupported_guide",
+            Self::UnsupportedLanguageOrLocale => "unsupported_language_or_locale",
+            Self::DecodingFailure => "decoding_failure",
+            Self::RateLimited => "rate_limited",
+            Self::ConcurrentRequests => "concurrent_requests",
+            Self::Refusal => "refusal",
+            Self::InvalidGenerationSchema => "invalid_generation_schema",
+            Self::ToolCallFailed => "tool_call_failed",
+            Self::InvalidRequest => "invalid_request",
+            Self::ServerError => "server_error",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    #[must_use]
+    fn parse(label: &str) -> Self {
+        match label {
+            "exceeded_context_window_size" | "exceededContextWindowSize" => {
+                Self::ExceededContextWindowSize
+            }
+            "assets_unavailable" | "assetsUnavailable" | "model_unavailable" => {
+                Self::AssetsUnavailable
+            }
+            "guardrail_violation" | "guardrailViolation" => Self::GuardrailViolation,
+            "unsupported_guide" | "unsupportedGuide" => Self::UnsupportedGuide,
+            "unsupported_language_or_locale" | "unsupportedLanguageOrLocale" => {
+                Self::UnsupportedLanguageOrLocale
+            }
+            "decoding_failure" | "decodingFailure" => Self::DecodingFailure,
+            "rate_limited" | "rateLimited" => Self::RateLimited,
+            "concurrent_requests" | "concurrentRequests" => Self::ConcurrentRequests,
+            "refusal" => Self::Refusal,
+            "invalid_generation_schema" | "invalid_schema" => Self::InvalidGenerationSchema,
+            "tool_call_failed" => Self::ToolCallFailed,
+            "invalid_request" | "invalid_request_error" => Self::InvalidRequest,
+            "server_error" | "request_failed" | "error" => Self::ServerError,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// Error details returned by the current bridge.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AppleFmErrorDetail {
@@ -778,6 +855,30 @@ pub struct AppleFmErrorDetail {
     /// Optional underlying tool error detail.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub underlying_error: Option<String>,
+    /// Optional platform failure reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// Optional platform recovery suggestion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_suggestion: Option<String>,
+    /// Optional lower-level debug detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug_description: Option<String>,
+    /// Optional refusal explanation surfaced by Foundation Models.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal_explanation: Option<String>,
+}
+
+impl AppleFmErrorDetail {
+    /// Returns the typed error family reconstructed from the bridge payload.
+    #[must_use]
+    pub fn kind(&self) -> AppleFmErrorCode {
+        self.code
+            .as_deref()
+            .map(AppleFmErrorCode::parse)
+            .filter(|kind| *kind != AppleFmErrorCode::Unknown)
+            .unwrap_or_else(|| AppleFmErrorCode::parse(self.r#type.as_str()))
+    }
 }
 
 /// Simplified one-shot completion result derived from the bridge response.
@@ -861,10 +962,11 @@ impl AppleFmTextGenerationResponse {
 }
 
 /// Snapshot-versus-terminal stream event kinds for Apple FM text streaming.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppleFmTextStreamEventKind {
     /// Intermediate full response snapshot.
+    #[default]
     Snapshot,
     /// Terminal completion snapshot with final session/usage state.
     Completed,
@@ -885,12 +987,6 @@ pub struct AppleFmTextStreamEvent {
     /// Optional usage details on terminal completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<AppleFmChatUsage>,
-}
-
-impl Default for AppleFmTextStreamEventKind {
-    fn default() -> Self {
-        Self::Snapshot
-    }
 }
 
 impl AppleFmTextStreamEvent {
@@ -1251,6 +1347,8 @@ pub struct AppleFmSessionStructuredGenerationResponse {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{
         AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessageRole,
         AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,

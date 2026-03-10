@@ -441,6 +441,10 @@ struct ErrorDetail: Codable {
     let code: String?
     let toolName: String?
     let underlyingError: String?
+    let failureReason: String?
+    let recoverySuggestion: String?
+    let debugDescription: String?
+    let refusalExplanation: String?
 
     enum CodingKeys: String, CodingKey {
         case message
@@ -448,79 +452,144 @@ struct ErrorDetail: Codable {
         case code
         case toolName = "tool_name"
         case underlyingError = "underlying_error"
+        case failureReason = "failure_reason"
+        case recoverySuggestion = "recovery_suggestion"
+        case debugDescription = "debug_description"
+        case refusalExplanation = "refusal_explanation"
+    }
+}
+
+struct FMErrorPayload {
+    let message: String
+    let failureReason: String?
+    let recoverySuggestion: String?
+    let debugDescription: String?
+    let refusalExplanation: String?
+    let toolName: String?
+    let underlyingError: String?
+
+    init(
+        message: String,
+        failureReason: String? = nil,
+        recoverySuggestion: String? = nil,
+        debugDescription: String? = nil,
+        refusalExplanation: String? = nil,
+        toolName: String? = nil,
+        underlyingError: String? = nil
+    ) {
+        self.message = message
+        self.failureReason = failureReason
+        self.recoverySuggestion = recoverySuggestion
+        self.debugDescription = debugDescription
+        self.refusalExplanation = refusalExplanation
+        self.toolName = toolName
+        self.underlyingError = underlyingError
     }
 }
 
 enum FMError: Error {
-    case modelUnavailable(String)
-    case concurrentRequests(String)
-    case toolCallFailed(toolName: String, underlyingError: String)
-    case requestFailed(String)
-    case invalidRequest(String)
-    case serverError(String)
+    case exceededContextWindowSize(FMErrorPayload)
+    case assetsUnavailable(FMErrorPayload)
+    case guardrailViolation(FMErrorPayload)
+    case unsupportedGuide(FMErrorPayload)
+    case unsupportedLanguageOrLocale(FMErrorPayload)
+    case decodingFailure(FMErrorPayload)
+    case rateLimited(FMErrorPayload)
+    case concurrentRequests(FMErrorPayload)
+    case refusal(FMErrorPayload)
+    case invalidGenerationSchema(FMErrorPayload)
+    case toolCallFailed(FMErrorPayload)
+    case invalidRequest(FMErrorPayload)
+    case serverError(FMErrorPayload)
+
+    private func response(
+        type: String,
+        code: String,
+        payload: FMErrorPayload
+    ) -> ErrorResponse {
+        ErrorResponse(
+            error: ErrorDetail(
+                message: payload.message,
+                type: type,
+                code: code,
+                toolName: payload.toolName,
+                underlyingError: payload.underlyingError,
+                failureReason: payload.failureReason,
+                recoverySuggestion: payload.recoverySuggestion,
+                debugDescription: payload.debugDescription,
+                refusalExplanation: payload.refusalExplanation
+            )
+        )
+    }
 
     var errorResponse: ErrorResponse {
         switch self {
-        case .modelUnavailable(let msg):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: msg,
-                    type: "model_unavailable",
-                    code: "model_unavailable",
-                    toolName: nil,
-                    underlyingError: nil
-                )
+        case .exceededContextWindowSize(let payload):
+            return response(
+                type: "exceeded_context_window_size",
+                code: "exceeded_context_window_size",
+                payload: payload
             )
-        case .concurrentRequests(let msg):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: msg,
-                    type: "concurrent_requests",
-                    code: "concurrent_requests",
-                    toolName: nil,
-                    underlyingError: nil
-                )
+        case .assetsUnavailable(let payload):
+            return response(
+                type: "assets_unavailable",
+                code: "assets_unavailable",
+                payload: payload
             )
-        case .toolCallFailed(let toolName, let underlyingError):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: "Tool '\(toolName)' failed: \(underlyingError)",
-                    type: "tool_call_failed",
-                    code: "tool_call_failed",
-                    toolName: toolName,
-                    underlyingError: underlyingError
-                )
+        case .guardrailViolation(let payload):
+            return response(
+                type: "guardrail_violation",
+                code: "guardrail_violation",
+                payload: payload
             )
-        case .requestFailed(let msg):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: msg,
-                    type: "request_failed",
-                    code: "request_failed",
-                    toolName: nil,
-                    underlyingError: nil
-                )
+        case .unsupportedGuide(let payload):
+            return response(
+                type: "unsupported_guide",
+                code: "unsupported_guide",
+                payload: payload
             )
-        case .invalidRequest(let msg):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: msg,
-                    type: "invalid_request_error",
-                    code: "invalid_request",
-                    toolName: nil,
-                    underlyingError: nil
-                )
+        case .unsupportedLanguageOrLocale(let payload):
+            return response(
+                type: "unsupported_language_or_locale",
+                code: "unsupported_language_or_locale",
+                payload: payload
             )
-        case .serverError(let msg):
-            return ErrorResponse(
-                error: ErrorDetail(
-                    message: msg,
-                    type: "server_error",
-                    code: "server_error",
-                    toolName: nil,
-                    underlyingError: nil
-                )
+        case .decodingFailure(let payload):
+            return response(
+                type: "decoding_failure",
+                code: "decoding_failure",
+                payload: payload
             )
+        case .rateLimited(let payload):
+            return response(
+                type: "rate_limited",
+                code: "rate_limited",
+                payload: payload
+            )
+        case .concurrentRequests(let payload):
+            return response(
+                type: "concurrent_requests",
+                code: "concurrent_requests",
+                payload: payload
+            )
+        case .refusal(let payload):
+            return response(type: "refusal", code: "refusal", payload: payload)
+        case .invalidGenerationSchema(let payload):
+            return response(
+                type: "invalid_generation_schema",
+                code: "invalid_generation_schema",
+                payload: payload
+            )
+        case .toolCallFailed(let payload):
+            return response(
+                type: "tool_call_failed",
+                code: "tool_call_failed",
+                payload: payload
+            )
+        case .invalidRequest(let payload):
+            return response(type: "invalid_request", code: "invalid_request", payload: payload)
+        case .serverError(let payload):
+            return response(type: "server_error", code: "server_error", payload: payload)
         }
     }
 }

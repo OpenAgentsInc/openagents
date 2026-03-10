@@ -22,7 +22,9 @@ final class RemoteTool: Tool {
         self.description = definition.description ?? definition.name
         self.parameters = try ChatHandler.decodeGenerationSchema(from: definition.argumentsSchema)
         guard let callbackURL = URL(string: callback.url) else {
-            throw FMError.invalidRequest("Invalid Apple FM tool callback URL '\(callback.url)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Invalid Apple FM tool callback URL '\(callback.url)'")
+            )
         }
         self.callbackURL = callbackURL
         self.sessionToken = callback.sessionToken
@@ -135,7 +137,9 @@ actor ChatHandler {
     func createSession(request: SessionCreateRequest) throws -> SessionCreateResponse {
         if request.transcriptJSON != nil && request.transcript != nil {
             throw FMError.invalidRequest(
-                "Provide only one of 'transcript_json' or 'transcript' when restoring an Apple FM session"
+                FMErrorPayload(
+                    message: "Provide only one of 'transcript_json' or 'transcript' when restoring an Apple FM session"
+                )
             )
         }
         let sessionID = "sess-\(UUID().uuidString.lowercased())"
@@ -164,7 +168,9 @@ actor ChatHandler {
 
     func sessionTranscript(sessionID: String) throws -> Transcript {
         guard let record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         if let transcriptJSON = record.transcriptJSONSnapshot {
             return try decodedTranscript(fromJSONString: transcriptJSON)
@@ -178,17 +184,23 @@ actor ChatHandler {
 
     func deleteSession(sessionID: String) throws {
         guard sessions.removeValue(forKey: sessionID) != nil else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
     }
 
     func resetSession(sessionID: String) throws -> SessionState {
         guard let record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         if record.isResponding {
             throw FMError.concurrentRequests(
-                "Apple FM session '\(sessionID)' cannot reset while a request is active"
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' cannot reset while a request is active"
+                )
             )
         }
         sessions[sessionID] = try restoredRecord(from: record)
@@ -197,18 +209,21 @@ actor ChatHandler {
 
     func respond(sessionID: String, request: SessionRespondRequest) async throws -> SessionRespondResponse {
         guard var record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         if record.isResponding {
             throw FMError.concurrentRequests(
-                "Apple FM session '\(sessionID)' already has an in-flight request"
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' already has an in-flight request"
+                )
             )
         }
 
         record.isResponding = true
         sessions[sessionID] = record
 
-        let startTime = Date()
         let options = try bridgeGenerationOptions(from: request.options)
         do {
             let response: LanguageModelSession.Response<String> = try await record.session.respond(
@@ -229,24 +244,20 @@ actor ChatHandler {
             )
         } catch let error as LanguageModelSession.ToolCallError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            throw FMError.toolCallFailed(
-                toolName: "unknown_tool",
-                underlyingError: error.underlyingError.localizedDescription
-            )
+            throw toolCallFailure(from: error)
         } catch let error as LanguageModelSession.GenerationError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            if case .concurrentRequests = error {
-                throw FMError.concurrentRequests(
-                    "Apple FM session '\(sessionID)' rejected overlapping requests"
-                )
-            }
-            throw FMError.requestFailed(
-                "Foundation Models session request failed after \(Date().timeIntervalSince(startTime))s: \(error.localizedDescription)"
+            throw await generationFailure(
+                from: error,
+                fallbackPrefix: "Foundation Models session request failed"
             )
         } catch {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            throw FMError.requestFailed(
-                "Foundation Models session request failed: \(error.localizedDescription)"
+            throw FMError.serverError(
+                FMErrorPayload(
+                    message: "Foundation Models session request failed: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
     }
@@ -256,18 +267,21 @@ actor ChatHandler {
         request: SessionStructuredResponseRequest
     ) async throws -> SessionStructuredResponseResponse {
         guard var record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         if record.isResponding {
             throw FMError.concurrentRequests(
-                "Apple FM session '\(sessionID)' already has an in-flight request"
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' already has an in-flight request"
+                )
             )
         }
 
         record.isResponding = true
         sessions[sessionID] = record
 
-        let startTime = Date()
         let options = try bridgeGenerationOptions(from: request.options)
         let schema = try Self.decodeGenerationSchema(from: request.schema)
         do {
@@ -292,27 +306,23 @@ actor ChatHandler {
             )
         } catch let error as LanguageModelSession.ToolCallError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            throw FMError.toolCallFailed(
-                toolName: "unknown_tool",
-                underlyingError: error.underlyingError.localizedDescription
-            )
+            throw toolCallFailure(from: error)
         } catch let error as LanguageModelSession.GenerationError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            if case .concurrentRequests = error {
-                throw FMError.concurrentRequests(
-                    "Apple FM session '\(sessionID)' rejected overlapping requests"
-                )
-            }
-            throw FMError.requestFailed(
-                "Foundation Models structured request failed after \(Date().timeIntervalSince(startTime))s: \(error.localizedDescription)"
+            throw await generationFailure(
+                from: error,
+                fallbackPrefix: "Foundation Models structured request failed"
             )
         } catch let error as FMError {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
             throw error
         } catch {
             sessions[sessionID] = recoveryRecord(afterFailureOf: record)
-            throw FMError.requestFailed(
-                "Foundation Models structured request failed: \(error.localizedDescription)"
+            throw FMError.serverError(
+                FMErrorPayload(
+                    message: "Foundation Models structured request failed: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
     }
@@ -322,11 +332,15 @@ actor ChatHandler {
         request: SessionRespondRequest
     ) throws -> AsyncThrowingStream<TextStreamEvent, Error> {
         guard var record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         if record.isResponding {
             throw FMError.concurrentRequests(
-                "Apple FM session '\(sessionID)' already has an in-flight request"
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' already has an in-flight request"
+                )
             )
         }
 
@@ -369,24 +383,19 @@ actor ChatHandler {
                     continuation.finish()
                 } catch let error as LanguageModelSession.GenerationError {
                     self.cancelStream(sessionID: sessionID)
-                    if case .concurrentRequests = error {
-                        continuation.finish(
-                            throwing: FMError.concurrentRequests(
-                                "Apple FM session '\(sessionID)' rejected overlapping requests"
-                            )
-                        )
-                    } else {
-                        continuation.finish(
-                            throwing: FMError.requestFailed(
-                                "Foundation Models session stream failed: \(error.localizedDescription)"
-                            )
-                        )
-                    }
+                    let mapped = await self.generationFailure(
+                        from: error,
+                        fallbackPrefix: "Foundation Models session stream failed"
+                    )
+                    continuation.finish(throwing: mapped)
                 } catch {
                     self.cancelStream(sessionID: sessionID)
                     continuation.finish(
-                        throwing: FMError.requestFailed(
-                            "Foundation Models session stream failed: \(error.localizedDescription)"
+                        throwing: FMError.serverError(
+                            FMErrorPayload(
+                                message: "Foundation Models session stream failed: \(error.localizedDescription)",
+                                debugDescription: String(reflecting: error)
+                            )
                         )
                     )
                 }
@@ -404,11 +413,13 @@ actor ChatHandler {
     func handleCompletion(request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
         guard checkAvailability() else {
             let (_, _, message) = getAvailabilityStatus()
-            throw FMError.modelUnavailable(message)
+            throw FMError.assetsUnavailable(FMErrorPayload(message: message))
         }
 
         if request.stream ?? false {
-            throw FMError.invalidRequest("Streaming is not supported by this bridge yet")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Streaming is not supported by this bridge yet")
+            )
         }
 
         let model = try resolvedChatModelID(request.model)
@@ -430,13 +441,22 @@ actor ChatHandler {
             transcript: nil
         )
 
-        let startTime = Date()
         let response: LanguageModelSession.Response<String>
         do {
             response = try await session.respond(to: prompt, options: options)
+        } catch let error as LanguageModelSession.ToolCallError {
+            throw toolCallFailure(from: error)
+        } catch let error as LanguageModelSession.GenerationError {
+            throw await generationFailure(
+                from: error,
+                fallbackPrefix: "Foundation Models request failed"
+            )
         } catch {
-            throw FMError.requestFailed(
-                "Foundation Models request failed: \(error.localizedDescription)"
+            throw FMError.serverError(
+                FMErrorPayload(
+                    message: "Foundation Models request failed: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
 
@@ -445,7 +465,7 @@ actor ChatHandler {
         return ChatCompletionResponse(
             id: "fm-\(UUID().uuidString.lowercased())",
             object: "chat.completion",
-            created: Int(startTime.timeIntervalSince1970),
+            created: Int(Date().timeIntervalSince1970),
             model: model,
             choices: [
                 Choice(
@@ -506,7 +526,9 @@ actor ChatHandler {
 
     private func sessionState(sessionID: String) throws -> SessionState {
         guard let record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         return SessionState(
             id: sessionID,
@@ -528,8 +550,11 @@ actor ChatHandler {
         do {
             return try JSONDecoder().decode(GenerationSchema.self, from: schemaData)
         } catch {
-            throw FMError.invalidRequest(
-                "Invalid Apple FM generation schema: \(error.localizedDescription)"
+            throw FMError.invalidGenerationSchema(
+                FMErrorPayload(
+                    message: "Invalid Apple FM generation schema: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
     }
@@ -552,7 +577,10 @@ actor ChatHandler {
             )
         } catch {
             throw FMError.serverError(
-                "Failed to decode Apple FM structured content: \(error.localizedDescription)"
+                FMErrorPayload(
+                    message: "Failed to decode Apple FM structured content: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
     }
@@ -577,7 +605,10 @@ actor ChatHandler {
             )
         } catch {
             throw FMError.invalidRequest(
-                "Invalid Apple FM transcript: \(error.localizedDescription)"
+                FMErrorPayload(
+                    message: "Invalid Apple FM transcript: \(error.localizedDescription)",
+                    debugDescription: String(reflecting: error)
+                )
             )
         }
     }
@@ -625,7 +656,9 @@ actor ChatHandler {
         finalOutput: String
     ) throws -> TextStreamEvent {
         guard var record = sessions[sessionID] else {
-            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
         }
         record.isResponding = false
         record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
@@ -668,7 +701,9 @@ actor ChatHandler {
         }
         guard requestedModel == defaultModel else {
             throw FMError.invalidRequest(
-                "Unsupported Apple FM model '\(requestedModel)'. Only '\(defaultModel)' is available."
+                FMErrorPayload(
+                    message: "Unsupported Apple FM model '\(requestedModel)'. Only '\(defaultModel)' is available."
+                )
             )
         }
         return defaultModel
@@ -684,7 +719,9 @@ actor ChatHandler {
             payloadTemperature != legacyTemperature
         {
             throw FMError.invalidRequest(
-                "Conflicting temperature values were provided in both 'options.temperature' and 'temperature'"
+                FMErrorPayload(
+                    message: "Conflicting temperature values were provided in both 'options.temperature' and 'temperature'"
+                )
             )
         } else {
             mergedTemperature = options?.temperature ?? legacyTemperature
@@ -695,7 +732,9 @@ actor ChatHandler {
             payloadMax != legacyMaxTokens
         {
             throw FMError.invalidRequest(
-                "Conflicting maximum response token values were provided in both 'options.maximum_response_tokens' and 'max_tokens'"
+                FMErrorPayload(
+                    message: "Conflicting maximum response token values were provided in both 'options.maximum_response_tokens' and 'max_tokens'"
+                )
             )
         } else {
             mergedMaxTokens = options?.maximumResponseTokens ?? legacyMaxTokens
@@ -720,14 +759,18 @@ actor ChatHandler {
 
         if let temperature = payload.temperature {
             guard temperature >= 0 else {
-                throw FMError.invalidRequest("'temperature' must be non-negative")
+                throw FMError.invalidRequest(
+                    FMErrorPayload(message: "'temperature' must be non-negative")
+                )
             }
             options.temperature = temperature
         }
 
         if let maximumResponseTokens = payload.maximumResponseTokens {
             guard maximumResponseTokens > 0 else {
-                throw FMError.invalidRequest("'maximum_response_tokens' must be positive")
+                throw FMError.invalidRequest(
+                    FMErrorPayload(message: "'maximum_response_tokens' must be positive")
+                )
             }
             options.maximumResponseTokens = maximumResponseTokens
         }
@@ -745,31 +788,43 @@ actor ChatHandler {
         switch sampling.mode {
         case .greedy:
             if sampling.topK != nil {
-                throw FMError.invalidRequest("greedy sampling does not accept 'top'")
+                throw FMError.invalidRequest(
+                    FMErrorPayload(message: "greedy sampling does not accept 'top'")
+                )
             }
             if sampling.topP != nil {
                 throw FMError.invalidRequest(
-                    "greedy sampling does not accept 'probability_threshold'"
+                    FMErrorPayload(
+                        message: "greedy sampling does not accept 'probability_threshold'"
+                    )
                 )
             }
             if sampling.seed != nil {
-                throw FMError.invalidRequest("greedy sampling does not accept 'seed'")
+                throw FMError.invalidRequest(
+                    FMErrorPayload(message: "greedy sampling does not accept 'seed'")
+                )
             }
             return .greedy
         case .random:
             if let topK = sampling.topK, topK <= 0 {
-                throw FMError.invalidRequest("'top' must be a positive integer")
+                throw FMError.invalidRequest(
+                    FMErrorPayload(message: "'top' must be a positive integer")
+                )
             }
             if sampling.topK != nil && sampling.topP != nil {
                 throw FMError.invalidRequest(
-                    "Cannot specify both 'top' and 'probability_threshold'. Choose one sampling constraint."
+                    FMErrorPayload(
+                        message: "Cannot specify both 'top' and 'probability_threshold'. Choose one sampling constraint."
+                    )
                 )
             }
             if let probabilityThreshold = sampling.topP,
                 probabilityThreshold < 0 || probabilityThreshold > 1
             {
                 throw FMError.invalidRequest(
-                    "'probability_threshold' must be between 0.0 and 1.0"
+                    FMErrorPayload(
+                        message: "'probability_threshold' must be between 0.0 and 1.0"
+                    )
                 )
             }
             if let topK = sampling.topK {
@@ -777,6 +832,72 @@ actor ChatHandler {
             }
             let probabilityThreshold = sampling.topP ?? 1.0
             return .random(probabilityThreshold: probabilityThreshold, seed: sampling.seed)
+        }
+    }
+
+    nonisolated private func toolCallFailure(from error: LanguageModelSession.ToolCallError) -> FMError {
+        if let remoteError = error.underlyingError as? RemoteToolCallError {
+            return FMError.toolCallFailed(
+                FMErrorPayload(
+                    message: "Tool '\(remoteError.toolName)' failed: \(remoteError.underlyingError)",
+                    debugDescription: String(reflecting: error),
+                    toolName: remoteError.toolName,
+                    underlyingError: remoteError.underlyingError
+                )
+            )
+        }
+
+        return FMError.toolCallFailed(
+            FMErrorPayload(
+                message: "Tool call failed: \(error.localizedDescription)",
+                debugDescription: String(reflecting: error),
+                toolName: "unknown_tool",
+                underlyingError: error.underlyingError.localizedDescription
+            )
+        )
+    }
+
+    nonisolated private func generationFailure(
+        from error: LanguageModelSession.GenerationError,
+        fallbackPrefix: String
+    ) async -> FMError {
+        let payload = FMErrorPayload(
+            message: error.errorDescription ?? "\(fallbackPrefix): \(error.localizedDescription)",
+            failureReason: error.failureReason,
+            recoverySuggestion: error.recoverySuggestion,
+            debugDescription: String(reflecting: error)
+        )
+
+        switch error {
+        case .exceededContextWindowSize:
+            return .exceededContextWindowSize(payload)
+        case .assetsUnavailable:
+            return .assetsUnavailable(payload)
+        case .guardrailViolation:
+            return .guardrailViolation(payload)
+        case .unsupportedGuide:
+            return .unsupportedGuide(payload)
+        case .unsupportedLanguageOrLocale:
+            return .unsupportedLanguageOrLocale(payload)
+        case .decodingFailure:
+            return .decodingFailure(payload)
+        case .rateLimited:
+            return .rateLimited(payload)
+        case .concurrentRequests:
+            return .concurrentRequests(payload)
+        case .refusal(let refusal, _):
+            let explanationText = try? await refusal.explanation.content
+            return .refusal(
+                FMErrorPayload(
+                    message: payload.message,
+                    failureReason: payload.failureReason,
+                    recoverySuggestion: payload.recoverySuggestion,
+                    debugDescription: payload.debugDescription,
+                    refusalExplanation: explanationText
+                )
+            )
+        @unknown default:
+            return .serverError(payload)
         }
     }
 
