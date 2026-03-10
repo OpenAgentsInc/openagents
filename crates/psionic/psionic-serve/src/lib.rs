@@ -1105,6 +1105,9 @@ pub struct GptOssMetalRuntimeMetrics {
     pub sync_count: usize,
     /// Number of quantized Metal kernel encodes used by the request.
     pub kernel_launches: usize,
+    /// Whether any step used the ids-driven grouped expert projection path.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub grouped_expert_ids_path: bool,
 }
 
 impl GptOssMetalRuntimeMetrics {
@@ -1118,6 +1121,7 @@ impl GptOssMetalRuntimeMetrics {
         self.submission_count = self.submission_count.saturating_add(other.submission_count);
         self.sync_count = self.sync_count.saturating_add(other.sync_count);
         self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
+        self.grouped_expert_ids_path |= other.grouped_expert_ids_path;
     }
 }
 

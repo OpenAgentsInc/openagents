@@ -346,6 +346,67 @@ Why this order:
 - umbrella perf closure last, because it is the result of the other three, not
   a separately implementable fix
 
+## 2026-03-10 Grouped Expert-Down Checkpoint
+
+Paused state for the next Metal session:
+
+- the working `main` checkpoint now includes a first ids-driven grouped
+  expert-down path for Metal GPT-OSS, mirroring the next honest direction that
+  unlocked the NVIDIA lane later in
+  `crates/psionic/docs/ROADMAP.md`
+- `psionic-backend-metal` now exposes `expert_matvec_f32_ids` for grouped
+  per-selected-input expert projection in both `Q8_0` and `MXFP4`
+- the planned native-Metal GPT-OSS decode path now uses one grouped expert-down
+  submission per layer instead of one submission per selected expert
+- Metal perf metrics now explicitly report whether the grouped expert ids path
+  was used
+
+Synthetic evidence on the kept path:
+
+- new backend parity tests for grouped `expert_matvec_f32_ids` pass for both
+  `Q8_0` and `MXFP4`
+- `cargo test -p psionic-serve gpt_oss::tests::metal_gpt_oss_service_ -- --nocapture`
+  stays green
+- the focused planned-path receipt improved from `16` Metal kernel encodes /
+  `12` submissions down to `14` kernel encodes / `10` submissions on the tiny
+  GPT-OSS fixture
+
+Direct real-model receipt on the local 20B MXFP4 GGUF after this checkpoint:
+
+- first rerun: prompt-only `2` tokens in `25.834s` (`0.077 tok/s`), exact-hit
+  plus-one in `5.615s`
+- immediate rerun: prompt-only `2` tokens in `11.694s` (`0.171 tok/s`),
+  exact-hit plus-one in `5.630s`
+- prompt-only runtime counters on the steadier rerun:
+  `expert_projection_s=9.971`, `attention_s=0.008`, `submissions=193`,
+  `kernels=289`
+
+Interpretation:
+
+- this is real `#3269` progress because the steady-state planned path now uses
+  materially fewer Metal submissions and kernel encodes
+- it is **not** an honest closure or even a clear throughput win yet
+- compared with the earlier kept direct receipt (`9.744s`, `0.205 tok/s`,
+  `337` submissions, `433` kernels), the grouped path reduced launch overhead
+  materially but did not yet pull prompt wall time into a meaningfully better
+  band
+- `#3269`, `#3285`, and `#3262` all stay open
+
+Concrete path forward from this checkpoint:
+
+1. Keep the new grouped expert-down substrate as the base for the next Metal
+   MoE pass rather than going back to one submission per expert.
+2. Move the remaining selected-expert host work off the hot path:
+   grouped gate/up bias handling, SwiGLU activation, and if possible weighted
+   down-output accumulation should stop bouncing through host `Vec<f32>` slices.
+3. In parallel with that MoE cleanup, return to `#3285` and build the real
+   prompt/prefill runtime:
+   prompt work still replays decode token-by-token, and the current receipts
+   say that architecture problem remains larger than launch-count cleanup alone.
+4. Keep using the ignored direct short-text receipt as the first acceptance
+   gate, then rerun the full same-host `#3262` benchmark only after prompt-only
+   and exact-hit follow-up receipts both move materially.
+
 ## Definition Of Done For Metal GPT-OSS
 
 This Metal roadmap is complete only when all of the following are true:
