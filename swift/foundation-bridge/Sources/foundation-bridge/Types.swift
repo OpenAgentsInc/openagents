@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 
 enum SystemLanguageModelUseCase: String, Codable {
     case general
@@ -15,6 +16,92 @@ enum SystemLanguageModelUnavailableReason: String, Codable {
     case deviceNotEligible = "device_not_eligible"
     case modelNotReady = "model_not_ready"
     case unknown
+}
+
+extension SystemLanguageModelUseCase {
+    var foundationModelsValue: FoundationModels.SystemLanguageModel.UseCase {
+        switch self {
+        case .general:
+            return .general
+        case .contentTagging:
+            return .contentTagging
+        }
+    }
+}
+
+extension SystemLanguageModelGuardrails {
+    var foundationModelsValue: FoundationModels.SystemLanguageModel.Guardrails {
+        switch self {
+        case .default:
+            return .default
+        case .permissiveContentTransformations:
+            return .permissiveContentTransformations
+        }
+    }
+}
+
+struct SessionModelConfiguration: Codable {
+    let id: String
+    let useCase: SystemLanguageModelUseCase
+    let guardrails: SystemLanguageModelGuardrails
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case useCase = "use_case"
+        case guardrails
+    }
+}
+
+struct SessionToolMetadata: Codable {
+    let name: String
+    let description: String?
+}
+
+struct SessionCreateRequest: Codable {
+    let instructions: String?
+    let model: SessionModelConfiguration?
+    let tools: [SessionToolMetadata]
+    let transcriptJSON: String?
+
+    enum CodingKeys: String, CodingKey {
+        case instructions
+        case model
+        case tools
+        case transcriptJSON = "transcript_json"
+    }
+}
+
+struct SessionState: Codable {
+    let id: String
+    let instructions: String?
+    let model: SessionModelConfiguration
+    let tools: [SessionToolMetadata]
+    let isResponding: Bool
+    let transcriptJSON: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case instructions
+        case model
+        case tools
+        case isResponding = "is_responding"
+        case transcriptJSON = "transcript_json"
+    }
+}
+
+struct SessionCreateResponse: Codable {
+    let session: SessionState
+}
+
+struct SessionRespondRequest: Codable {
+    let prompt: String
+}
+
+struct SessionRespondResponse: Codable {
+    let session: SessionState
+    let model: String
+    let output: String
+    let usage: Usage?
 }
 
 struct ChatCompletionRequest: Codable {
@@ -151,6 +238,7 @@ struct ErrorDetail: Codable {
 
 enum FMError: Error {
     case modelUnavailable(String)
+    case concurrentRequests(String)
     case requestFailed(String)
     case invalidRequest(String)
     case serverError(String)
@@ -163,6 +251,14 @@ enum FMError: Error {
                     message: msg,
                     type: "model_unavailable",
                     code: "model_unavailable"
+                )
+            )
+        case .concurrentRequests(let msg):
+            return ErrorResponse(
+                error: ErrorDetail(
+                    message: msg,
+                    type: "concurrent_requests",
+                    code: "concurrent_requests"
                 )
             )
         case .requestFailed(let msg):

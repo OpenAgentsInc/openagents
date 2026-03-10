@@ -11,11 +11,13 @@ pub mod contract;
 pub use client::{AppleFmBridgeClient, AppleFmBridgeClientError};
 pub use contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
-    APPLE_FM_BRIDGE_MODELS_PATH, AppleFmChatChoice, AppleFmChatCompletionRequest,
-    AppleFmChatCompletionResponse, AppleFmChatMessage, AppleFmChatMessageRole,
-    AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult, AppleFmErrorDetail,
-    AppleFmErrorResponse, AppleFmHealthResponse, AppleFmModelInfo, AppleFmModelsResponse,
-    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
+    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, AppleFmChatChoice,
+    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessage,
+    AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult,
+    AppleFmErrorDetail, AppleFmErrorResponse, AppleFmHealthResponse, AppleFmModelInfo,
+    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
+    AppleFmSessionToolMetadata, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
     AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
     AppleFmSystemLanguageModelUseCase, DEFAULT_APPLE_FM_MODEL_ID,
 };

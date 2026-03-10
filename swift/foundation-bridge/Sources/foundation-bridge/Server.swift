@@ -94,6 +94,10 @@ actor HTTPServer {
             return buildCORSResponse()
         }
 
+        if path == "/v1/sessions" || path.hasPrefix("/v1/sessions/") {
+            return await handleSessions(method: method, path: path, body: body)
+        }
+
         switch (method, path) {
         case ("GET", "/health"):
             return await handleHealth()
@@ -148,6 +152,157 @@ actor HTTPServer {
         return buildJSONResponse(status: 200, body: models)
     }
 
+    private func handleSessions(method: String, path: String, body: String?) async -> Data {
+        switch (method, path) {
+        case ("POST", "/v1/sessions"):
+            return await handleSessionCreate(body: body)
+        default:
+            break
+        }
+
+        let components = path.split(separator: "/")
+        guard components.count >= 3 else {
+            return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+        }
+        let sessionID = String(components[2])
+
+        if components.count == 3 {
+            switch method {
+            case "GET":
+                return await handleSessionGet(sessionID: sessionID)
+            case "DELETE":
+                return await handleSessionDelete(sessionID: sessionID)
+            default:
+                return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+            }
+        }
+
+        if components.count == 4 {
+            switch (method, components[3]) {
+            case ("POST", "responses"):
+                return await handleSessionRespond(sessionID: sessionID, body: body)
+            case ("POST", "reset"):
+                return await handleSessionReset(sessionID: sessionID)
+            default:
+                return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+            }
+        }
+
+        return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
+    }
+
+    private func handleSessionCreate(body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Missing request body").errorResponse
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(SessionCreateRequest.self, from: bodyData)
+            let response = try await chatHandler.createSession(request: request)
+            return buildJSONResponse(status: 200, body: response)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch let error as DecodingError {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
+                    .errorResponse
+            )
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionGet(sessionID: String) async -> Data {
+        do {
+            let session = try await chatHandler.session(sessionID: sessionID)
+            return buildJSONResponse(status: 200, body: session)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionDelete(sessionID: String) async -> Data {
+        do {
+            try await chatHandler.deleteSession(sessionID: sessionID)
+            return buildJSONResponse(status: 200, body: ["deleted": true])
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionReset(sessionID: String) async -> Data {
+        do {
+            let session = try await chatHandler.resetSession(sessionID: sessionID)
+            return buildJSONResponse(status: 200, body: session)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionRespond(sessionID: String, body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Missing request body").errorResponse
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(SessionRespondRequest.self, from: bodyData)
+            let response = try await chatHandler.respond(sessionID: sessionID, request: request)
+            return buildJSONResponse(status: 200, body: response)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch let error as DecodingError {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
+                    .errorResponse
+            )
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
     private func handleChatCompletions(body: String?) async -> Data {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
@@ -168,16 +323,7 @@ actor HTTPServer {
             let response = try await chatHandler.handleCompletion(request: request)
             return buildJSONResponse(status: 200, body: response)
         } catch let error as FMError {
-            let status: Int
-            switch error {
-            case .modelUnavailable:
-                status = 503
-            case .requestFailed, .serverError:
-                status = 500
-            case .invalidRequest:
-                status = 400
-            }
-            return buildJSONResponse(status: status, body: error.errorResponse)
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
         } catch let error as DecodingError {
             return buildJSONResponse(
                 status: 400,
@@ -222,6 +368,19 @@ actor HTTPServer {
         return buildJSONResponse(status: status, body: error)
     }
 
+    private func statusCode(for error: FMError) -> Int {
+        switch error {
+        case .modelUnavailable:
+            return 503
+        case .concurrentRequests:
+            return 409
+        case .requestFailed, .serverError:
+            return 500
+        case .invalidRequest:
+            return 400
+        }
+    }
+
     private func buildCORSResponse() -> Data {
         let headers = [
             "HTTP/1.1 204 No Content",
@@ -253,6 +412,8 @@ actor HTTPServer {
             return "No Content"
         case 400:
             return "Bad Request"
+        case 409:
+            return "Conflict"
         case 404:
             return "Not Found"
         case 500:
