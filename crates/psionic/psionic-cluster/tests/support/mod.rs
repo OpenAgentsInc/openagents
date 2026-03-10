@@ -1,16 +1,17 @@
 use psionic_cluster::{
     AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyKey,
     ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
-    ClusterCatchupRequest, ClusterEvent, ClusterEventIndex, ClusterEventLog, ClusterId,
-    ClusterLeadershipLeasePolicy, ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink,
-    ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
-    ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity, ClusterNodeServiceHealth,
-    ClusterNodeServiceLoad, ClusterNodeTelemetry, ClusterRecoveryPolicy, ClusterReplicaLaneKey,
-    ClusterReplicaRecord, ClusterReplicaSnapshot, ClusterServingLoadSnapshot,
-    ClusterServingRequest, ClusterServingWorkClass, ClusterSnapshot, ClusterStabilityPosture,
-    ClusterState, ClusterTerm, ClusterTransportClass, LayerShardedExecutionPolicy,
-    LayerShardedExecutionRequest, NodeEpoch, NodeId, NodeRole, TensorShardedExecutionRequest,
-    TensorShardedModelEligibility, TensorShardedTransportPolicy, WholeRequestSchedulingRequest,
+    ClusterCatchupRequest, ClusterCommandAuthorityScope, ClusterCommandAuthorization, ClusterEvent,
+    ClusterEventIndex, ClusterEventLog, ClusterId, ClusterLeadershipLeasePolicy,
+    ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass, ClusterLinkKey,
+    ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace,
+    ClusterNodeIdentity, ClusterNodeServiceHealth, ClusterNodeServiceLoad, ClusterNodeTelemetry,
+    ClusterRecoveryPolicy, ClusterReplicaLaneKey, ClusterReplicaRecord, ClusterReplicaSnapshot,
+    ClusterServingLoadSnapshot, ClusterServingRequest, ClusterServingWorkClass, ClusterSnapshot,
+    ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
+    LayerShardedExecutionPolicy, LayerShardedExecutionRequest, NodeEpoch, NodeId, NodeRole,
+    TensorShardedExecutionRequest, TensorShardedModelEligibility, TensorShardedTransportPolicy,
+    WholeRequestSchedulingRequest,
 };
 use psionic_runtime::ClusterReplicaWarmState;
 
@@ -204,6 +205,45 @@ impl ClusterValidationFixture {
                 ClusterLeadershipLeasePolicy::new(4),
             ),
         );
+    }
+
+    #[allow(dead_code)]
+    pub fn seed_command_provenance(&mut self) {
+        self.snapshot.membership_provenance.insert(
+            NodeId::new("scheduler"),
+            sample_command_authorization(
+                "scheduler",
+                NodeRole::Mixed,
+                ClusterCommandAuthorityScope::SelfNode,
+                "scheduler-membership-command",
+            ),
+        );
+        for worker in ["worker-a", "worker-b", "worker-c"] {
+            self.snapshot.membership_provenance.insert(
+                NodeId::new(worker),
+                sample_command_authorization(
+                    worker,
+                    NodeRole::ExecutorOnly,
+                    ClusterCommandAuthorityScope::SelfNode,
+                    format!("{worker}-membership-command"),
+                ),
+            );
+            self.snapshot.artifact_residency_provenance.insert(
+                ClusterArtifactResidencyKey::new(NodeId::new(worker), ARTIFACT_DIGEST),
+                sample_command_authorization(
+                    worker,
+                    NodeRole::ExecutorOnly,
+                    ClusterCommandAuthorityScope::SelfNode,
+                    format!("{worker}-artifact-command"),
+                ),
+            );
+        }
+        self.snapshot.leadership_provenance = Some(sample_command_authorization(
+            "scheduler",
+            NodeRole::Mixed,
+            ClusterCommandAuthorityScope::ProposedLeader,
+            "leadership-command",
+        ));
     }
 
     #[allow(dead_code)]
@@ -402,5 +442,22 @@ pub fn recovery_policy() -> ClusterRecoveryPolicy {
         max_events_per_response: 16,
         retain_tail_events: 2,
         full_resync_gap_threshold: 32,
+    }
+}
+
+fn sample_command_authorization(
+    submitter_node_id: &str,
+    submitter_role: NodeRole,
+    authority_scope: ClusterCommandAuthorityScope,
+    command_digest: impl Into<String>,
+) -> ClusterCommandAuthorization {
+    ClusterCommandAuthorization {
+        command_digest: command_digest.into(),
+        authorization_policy_digest: String::from("command-authorization-policy"),
+        authority_scope,
+        submitter_node_id: NodeId::new(submitter_node_id),
+        submitter_role,
+        submitter_membership_status: ClusterMembershipStatus::Ready,
+        coordinator_authority: None,
     }
 }
