@@ -3737,6 +3737,14 @@ fn pane_hit_action_for_pane(
         PaneKind::Calculator => None,
         PaneKind::GoOnline => {
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
+                if matches!(
+                    state.provider_runtime.mode,
+                    crate::app_state::ProviderMode::Offline
+                        | crate::app_state::ProviderMode::Degraded
+                ) && !state.mission_control_go_online_enabled()
+                {
+                    return None;
+                }
                 Some(PaneHitAction::GoOnlineToggle)
             } else if mission_control_amount_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(

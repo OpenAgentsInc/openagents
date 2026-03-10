@@ -2672,9 +2672,11 @@ pub(crate) fn apply_provider_mode_target(
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
-        let _ = state.queue_local_inference_runtime_command(
-            LocalInferenceRuntimeCommand::WarmConfiguredModel,
-        );
+        if state.ollama_execution.is_ready() {
+            let _ = state.queue_local_inference_runtime_command(
+                LocalInferenceRuntimeCommand::WarmConfiguredModel,
+            );
+        }
         if let Some(reason) = provider_go_online_block_reason(state) {
             state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
             state.provider_runtime.last_error_detail = Some(reason);
