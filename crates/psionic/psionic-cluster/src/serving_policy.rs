@@ -906,7 +906,10 @@ const fn service_health_label(service_health: ClusterNodeServiceHealth) -> &'sta
 mod tests {
     use std::io::Error;
 
-    use psionic_runtime::ClusterArtifactResidencyDisposition;
+    use psionic_runtime::{
+        ClusterArtifactResidencyDisposition, ClusterExecutionCapabilityProfile,
+        ClusterExecutionLane,
+    };
 
     use crate::{
         AdmissionToken, ClusterBackendReadinessStatus, ClusterLink, ClusterLinkStatus,
@@ -961,6 +964,14 @@ mod tests {
             .with_cpu_logical_cores(16)
             .with_accelerator_count(1)
             .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready)
+    }
+
+    fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_detail(
+                "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
+            )
     }
 
     fn single_worker_state() -> ClusterState {
@@ -1027,6 +1038,7 @@ mod tests {
 
     fn scheduling_request() -> WholeRequestSchedulingRequest {
         WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
     }
 
     #[test]

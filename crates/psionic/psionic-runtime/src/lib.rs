@@ -815,6 +815,17 @@ pub enum ClusterExecutionLane {
 }
 
 impl ClusterExecutionLane {
+    /// Returns a stable machine-checkable name for this clustered lane.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RemoteWholeRequest => "remote_whole_request",
+            Self::ReplicaRouted => "replica_routed",
+            Self::LayerSharded => "layer_sharded",
+            Self::TensorSharded => "tensor_sharded",
+        }
+    }
+
     /// Returns the communication class required by this clustered lane.
     #[must_use]
     pub const fn required_communication_class(self) -> ClusterCommunicationClass {
@@ -909,9 +920,30 @@ impl ClusterExecutionCapabilityProfile {
     ) -> ClusterCommunicationEligibility {
         let mut eligibility =
             ClusterCommunicationEligibility::new(self.runtime_backend.clone(), required_class)
-                .with_supported_classes(self.supported_communication_classes.clone());
+                .with_supported_classes(self.supported_communication_classes.clone())
+                .with_capability_profile_digest(self.stable_digest());
         if let Some(detail) = &self.detail {
             eligibility = eligibility.with_detail(detail.clone());
+        }
+        eligibility
+    }
+
+    /// Builds a lane-specific eligibility record from the declared profile.
+    #[must_use]
+    pub fn lane_communication_eligibility(
+        &self,
+        lane: ClusterExecutionLane,
+    ) -> ClusterCommunicationEligibility {
+        let mut eligibility = self.communication_eligibility(lane.required_communication_class());
+        if !self.supports_lane(lane) {
+            eligibility.eligible = false;
+            if eligibility.detail.is_none() {
+                eligibility = eligibility.with_detail(format!(
+                    "backend `{}` does not declare `{}` clustered lane support",
+                    self.runtime_backend,
+                    lane.as_str()
+                ));
+            }
         }
         eligibility
     }
@@ -972,6 +1004,9 @@ pub struct ClusterCommunicationEligibility {
     /// Communication classes the backend truthfully supports today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_classes: Vec<ClusterCommunicationClass>,
+    /// Stable digest of the declared capability profile the eligibility was derived from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_profile_digest: Option<String>,
     /// Whether the backend currently satisfies the required class.
     pub eligible: bool,
     /// Plain-language detail describing the eligibility or refusal.
@@ -990,6 +1025,7 @@ impl ClusterCommunicationEligibility {
             runtime_backend: runtime_backend.into(),
             required_class,
             supported_classes: Vec::new(),
+            capability_profile_digest: None,
             eligible: false,
             detail: None,
         }
@@ -1008,6 +1044,16 @@ impl ClusterCommunicationEligibility {
         self
     }
 
+    /// Attaches the stable digest of the declared capability profile.
+    #[must_use]
+    pub fn with_capability_profile_digest(
+        mut self,
+        capability_profile_digest: impl Into<String>,
+    ) -> Self {
+        self.capability_profile_digest = Some(capability_profile_digest.into());
+        self
+    }
+
     /// Attaches plain-language eligibility or refusal detail.
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
@@ -1022,6 +1068,15 @@ impl ClusterCommunicationEligibility {
         required_class: ClusterCommunicationClass,
     ) -> Self {
         capability_profile.communication_eligibility(required_class)
+    }
+
+    /// Builds a lane-specific eligibility record from a declared capability profile.
+    #[must_use]
+    pub fn from_capability_profile_lane(
+        capability_profile: &ClusterExecutionCapabilityProfile,
+        lane: ClusterExecutionLane,
+    ) -> Self {
+        capability_profile.lane_communication_eligibility(lane)
     }
 }
 
@@ -7375,6 +7430,11 @@ mod tests {
     fn delivered_execution_context_can_carry_cluster_evidence()
     -> Result<(), Box<dyn std::error::Error>> {
         let device = sample_cuda_device().inventory_qualifiers();
+        let capability_profile = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_detail(
+                "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
+            );
         let cluster_execution = ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -7384,17 +7444,8 @@ mod tests {
             ClusterExecutionDisposition::RemoteWholeRequest,
         )
         .with_communication_eligibility(
-            crate::ClusterCommunicationEligibility::new(
-                "cuda",
-                crate::ClusterCommunicationClass::RemoteDispatch,
-            )
-            .with_supported_classes(vec![
-                crate::ClusterCommunicationClass::RemoteDispatch,
-                crate::ClusterCommunicationClass::ReplicaRouting,
-            ])
-            .with_detail(
-                "backend `cuda` supports whole-request remote dispatch on ready cluster nodes",
-            ),
+            capability_profile
+                .lane_communication_eligibility(ClusterExecutionLane::RemoteWholeRequest),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
         .with_commit_authority(ClusterCommitAuthorityEvidence::new(
@@ -7467,6 +7518,11 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["communication_eligibility"]["required_class"],
             json!("remote_dispatch")
+        );
+        assert!(
+            encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
+                .as_str()
+                .is_some()
         );
         assert_eq!(
             encoded["cluster_execution"]["command_provenance"][0]["fact_kind"],
@@ -7571,10 +7627,35 @@ mod tests {
             layer_eligibility.detail.as_deref(),
             Some("declared CUDA profile")
         );
+        assert_eq!(
+            layer_eligibility.capability_profile_digest.as_deref(),
+            Some(profile.stable_digest().as_str())
+        );
         assert!(!tensor_eligibility.eligible);
         assert_eq!(
             tensor_eligibility.required_class,
             ClusterCommunicationClass::TensorCollectiveMesh
+        );
+    }
+
+    #[test]
+    fn lane_communication_eligibility_refuses_undeclared_lane_even_when_profile_exists() {
+        let profile = ClusterExecutionCapabilityProfile::new("cpu")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_detail("cpu does not declare replica routing");
+        let eligibility = ClusterCommunicationEligibility::from_capability_profile_lane(
+            &profile,
+            ClusterExecutionLane::ReplicaRouted,
+        );
+
+        assert!(!eligibility.eligible);
+        assert_eq!(
+            eligibility.required_class,
+            ClusterCommunicationClass::ReplicaRouting
+        );
+        assert_eq!(
+            eligibility.capability_profile_digest.as_deref(),
+            Some(profile.stable_digest().as_str())
         );
     }
 

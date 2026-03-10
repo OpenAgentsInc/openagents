@@ -22,8 +22,8 @@ use psionic_runtime::{
     ExecutionTopologyKind,
 };
 use support::{
-    ClusterValidationFault, ClusterValidationFixture, recovery_policy, sample_cluster_id,
-    sample_recovery_log, stale_rejoin_request,
+    ClusterValidationFault, ClusterValidationFixture, metal_cluster_blocked_capability_profile,
+    recovery_policy, sample_cluster_id, sample_recovery_log, stale_rejoin_request,
 };
 
 fn fixture_error(detail: impl Into<String>) -> Error {
@@ -202,7 +202,8 @@ fn scheduling_validation_refuses_metal_cluster_dispatch_explicitly()
         );
     }
     let request =
-        psionic_cluster::WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "metal");
+        psionic_cluster::WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "metal")
+            .with_capability_profile(metal_cluster_blocked_capability_profile());
 
     let failure = schedule_remote_whole_request(&fixture.state(), &request)
         .expect_err("metal cluster dispatch should remain refused");

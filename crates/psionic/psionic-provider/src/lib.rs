@@ -2239,10 +2239,11 @@ mod tests {
         BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
         ClusterAdmissionFactKind, ClusterArtifactResidencyDisposition,
         ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
-        ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
-        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ClusterCommitAuthorityEvidence, ClusterExecutionCapabilityProfile, ClusterExecutionContext,
+        ClusterExecutionDisposition, ClusterExecutionLane, ClusterFallbackReason,
+        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
+        ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass,
+        DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
         ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
         KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
         LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
@@ -3492,6 +3493,11 @@ mod tests {
             encoded["cluster_execution"]["selected_nodes"][1]["artifact_residency"],
             json!("copy_required")
         );
+        assert!(
+            encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
+                .as_str()
+                .is_some()
+        );
         assert_eq!(
             encoded["cluster_execution"]["fallback_history"][0]["reason"],
             json!("node_unavailable")
@@ -4294,6 +4300,11 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["degraded_reason"],
             json!("scheduler routed to the remaining healthy worker")
+        );
+        assert!(
+            encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
+                .as_str()
+                .is_some()
         );
         assert_eq!(
             encoded["settlement_linkage"]["cluster_provenance"]["command_provenance"][0]["fact_kind"],
@@ -5429,7 +5440,49 @@ mod tests {
         )
     }
 
+    fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_detail(
+                "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
+            )
+    }
+
+    fn cuda_replica_routed_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+            ])
+            .with_detail(
+                "backend `cuda` declares whole-request dispatch plus replica routing across warm lanes",
+            )
+    }
+
+    fn cuda_layer_sharded_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::LayerSharded,
+            ])
+            .with_detail(
+                "backend `cuda` declares whole-request dispatch plus layer-sharded cluster handoff support under explicit transport policy",
+            )
+    }
+
+    fn cuda_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::TensorSharded,
+            ])
+            .with_detail(
+                "backend `cuda` declares whole-request dispatch plus tensor-collective mesh support under explicit low-latency transport policy",
+            )
+    }
+
     fn sample_cluster_execution_context() -> ClusterExecutionContext {
+        let capability_profile = cuda_remote_dispatch_capability_profile();
         ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -5437,6 +5490,10 @@ mod tests {
             "scheduler-node",
             ClusterTransportClass::TrustedLanDatagram,
             ClusterExecutionDisposition::RemoteWholeRequest,
+        )
+        .with_communication_eligibility(
+            capability_profile
+                .lane_communication_eligibility(ClusterExecutionLane::RemoteWholeRequest),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
         .with_commit_authority(ClusterCommitAuthorityEvidence::new(
@@ -5475,6 +5532,7 @@ mod tests {
     fn sample_replicated_cluster_execution_context() -> ClusterExecutionContext {
         let first = sample_cuda_device().inventory_qualifiers();
         let second = sample_cuda_device_1().inventory_qualifiers();
+        let capability_profile = cuda_replica_routed_capability_profile();
         ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -5482,6 +5540,9 @@ mod tests {
             "scheduler-node",
             ClusterTransportClass::TrustedLanDatagram,
             ClusterExecutionDisposition::ReplicaRouted,
+        )
+        .with_communication_eligibility(
+            capability_profile.lane_communication_eligibility(ClusterExecutionLane::ReplicaRouted),
         )
         .with_replica_state_digest("replica-state-digest")
         .with_execution_topology(ExecutionTopologyPlan::replicated(
@@ -5541,6 +5602,7 @@ mod tests {
     fn sample_layer_sharded_cluster_execution_context() -> ClusterExecutionContext {
         let first = sample_cuda_device().inventory_qualifiers();
         let second = sample_cuda_device_1().inventory_qualifiers();
+        let capability_profile = cuda_layer_sharded_capability_profile();
         ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -5548,6 +5610,9 @@ mod tests {
             "scheduler-node",
             ClusterTransportClass::Mixed,
             ClusterExecutionDisposition::Sharded,
+        )
+        .with_communication_eligibility(
+            capability_profile.lane_communication_eligibility(ClusterExecutionLane::LayerSharded),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
         .with_execution_topology(ExecutionTopologyPlan::layer_sharded(
@@ -5601,6 +5666,7 @@ mod tests {
     fn sample_tensor_sharded_cluster_execution_context() -> ClusterExecutionContext {
         let first = sample_cuda_device().inventory_qualifiers();
         let second = sample_cuda_device_1().inventory_qualifiers();
+        let capability_profile = cuda_tensor_sharded_capability_profile();
         ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -5608,6 +5674,9 @@ mod tests {
             "scheduler-node",
             ClusterTransportClass::Mixed,
             ClusterExecutionDisposition::Sharded,
+        )
+        .with_communication_eligibility(
+            capability_profile.lane_communication_eligibility(ClusterExecutionLane::TensorSharded),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
         .with_execution_topology(ExecutionTopologyPlan::tensor_sharded(

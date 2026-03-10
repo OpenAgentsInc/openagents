@@ -350,7 +350,7 @@ pub fn plan_replicated_serving(
         .cluster_execution
         .clone()
         .with_communication_eligibility(replica_routing_communication_eligibility(
-            replica_snapshot.lane.runtime_backend.as_str(),
+            &scheduling_request.capability_profile,
         ))
         .with_replica_state_digest(replica_state_digest.clone())
         .with_execution_topology(replicated_topology)
@@ -531,6 +531,8 @@ const fn replica_warm_state_label(warm_state: ClusterReplicaWarmState) -> &'stat
 mod tests {
     use std::io::Error;
 
+    use psionic_runtime::{ClusterExecutionCapabilityProfile, ClusterExecutionLane};
+
     use crate::{
         AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyRecord,
         ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus, ClusterLink,
@@ -609,6 +611,17 @@ mod tests {
             .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready)
     }
 
+    fn cuda_replica_routed_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+            ])
+            .with_detail(
+                "backend `cuda` declares whole-request dispatch plus replica routing across warm lanes",
+            )
+    }
+
     fn replica_state() -> ClusterState {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
@@ -660,6 +673,7 @@ mod tests {
 
     fn scheduling_request() -> WholeRequestSchedulingRequest {
         WholeRequestSchedulingRequest::new(NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_replica_routed_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .requiring_accelerator()
     }
@@ -735,6 +749,16 @@ mod tests {
                 .filter(|replica| replica.routing == ClusterReplicaRoutingDisposition::WarmStandby)
                 .count(),
             1
+        );
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .communication_eligibility
+                .as_ref()
+                .and_then(|eligibility| eligibility.capability_profile_digest.as_deref())
+                .is_some()
         );
         Ok(())
     }

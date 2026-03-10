@@ -4,9 +4,10 @@ use psionic_runtime::{
     ClusterAdmissionFactKind,
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
     ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
-    ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
-    ClusterExecutionContext, ClusterExecutionDisposition, ClusterPolicyDigest,
-    ClusterPolicyDigestKind, ClusterSelectedNode as RuntimeClusterSelectedNode,
+    ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
+    ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
+    ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
+    ClusterSelectedNode as RuntimeClusterSelectedNode,
     ClusterTransportClass as RuntimeClusterTransportClass, DeviceInventoryQualifiers,
     DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan,
 };
@@ -91,6 +92,8 @@ pub struct WholeRequestSchedulingRequest {
     pub scheduler_node_id: NodeId,
     /// Runtime backend required for the execution lane.
     pub requested_backend: String,
+    /// Declared cluster execution capability contract for the requested backend.
+    pub capability_profile: ClusterExecutionCapabilityProfile,
     /// Served-artifact digest that must be runnable on the selected node, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub served_artifact_digest: Option<String>,
@@ -118,9 +121,11 @@ impl WholeRequestSchedulingRequest {
     /// Creates a whole-request scheduling request for one scheduler node and backend.
     #[must_use]
     pub fn new(scheduler_node_id: NodeId, requested_backend: impl Into<String>) -> Self {
+        let requested_backend = requested_backend.into();
         Self {
             scheduler_node_id,
-            requested_backend: requested_backend.into(),
+            requested_backend: requested_backend.clone(),
+            capability_profile: ClusterExecutionCapabilityProfile::new(requested_backend),
             served_artifact_digest: None,
             minimum_free_memory_bytes: None,
             require_accelerator: false,
@@ -168,6 +173,18 @@ impl WholeRequestSchedulingRequest {
         self
     }
 
+    /// Attaches the declared capability profile and synchronizes the requested backend to it.
+    #[must_use]
+    pub fn with_capability_profile(
+        mut self,
+        capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.requested_backend
+            .clone_from(&capability_profile.runtime_backend);
+        self.capability_profile = capability_profile;
+        self
+    }
+
     /// Appends one policy digest reference.
     #[must_use]
     pub fn with_policy_digest(mut self, policy_digest: ClusterPolicyDigest) -> Self {
@@ -200,117 +217,51 @@ impl WholeRequestSchedulingRequest {
     }
 }
 
+#[cfg(test)]
 const METAL_CLUSTER_BLOCK_DETAIL: &str = "backend `metal` remains refused for cluster execution until the Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes";
 
 /// Returns communication-class eligibility for one whole-request remote dispatch lane.
 #[must_use]
 pub fn remote_dispatch_communication_eligibility(
-    runtime_backend: &str,
+    capability_profile: &ClusterExecutionCapabilityProfile,
 ) -> ClusterCommunicationEligibility {
-    cluster_communication_eligibility(runtime_backend, ClusterCommunicationClass::RemoteDispatch)
+    ClusterCommunicationEligibility::from_capability_profile_lane(
+        capability_profile,
+        ClusterExecutionLane::RemoteWholeRequest,
+    )
 }
 
 /// Returns communication-class eligibility for one replicated-routing lane.
 #[must_use]
 pub fn replica_routing_communication_eligibility(
-    runtime_backend: &str,
+    capability_profile: &ClusterExecutionCapabilityProfile,
 ) -> ClusterCommunicationEligibility {
-    cluster_communication_eligibility(runtime_backend, ClusterCommunicationClass::ReplicaRouting)
+    ClusterCommunicationEligibility::from_capability_profile_lane(
+        capability_profile,
+        ClusterExecutionLane::ReplicaRouted,
+    )
 }
 
 /// Returns communication-class eligibility for one layer-sharded handoff lane.
 #[must_use]
 pub fn layer_shard_handoff_communication_eligibility(
-    runtime_backend: &str,
+    capability_profile: &ClusterExecutionCapabilityProfile,
 ) -> ClusterCommunicationEligibility {
-    cluster_communication_eligibility(
-        runtime_backend,
-        ClusterCommunicationClass::LayerShardHandoff,
+    ClusterCommunicationEligibility::from_capability_profile_lane(
+        capability_profile,
+        ClusterExecutionLane::LayerSharded,
     )
 }
 
 /// Returns communication-class eligibility for one tensor-collective mesh lane.
 #[must_use]
 pub fn tensor_collective_communication_eligibility(
-    runtime_backend: &str,
+    capability_profile: &ClusterExecutionCapabilityProfile,
 ) -> ClusterCommunicationEligibility {
-    cluster_communication_eligibility(
-        runtime_backend,
-        ClusterCommunicationClass::TensorCollectiveMesh,
+    ClusterCommunicationEligibility::from_capability_profile_lane(
+        capability_profile,
+        ClusterExecutionLane::TensorSharded,
     )
-}
-
-fn cluster_communication_eligibility(
-    runtime_backend: &str,
-    required_class: ClusterCommunicationClass,
-) -> ClusterCommunicationEligibility {
-    let supported_classes = supported_communication_classes(runtime_backend);
-    let detail = communication_eligibility_detail(runtime_backend, required_class);
-    ClusterCommunicationEligibility::new(runtime_backend, required_class)
-        .with_supported_classes(supported_classes)
-        .with_detail(detail)
-}
-
-fn supported_communication_classes(runtime_backend: &str) -> Vec<ClusterCommunicationClass> {
-    match runtime_backend {
-        "metal" => Vec::new(),
-        "cuda" => vec![
-            ClusterCommunicationClass::RemoteDispatch,
-            ClusterCommunicationClass::ReplicaRouting,
-            ClusterCommunicationClass::LayerShardHandoff,
-            ClusterCommunicationClass::TensorCollectiveMesh,
-        ],
-        "cpu" => vec![
-            ClusterCommunicationClass::RemoteDispatch,
-            ClusterCommunicationClass::ReplicaRouting,
-        ],
-        _ => vec![
-            ClusterCommunicationClass::RemoteDispatch,
-            ClusterCommunicationClass::ReplicaRouting,
-        ],
-    }
-}
-
-fn communication_eligibility_detail(
-    runtime_backend: &str,
-    required_class: ClusterCommunicationClass,
-) -> String {
-    match (runtime_backend, required_class) {
-        ("metal", _) => String::from(METAL_CLUSTER_BLOCK_DETAIL),
-        ("cuda", ClusterCommunicationClass::RemoteDispatch) => String::from(
-            "backend `cuda` supports whole-request remote dispatch on ready cluster nodes",
-        ),
-        ("cuda", ClusterCommunicationClass::ReplicaRouting) => {
-            String::from("backend `cuda` supports replica routing across warm cluster lanes")
-        }
-        ("cuda", ClusterCommunicationClass::LayerShardHandoff) => String::from(
-            "backend `cuda` supports layer-sharded cluster handoff under explicit stream-capable transport policy",
-        ),
-        ("cuda", ClusterCommunicationClass::TensorCollectiveMesh) => String::from(
-            "backend `cuda` supports tensor collectives under explicit low-latency mesh transport policy",
-        ),
-        ("cpu", ClusterCommunicationClass::RemoteDispatch) => String::from(
-            "backend `cpu` supports whole-request remote dispatch but not cross-node model partitioning",
-        ),
-        ("cpu", ClusterCommunicationClass::ReplicaRouting) => String::from(
-            "backend `cpu` supports replica routing but not cross-node model partitioning",
-        ),
-        ("cpu", _) => String::from(
-            "backend `cpu` does not expose cross-node model-state handoff or collectives for sharded cluster execution",
-        ),
-        (_, ClusterCommunicationClass::RemoteDispatch) => format!(
-            "backend `{runtime_backend}` is eligible for whole-request remote dispatch when local backend truth and cluster admission facts are ready"
-        ),
-        (_, ClusterCommunicationClass::ReplicaRouting) => format!(
-            "backend `{runtime_backend}` is eligible for replica routing when local backend truth and warm replica facts are ready"
-        ),
-        (_, ClusterCommunicationClass::LayerShardHandoff) => format!(
-            "backend `{runtime_backend}` does not yet advertise explicit layer-shard handoff eligibility"
-        ),
-        (_, ClusterCommunicationClass::TensorCollectiveMesh) => format!(
-            "backend `{runtime_backend}` does not yet advertise explicit tensor-collective mesh eligibility"
-        ),
-    }
 }
 
 /// Stable refusal code for one remote whole-request candidate.
@@ -491,7 +442,7 @@ pub fn schedule_remote_whole_request(
     let topology_digest = state.topology_digest();
     let artifact_residency_digest = Some(state.artifact_residency_digest());
     let communication_eligibility =
-        remote_dispatch_communication_eligibility(request.requested_backend.as_str());
+        remote_dispatch_communication_eligibility(&request.capability_profile);
     let Some(scheduler_membership) = state.memberships().get(&request.scheduler_node_id) else {
         return Err(Box::new(WholeRequestSchedulingFailure {
             code: WholeRequestSchedulingFailureCode::SchedulerNodeUnknown,
@@ -1345,8 +1296,8 @@ mod tests {
     use std::io::Error;
 
     use psionic_runtime::{
-        ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ExecutionTopologyKind,
+        ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterExecutionCapabilityProfile,
+        ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind,
     };
 
     use crate::{
@@ -1418,6 +1369,19 @@ mod tests {
             .with_cpu_logical_cores(16)
             .with_accelerator_count(1)
             .with_backend_readiness("metal", ClusterBackendReadinessStatus::Ready)
+    }
+
+    fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_detail(
+                "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
+            )
+    }
+
+    fn metal_cluster_blocked_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("metal")
+            .with_detail(super::METAL_CLUSTER_BLOCK_DETAIL)
     }
 
     fn sample_command_authorization(
@@ -1537,6 +1501,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .with_minimum_free_memory_bytes(16 * 1024 * 1024 * 1024)
             .requiring_accelerator()
@@ -1653,6 +1618,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1");
 
         let WholeRequestClusterSchedule {
@@ -1698,6 +1664,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .with_exo_placement_hint(
                 ExoPlacementHint::new(
@@ -1760,6 +1727,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .with_exo_placement_hint(ExoPlacementHint::new(
                 sample_cluster_id(),
@@ -1845,6 +1813,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .requiring_accelerator();
 
@@ -1897,6 +1866,7 @@ mod tests {
 
         let state = ClusterState::from_snapshot(snapshot);
         let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
             .with_served_artifact_digest("artifact-1")
             .with_minimum_free_memory_bytes(16 * 1024 * 1024 * 1024)
             .requiring_accelerator();
@@ -1939,7 +1909,8 @@ mod tests {
             ready_metal_telemetry("worker-b", 48 * 1024 * 1024 * 1024),
         );
         let state = ClusterState::from_snapshot(snapshot);
-        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "metal");
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "metal")
+            .with_capability_profile(metal_cluster_blocked_capability_profile());
 
         let failure = schedule_remote_whole_request(&state, &request)
             .expect_err("metal cluster dispatch should remain explicitly refused");
