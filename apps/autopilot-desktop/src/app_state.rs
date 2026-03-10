@@ -886,9 +886,22 @@ pub struct AutopilotTokenUsage {
     pub output_tokens: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AutopilotTurnPlanStep {
     pub step: String,
     pub status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotPlanArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub explanation: Option<String>,
+    pub steps: Vec<AutopilotTurnPlanStep>,
+    pub workspace_cwd: Option<String>,
+    pub workspace_path: Option<String>,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1173,6 +1186,7 @@ pub struct AutopilotChatState {
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
+    thread_plan_artifacts: std::collections::HashMap<String, AutopilotPlanArtifact>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
     thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
@@ -1241,6 +1255,7 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             thread_transcript_cache: std::collections::HashMap::new(),
+            thread_plan_artifacts: std::collections::HashMap::new(),
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
             thread_submission_history: std::collections::HashMap::new(),
@@ -1378,6 +1393,12 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .and_then(|metadata| metadata.cwd.as_deref())
+    }
+
+    pub fn active_plan_artifact(&self) -> Option<&AutopilotPlanArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_plan_artifacts.get(thread_id))
     }
 
     pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
@@ -2470,6 +2491,7 @@ impl AutopilotChatState {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
         self.thread_transcript_cache.remove(thread_id);
+        self.thread_plan_artifacts.remove(thread_id);
         self.thread_composer_drafts.remove(thread_id);
         self.thread_submission_history.remove(thread_id);
         self.pending_turn_metadata
@@ -2541,6 +2563,9 @@ impl AutopilotChatState {
         self.turn_timeline.clear();
         self.transcript_selection = None;
         self.last_error = None;
+        if !thread_id.is_empty() {
+            self.restore_active_plan_state(thread_id);
+        }
     }
 
     pub fn set_active_thread_transcript(
@@ -3381,6 +3406,172 @@ impl AutopilotChatState {
     pub fn set_turn_plan(&mut self, explanation: Option<String>, plan: Vec<AutopilotTurnPlanStep>) {
         self.turn_plan_explanation = explanation;
         self.turn_plan = plan;
+    }
+
+    pub fn clear_plan_artifact(&mut self, thread_id: &str) {
+        self.thread_plan_artifacts.remove(thread_id);
+        if self.is_active_thread(thread_id) {
+            self.turn_plan_explanation = None;
+            self.turn_plan.clear();
+        }
+    }
+
+    pub fn set_plan_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        explanation: Option<String>,
+        steps: Vec<AutopilotTurnPlanStep>,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        let metadata = self.thread_metadata.get(thread_id);
+        let artifact = AutopilotPlanArtifact {
+            thread_id: thread_id.to_string(),
+            source_turn_id: source_turn_id.into(),
+            explanation,
+            steps,
+            workspace_cwd: metadata.and_then(|value| value.cwd.clone()),
+            workspace_path: metadata.and_then(|value| value.path.clone()),
+            updated_at_epoch_ms,
+            restored_from_thread_read,
+        };
+        if self.is_active_thread(thread_id) {
+            self.turn_plan_explanation = artifact.explanation.clone();
+            self.turn_plan = artifact.steps.clone();
+        }
+        self.thread_plan_artifacts
+            .insert(thread_id.to_string(), artifact);
+    }
+
+    pub fn restore_plan_artifact_from_text(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        plan_text: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let (explanation, steps) = Self::parse_plan_artifact_text(plan_text);
+        if explanation.is_none() && steps.is_empty() {
+            self.clear_plan_artifact(thread_id);
+            return;
+        }
+        self.set_plan_artifact(
+            thread_id,
+            source_turn_id,
+            explanation,
+            steps,
+            updated_at_epoch_ms,
+            true,
+        );
+    }
+
+    fn restore_active_plan_state(&mut self, thread_id: &str) {
+        let Some(artifact) = self.thread_plan_artifacts.get(thread_id).cloned() else {
+            self.turn_plan_explanation = None;
+            self.turn_plan.clear();
+            return;
+        };
+        self.turn_plan_explanation = artifact.explanation;
+        self.turn_plan = artifact.steps;
+    }
+
+    fn parse_plan_artifact_text(plan_text: &str) -> (Option<String>, Vec<AutopilotTurnPlanStep>) {
+        let mut explanation_lines = Vec::new();
+        let mut steps = Vec::new();
+        let mut saw_step = false;
+        for raw_line in plan_text.lines() {
+            let trimmed = raw_line.trim();
+            if trimmed.is_empty() {
+                if !saw_step && !explanation_lines.is_empty() {
+                    explanation_lines.push(String::new());
+                }
+                continue;
+            }
+            if let Some(step) = Self::parse_plan_step_line(trimmed) {
+                saw_step = true;
+                steps.push(step);
+            } else if !saw_step {
+                explanation_lines.push(trimmed.to_string());
+            }
+        }
+        if steps.is_empty() {
+            steps = plan_text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(|line| AutopilotTurnPlanStep {
+                    step: line.to_string(),
+                    status: "pending".to_string(),
+                })
+                .collect();
+            explanation_lines.clear();
+        }
+        let explanation = if explanation_lines.is_empty() {
+            None
+        } else {
+            Some(explanation_lines.join("\n").trim().to_string())
+        }
+        .filter(|value| !value.is_empty());
+        (explanation, steps)
+    }
+
+    fn parse_plan_step_line(line: &str) -> Option<AutopilotTurnPlanStep> {
+        let bracket_prefixes = [
+            ("[x] ", "completed"),
+            ("[X] ", "completed"),
+            ("[~] ", "inProgress"),
+            ("[-] ", "inProgress"),
+            ("[ ] ", "pending"),
+        ];
+        for (prefix, status) in bracket_prefixes {
+            if let Some(step) = line.strip_prefix(prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: status.to_string(),
+                    });
+                }
+            }
+            let bullet_prefix = format!("- {prefix}");
+            if let Some(step) = line.strip_prefix(&bullet_prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: status.to_string(),
+                    });
+                }
+            }
+        }
+
+        for prefix in ["- ", "* ", "+ "] {
+            if let Some(step) = line.strip_prefix(prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: "pending".to_string(),
+                    });
+                }
+            }
+        }
+
+        let digit_count = line.chars().take_while(|ch| ch.is_ascii_digit()).count();
+        if digit_count > 0 {
+            let suffix = line[digit_count..].trim_start();
+            if let Some(step) = suffix
+                .strip_prefix('.')
+                .or_else(|| suffix.strip_prefix(')'))
+                .map(str::trim)
+                && !step.is_empty()
+            {
+                return Some(AutopilotTurnPlanStep {
+                    step: step.to_string(),
+                    status: "pending".to_string(),
+                });
+            }
+        }
+
+        None
     }
 
     pub fn set_turn_diff(&mut self, diff: Option<String>) {
@@ -6498,11 +6689,11 @@ mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
-        AutopilotMessageStatus, AutopilotRole, BuyerResolutionMode, BuyerResolutionReason,
-        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
-        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        AutopilotMessageStatus, AutopilotRole, AutopilotTurnPlanStep, BuyerResolutionMode,
+        BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap,
+        CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection,
+        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
+        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
         EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
         JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
@@ -7833,6 +8024,109 @@ mod tests {
 
         assert_eq!(selected.thread_id, "thread-b");
         assert!(chat.messages.is_empty());
+    }
+
+    #[test]
+    fn chat_state_tracks_plan_artifacts_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: Some("/tmp/b.jsonl".to_string()),
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
+            },
+        ]);
+
+        chat.set_plan_artifact(
+            "thread-a",
+            "turn-a",
+            Some("Plan A".to_string()),
+            vec![AutopilotTurnPlanStep {
+                step: "Do A".to_string(),
+                status: "pending".to_string(),
+            }],
+            1_700_000_100,
+            false,
+        );
+        assert_eq!(
+            chat.active_plan_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-a")
+        );
+
+        let selected_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        let _ = chat.select_thread_by_index(selected_index);
+        assert!(chat.active_plan_artifact().is_none());
+
+        chat.set_plan_artifact(
+            "thread-b",
+            "turn-b",
+            Some("Plan B".to_string()),
+            vec![AutopilotTurnPlanStep {
+                step: "Do B".to_string(),
+                status: "inProgress".to_string(),
+            }],
+            1_700_000_300,
+            false,
+        );
+        assert_eq!(
+            chat.active_plan_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-b")
+        );
+        assert_eq!(chat.turn_plan_explanation.as_deref(), Some("Plan B"));
+    }
+
+    #[test]
+    fn chat_state_restores_plan_artifact_from_thread_read_text() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.restore_plan_artifact_from_text(
+            "thread-a",
+            "turn-a",
+            "Plan the rollout.\n\n- [ ] add tests\n- [x] update docs",
+            1_700_000_100,
+        );
+
+        let artifact = chat.active_plan_artifact().expect("artifact");
+        assert_eq!(artifact.explanation.as_deref(), Some("Plan the rollout."));
+        assert_eq!(artifact.steps.len(), 2);
+        assert_eq!(artifact.steps[0].status, "pending");
+        assert_eq!(artifact.steps[1].status, "completed");
+        assert!(artifact.restored_from_thread_read);
+        assert_eq!(artifact.workspace_cwd.as_deref(), Some("/tmp/a"));
     }
 
     #[test]

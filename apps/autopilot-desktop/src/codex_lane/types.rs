@@ -41,6 +41,12 @@ pub struct CodexThreadTranscriptMessage {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadPlanArtifact {
+    pub turn_id: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexModelCatalogEntry {
     pub model: String,
     pub display_name: String,

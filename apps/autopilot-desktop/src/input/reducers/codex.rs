@@ -1180,8 +1180,27 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             CodexLaneNotification::ThreadReadLoaded {
                 thread_id,
                 messages,
+                latest_plan,
             } => {
                 state.autopilot_chat.remember_thread(thread_id.clone());
+                if let Some(latest_plan) = latest_plan {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    state.autopilot_chat.restore_plan_artifact_from_text(
+                        &thread_id,
+                        latest_plan.turn_id,
+                        &latest_plan.text,
+                        updated_at_epoch_ms,
+                    );
+                } else {
+                    state.autopilot_chat.clear_plan_artifact(&thread_id);
+                }
                 if state.autopilot_chat.is_active_thread(&thread_id) {
                     let transcript = messages
                         .into_iter()
@@ -1758,23 +1777,26 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
             CodexLaneNotification::TurnPlanUpdated {
                 thread_id,
+                turn_id,
                 explanation,
                 plan,
-                ..
             } => {
                 let thread_id = resolve_thread_id(state, thread_id);
                 state.autopilot_chat.remember_thread(thread_id.clone());
-                if state.autopilot_chat.is_active_thread(&thread_id) {
-                    state.autopilot_chat.set_turn_plan(
-                        explanation,
-                        plan.into_iter()
-                            .map(|step| crate::app_state::AutopilotTurnPlanStep {
-                                step: step.step,
-                                status: step.status,
-                            })
-                            .collect(),
-                    );
-                }
+                let updated_at_epoch_ms = super::super::actions::current_epoch_millis();
+                state.autopilot_chat.set_plan_artifact(
+                    &thread_id,
+                    turn_id,
+                    explanation,
+                    plan.into_iter()
+                        .map(|step| crate::app_state::AutopilotTurnPlanStep {
+                            step: step.step,
+                            status: step.status,
+                        })
+                        .collect(),
+                    updated_at_epoch_ms,
+                    false,
+                );
             }
             CodexLaneNotification::ThreadTokenUsageUpdated {
                 thread_id,

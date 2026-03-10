@@ -4,8 +4,8 @@ use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
-    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
-    AutopilotProgressRow, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
+    AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotPlanArtifact,
+    AutopilotProgressBlock, AutopilotProgressRow, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
     ChatTranscriptSelectionState, DirectMessageMessageProjection, DirectMessageRoomProjection,
     ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
     ManagedChatMessageProjection, PaneKind, RenderState,
@@ -17,7 +17,7 @@ use crate::pane_system::{
     chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
     chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
     chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_interrupt_button_bounds, chat_new_thread_button_bounds,
+    chat_implement_plan_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
     chat_refresh_threads_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
     chat_thread_action_fork_button_bounds, chat_thread_action_reload_button_bounds,
@@ -1734,6 +1734,57 @@ fn active_thread_preview_line(autopilot_chat: &AutopilotChatState) -> Option<Str
     Some(compact_display_token(preview, 84))
 }
 
+fn plan_step_status_label(status: &str) -> &'static str {
+    match status {
+        "completed" => "done",
+        "inProgress" => "doing",
+        _ => "next",
+    }
+}
+
+fn active_plan_meta_line(artifact: &AutopilotPlanArtifact) -> String {
+    let mut parts = vec![format!(
+        "turn:{}",
+        compact_display_token(artifact.source_turn_id.as_str(), 18)
+    )];
+    if let Some(workspace) = artifact.workspace_cwd.as_deref() {
+        parts.push(format!(
+            "workspace:{}",
+            compact_display_token(workspace, 28)
+        ));
+    } else if let Some(path) = artifact.workspace_path.as_deref() {
+        parts.push(format!("path:{}", compact_display_token(path, 28)));
+    }
+    if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    if artifact.restored_from_thread_read {
+        parts.push("restored".to_string());
+    }
+    parts.join("  •  ")
+}
+
+fn active_plan_markdown_source(artifact: &AutopilotPlanArtifact) -> String {
+    let mut lines = Vec::new();
+    if let Some(explanation) = artifact.explanation.as_deref() {
+        if !explanation.trim().is_empty() {
+            lines.push(explanation.trim().to_string());
+            lines.push(String::new());
+        }
+    }
+    for step in artifact.steps.iter().take(6) {
+        lines.push(format!(
+            "- **{}** {}",
+            plan_step_status_label(step.status.as_str()),
+            step.step.trim()
+        ));
+    }
+    if artifact.steps.len() > 6 {
+        lines.push(format!("_{} more steps saved_", artifact.steps.len() - 6));
+    }
+    lines.join("\n")
+}
+
 fn format_thread_timestamp(raw: i64) -> Option<String> {
     if raw <= 0 {
         return None;
@@ -2674,6 +2725,18 @@ fn paint_chat_shell(
                 theme::status::WARNING,
                 paint,
             );
+            if autopilot_chat.active_plan_artifact().is_some() {
+                paint_header_chip(
+                    chat_implement_plan_button_bounds(content_bounds),
+                    if autopilot_chat.active_turn_id.is_some() {
+                        "Steer plan"
+                    } else {
+                        "Implement plan"
+                    },
+                    theme::status::SUCCESS,
+                    paint,
+                );
+            }
         }
         ChatBrowseMode::Managed => {
             let status_text = managed_status_text(autopilot_chat);
@@ -3052,6 +3115,40 @@ pub fn paint(
             }
         }
         ChatBrowseMode::Autopilot => {
+            if let Some(plan_artifact) = autopilot_chat.active_plan_artifact() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[latest plan]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::status::SUCCESS,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_plan_meta_line(plan_artifact),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let plan_markdown = active_plan_markdown_source(plan_artifact);
+                if !plan_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&plan_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if autopilot_chat.messages.is_empty() {
                 let empty_state = "Ask me to do anything...";
                 let empty_state_font_size = 18.0;

@@ -36,7 +36,10 @@ mod router;
 mod session;
 mod types;
 
-use normalizer::{extract_thread_transcript_messages, normalize_notification, thread_status_label};
+use normalizer::{
+    extract_latest_thread_plan_artifact, extract_thread_transcript_messages,
+    normalize_notification, thread_status_label,
+};
 use router::run_codex_lane_loop;
 use session::{
     account_summary, fetch_model_catalog, fetch_model_catalog_entries, is_disconnect_error,
@@ -588,6 +591,7 @@ pub enum CodexLaneNotification {
     ThreadReadLoaded {
         thread_id: String,
         messages: Vec<CodexThreadTranscriptMessage>,
+        latest_plan: Option<CodexThreadPlanArtifact>,
     },
     ThreadSelected {
         thread_id: String,
@@ -1281,11 +1285,13 @@ impl CodexLaneState {
                 let response = runtime.block_on(client.thread_read(params))?;
                 let thread_id = response.thread.id.clone();
                 let messages = extract_thread_transcript_messages(&response.thread);
+                let latest_plan = extract_latest_thread_plan_artifact(&response.thread);
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
                     notification: Some(CodexLaneNotification::ThreadReadLoaded {
                         thread_id,
                         messages,
+                        latest_plan,
                     }),
                 })
             }

@@ -2569,6 +2569,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatCycleApprovalMode => run_chat_cycle_approval_mode_action(state),
         PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
+        PaneHitAction::ChatImplementPlan => run_chat_implement_plan_action(state),
         PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
         PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
         PaneHitAction::ChatCycleSourceFilter => run_chat_cycle_source_filter_action(state),

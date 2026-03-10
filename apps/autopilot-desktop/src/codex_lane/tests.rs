@@ -1,8 +1,8 @@
 use super::{
     CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
     CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime, CodexLaneUpdate,
-    CodexLaneWorker, CodexThreadTranscriptRole, extract_thread_transcript_messages,
-    normalize_notification,
+    CodexLaneWorker, CodexThreadTranscriptRole, extract_latest_thread_plan_artifact,
+    extract_thread_transcript_messages, normalize_notification,
 };
 
 use std::collections::HashSet;
@@ -1148,6 +1148,40 @@ fn pre_materialization_thread_read_errors_are_benign() {
     assert!(!super::is_pre_materialization_thread_read_error(
         "App-server error -32600: thread/read failed for another reason"
     ));
+}
+
+#[test]
+fn thread_read_extracts_latest_plan_artifact() {
+    let thread = codex_client::ThreadSnapshot {
+        id: "thread-1".to_string(),
+        preview: String::new(),
+        turns: vec![
+            codex_client::ThreadTurn {
+                id: "turn-older".to_string(),
+                items: vec![json!({
+                    "type": "plan",
+                    "text": "older plan"
+                })],
+            },
+            codex_client::ThreadTurn {
+                id: "turn-latest".to_string(),
+                items: vec![
+                    json!({
+                        "type": "agentMessage",
+                        "text": "done"
+                    }),
+                    json!({
+                        "type": "plan",
+                        "text": "latest plan"
+                    }),
+                ],
+            },
+        ],
+    };
+
+    let artifact = extract_latest_thread_plan_artifact(&thread).expect("plan artifact");
+    assert_eq!(artifact.turn_id, "turn-latest");
+    assert_eq!(artifact.text, "latest plan");
 }
 
 #[test]

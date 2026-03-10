@@ -3,7 +3,7 @@
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-4` on `main`.
+> turn-input surfaces on `main`, and after landing `CX-5` on `main`.
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -163,6 +163,11 @@ than replace:
   state and submission history are restored across thread switches, and sending
   while a turn is active uses `turn/steer` so queued follow-up prompts keep the
   live task moving instead of forcing a second pending turn
+- `CX-5` landed on `main`: the desktop now keeps the latest per-thread plan
+  artifact with explanation, steps, source turn id, timestamp, and workspace
+  context; restores it from `thread/read` plan items after reconnect; renders a
+  compact plan summary in chat; and exposes an explicit implement action that
+  turns the saved plan into a same-thread follow-up or steer prompt
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -177,8 +182,8 @@ These are the current gaps that matter most:
 - we do not expose many already-supported lane capabilities as a coherent
   operator workflow in desktop chat; this is especially true for session
   controls, status, and coding-shell actions
-- plans and diffs are live state, not durable first-class Codex artifacts, and
-  we do not have manual compact or review-centered artifact UX
+- review/compact and diff state are still not durable first-class Codex
+  artifacts, and we do not yet have review-centered artifact UX
 - we do not yet have an explicit local replacement for the main Codex TUI
   session controls such as model/effort/personality/permission selection and
   session-status visibility inside the main coding flow
@@ -226,7 +231,7 @@ Status:
 
 Next:
 
-- `CX-5` is now the first open execution item for Codex replacement work
+- `CX-6` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -320,6 +325,19 @@ Acceptance:
 ### Phase B. Coding Artifact Parity
 
 ### CX-5. Durable Proposed-Plan Artifacts And Implement Handoff ([#3362](https://github.com/OpenAgentsInc/openagents/issues/3362))
+
+Status:
+
+- shipped on `main`
+- the latest plan is now stored per thread as a desktop-owned artifact with
+  explanation, structured steps, source turn id, timestamp, and workspace
+  context
+- thread selection and `thread/read` restore the latest saved plan so the
+  artifact survives reconnects and thread history reloads instead of living only
+  in transient turn-stream state
+- the chat pane now shows a compact latest-plan summary and exposes an explicit
+  `Implement plan` action that converts the saved artifact into a same-thread
+  follow-up turn or active-turn steer prompt
 
 Scope:
 
