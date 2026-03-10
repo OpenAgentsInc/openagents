@@ -76,8 +76,8 @@
 > remains in the low `171 tok/s` class for Psionic on the exact same contract,
 > and the current 120B hybrid host-backed floor on the exact contract remains
 > in the old `2 / 6 / 10 tok/s` shape on clean reruns: the current kept branch
-> is reproducing about `2.24 tok/s` cold, `6.45-6.47 tok/s` warm-non-hit, and
-> `10.41-10.50 tok/s` prompt-cache-hit on
+> is reproducing about `2.24-2.26 tok/s` cold, `6.43-6.47 tok/s`
+> warm-non-hit, and `10.41-10.55 tok/s` prompt-cache-hit on
 > `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`. The next
 > 120B work should stay on `#3345`: the generation-only hidden-state
 > residency checkpoint and the stateless host-KV-materialization skip are now
@@ -763,7 +763,7 @@ state:
 | 87 | `GPT-OSS-PERF-6G` | [#3296](https://github.com/OpenAgentsInc/openagents/issues/3296) | Closed | Closed after parity was already reached on the tracked benchmark without needing an attention-dispatch rewrite. Keep `fattn.cu` alignment as future headroom work, not as the current blocker for this host contract. |
 | 88 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Closed | Closed after the benchmark script itself was made contract-clean on both servers and Psionic still measured ahead of the local `llama.cpp` control with the same visible output on the exact prompt-cache-hit lane. |
 | 89 | `GPT-OSS-120B-PERF-1` | [#3338](https://github.com/OpenAgentsInc/openagents/issues/3338) | Closed | Closed after direct registered-host expert execution and registered-host cache-fill copies both regressed the 120B prompt-cache-hit lane into the `6.4 tok/s` class on this host. Keep it only as a ruled-out history marker. |
-| 90 | `GPT-OSS-120B-PERF-2` | [#3345](https://github.com/OpenAgentsInc/openagents/issues/3345) | Open | The active NVIDIA throughput issue on this host is still the hybrid 120B path. The kept branch now includes per-layer selected4 cache telemetry plus a profiled 120B-specific expanded-slot layout, and fresh clean reruns keep the truthful exact-contract floor in about the `2.24 tok/s` cold, `6.45-6.47 tok/s` warm-non-hit, and `10.41-10.50 tok/s` prompt-cache-hit band. The next honest direction is still the remaining host-to-device selected4 expert staging inside the host-backed MoE lane. |
+| 90 | `GPT-OSS-120B-PERF-2` | [#3345](https://github.com/OpenAgentsInc/openagents/issues/3345) | Open | The active NVIDIA throughput issue on this host is still the hybrid 120B path. The kept branch now includes per-layer selected4 cache telemetry plus a profiled 120B-specific cache layout: `6` slots on the measured expanded set and `7` slots on hot layers `23, 25, 28, 29`. Fresh clean reruns keep the truthful exact-contract floor in about the `2.24-2.26 tok/s` cold, `6.43-6.47 tok/s` warm-non-hit, and `10.41-10.55 tok/s` prompt-cache-hit band. The next honest direction is still the remaining host-to-device selected4 expert staging inside the host-backed MoE lane. |
 | 91 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
 | 92 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
 | 93 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
@@ -806,8 +806,8 @@ baseline on `main` is:
 - the 20B NVIDIA parity chain is closed, but the active remaining NVIDIA work
   is now the hybrid 120B path under `#3345`
   - current truthful 120B floor on the exact contract is still about
-    `2.24 tok/s` cold, `6.45-6.47 tok/s` warm-non-hit, and
-    `10.41-10.50 tok/s` prompt-cache-hit
+    `2.24-2.26 tok/s` cold, `6.43-6.47 tok/s` warm-non-hit, and
+    `10.41-10.55 tok/s` prompt-cache-hit
   - quick cache-shape retunes around the current kept branch were already
     measured and rejected: `7` expanded slots on the last `4` layers fell to
     `9.89 tok/s`, and `6` expanded slots on the last `8` layers fell to
@@ -1725,7 +1725,7 @@ The right near-term target is smaller:
   local `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf` path.
 - Current truthful 120B floor on the exact cold / warm-non-hit /
   prompt-cache-hit contract on the current kept branch:
-  Psionic `2.24 tok/s`, `6.45-6.47 tok/s`, and `10.41-10.50 tok/s`.
+  Psionic `2.24-2.26 tok/s`, `6.43-6.47 tok/s`, and `10.41-10.55 tok/s`.
 - Current kept implementation direction:
   the hybrid 120B path already keeps more of feed-forward prep and decode
   attention on CUDA, trims single-expert cache repacking, and reuses hybrid
@@ -1810,3 +1810,9 @@ The right near-term target is smaller:
   ratio-guided expanded-layer swap regressed to about
   `2.23 / 6.41 / 10.45 tok/s`, and a more aggressive `0/5/6/7` slot-skew
   layout failed on the first cold request and was reverted immediately.
+- Newest kept cache-layout follow-up after those dead ends:
+  a narrow hot-layer bump now keeps `7` selected4 cache slots on layers
+  `23, 25, 28, 29`, while the earlier profiled expanded set stays at `6`
+  slots and the remaining hybrid layers stay at `5`. On the exact contract,
+  that nudged the kept 120B measurement to about
+  `2.26 / 6.43 / 10.55 tok/s`.
