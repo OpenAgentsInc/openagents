@@ -1672,6 +1672,7 @@ mod tests {
                 node_id: crate::NodeId::random(),
                 node_epoch: NodeEpoch::initial(),
                 role,
+                auth_public_key: String::new(),
             },
             Some(SocketAddr::from(([127, 0, 0, 1], port))),
             status,

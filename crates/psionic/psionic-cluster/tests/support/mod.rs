@@ -270,6 +270,7 @@ pub fn ready_membership(
             node_id: NodeId::new(node_id),
             node_epoch: NodeEpoch::initial(),
             role,
+            auth_public_key: String::new(),
         },
         None,
         ClusterMembershipStatus::Ready,
