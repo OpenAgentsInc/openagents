@@ -1345,9 +1345,9 @@ Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.24-2.26 tok/s`
-  - `6.43-6.51 tok/s`
-  - `10.41-10.57 tok/s`
+  - `2.24-2.30 tok/s`
+  - `6.43-6.64 tok/s`
+  - `10.41-10.75 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1436,6 +1436,22 @@ What the newest kept checkpoint proved:
   previous-request protected-expert eviction policy landed around
   `2.26 / 6.40 / 10.42 tok/s`, and simply shrinking the benchmark context to
   `512` was effectively flat at about `2.25 / 6.48 / 10.48 tok/s`
+- the newest kept follow-up after that came from the per-layer cache telemetry,
+  not from another abstract slot heuristic:
+  one prompt-cache-hit trace showed the last hybrid MoE layer still had no
+  layer cache at all. It reported about `10.34 GB` of staged bytes with zero
+  cache hits or misses, which means it was falling through the no-cache path
+  and restaging every selected expert on every decode step
+- the kept fix rebalanced a small amount of slot budget away from low-yield
+  layers `14, 15, 19, 20, 32`, leaving them at `4` slots, while preserving the
+  existing hot and expanded layers and restoring a real `5`-slot cache on layer
+  `35`
+- that checkpoint moved the exact 120B contract to about
+  `2.30 / 6.64 / 10.75 tok/s`
+- the debug rerun on that kept branch confirmed the structural fix:
+  layer `35` dropped to about `2.03 GB` of staged bytes and now shows real
+  cache reuse (`43` hits / `153` misses) instead of the earlier uncached
+  `10.34 GB` no-cache behavior
 
 What the remaining gap now points to:
 
@@ -1496,16 +1512,13 @@ What the remaining gap now points to:
   tweaks or scratch-copy rewrites blindly; those are now ruled-out branches on
   this host.
 - updated concrete next step:
-  the next credible engineering move is no longer another slot-layout tweak.
-  Psionic is missing the same kind of CUDA host-registration / host-buffer
-  alias path that `llama.cpp` uses for mmap-backed weights. The first tractable
-  version is narrower than a full kernel port:
-  add a CUDA-visible alias for existing mmap-backed GGUF expert pages, use it
-  first for the full host-backed down-expert tensor on 120B, and switch the
-  hybrid down projection onto the existing ids-driven grouped expert kernel
-  with real expert ids so one large staging leg disappears before tackling the
-  larger gate/up packed-kernel gap. That follow-up is now tracked explicitly in
-  `#3360`.
+  the tail-layer restore proves there was still real cache-allocation waste to
+  recover, but it does not change the main missing substrate. The next
+  credible engineering move is still the same narrow `#3360` target:
+  eliminate one of the large selected4 staging legs, starting with the full
+  host-backed down-expert tensor, so the existing ids-driven grouped expert
+  down path can run without repacking those selected down weights every step
+  before tackling the larger gate/up packed-kernel gap.
 
 Relevant `llama.cpp` references for that next step:
 
