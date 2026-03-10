@@ -1,4 +1,5 @@
 use reqwest::Url;
+use std::path::{Path, PathBuf};
 use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
@@ -12,7 +13,11 @@ use crate::app_state::{
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
     CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_composer_height_for_value,
-    chat_composer_input_bounds_with_height, chat_new_thread_button_bounds, chat_send_button_bounds,
+    chat_composer_input_bounds_with_height, chat_cycle_approval_mode_button_bounds,
+    chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
+    chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
+    chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
+    chat_interrupt_button_bounds, chat_new_thread_button_bounds, chat_send_button_bounds,
     chat_thread_rail_bounds, chat_thread_row_bounds, chat_transcript_body_bounds_with_height,
     chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
 };
@@ -1690,6 +1695,155 @@ fn active_thread_subtitle(
     )
 }
 
+fn auth_summary_label(account_summary: &str) -> String {
+    let trimmed = account_summary.trim();
+    if trimmed.is_empty() || matches!(trimmed, "unknown" | "none") {
+        return "auth:unknown".to_string();
+    }
+    if trimmed == "apiKey" {
+        return "auth:api-key".to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix("chatgpt:") {
+        let mut parts = rest.split(':');
+        let email = parts.next().unwrap_or("chatgpt");
+        let plan = parts.next().unwrap_or("chatgpt");
+        return format!(
+            "auth:{}:{}",
+            compact_display_token(email, 16),
+            plan.to_ascii_lowercase()
+        );
+    }
+    format!("auth:{}", compact_display_token(trimmed, 22))
+}
+
+fn approval_mode_label(policy: codex_client::AskForApproval) -> &'static str {
+    match policy {
+        codex_client::AskForApproval::Never => "never",
+        codex_client::AskForApproval::OnFailure => "on-failure",
+        codex_client::AskForApproval::OnRequest => "on-request",
+        codex_client::AskForApproval::UnlessTrusted => "untrusted",
+        codex_client::AskForApproval::Reject { .. } => "reject",
+    }
+}
+
+fn sandbox_mode_label(mode: codex_client::SandboxMode) -> &'static str {
+    match mode {
+        codex_client::SandboxMode::DangerFullAccess => "danger-full",
+        codex_client::SandboxMode::WorkspaceWrite => "workspace-write",
+        codex_client::SandboxMode::ReadOnly => "read-only",
+    }
+}
+
+fn resolve_git_dir(start: &Path) -> Option<PathBuf> {
+    let mut cursor = Some(start);
+    while let Some(path) = cursor {
+        let dot_git = path.join(".git");
+        if dot_git.is_dir() {
+            return Some(dot_git);
+        }
+        if dot_git.is_file() {
+            let raw = std::fs::read_to_string(&dot_git).ok()?;
+            let git_dir = raw.trim().strip_prefix("gitdir:")?.trim();
+            let git_dir_path = PathBuf::from(git_dir);
+            return Some(if git_dir_path.is_absolute() {
+                git_dir_path
+            } else {
+                path.join(git_dir_path)
+            });
+        }
+        cursor = path.parent();
+    }
+    None
+}
+
+fn git_branch_for_cwd(cwd: &str) -> Option<String> {
+    let git_dir = resolve_git_dir(Path::new(cwd))?;
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    let trimmed = head.trim();
+    if let Some(reference) = trimmed.strip_prefix("ref:") {
+        return reference.trim().rsplit('/').next().map(ToOwned::to_owned);
+    }
+    (!trimmed.is_empty()).then(|| compact_display_token(trimmed, 12))
+}
+
+fn autopilot_status_lines(
+    autopilot_chat: &AutopilotChatState,
+    account_summary: &str,
+) -> [String; 2] {
+    let model = autopilot_chat
+        .selected_model_override()
+        .or_else(|| {
+            autopilot_chat
+                .active_thread_id
+                .as_ref()
+                .and_then(|thread_id| autopilot_chat.thread_metadata.get(thread_id))
+                .and_then(|metadata| metadata.model.clone())
+        })
+        .unwrap_or_else(|| autopilot_chat.current_model().to_string());
+    let effort = autopilot_chat.reasoning_effort.as_deref().unwrap_or("auto");
+    let cwd = autopilot_chat
+        .active_thread_cwd()
+        .map(|value| compact_display_token(value, 28))
+        .unwrap_or_else(|| "n/a".to_string());
+    let workspace = autopilot_chat
+        .active_thread_cwd()
+        .and_then(|value| Path::new(value).file_name().and_then(|name| name.to_str()))
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "workspace".to_string());
+    let branch = autopilot_chat
+        .active_thread_cwd()
+        .and_then(git_branch_for_cwd)
+        .unwrap_or_else(|| "n/a".to_string());
+    let permissions = format!(
+        "{}/{}",
+        approval_mode_label(autopilot_chat.approval_mode),
+        sandbox_mode_label(autopilot_chat.sandbox_mode)
+    );
+    let token_usage = autopilot_chat
+        .token_usage
+        .as_ref()
+        .map(|usage| {
+            format!(
+                "tok:{}+{}/{}",
+                usage.input_tokens, usage.cached_input_tokens, usage.output_tokens
+            )
+        })
+        .unwrap_or_else(|| "tok:n/a".to_string());
+    [
+        format!(
+            "model:{}  effort:{}  tier:{}  mode:{}",
+            compact_display_token(model.as_str(), 18),
+            effort,
+            autopilot_chat.service_tier.label(),
+            autopilot_chat.collaboration_mode.label()
+        ),
+        format!(
+            "ws:{}  cwd:{}  branch:{}  {}  perms:{}  {}",
+            compact_display_token(workspace.as_str(), 14),
+            cwd,
+            branch,
+            auth_summary_label(account_summary),
+            permissions,
+            token_usage
+        ),
+    ]
+}
+
+fn paint_header_chip(bounds: Bounds, label: &str, accent: wgpui::Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP.with_alpha(0.3))
+            .with_border(accent.with_alpha(0.42), 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 7.0),
+        9.0,
+        theme::text::PRIMARY,
+    ));
+}
+
 fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
     if autopilot_chat.chat_has_browseable_content() {
         let accents = [
@@ -1929,6 +2083,7 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
 fn paint_chat_shell(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    codex_account_summary: &str,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     paint: &mut PaintContext,
 ) {
@@ -1939,7 +2094,7 @@ fn paint_chat_shell(
         transcript_bounds.origin.x + 8.0,
         transcript_bounds.origin.y + 8.0,
         (transcript_bounds.size.width - 16.0).max(0.0),
-        52.0,
+        106.0,
     );
 
     paint.scene.draw_quad(
@@ -2064,12 +2219,11 @@ fn paint_chat_shell(
                 + (new_thread_bounds.size.width - paint.text.measure("+", 14.0)) * 0.5,
             new_thread_bounds.origin.y + (new_thread_bounds.size.height - 14.0) * 0.5 - 2.0,
         );
-        paint.scene.draw_text(paint.text.layout(
-            "+",
-            plus_origin,
-            14.0,
-            theme::text::PRIMARY,
-        ));
+        paint.scene.draw_text(
+            paint
+                .text
+                .layout("+", plus_origin, 14.0, theme::text::PRIMARY),
+        );
     }
     for (index, entry) in shell_channel_entries(autopilot_chat)
         .into_iter()
@@ -2158,26 +2312,111 @@ fn paint_chat_shell(
         10.0,
         theme::text::MUTED,
     ));
-    let status_text = match autopilot_chat.chat_browse_mode() {
-        ChatBrowseMode::Managed => managed_status_text(autopilot_chat),
-        ChatBrowseMode::DirectMessages => direct_status_text(autopilot_chat),
-        ChatBrowseMode::Autopilot => format!(
-            "{}  •  {} model{}",
-            autopilot_chat.connection_status.trim(),
-            autopilot_chat.models.len(),
-            if autopilot_chat.models.len() == 1 {
-                ""
-            } else {
-                "s"
-            }
-        ),
-    };
-    paint.scene.draw_text(paint.text.layout_mono(
-        &status_text,
-        Point::new(header_bounds.max_x() - 150.0, header_bounds.origin.y + 18.0),
-        10.0,
-        theme::accent::PRIMARY,
-    ));
+    match autopilot_chat.chat_browse_mode() {
+        ChatBrowseMode::Autopilot => {
+            let status_lines = autopilot_status_lines(autopilot_chat, codex_account_summary);
+            let status_x = header_bounds.origin.x + (header_bounds.size.width * 0.52);
+            paint.scene.draw_text(paint.text.layout_mono(
+                status_lines[0].as_str(),
+                Point::new(status_x, header_bounds.origin.y + 10.0),
+                9.0,
+                theme::accent::PRIMARY,
+            ));
+            paint.scene.draw_text(paint.text.layout_mono(
+                status_lines[1].as_str(),
+                Point::new(status_x, header_bounds.origin.y + 26.0),
+                9.0,
+                theme::text::MUTED,
+            ));
+
+            paint_header_chip(
+                chat_cycle_model_button_bounds(content_bounds),
+                format!(
+                    "Model {}",
+                    compact_display_token(autopilot_chat.current_model(), 16)
+                )
+                .as_str(),
+                theme::accent::PRIMARY,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_reasoning_effort_button_bounds(content_bounds),
+                format!(
+                    "Effort {}",
+                    autopilot_chat.reasoning_effort.as_deref().unwrap_or("auto")
+                )
+                .as_str(),
+                theme::status::INFO,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_service_tier_button_bounds(content_bounds),
+                format!("Tier {}", autopilot_chat.service_tier.label()).as_str(),
+                theme::status::SUCCESS,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_personality_button_bounds(content_bounds),
+                format!("Tone {}", autopilot_chat.personality.label()).as_str(),
+                theme::status::WARNING,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_collaboration_mode_button_bounds(content_bounds),
+                format!("Mode {}", autopilot_chat.collaboration_mode.label()).as_str(),
+                theme::accent::PRIMARY,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_approval_mode_button_bounds(content_bounds),
+                format!(
+                    "Approve {}",
+                    approval_mode_label(autopilot_chat.approval_mode)
+                )
+                .as_str(),
+                theme::status::ERROR,
+                paint,
+            );
+            paint_header_chip(
+                chat_cycle_sandbox_mode_button_bounds(content_bounds),
+                format!(
+                    "Sandbox {}",
+                    sandbox_mode_label(autopilot_chat.sandbox_mode)
+                )
+                .as_str(),
+                theme::text::MUTED,
+                paint,
+            );
+            paint_header_chip(
+                chat_interrupt_button_bounds(content_bounds),
+                if autopilot_chat.active_turn_id.is_some() {
+                    "Interrupt turn"
+                } else {
+                    "Interrupt"
+                },
+                theme::status::WARNING,
+                paint,
+            );
+        }
+        ChatBrowseMode::Managed => {
+            let status_text = managed_status_text(autopilot_chat);
+            paint.scene.draw_text(paint.text.layout_mono(
+                &status_text,
+                Point::new(header_bounds.max_x() - 190.0, header_bounds.origin.y + 18.0),
+                10.0,
+                theme::accent::PRIMARY,
+            ));
+        }
+        ChatBrowseMode::DirectMessages => {
+            let status_text = direct_status_text(autopilot_chat);
+            paint.scene.draw_text(paint.text.layout_mono(
+                &status_text,
+                Point::new(header_bounds.max_x() - 190.0, header_bounds.origin.y + 18.0),
+                10.0,
+                theme::accent::PRIMARY,
+            ));
+        }
+    }
 }
 
 pub fn transcript_message_byte_offset_at_point(
@@ -2311,6 +2550,7 @@ fn paint_message_selection_highlight(
 pub fn paint(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    codex_account_summary: &str,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
@@ -2322,7 +2562,13 @@ pub fn paint(
         chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let send_bounds = chat_send_button_bounds(content_bounds);
-    paint_chat_shell(content_bounds, autopilot_chat, spacetime_presence, paint);
+    paint_chat_shell(
+        content_bounds,
+        autopilot_chat,
+        codex_account_summary,
+        spacetime_presence,
+        paint,
+    );
 
     let transcript_scroll_clip =
         transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);

@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{AskForApproval, ReasoningEffort, ReasoningSummary, SandboxPolicy, TextElement};
+use super::{
+    AskForApproval, Personality, ReasoningEffort, ReasoningSummary, SandboxPolicy, ServiceTier,
+    TextElement, deserialize_double_option, serialize_double_option,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,12 +52,19 @@ pub struct TurnStartParams {
     pub sandbox_policy: Option<SandboxPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_double_option",
+        serialize_with = "serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub service_tier: Option<Option<ServiceTier>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ReasoningSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub personality: Option<String>,
+    pub personality: Option<Personality>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

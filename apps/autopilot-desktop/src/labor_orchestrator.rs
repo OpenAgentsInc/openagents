@@ -1453,6 +1453,10 @@ pub(crate) struct CodexTurnExecutionRequest {
     pub approval_policy: Option<AskForApproval>,
     pub sandbox_policy: Option<SandboxPolicy>,
     pub model: Option<String>,
+    pub service_tier: Option<Option<codex_client::ServiceTier>>,
+    pub effort: Option<codex_client::ReasoningEffort>,
+    pub personality: Option<codex_client::Personality>,
+    pub collaboration_mode: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -1472,11 +1476,12 @@ pub(crate) fn orchestrate_codex_turn(request: CodexTurnExecutionRequest) -> Code
         approval_policy: request.approval_policy,
         sandbox_policy: request.sandbox_policy,
         model: request.model,
-        effort: None,
+        service_tier: request.service_tier,
+        effort: request.effort,
         summary: None,
-        personality: None,
+        personality: request.personality,
         output_schema: None,
-        collaboration_mode: None,
+        collaboration_mode: request.collaboration_mode,
     });
 
     CodexTurnExecutionPlan {
@@ -1747,6 +1752,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: Some("gpt-5.2-codex".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         };
 
         let plan = orchestrate_codex_turn(request);
@@ -1815,6 +1824,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: None,
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         });
 
         assert!(plan.labor_binding.is_none());
@@ -1848,6 +1861,10 @@ mod tests {
                 exclude_slash_tmp: false,
             }),
             model: Some("gpt-5.2-codex".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         };
 
         let left = orchestrate_codex_turn(request.clone());
@@ -1886,6 +1903,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: Some("gpt-5.2-codex".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         })
         .labor_binding
         .expect("goal run should bind labor");
@@ -1964,6 +1985,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: Some("gpt-5.2-codex".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         })
         .labor_binding
         .expect("goal run should bind labor");

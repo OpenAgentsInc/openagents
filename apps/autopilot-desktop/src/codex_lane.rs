@@ -17,13 +17,14 @@ use codex_client::{
     FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
     FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
     InitializeCapabilities, InitializeParams, ListMcpServerStatusParams, LoginAccountParams,
-    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SandboxMode, SkillScope,
-    SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, SkillsRemoteReadParams,
-    SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams,
-    ThreadListParams, ThreadLoadedListParams, ThreadReadParams, ThreadRealtimeAppendTextParams,
-    ThreadRealtimeStartParams, ThreadRealtimeStopParams, ThreadResumeParams, ThreadRollbackParams,
-    ThreadSetNameParams, ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
-    ToolRequestUserInputParams, ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SandboxMode, ServiceTier,
+    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse,
+    SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams,
+    ThreadForkParams, ThreadListParams, ThreadLoadedListParams, ThreadReadParams,
+    ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
+    ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
+    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
     WindowsSandboxSetupStartParams,
 };
 use serde_json::Value;
@@ -54,6 +55,29 @@ fn default_opt_out_notification_methods() -> Vec<String> {
 
 fn is_pre_materialization_thread_read_error(message: &str) -> bool {
     message.contains("not materialized yet") && message.contains("includeTurns is unavailable")
+}
+
+fn sandbox_mode_from_policy(policy: Option<&codex_client::SandboxPolicy>) -> Option<SandboxMode> {
+    match policy {
+        Some(codex_client::SandboxPolicy::DangerFullAccess) => Some(SandboxMode::DangerFullAccess),
+        Some(codex_client::SandboxPolicy::ReadOnly)
+        | Some(codex_client::SandboxPolicy::ExternalSandbox { .. }) => Some(SandboxMode::ReadOnly),
+        Some(codex_client::SandboxPolicy::WorkspaceWrite { .. }) => {
+            Some(SandboxMode::WorkspaceWrite)
+        }
+        None => None,
+    }
+}
+
+fn reasoning_effort_label(
+    reasoning_effort: Option<codex_client::ReasoningEffort>,
+) -> Option<String> {
+    reasoning_effort.map(|value| {
+        serde_json::to_string(&value)
+            .unwrap_or_else(|_| "\"unknown\"".to_string())
+            .trim_matches('"')
+            .to_string()
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -566,6 +590,21 @@ pub enum CodexLaneNotification {
     },
     ThreadStarted {
         thread_id: String,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
+        service_tier: Option<ServiceTier>,
+        reasoning_effort: Option<String>,
+    },
+    ThreadSessionConfigured {
+        thread_id: String,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
+        service_tier: Option<ServiceTier>,
+        reasoning_effort: Option<String>,
     },
     ThreadStatusChanged {
         thread_id: String,
@@ -920,9 +959,11 @@ impl CodexLaneState {
             let thread_start = ThreadStartParams {
                 model: config.bootstrap_model.clone(),
                 model_provider: None,
+                service_tier: Some(None),
                 cwd: config.cwd.as_ref().map(|path| path.display().to_string()),
                 approval_policy: config.approval_policy,
                 sandbox: Some(SandboxMode::DangerFullAccess),
+                personality: None,
                 dynamic_tools: Some(
                     crate::openagents_dynamic_tools::openagents_dynamic_tool_specs(),
                 ),
@@ -946,6 +987,14 @@ impl CodexLaneState {
                     let _ = update_tx.send(CodexLaneUpdate::Notification(
                         CodexLaneNotification::ThreadStarted {
                             thread_id: thread_id.clone(),
+                            model: Some(response.model),
+                            cwd: response.cwd.map(|value| value.display().to_string()),
+                            approval_policy: response.approval_policy,
+                            sandbox_mode: sandbox_mode_from_policy(
+                                response.sandbox_policy.as_ref(),
+                            ),
+                            service_tier: response.service_tier,
+                            reasoning_effort: reasoning_effort_label(response.reasoning_effort),
                         },
                     ));
                     let _ = update_tx.send(CodexLaneUpdate::Notification(
@@ -1132,14 +1181,31 @@ impl CodexLaneState {
                 let thread_id = response.thread.id;
                 Ok(CodexCommandEffect {
                     active_thread_id: Some(thread_id.clone()),
-                    notification: Some(CodexLaneNotification::ThreadStarted { thread_id }),
+                    notification: Some(CodexLaneNotification::ThreadStarted {
+                        thread_id,
+                        model: Some(response.model),
+                        cwd: response.cwd.map(|value| value.display().to_string()),
+                        approval_policy: response.approval_policy,
+                        sandbox_mode: sandbox_mode_from_policy(response.sandbox_policy.as_ref()),
+                        service_tier: response.service_tier,
+                        reasoning_effort: reasoning_effort_label(response.reasoning_effort),
+                    }),
                 })
             }
             CodexLaneCommand::ThreadResume(params) => {
-                let _ = runtime.block_on(client.thread_resume(params))?;
+                let thread_id = params.thread_id.clone();
+                let response = runtime.block_on(client.thread_resume(params))?;
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: None,
+                    notification: Some(CodexLaneNotification::ThreadSessionConfigured {
+                        thread_id,
+                        model: Some(response.model),
+                        cwd: response.cwd.map(|value| value.display().to_string()),
+                        approval_policy: response.approval_policy,
+                        sandbox_mode: sandbox_mode_from_policy(response.sandbox_policy.as_ref()),
+                        service_tier: response.service_tier,
+                        reasoning_effort: reasoning_effort_label(response.reasoning_effort),
+                    }),
                 })
             }
             CodexLaneCommand::ThreadFork(params) => {

@@ -5742,6 +5742,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding

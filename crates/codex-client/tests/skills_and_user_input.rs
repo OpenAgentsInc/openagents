@@ -3,9 +3,10 @@
 use std::path::PathBuf;
 
 use codex_client::{
-    AppServerClient, ClientInfo, InitializeCapabilities, InitializeParams, ModelListParams,
-    SkillScope, SkillsConfigWriteParams, SkillsListExtraRootsForCwd, SkillsListParams,
-    ThreadListParams, ThreadSortKey, ThreadSourceKind, TurnStartParams, UserInput,
+    AppServerClient, AskForApproval, ClientInfo, InitializeCapabilities, InitializeParams,
+    ModelListParams, Personality, SandboxMode, ServiceTier, SkillScope, SkillsConfigWriteParams,
+    SkillsListExtraRootsForCwd, SkillsListParams, ThreadListParams, ThreadSortKey,
+    ThreadSourceKind, ThreadStartParams, TurnStartParams, UserInput,
 };
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -101,6 +102,54 @@ fn thread_list_and_model_list_params_include_new_filters() {
     };
     let model_value = serde_json::to_value(model_list).expect("model list params should serialize");
     assert_eq!(model_value["includeHidden"], Value::Bool(true));
+}
+
+#[test]
+fn session_override_params_serialize_service_tier_and_personality() {
+    let thread_params = ThreadStartParams {
+        model: Some("gpt-5.2-codex".to_string()),
+        model_provider: None,
+        service_tier: Some(Some(ServiceTier::Fast)),
+        cwd: Some("/repo".to_string()),
+        approval_policy: Some(AskForApproval::Never),
+        sandbox: Some(SandboxMode::DangerFullAccess),
+        personality: Some(Personality::Pragmatic),
+        dynamic_tools: None,
+    };
+    let thread_value = serde_json::to_value(thread_params).expect("thread params should serialize");
+    assert_eq!(
+        thread_value["serviceTier"],
+        Value::String("fast".to_string())
+    );
+    assert_eq!(
+        thread_value["personality"],
+        Value::String("pragmatic".to_string())
+    );
+
+    let turn_params = TurnStartParams {
+        thread_id: "thread-1".to_string(),
+        input: vec![UserInput::Text {
+            text: "continue".to_string(),
+            text_elements: Vec::new(),
+        }],
+        cwd: None,
+        approval_policy: Some(AskForApproval::Never),
+        sandbox_policy: None,
+        model: None,
+        service_tier: Some(None),
+        effort: None,
+        summary: None,
+        personality: Some(Personality::Friendly),
+        output_schema: None,
+        collaboration_mode: None,
+    };
+    let turn_value = serde_json::to_value(turn_params).expect("turn params should serialize");
+    assert!(turn_value.get("serviceTier").is_some());
+    assert!(turn_value["serviceTier"].is_null());
+    assert_eq!(
+        turn_value["personality"],
+        Value::String("friendly".to_string())
+    );
 }
 
 #[test]
@@ -364,6 +413,7 @@ async fn turn_start_request_includes_skill_input() {
             approval_policy: None,
             sandbox_policy: None,
             model: None,
+            service_tier: Some(None),
             effort: None,
             summary: None,
             personality: None,

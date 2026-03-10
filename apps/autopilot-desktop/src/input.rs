@@ -2559,6 +2559,14 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
         PaneHitAction::ChatNewThread => run_chat_new_thread_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatCycleReasoningEffort => run_chat_cycle_reasoning_effort_action(state),
+        PaneHitAction::ChatCycleServiceTier => run_chat_cycle_service_tier_action(state),
+        PaneHitAction::ChatCyclePersonality => run_chat_cycle_personality_action(state),
+        PaneHitAction::ChatCycleCollaborationMode => {
+            run_chat_cycle_collaboration_mode_action(state)
+        }
+        PaneHitAction::ChatCycleApprovalMode => run_chat_cycle_approval_mode_action(state),
+        PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
         PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
         PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
@@ -3762,6 +3770,10 @@ mod tests {
                 exclude_slash_tmp: false,
             }),
             model: Some("gpt-5".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         });
         let initial_labor = goal_labor_linkage_from_binding(
             plan.labor_binding
@@ -3903,6 +3915,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: Some("gpt-5".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         });
         let initial_labor = goal_labor_linkage_from_binding(
             plan.labor_binding
