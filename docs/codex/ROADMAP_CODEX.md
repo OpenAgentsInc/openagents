@@ -3,7 +3,7 @@
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-1` in `132b733b4`
+> turn-input surfaces on `main`, and after landing `CX-1` in `8146e1f09`
 > (`Implement Codex readiness preflight`).
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
@@ -146,7 +146,7 @@ than replace:
   refresh
 - richer OpenAgents-native dynamic tool bridging than T3 Code
 - live `turn/plan/updated` and `turn/diff/updated` handling in desktop state
-- `CX-1` landed on `main` in `132b733b4`: install/version probing in
+- `CX-1` landed on `main` in `8146e1f09`: install/version probing in
   `crates/codex-client`, lane snapshot propagation, unified readiness refresh,
   and desktop config-constraint summaries derived from `config/read` layers plus
   `configRequirements/read`
@@ -209,7 +209,7 @@ Codex CLI/TUI in practice, not just by protocol completeness.
 
 Status:
 
-- shipped on `main` in `132b733b4`
+- shipped on `main` in `8146e1f09`
 - desktop now exposes install presence, resolved invocation, version,
   account/login state, rate limits, effective approval/sandbox config, and
   managed-constraint explanations in one Codex operator surface
