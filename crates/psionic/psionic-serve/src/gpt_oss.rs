@@ -11877,6 +11877,25 @@ mod tests {
             .find(|candidate| candidate.exists())
     }
 
+    #[cfg(target_os = "macos")]
+    fn run_real_metal_text_request(
+        metal: &mut MetalGgufGptOssTextGenerationService,
+        request_id: &str,
+        prompt: &str,
+        max_output_tokens: usize,
+    ) -> Result<(crate::GenerationResponse, f64), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            request_id,
+            metal.model_descriptor().clone(),
+            None,
+            prompt,
+            GenerationOptions::greedy(max_output_tokens),
+        );
+        let started = Instant::now();
+        let response = metal.generate(&request)?;
+        Ok((response, started.elapsed().as_secs_f64()))
+    }
+
     #[test]
     fn packed_projection_bytes_preserve_projection_order() {
         let packed = pack_quantized_projection_bytes(&[&[1, 2], &[3], &[4, 5, 6]]);
@@ -12210,35 +12229,24 @@ mod tests {
         };
 
         let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
-        let request = GenerationRequest::new_text(
-            "real-metal-short-text",
-            metal.model_descriptor().clone(),
-            None,
-            "Hello",
-            GenerationOptions::greedy(1),
-        );
-        let started = Instant::now();
-        let response = metal.generate(&request)?;
-        let wall = started.elapsed().as_secs_f64();
-        let prompt_ns = response.metrics.prompt_eval_duration_ns.unwrap_or_default();
-        let eval_ns = response.metrics.eval_duration_ns.unwrap_or_default();
+        let (prompt_only, prompt_only_wall) =
+            run_real_metal_text_request(&mut metal, "real-metal-short-text-prompt-only", "Hello", 0)?;
+        let (prompt_plus_one, prompt_plus_one_wall) =
+            run_real_metal_text_request(&mut metal, "real-metal-short-text-plus-one", "Hello", 1)?;
+        let prompt_ns = prompt_only.metrics.prompt_eval_duration_ns.unwrap_or_default();
         let prompt_tps = if prompt_ns == 0 {
             0.0
         } else {
-            response.usage.input_tokens as f64 / (prompt_ns as f64 / 1_000_000_000.0)
-        };
-        let eval_tps = if eval_ns == 0 {
-            0.0
-        } else {
-            response.usage.output_tokens as f64 / (eval_ns as f64 / 1_000_000_000.0)
+            prompt_only.usage.input_tokens as f64 / (prompt_ns as f64 / 1_000_000_000.0)
         };
 
         eprintln!(
-            "real metal short-text receipt: prompt_tokens={} output_tokens={} wall_s={wall:.3} prompt_tps={prompt_tps:.3} eval_tps={eval_tps:.3} termination={:?} output={:?}",
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.termination,
-            response.output.text,
+            "real metal short-text receipt: prompt_only_tokens={} prompt_only_wall_s={prompt_only_wall:.3} prompt_only_prompt_tps={prompt_tps:.3} exact_hit_plus_one_output_tokens={} exact_hit_plus_one_wall_s={prompt_plus_one_wall:.3} exact_hit_prefix_tokens_reused={:?} plus_one_termination={:?} plus_one_output={:?}",
+            prompt_only.usage.input_tokens,
+            prompt_plus_one.usage.output_tokens,
+            prompt_plus_one.metrics.prefix_tokens_reused,
+            prompt_plus_one.termination,
+            prompt_plus_one.output.text,
         );
         Ok(())
     }
