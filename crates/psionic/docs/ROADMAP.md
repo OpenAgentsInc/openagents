@@ -17,7 +17,9 @@
 > closing `#3295` once the benchmark target was already met without needing a
 > riskier fused gate/up rewrite, after closing `#3296` because sampled decode
 > attention was still not the blocking stage on the contract-clean path, and
-> after keeping the active queue on `#3248`.
+> after closing `#3248` once the benchmark script itself was made contract-clean
+> and Psionic still measured above the local `llama.cpp` control with the same
+> visible output.
 >
 > Benchmark truth correction: the earlier `134.62 tok/s` `prompt_cache_hit`
 > reading was a transient fast sample, not a durable code baseline. The exact
@@ -41,8 +43,9 @@
 > active work should therefore stay on the remaining `llama.cpp` parity gaps
 > only when they are still honest blockers. `#3296` is now closed too:
 > sampled decode attention stayed small relative to the already-landed router
-> and expert work, and the benchmark target was reached without needing a
-> `fattn.cu` rewrite on this host. Keep the dense grouped
+> and expert work, and `#3248` is now closed as well because the final
+> benchmark contract was cleaned up and still showed Psionic ahead. Keep the
+> dense grouped
 > `routing metadata -> scatter -> grouped expert compute -> gather/accumulate`
 > path as the later dense-prefill branch instead of treating it as the first
 > decode bottleneck.
@@ -54,8 +57,8 @@
 > `llama.cpp`, while remaining valid as compute-market substrate."
 >
 > Host execution note: the active accelerator execution queues now split across
-> two concrete host classes: the NVIDIA GPT-OSS throughput queue
-> `#3248`, and the Apple Silicon native-Rust Metal
+> two concrete host classes: the NVIDIA GPT-OSS throughput queue is now empty
+> on this host, and the Apple Silicon native-Rust Metal
 > completion queue `#3270` -> `#3268` -> `#3269` -> `#3271` -> `#3272` ->
 > `#3261` -> `#3262`. The AMD follow-on issues `PSI-151` through `PSI-154`
 > were intentionally closed as not planned and are excluded from the active
@@ -72,9 +75,8 @@
 > up from the old `122-123 tok/s` floor after `#3293` landed, and `#3294` has
 > now moved the expert-matvec path onto the reusable ids-driven backend
 > surface without losing that floor. The next work should therefore stay
-> focused on the remaining open contract issue from the exact `llama.cpp`
-> chain: `#3248`,
-> with `#3248` left open until the final parity target is closed honestly.
+> focused on keeping the benchmark contract rerunnable and honest after the
+> now-closed NVIDIA parity chain.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -750,7 +752,7 @@ state:
 | 85 | `GPT-OSS-PERF-6E` | [#3294](https://github.com/OpenAgentsInc/openagents/issues/3294) | Closed | Closed after Psionic moved the real GPT-OSS decode lane onto a reusable ids-driven expert-matvec backend surface and a grouped project kernel while keeping the exact prompt-cache-hit benchmark in the same `170-173 tok/s` class. |
 | 86 | `GPT-OSS-PERF-6F` | [#3295](https://github.com/OpenAgentsInc/openagents/issues/3295) | Closed | Closed after `#3294` because the benchmark target was already honestly met on this host without needing a riskier fused gate/up rewrite. Keep the idea as future cleanup, but it is no longer an active blocker for the tracked GPT-OSS parity contract. |
 | 87 | `GPT-OSS-PERF-6G` | [#3296](https://github.com/OpenAgentsInc/openagents/issues/3296) | Closed | Closed after parity was already reached on the tracked benchmark without needing an attention-dispatch rewrite. Keep `fattn.cu` alignment as future headroom work, not as the current blocker for this host contract. |
-| 88 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Psionic HTTP path. |
+| 88 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Closed | Closed after the benchmark script itself was made contract-clean on both servers and Psionic still measured ahead of the local `llama.cpp` control with the same visible output on the exact prompt-cache-hit lane. |
 | 89 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
 | 90 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
 | 91 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
@@ -759,10 +761,9 @@ state:
 | 94 | `METAL-GPT-OSS-6` | [#3261](https://github.com/OpenAgentsInc/openagents/issues/3261) | Open | Keep the validation and benchmark-evidence issue open until the native Rust Metal path, not the proxy path, has seeded parity coverage plus warm and prompt-cache-hit receipts. |
 | 95 | `METAL-GPT-OSS-7` | [#3262](https://github.com/OpenAgentsInc/openagents/issues/3262) | Open | Keep the Apple throughput umbrella open until the same-host native Rust Metal path reaches the agreed llama.cpp-relative throughput band on the real benchmark contract. |
 
-The active roadmap issues on this host are now `#3248`. Do not restart from
-the
-GPT-OSS enablement issues; the remaining work is throughput parity on the
-already-working Psionic-owned NVIDIA path.
+The active roadmap issues on this host are no longer in the NVIDIA GPT-OSS
+throughput chain. Do not restart from the GPT-OSS enablement or parity issues
+unless the benchmark regresses or the contract changes.
 
 The active Apple Silicon native-Rust Metal queue is now `#3270` then `#3268`
 then `#3269` then `#3271` then `#3272` then `#3261` then `#3262`. Do not use
@@ -781,11 +782,15 @@ baseline on `main` is:
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
   the local OpenAI-compatible `psionic-gpt-oss-server`
-- the active gap is now measured, not speculative: the current truthful
-  benchmark floor is in the low `171 tok/s` class for Psionic on the exact
-  prompt-cache-hit contract, with the kept full-script runs now at
-  `173.19 tok/s`, `171.29 tok/s`, `173.05 tok/s`, and `170.05 tok/s`. The
-  remaining open roadmap work is now just `#3248`, not
+- the active gap is now measured, not speculative: the final contract-clean
+  prompt-cache-hit parity run on this host now measures Psionic at
+  `172.84 tok/s` versus `llama.cpp` at `160.98 tok/s`, with
+  `prompt_cache_hit_visible_output_match=true` on the exact same benchmark
+  script
+- the kept pre-close Psionic floor on the older script form remains in the low
+  `171 tok/s` class, with runs at `173.19 tok/s`, `171.29 tok/s`, `173.05
+  tok/s`, and `170.05 tok/s`
+- the remaining open roadmap work is no longer this NVIDIA parity chain, not
   feature-completeness for basic GPT-OSS execution and no longer the
   `150+ tok/s` umbrella from `#3276`
 - the Apple Silicon Metal groundwork from `#3250` and `#3252` through `#3260`
@@ -1217,15 +1222,15 @@ shortcuts.
 | `GPT-OSS-PERF-6E` | [#3294](https://github.com/OpenAgentsInc/openagents/issues/3294) | Closed | Port llama.cpp `mul_mat_id`-style grouped expert matvec for GPT-OSS decode | `psionic-backend-cuda`, `psionic-serve` | Landed by introducing reusable ids-driven expert-matvec / accumulate submission surfaces in `psionic-backend-cuda`, switching the real GPT-OSS decode lane over to that substrate in `psionic-serve`, and replacing the old per-selected-slot project launch with a grouped project kernel. The exact benchmark stayed in the `170-173 tok/s` class, while short `ncu` sampling showed about `60.4 us` in the gate/up kernel and about `32.7 us` in the grouped project kernel on the kept path. |
 | `GPT-OSS-PERF-6F` | [#3295](https://github.com/OpenAgentsInc/openagents/issues/3295) | Closed | Match llama.cpp fused `MUL_MAT_ID (+ADD_ID) + GLU` path for GPT-OSS experts | `psionic-backend-cuda`, `psionic-serve` | Closed as no longer required for the tracked parity contract on this host. After `#3294`, Psionic was already in the same or better throughput class than the current `llama.cpp` control on the exact benchmark, so forcing a riskier fused gate/up rewrite stopped being the next honest blocker. |
 | `GPT-OSS-PERF-6G` | [#3296](https://github.com/OpenAgentsInc/openagents/issues/3296) | Closed | Align GPT-OSS decode-attention dispatch with llama.cpp `fattn.cu` | `psionic-backend-cuda`, `psionic-serve`, docs/audit | Closed as no longer required for the tracked parity contract on this host. Sampled decode attention stayed much smaller than the router and expert stages on the kept path, and the benchmark target was already reached before a `fattn.cu` rewrite became the next honest blocker. |
-| `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Reach llama.cpp-class GPT-OSS throughput on the real Psionic HTTP path | docs/tests/benchmark path plus the serving stack | Keep this open until the exact benchmark contract reaches the promised speed class on the real Psionic-only HTTP lane. |
+| `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Closed | Reach llama.cpp-class GPT-OSS throughput on the real Psionic HTTP path | docs/tests/benchmark path plus the serving stack | Closed after the benchmark script was updated to use the explicit system/developer/user contract, force raw-content mode on the `llama.cpp` control, normalize visible output cleanly, and print `prompt_cache_hit_visible_output_match=true`. On that final contract-clean run, Psionic measured `172.84 tok/s` versus `llama.cpp` at `160.98 tok/s` on the exact prompt-cache-hit lane. |
 
 Recent checkpoint note:
 The newer graph/fusion and hot-path fixes were real, but the benchmark floor
 has now moved again in a way that reproduces. After `#3293`, the exact
 prompt-cache-hit lane on this host is in the low `171 tok/s` class on repeated
 full-script runs, not the old `122.42 tok/s` floor. The next step is therefore
-the final contract issue `#3248`, before any return to the denser
-grouped-prefill path.
+future headroom work only, before any return to the denser grouped-prefill
+path.
 
 Live host-ceiling note:
 On this host, the local `llama.cpp` control on the same benchmark script is
@@ -1665,3 +1670,22 @@ The right near-term target is smaller:
   contract. The only remaining open issue in this NVIDIA queue is now `#3248`,
   which is about the final contract-clean parity closeout, not another forced
   kernel port.
+
+## 2026-03-10 Contract-Clean Parity Closure
+
+- Closed `#3248`.
+- Concrete benchmark-script changes:
+  `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` now uses the explicit
+  system/developer/user request contract from the manual GPT-OSS flow, sends
+  `reasoning_format: "none"` to the `llama.cpp` control, normalizes visible
+  output by stripping reasoning wrappers, records `visible_output` in the JSON
+  summaries, and prints `prompt_cache_hit_visible_output_match=true` when both
+  servers expose the same final sentence.
+- Final contract-clean run on this host:
+  Psionic `prompt_cache_hit = 172.84 tok/s`
+  `llama.cpp prompt_cache_hit = 160.98 tok/s`
+  `prompt_cache_hit_visible_output_match=true`
+- Result:
+  the NVIDIA GPT-OSS parity queue is closed honestly on this host. Any future
+  router/MoE/attention work should be treated as headroom or portability work,
+  not as unfinished closure for the original parity track.

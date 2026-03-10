@@ -64,8 +64,12 @@
 > ids-driven backend surface: `#3294` now routes the real decode lane through
 > ids-driven expert matvec plus accumulate calls and uses a grouped project
 > kernel by default, with fresh full-script runs at `173.05 tok/s` and
-> `170.05 tok/s`. That low `170 tok/s` class is the current truthful floor for
-> the next wave.
+> `170.05 tok/s`. The final contract-clean closure run then updated the
+> benchmark script itself so the `llama.cpp` control also returned the same
+> visible sentence under the exact request contract; on that closing run,
+> Psionic measured `172.84 tok/s` versus `160.98 tok/s` for `llama.cpp`, with
+> `prompt_cache_hit_visible_output_match=true`. That closes the original
+> throughput-parity issue honestly on this host.
 
 ## Scope
 
@@ -1295,3 +1299,38 @@ Interpretation:
 - the only remaining open issue in the tracked chain is now `#3248`, which is
   about making the benchmark contract itself fully clean and then closing the
   throughput umbrella
+
+## 2026-03-10 Contract-Clean Parity Closure
+
+`#3248` is now closed.
+
+What changed:
+
+- `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` now uses the explicit
+  system/developer/user GPT-OSS request contract from the manual flow instead
+  of the earlier stripped-down request.
+- The script now sends `reasoning_format: "none"` to the `llama.cpp` control,
+  normalizes visible output by stripping reasoning wrappers, records
+  `visible_output` in the per-case JSON summaries, and prints
+  `prompt_cache_hit_visible_output_match=true` when both servers expose the
+  same final sentence.
+
+Final contract-clean run on this host:
+
+- Psionic `prompt_cache_hit`:
+  - `172.84 tok/s`
+- `llama.cpp prompt_cache_hit`:
+  - `160.98 tok/s`
+- Visible-output status:
+  - `prompt_cache_hit_visible_output_match=true`
+  - both sides returned:
+    `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
+
+Interpretation:
+
+- The original NVIDIA parity track is closed honestly on this host.
+- The final closeout did not require more CUDA kernel churn; it required making
+  the benchmark contract itself truthful and then rerunning it.
+- Future work in this area should now be framed as headroom, portability, or
+  maintenance work rather than as unfinished closure for the original
+  `llama.cpp` parity issue.

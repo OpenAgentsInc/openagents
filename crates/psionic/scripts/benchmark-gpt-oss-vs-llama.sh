@@ -217,14 +217,20 @@ trap cleanup EXIT
 
 build_request_json() {
   local sentence=$1
-  # Keep the benchmark request in plain OpenAI chat form so both backends use
-  # their built-in GPT-OSS Harmony system contract instead of a duplicated one.
+  # Keep the benchmark request explicit and stable across both servers. The
+  # local llama.cpp GPT-OSS template only reliably reaches the final sentence
+  # within the 64-token budget on this host when the canonical system contract
+  # is present explicitly instead of relying on the built-in default.
   jq -cn \
     --arg sentence "$sentence" \
     --argjson max_tokens "$MAX_TOKENS" \
     '{
       model: "gpt-oss-20b-mxfp4.gguf",
       messages: [
+        {
+          role: "system",
+          content: "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-08\n\nReasoning: low\n\n# Valid channels: analysis, final. Channel must be included for every message."
+        },
         {
           role: "developer",
           content: "Be concise. Output exactly one sentence."
@@ -235,7 +241,11 @@ build_request_json() {
         }
       ],
       max_tokens: $max_tokens,
-      temperature: 0
+      temperature: 0,
+      reasoning_format: "none",
+      chat_template_kwargs: {
+        enable_thinking: false
+      }
     }'
 }
 
@@ -262,7 +272,20 @@ run_request() {
   local output_file=$2
   curl --no-buffer --max-time "$REQUEST_TIMEOUT_SECONDS" -sS "http://$HOST:$PORT/v1/chat/completions" \
     -H 'Content-Type: application/json' \
-    -d "$request_json" | tee "$output_file" | jq -r '.choices[0].message.content'
+    -d "$request_json" | tee "$output_file" >/dev/null
+}
+
+extract_visible_output() {
+  local response_file=$1
+  jq -r '
+    def strip_visible_wrappers:
+      gsub("(?s)<\\|channel\\|>analysis<\\|message\\|>.*?<\\|end\\|>"; "")
+      | gsub("(?s)<\\|start\\|>assistant<\\|channel\\|>analysis<\\|message\\|>.*?<\\|end\\|>"; "")
+      | gsub("(?s)<think>.*?</think>"; "")
+      | gsub("^[\\n\\r]+"; "")
+      | gsub("[\\n\\r]+$"; "");
+    ((.choices[0].message.content // "") | strip_visible_wrappers)
+  ' "$response_file"
 }
 
 capture_health_json() {
@@ -291,6 +314,7 @@ write_summary_json() {
   local elapsed=$4
   local tokens=$5
   local tokps=$6
+  local visible_output=$7
 
   [[ -n "$JSON_OUT" ]] || return 0
 
@@ -305,6 +329,7 @@ write_summary_json() {
     --arg elapsed_seconds "$elapsed" \
     --arg completion_tokens "$tokens" \
     --arg tokens_per_second "$tokps" \
+    --arg visible_output "$visible_output" \
     --slurpfile response "$response_file" \
     --slurpfile health "$TMP_DIR/$server_name.health.json" \
     '{
@@ -316,6 +341,7 @@ write_summary_json() {
       elapsed_seconds: ($elapsed_seconds | tonumber),
       completion_tokens: ($completion_tokens | tonumber),
       tokens_per_second: ($tokens_per_second | tonumber),
+      visible_output: $visible_output,
       execution_mode: ($health[0].execution_mode // "unknown"),
       execution_engine: ($health[0].execution_engine // "unknown"),
       server_health: $health[0],
@@ -330,16 +356,18 @@ run_case() {
   local output_file=$4
 
   echo "[${case_name}]"
-  local start end elapsed tokens tokps
+  local start end elapsed tokens tokps visible_output
   start=$(date +%s.%N)
   run_request "$request_json" "$output_file"
   end=$(date +%s.%N)
 
+  visible_output=$(extract_visible_output "$output_file")
+  printf '%s\n' "$visible_output"
   tokens=$(jq -r '.usage.completion_tokens' "$output_file")
   elapsed=$(awk "BEGIN { printf \"%.3f\", $end - $start }")
   tokps=$(awk "BEGIN { printf \"%.2f\", $tokens / ($end - $start) }")
   echo "case=$case_name completion_tokens=$tokens seconds=$elapsed tok/s=$tokps"
-  write_summary_json "$server_name" "$case_name" "$output_file" "$elapsed" "$tokens" "$tokps"
+  write_summary_json "$server_name" "$case_name" "$output_file" "$elapsed" "$tokens" "$tokps" "$visible_output"
 }
 
 bench() {
@@ -432,3 +460,16 @@ fi
 bench \
   "llama" \
   "${LLAMA_CMD[@]}"
+
+PSIONIC_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/psionic.prompt_cache_hit.json")
+LLAMA_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/llama.prompt_cache_hit.json")
+
+if [[ "$PSIONIC_VISIBLE_OUTPUT" == "$LLAMA_VISIBLE_OUTPUT" ]]; then
+  echo
+  echo "prompt_cache_hit_visible_output_match=true"
+else
+  echo
+  echo "prompt_cache_hit_visible_output_match=false"
+  echo "psionic_visible_output=$PSIONIC_VISIBLE_OUTPUT"
+  echo "llama_visible_output=$LLAMA_VISIBLE_OUTPUT"
+fi
