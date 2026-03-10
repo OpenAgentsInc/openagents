@@ -10,8 +10,8 @@ use psionic_backend_cpu::{
     CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
 };
 use psionic_backend_cuda::{
-    CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaQuantizedMatvecStats,
-    CudaSubmission, CudaSubmissionReport,
+    CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaQuantizedMatvecResult,
+    CudaQuantizedMatvecStats, CudaSubmission, CudaSubmissionReport,
     TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS, ggml_q8_1_storage_bytes,
 };
 use psionic_backend_metal::{
@@ -2287,6 +2287,93 @@ fn extend_unique_cache_observations(
     }
 }
 
+fn i32_slice_to_ne_bytes(values: &[i32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len().saturating_mul(std::mem::size_of::<i32>()));
+    for value in values {
+        bytes.extend_from_slice(&value.to_ne_bytes());
+    }
+    bytes
+}
+
+fn i32_ne_bytes_to_values(bytes: &[u8]) -> Result<Vec<i32>, super::RuntimeError> {
+    if bytes.len() % std::mem::size_of::<i32>() != 0 {
+        return Err(super::RuntimeError::Backend(format!(
+            "i32 byte buffer length {} is not a multiple of {}",
+            bytes.len(),
+            std::mem::size_of::<i32>()
+        )));
+    }
+    Ok(bytes
+        .chunks_exact(std::mem::size_of::<i32>())
+        .map(|chunk| i32::from_ne_bytes(chunk.try_into().expect("chunk length is exact")))
+        .collect())
+}
+
+fn gather_selected_expert_bias_rows(
+    values: &[f32],
+    rows_per_expert: usize,
+    selected: &[usize],
+) -> Result<Vec<f32>, super::RuntimeError> {
+    if rows_per_expert == 0 {
+        return Ok(Vec::new());
+    }
+    if values.len() % rows_per_expert != 0 {
+        return Err(super::RuntimeError::Backend(format!(
+            "expert bias shape mismatch: {} values not divisible by rows_per_expert {}",
+            values.len(),
+            rows_per_expert
+        )));
+    }
+    let expert_count = values.len() / rows_per_expert;
+    let mut gathered = Vec::with_capacity(selected.len().saturating_mul(rows_per_expert));
+    for expert_index in selected {
+        if *expert_index >= expert_count {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert bias index {} exceeds expert count {}",
+                expert_index, expert_count
+            )));
+        }
+        let start = expert_index.saturating_mul(rows_per_expert);
+        let end = start.saturating_add(rows_per_expert);
+        gathered.extend_from_slice(&values[start..end]);
+    }
+    Ok(gathered)
+}
+
+fn gather_selected_expert_bias_rows_into(
+    values: &[f32],
+    rows_per_expert: usize,
+    selected: &[usize],
+    output: &mut Vec<f32>,
+) -> Result<(), super::RuntimeError> {
+    if rows_per_expert == 0 {
+        output.clear();
+        return Ok(());
+    }
+    if values.len() % rows_per_expert != 0 {
+        return Err(super::RuntimeError::Backend(format!(
+            "expert bias shape mismatch: {} values not divisible by rows_per_expert {}",
+            values.len(),
+            rows_per_expert
+        )));
+    }
+    let expert_count = values.len() / rows_per_expert;
+    output.clear();
+    output.reserve(selected.len().saturating_mul(rows_per_expert));
+    for expert_index in selected {
+        if *expert_index >= expert_count {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert bias index {} exceeds expert count {}",
+                expert_index, expert_count
+            )));
+        }
+        let start = expert_index.saturating_mul(rows_per_expert);
+        let end = start.saturating_add(rows_per_expert);
+        output.extend_from_slice(&values[start..end]);
+    }
+    Ok(())
+}
+
 impl From<ModelLoadError> for CudaGptOssTextGenerationError {
     fn from(value: ModelLoadError) -> Self {
         Self::Generation(ReferenceTextGenerationError::from(value))
@@ -2775,6 +2862,50 @@ fn zero_cuda_matvec_stats() -> CudaQuantizedMatvecStats {
     }
 }
 
+fn cuda_quantized_matvec_with_reused_buffers(
+    backend: &mut CudaBackend,
+    weights: &CudaBuffer,
+    byte_offset: usize,
+    mode: QuantizationMode,
+    rows: usize,
+    cols: usize,
+    input: &[f32],
+    input_host_buffer: &mut CudaHostBuffer,
+    input_buffer: &CudaBuffer,
+    output_buffer: &CudaBuffer,
+) -> Result<CudaQuantizedMatvecResult, super::RuntimeError> {
+    input_host_buffer.write_f32(input)?;
+    let mut submission = backend.begin_submission()?;
+    submission.copy_host_to_device(input_host_buffer, input_buffer)?;
+    submission.quantized_matvec(
+        weights,
+        byte_offset,
+        mode,
+        rows,
+        cols,
+        input_buffer,
+        output_buffer,
+    )?;
+    let report = submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+    let values = output_buffer.read_f32_at_offset(0, rows)?;
+    Ok(CudaQuantizedMatvecResult {
+        values,
+        stats: CudaQuantizedMatvecStats {
+            host_to_device_bytes: (input.len())
+                .saturating_mul(std::mem::size_of::<f32>())
+                .try_into()
+                .unwrap_or(u64::MAX),
+            device_to_host_bytes: (rows)
+                .saturating_mul(std::mem::size_of::<f32>())
+                .try_into()
+                .unwrap_or(u64::MAX),
+            submission_count: 1,
+            sync_count: 1,
+            kernel_launches: report.encoded_operations,
+        },
+    })
+}
+
 impl CudaGgufGptOssGenerationModel {
     pub fn from_gguf_path(
         path: impl AsRef<Path>,
@@ -2839,14 +2970,21 @@ impl CudaGgufGptOssGenerationModel {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let allow_decode_plan_only_cuda =
+            !placement.host_backed_moe && !placement.host_backed_dense_tail;
         let output_norm =
             load_dense_vector(&artifact, adapter.tensor_layout().output_norm.as_str())?;
-        let output_norm_device = upload_cuda_f32_buffer(
-            backend,
-            adapter.tensor_layout().output_norm.as_str(),
-            output_norm.as_slice(),
-        )?;
-        placement.reserve_device_bytes(output_norm_device.byte_len());
+        let output_norm_device = if allow_decode_plan_only_cuda {
+            let buffer = upload_cuda_f32_buffer(
+                backend,
+                adapter.tensor_layout().output_norm.as_str(),
+                output_norm.as_slice(),
+            )?;
+            placement.reserve_device_bytes(buffer.byte_len());
+            Some(buffer)
+        } else {
+            None
+        };
         let token_embedding_name = adapter.tensor_layout().token_embedding.as_str();
         let token_embedding_storage = artifact.paged_tensor(token_embedding_name)?;
         let token_embedding_metadata = token_embedding_storage.metadata();
@@ -2873,27 +3011,48 @@ impl CudaGgufGptOssGenerationModel {
                     quantization: token_embedding_metadata.quantization,
                     shape: token_embedding_metadata.shape.dims().to_vec(),
                 })?;
-        let token_embedding_f16 = try_build_cuda_row_major_f16_mirror(
-            backend,
-            token_embedding_name,
-            token_embedding_metadata.quantization,
-            *token_embedding_rows,
-            *token_embedding_columns,
-            token_embedding_row_byte_len,
-            token_embedding_storage.bytes()?,
-        )?;
-        if let Some(buffer) = token_embedding_f16.as_ref() {
-            placement.reserve_device_bytes(buffer.byte_len());
-        }
-        let token_embedding_device = load_cuda_quantized_matrix(
-            backend,
-            &artifact,
-            adapter.tensor_layout().token_embedding.as_str(),
-            false,
-            &mut f16_mirror_state,
-            &mut placement,
-        )?;
-        placement.reserve_device_bytes(token_embedding_device.device_residency_bytes());
+        let token_embedding_f16 = if allow_decode_plan_only_cuda {
+            let mirror = try_build_cuda_row_major_f16_mirror(
+                backend,
+                token_embedding_name,
+                token_embedding_metadata.quantization,
+                *token_embedding_rows,
+                *token_embedding_columns,
+                token_embedding_row_byte_len,
+                token_embedding_storage.bytes()?,
+            )?;
+            if let Some(buffer) = mirror.as_ref() {
+                placement.reserve_device_bytes(buffer.byte_len());
+            }
+            mirror
+        } else {
+            None
+        };
+        let token_embedding_device = if allow_decode_plan_only_cuda {
+            let matrix = load_cuda_quantized_matrix(
+                backend,
+                &artifact,
+                adapter.tensor_layout().token_embedding.as_str(),
+                false,
+                &mut f16_mirror_state,
+                &mut placement,
+            )?;
+            placement.reserve_device_bytes(matrix.device_residency_bytes());
+            matrix
+        } else {
+            CudaQuantizedMatrix {
+                storage: None,
+                host: load_quantized_matrix(
+                    &artifact,
+                    adapter.tensor_layout().token_embedding.as_str(),
+                )?,
+                transposed_f16: None,
+                mode: token_embedding_metadata.quantization,
+                rows: *token_embedding_rows,
+                columns: *token_embedding_columns,
+                row_byte_len: token_embedding_row_byte_len,
+            }
+        };
         let plan_backend = if placement.host_backed_moe || placement.host_backed_dense_tail {
             GPT_OSS_CUDA_HYBRID_MOE_BACKEND
         } else {
@@ -2920,6 +3079,7 @@ impl CudaGgufGptOssGenerationModel {
                 plan_backend,
             ),
             decode_step_plan: Mutex::new(None),
+            hybrid_selected4_plan: Mutex::new(None),
             load_duration_ns: load_start
                 .elapsed()
                 .as_nanos()
@@ -3032,11 +3192,12 @@ struct GptOssCudaModelInner {
     token_embedding_device: CudaQuantizedMatrix,
     token_embedding_f16: Option<CudaBuffer>,
     output_norm: Vec<f32>,
-    output_norm_device: CudaBuffer,
+    output_norm_device: Option<CudaBuffer>,
     output: CudaQuantizedMatrix,
     layers: Vec<GptOssCudaLayer>,
     plan_digest: String,
     decode_step_plan: Mutex<Option<GptOssCudaStepPlan>>,
+    hybrid_selected4_plan: Mutex<Option<GptOssCudaHybridSelected4Plan>>,
     load_duration_ns: u64,
 }
 
@@ -3073,6 +3234,40 @@ struct GptOssCudaStepPlan {
     argmax_state_buffer: CudaBuffer,
     decode_graph_exec: Option<CudaGraphExec>,
     decode_graph_cache_identity: Option<(usize, usize)>,
+}
+
+#[derive(Debug)]
+struct GptOssCudaHybridSelected4Plan {
+    hidden_input_host_buffer: CudaHostBuffer,
+    hidden_input_buffer: CudaBuffer,
+    hidden_input_q8_1_buffer: CudaBuffer,
+    attention_input_host_buffer: CudaHostBuffer,
+    attention_input_buffer: CudaBuffer,
+    router_logits_buffer: CudaBuffer,
+    selected_expert_ids_buffer: CudaBuffer,
+    selected_ids_buffer: CudaBuffer,
+    selected_weights_host_buffer: CudaHostBuffer,
+    selected_weights_buffer: CudaBuffer,
+    gate_up_weights_host_buffer: CudaHostBuffer,
+    gate_up_weights_buffer: CudaBuffer,
+    down_weights_host_buffer: CudaHostBuffer,
+    down_weights_buffer: CudaBuffer,
+    gate_bias_host_buffer: Option<CudaHostBuffer>,
+    gate_bias_buffer: Option<CudaBuffer>,
+    up_bias_host_buffer: Option<CudaHostBuffer>,
+    up_bias_buffer: Option<CudaBuffer>,
+    down_bias_host_buffer: Option<CudaHostBuffer>,
+    down_bias_buffer: Option<CudaBuffer>,
+    activated_q8_1_buffer: CudaBuffer,
+    projected_buffer: CudaBuffer,
+    output_buffer: CudaBuffer,
+    logits_buffer: CudaBuffer,
+    gate_up_weights_scratch: Vec<u8>,
+    down_weights_scratch: Vec<u8>,
+    gate_bias_scratch: Vec<f32>,
+    up_bias_scratch: Vec<f32>,
+    down_bias_scratch: Vec<f32>,
+    selected_expert_ids_scratch: Vec<i32>,
 }
 
 impl GptOssCudaModelInner {
@@ -3147,6 +3342,263 @@ impl GptOssCudaModelInner {
         if let Ok(mut cached_plan) = self.decode_step_plan.lock() {
             *cached_plan = Some(plan);
         }
+    }
+
+    fn acquire_hybrid_selected4_plan(
+        &self,
+        backend: &mut CudaBackend,
+    ) -> Result<Option<GptOssCudaHybridSelected4Plan>, ReferenceTextGenerationError> {
+        if self.family_metadata.expert_used_count != Some(4) {
+            return Ok(None);
+        }
+        let mut cached_plan = self.hybrid_selected4_plan.lock().map_err(|_| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                "cuda gpt-oss hybrid selected4 plan cache is poisoned",
+            )))
+        })?;
+        if let Some(plan) = cached_plan.take() {
+            return Ok(Some(plan));
+        }
+        self.build_hybrid_selected4_plan(backend).map(Some)
+    }
+
+    fn release_hybrid_selected4_plan(&self, plan: GptOssCudaHybridSelected4Plan) {
+        if let Ok(mut cached_plan) = self.hybrid_selected4_plan.lock() {
+            *cached_plan = Some(plan);
+        }
+    }
+
+    fn build_hybrid_selected4_plan(
+        &self,
+        backend: &mut CudaBackend,
+    ) -> Result<GptOssCudaHybridSelected4Plan, ReferenceTextGenerationError> {
+        let hidden_size = self.descriptor.config.hidden_size;
+        let selected_count = self.family_metadata.expert_used_count.ok_or_else(|| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                "cuda gpt-oss hybrid selected4 plan requires expert_used_count metadata",
+            )))
+        })?;
+        if selected_count != 4 {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(format!(
+                    "cuda gpt-oss hybrid selected4 plan requires expert_used_count=4, actual {selected_count}",
+                )),
+            ));
+        }
+
+        let mut gate_up_bytes = 0usize;
+        let mut down_bytes = 0usize;
+        let mut attention_input_values = hidden_size;
+        let mut router_rows = 0usize;
+        let mut gate_bias_values = 0usize;
+        let mut up_bias_values = 0usize;
+        let mut down_bias_values = 0usize;
+        let mut activated_q8_1_bytes = 0usize;
+        let mut projected_values = 0usize;
+        let mut has_host_backed_selected4 = false;
+
+        for layer in &self.layers {
+            let (Some(gate_up_host), Some(down_host)) = (
+                layer.feed_forward_gate_up_experts_weight.host.as_ref(),
+                layer.feed_forward_down_experts_weight.host.as_ref(),
+            ) else {
+                continue;
+            };
+            has_host_backed_selected4 = true;
+            let gate_rows = gate_up_host.gate.rows;
+            let up_rows = gate_up_host.up.rows;
+            attention_input_values =
+                attention_input_values.max(layer.attention_output_weight.columns);
+            router_rows = router_rows.max(layer.feed_forward_router_weight.rows);
+            gate_up_bytes = gate_up_bytes.max(
+                selected_count
+                    .saturating_mul(gate_rows.saturating_add(up_rows))
+                    .saturating_mul(gate_up_host.gate.row_byte_len),
+            );
+            down_bytes = down_bytes.max(
+                selected_count
+                    .saturating_mul(down_host.rows)
+                    .saturating_mul(down_host.row_byte_len),
+            );
+            activated_q8_1_bytes = activated_q8_1_bytes.max(
+                ggml_q8_1_storage_bytes(selected_count, gate_rows)
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            );
+            projected_values = projected_values.max(selected_count.saturating_mul(down_host.rows));
+            if layer.feed_forward_gate_experts_bias.is_some() {
+                gate_bias_values = gate_bias_values.max(selected_count.saturating_mul(gate_rows));
+            }
+            if layer.feed_forward_up_experts_bias.is_some() {
+                up_bias_values = up_bias_values.max(selected_count.saturating_mul(up_rows));
+            }
+            if layer.feed_forward_down_experts_bias.is_some() {
+                down_bias_values =
+                    down_bias_values.max(selected_count.saturating_mul(down_host.rows));
+            }
+        }
+
+        if !has_host_backed_selected4 {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(String::from(
+                    "cuda gpt-oss hybrid selected4 plan requested without host-backed selected4 layers",
+                )),
+            ));
+        }
+
+        let hidden_input_host_buffer = backend
+            .host_buffer(hidden_size.saturating_mul(std::mem::size_of::<f32>()))
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let hidden_input_buffer = backend
+            .f32_buffer(hidden_size)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let hidden_input_q8_1_buffer = backend
+            .byte_buffer(&vec![
+                0_u8;
+                ggml_q8_1_storage_bytes(1, hidden_size)
+                    .map_err(ReferenceTextGenerationError::Runtime)?
+            ])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let attention_input_host_buffer = backend
+            .host_buffer(attention_input_values.saturating_mul(std::mem::size_of::<f32>()))
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let attention_input_buffer = backend
+            .f32_buffer(attention_input_values)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let router_logits_buffer = backend
+            .f32_buffer(router_rows)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let selected_expert_ids_buffer = backend
+            .i32_buffer(selected_count)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let selected_ids = (0..selected_count)
+            .map(|index| {
+                i32::try_from(index).map_err(|_| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                        "selected expert index {index} exceeds i32 range",
+                    )))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let selected_ids_buffer = backend
+            .byte_buffer(i32_slice_to_ne_bytes(selected_ids.as_slice()).as_slice())
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let selected_weights_host_buffer = backend
+            .host_buffer(selected_count.saturating_mul(std::mem::size_of::<f32>()))
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let selected_weights_buffer = backend
+            .f32_buffer(selected_count)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let gate_up_weights_host_buffer = backend
+            .host_buffer(gate_up_bytes)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let gate_up_weights_buffer = backend
+            .byte_buffer(&vec![0_u8; gate_up_bytes])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let down_weights_host_buffer = backend
+            .host_buffer(down_bytes)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let down_weights_buffer = backend
+            .byte_buffer(&vec![0_u8; down_bytes])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let gate_bias_host_buffer = if gate_bias_values > 0 {
+            Some(
+                backend
+                    .host_buffer(gate_bias_values.saturating_mul(std::mem::size_of::<f32>()))
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let gate_bias_buffer = if gate_bias_values > 0 {
+            Some(
+                backend
+                    .f32_buffer(gate_bias_values)
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let up_bias_host_buffer = if up_bias_values > 0 {
+            Some(
+                backend
+                    .host_buffer(up_bias_values.saturating_mul(std::mem::size_of::<f32>()))
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let up_bias_buffer = if up_bias_values > 0 {
+            Some(
+                backend
+                    .f32_buffer(up_bias_values)
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let down_bias_host_buffer = if down_bias_values > 0 {
+            Some(
+                backend
+                    .host_buffer(down_bias_values.saturating_mul(std::mem::size_of::<f32>()))
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let down_bias_buffer = if down_bias_values > 0 {
+            Some(
+                backend
+                    .f32_buffer(down_bias_values)
+                    .map_err(ReferenceTextGenerationError::Runtime)?,
+            )
+        } else {
+            None
+        };
+        let activated_q8_1_buffer = backend
+            .byte_buffer(&vec![0_u8; activated_q8_1_bytes])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let projected_buffer = backend
+            .f32_buffer(projected_values)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let output_buffer = backend
+            .f32_buffer(hidden_size)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let logits_buffer = backend
+            .f32_buffer(self.output.rows)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+
+        Ok(GptOssCudaHybridSelected4Plan {
+            hidden_input_host_buffer,
+            hidden_input_buffer,
+            hidden_input_q8_1_buffer,
+            attention_input_host_buffer,
+            attention_input_buffer,
+            router_logits_buffer,
+            selected_expert_ids_buffer,
+            selected_ids_buffer,
+            selected_weights_host_buffer,
+            selected_weights_buffer,
+            gate_up_weights_host_buffer,
+            gate_up_weights_buffer,
+            down_weights_host_buffer,
+            down_weights_buffer,
+            gate_bias_host_buffer,
+            gate_bias_buffer,
+            up_bias_host_buffer,
+            up_bias_buffer,
+            down_bias_host_buffer,
+            down_bias_buffer,
+            activated_q8_1_buffer,
+            projected_buffer,
+            output_buffer,
+            logits_buffer,
+            gate_up_weights_scratch: Vec::with_capacity(gate_up_bytes),
+            down_weights_scratch: Vec::with_capacity(down_bytes),
+            gate_bias_scratch: Vec::with_capacity(gate_bias_values),
+            up_bias_scratch: Vec::with_capacity(up_bias_values),
+            down_bias_scratch: Vec::with_capacity(down_bias_values),
+            selected_expert_ids_scratch: Vec::with_capacity(selected_count),
+        })
     }
 
     fn build_decode_step_plan(
@@ -3964,10 +4416,15 @@ impl GptOssCudaModelInner {
         } else {
             &plan.layers[self.layers.len().saturating_sub(1)].moe_buffer
         };
+        let output_norm_device = self.output_norm_device.as_ref().ok_or_else(|| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                "cuda decode-step plan requires device output norm buffer",
+            )))
+        })?;
         if let Some(transposed_f16) = self.output.transposed_f16.as_ref() {
             submission.rms_norm(
                 final_hidden,
-                &self.output_norm_device,
+                output_norm_device,
                 &plan.final_norm_buffer,
                 hidden_size,
                 self.family_metadata.rms_norm_epsilon,
@@ -3990,7 +4447,7 @@ impl GptOssCudaModelInner {
         {
             submission.rms_norm_q8_1(
                 final_hidden,
-                &self.output_norm_device,
+                output_norm_device,
                 &plan.vector_q8_1_buffer,
                 self.output.columns,
                 self.family_metadata.rms_norm_epsilon,
@@ -4033,7 +4490,7 @@ impl GptOssCudaModelInner {
         } else if can_use_q8_1_mmvq(self.output.mode) {
             submission.rms_norm(
                 final_hidden,
-                &self.output_norm_device,
+                output_norm_device,
                 &plan.final_norm_buffer,
                 hidden_size,
                 self.family_metadata.rms_norm_epsilon,
@@ -4082,7 +4539,7 @@ impl GptOssCudaModelInner {
         } else {
             submission.rms_norm(
                 final_hidden,
-                &self.output_norm_device,
+                output_norm_device,
                 &plan.final_norm_buffer,
                 hidden_size,
                 self.family_metadata.rms_norm_epsilon,
@@ -4335,267 +4792,872 @@ impl GptOssCudaModelInner {
         position: usize,
         cache: &super::InMemoryKvCache,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
-        let hidden_size = self.descriptor.config.hidden_size;
-        let kv_width = self.descriptor.config.kv_width();
-        let mut bytes_moved = 0_u64;
-        let mut kernel_count = 0_usize;
-        let mut perf = GptOssPerformanceMetrics {
-            step_count: 1,
-            layer_visit_count: self.layers.len(),
-            graph_node_count: self.graph_node_count(),
-            graph_layer_node_count: self.graph_layer_node_count(),
-            ..GptOssPerformanceMetrics::default()
+        let mut hybrid_selected4_plan = if self.family_metadata.expert_used_count == Some(4)
+            && self.layers.iter().any(|layer| {
+                layer.feed_forward_gate_up_experts_weight.host.is_some()
+                    && layer.feed_forward_down_experts_weight.host.is_some()
+            }) {
+            self.acquire_hybrid_selected4_plan(backend)?
+        } else {
+            None
         };
+        let result = (|| -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+            let hidden_size = self.descriptor.config.hidden_size;
+            let kv_width = self.descriptor.config.kv_width();
+            let mut bytes_moved = 0_u64;
+            let mut kernel_count = 0_usize;
+            let mut perf = GptOssPerformanceMetrics {
+                step_count: 1,
+                layer_visit_count: self.layers.len(),
+                graph_node_count: self.graph_node_count(),
+                graph_layer_node_count: self.graph_layer_node_count(),
+                ..GptOssPerformanceMetrics::default()
+            };
 
-        let token_embedding_start = Instant::now();
-        let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
-        perf.stage_timings.token_embedding_ns = perf
-            .stage_timings
-            .token_embedding_ns
-            .saturating_add(duration_ns(token_embedding_start));
-        bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
-
-        let mut cache_key = vec![0.0; self.cache_width()];
-        let mut cache_value = vec![0.0; self.cache_width()];
-
-        for (layer_index, layer) in self.layers.iter().enumerate() {
-            let residual = hidden.clone();
-            let attention_norm_start = Instant::now();
-            let hidden_norm = rms_norm(
-                hidden.as_slice(),
-                layer.attention_norm.as_slice(),
-                self.family_metadata.rms_norm_epsilon,
-            );
-            perf.stage_timings.attention_norm_ns = perf
+            let token_embedding_start = Instant::now();
+            let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+            perf.stage_timings.token_embedding_ns = perf
                 .stage_timings
-                .attention_norm_ns
-                .saturating_add(duration_ns(attention_norm_start));
+                .token_embedding_ns
+                .saturating_add(duration_ns(token_embedding_start));
+            bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
 
-            let qkv_start = Instant::now();
-            let (mut qkv_outputs, qkv_stats) = layer
-                .attention_qkv_weight
-                .matvec_profiled(backend, hidden_norm.as_slice())?;
-            accumulate_cuda_matvec_stats(&mut perf, &qkv_stats);
-            let mut q = qkv_outputs.remove(0);
-            add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
+            let mut cache_key = vec![0.0; self.cache_width()];
+            let mut cache_value = vec![0.0; self.cache_width()];
 
-            let mut k = qkv_outputs.remove(0);
-            add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
-
-            let mut v = qkv_outputs.remove(0);
-            add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
-            perf.stage_timings.qkv_projection_ns = perf
-                .stage_timings
-                .qkv_projection_ns
-                .saturating_add(duration_ns(qkv_start));
-
-            let rope_start = Instant::now();
-            apply_rope_neox(
-                &mut q,
-                self.descriptor.config.block.attention.head_count,
-                self.descriptor.config.block.attention.head_dim,
-                self.descriptor.config.block.attention.rotary_dim,
-                position,
-                &self.family_metadata,
-            );
-            apply_rope_neox(
-                &mut k,
-                self.descriptor.config.block.attention.kv_head_count,
-                self.descriptor.config.block.attention.head_dim,
-                self.descriptor.config.block.attention.rotary_dim,
-                position,
-                &self.family_metadata,
-            );
-            perf.stage_timings.rope_ns = perf
-                .stage_timings
-                .rope_ns
-                .saturating_add(duration_ns(rope_start));
-
-            let cache_offset = layer_index.saturating_mul(kv_width);
-            cache_key[cache_offset..cache_offset + kv_width].copy_from_slice(k.as_slice());
-            cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
-
-            let attention_start = Instant::now();
-            let attention = layer.attend(
-                layer_index,
-                q.as_slice(),
-                k.as_slice(),
-                v.as_slice(),
-                cache,
-                &self.descriptor,
-                self.family_metadata.sliding_window,
-            );
-            perf.stage_timings.attention_ns = perf
-                .stage_timings
-                .attention_ns
-                .saturating_add(duration_ns(attention_start));
-
-            let attention_output_start = Instant::now();
-            let mut attention_out = Vec::new();
-            let attention_out_stats = layer.attention_output_weight.matvec_profiled(
-                backend,
-                attention.as_slice(),
-                &mut attention_out,
-            )?;
-            accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
-            if let Some(bias) = layer.attention_output_bias.as_ref() {
-                add_bias_in_place(&mut attention_out, bias.as_slice());
-            }
-            perf.stage_timings.attention_output_projection_ns = perf
-                .stage_timings
-                .attention_output_projection_ns
-                .saturating_add(duration_ns(attention_output_start));
-            hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
-
-            let ffn_residual = hidden.clone();
-            let feed_forward_norm_start = Instant::now();
-            let ffn_input = rms_norm(
-                hidden.as_slice(),
-                layer.feed_forward_norm.as_slice(),
-                self.family_metadata.rms_norm_epsilon,
-            );
-            perf.stage_timings.feed_forward_norm_ns = perf
-                .stage_timings
-                .feed_forward_norm_ns
-                .saturating_add(duration_ns(feed_forward_norm_start));
-
-            let router_start = Instant::now();
-            let mut router_logits = Vec::new();
-            layer
-                .feed_forward_router_weight
-                .matvec(ffn_input.as_slice(), &mut router_logits)?;
-            if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
-                add_bias_in_place(&mut router_logits, bias.as_slice());
-            }
-            let selected = top_k_indices(
-                router_logits.as_slice(),
-                self.family_metadata.expert_used_count.unwrap_or(0),
-            );
-            let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
-            perf.stage_timings.router_ns = perf
-                .stage_timings
-                .router_ns
-                .saturating_add(duration_ns(router_start));
-
-            let mut moe_out = vec![0.0; hidden_size];
-            for (selected_index, expert_index) in selected.iter().copied().enumerate() {
-                let expert_projection_start = Instant::now();
-                let (mut gate_up_outputs, gate_up_stats) = layer
-                    .feed_forward_gate_up_experts_weight
-                    .expert_matvec_profiled(backend, expert_index, ffn_input.as_slice())?;
-                accumulate_cuda_matvec_stats(&mut perf, &gate_up_stats);
-                let mut gate = gate_up_outputs.remove(0);
-                if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
-                    add_expert_bias_in_place(
-                        &mut gate,
-                        bias.as_slice(),
-                        expert_index,
-                        layer
-                            .feed_forward_gate_up_experts_weight
-                            .rows_per_projection[0],
-                    );
-                }
-
-                let mut up = gate_up_outputs.remove(0);
-                if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
-                    add_expert_bias_in_place(
-                        &mut up,
-                        bias.as_slice(),
-                        expert_index,
-                        layer
-                            .feed_forward_gate_up_experts_weight
-                            .rows_per_projection[1],
-                    );
-                }
-                perf.stage_timings.expert_projection_ns = perf
+            for (layer_index, layer) in self.layers.iter().enumerate() {
+                let residual = hidden.clone();
+                let attention_norm_start = Instant::now();
+                let hidden_norm = rms_norm(
+                    hidden.as_slice(),
+                    layer.attention_norm.as_slice(),
+                    self.family_metadata.rms_norm_epsilon,
+                );
+                perf.stage_timings.attention_norm_ns = perf
                     .stage_timings
-                    .expert_projection_ns
-                    .saturating_add(duration_ns(expert_projection_start));
+                    .attention_norm_ns
+                    .saturating_add(duration_ns(attention_norm_start));
 
-                let expert_activation_start = Instant::now();
-                let activated = oai_swiglu(gate.as_slice(), up.as_slice());
-                perf.stage_timings.expert_activation_ns = perf
-                    .stage_timings
-                    .expert_activation_ns
-                    .saturating_add(duration_ns(expert_activation_start));
-
-                let expert_down_start = Instant::now();
-                let mut expert = Vec::new();
-                let expert_stats = layer
-                    .feed_forward_down_experts_weight
-                    .expert_matvec_profiled(
+                let qkv_start = Instant::now();
+                let (mut qkv_outputs, qkv_stats) = if let (Some(plan), Some(storage)) = (
+                    hybrid_selected4_plan.as_mut(),
+                    layer.attention_qkv_weight.storage.as_ref(),
+                ) {
+                    let result = cuda_quantized_matvec_with_reused_buffers(
                         backend,
-                        expert_index,
-                        activated.as_slice(),
-                        &mut expert,
+                        storage,
+                        0,
+                        layer.attention_qkv_weight.mode,
+                        layer.attention_qkv_weight.total_rows(),
+                        layer.attention_qkv_weight.columns,
+                        hidden_norm.as_slice(),
+                        &mut plan.hidden_input_host_buffer,
+                        &plan.hidden_input_buffer,
+                        &plan.projected_buffer,
                     )?;
-                accumulate_cuda_matvec_stats(&mut perf, &expert_stats);
-                if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
-                    add_expert_bias_in_place(
-                        &mut expert,
-                        bias.as_slice(),
-                        expert_index,
-                        layer.feed_forward_down_experts_weight.rows,
+                    (
+                        split_projection_outputs(
+                            &layer.attention_qkv_weight.rows_per_projection,
+                            result.values,
+                        )?,
+                        result.stats,
+                    )
+                } else {
+                    layer
+                        .attention_qkv_weight
+                        .matvec_profiled(backend, hidden_norm.as_slice())?
+                };
+                accumulate_cuda_matvec_stats(&mut perf, &qkv_stats);
+                let mut q = qkv_outputs.remove(0);
+                add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
+
+                let mut k = qkv_outputs.remove(0);
+                add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
+
+                let mut v = qkv_outputs.remove(0);
+                add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
+                perf.stage_timings.qkv_projection_ns = perf
+                    .stage_timings
+                    .qkv_projection_ns
+                    .saturating_add(duration_ns(qkv_start));
+
+                let rope_start = Instant::now();
+                apply_rope_neox(
+                    &mut q,
+                    self.descriptor.config.block.attention.head_count,
+                    self.descriptor.config.block.attention.head_dim,
+                    self.descriptor.config.block.attention.rotary_dim,
+                    position,
+                    &self.family_metadata,
+                );
+                apply_rope_neox(
+                    &mut k,
+                    self.descriptor.config.block.attention.kv_head_count,
+                    self.descriptor.config.block.attention.head_dim,
+                    self.descriptor.config.block.attention.rotary_dim,
+                    position,
+                    &self.family_metadata,
+                );
+                perf.stage_timings.rope_ns = perf
+                    .stage_timings
+                    .rope_ns
+                    .saturating_add(duration_ns(rope_start));
+
+                let cache_offset = layer_index.saturating_mul(kv_width);
+                cache_key[cache_offset..cache_offset + kv_width].copy_from_slice(k.as_slice());
+                cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
+
+                let attention_start = Instant::now();
+                let attention = layer.attend(
+                    layer_index,
+                    q.as_slice(),
+                    k.as_slice(),
+                    v.as_slice(),
+                    cache,
+                    &self.descriptor,
+                    self.family_metadata.sliding_window,
+                );
+                perf.stage_timings.attention_ns = perf
+                    .stage_timings
+                    .attention_ns
+                    .saturating_add(duration_ns(attention_start));
+
+                let attention_output_start = Instant::now();
+                let mut attention_out = Vec::new();
+                let attention_out_stats = if let (Some(plan), Some(storage)) = (
+                    hybrid_selected4_plan.as_mut(),
+                    layer.attention_output_weight.storage.as_ref(),
+                ) {
+                    let result = cuda_quantized_matvec_with_reused_buffers(
+                        backend,
+                        storage,
+                        0,
+                        layer.attention_output_weight.mode,
+                        layer.attention_output_weight.rows,
+                        layer.attention_output_weight.columns,
+                        attention.as_slice(),
+                        &mut plan.attention_input_host_buffer,
+                        &plan.attention_input_buffer,
+                        &plan.output_buffer,
+                    )?;
+                    attention_out = result.values;
+                    result.stats
+                } else {
+                    layer.attention_output_weight.matvec_profiled(
+                        backend,
+                        attention.as_slice(),
+                        &mut attention_out,
+                    )?
+                };
+                accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
+                if let Some(bias) = layer.attention_output_bias.as_ref() {
+                    add_bias_in_place(&mut attention_out, bias.as_slice());
+                }
+                perf.stage_timings.attention_output_projection_ns = perf
+                    .stage_timings
+                    .attention_output_projection_ns
+                    .saturating_add(duration_ns(attention_output_start));
+                hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
+
+                let ffn_residual = hidden.clone();
+                let feed_forward_norm_start = Instant::now();
+                let ffn_input = rms_norm(
+                    hidden.as_slice(),
+                    layer.feed_forward_norm.as_slice(),
+                    self.family_metadata.rms_norm_epsilon,
+                );
+                perf.stage_timings.feed_forward_norm_ns = perf
+                    .stage_timings
+                    .feed_forward_norm_ns
+                    .saturating_add(duration_ns(feed_forward_norm_start));
+
+                let router_start = Instant::now();
+                let selected_count_target = self.family_metadata.expert_used_count.unwrap_or(0);
+                let (selected, mut routing, routing_device_ready) = if let (
+                    Some(plan),
+                    Some(router_transposed),
+                ) = (
+                    hybrid_selected4_plan.as_mut(),
+                    layer.feed_forward_router_weight_transposed_device.as_ref(),
+                ) {
+                    plan.hidden_input_host_buffer
+                        .write_f32(ffn_input.as_slice())
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let mut submission = backend.begin_submission()?;
+                    submission.copy_host_to_device(
+                        &plan.hidden_input_host_buffer,
+                        &plan.hidden_input_buffer,
+                    )?;
+                    submission.matmul(
+                        &plan.hidden_input_buffer,
+                        router_transposed,
+                        &plan.router_logits_buffer,
+                        1,
+                        layer.feed_forward_router_weight.columns,
+                        layer.feed_forward_router_weight.rows,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                        submission.add_f32_in_place(
+                            &plan.router_logits_buffer,
+                            0,
+                            bias,
+                            layer.feed_forward_router_weight.rows,
+                        )?;
+                    }
+                    submission.router_topk_delayed_softmax(
+                        &plan.router_logits_buffer,
+                        layer.feed_forward_router_weight.rows,
+                        selected_count_target,
+                        &plan.selected_expert_ids_buffer,
+                        &plan.selected_weights_buffer,
+                    )?;
+                    let report =
+                        submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    plan.selected_expert_ids_scratch = i32_ne_bytes_to_values(
+                        plan.selected_expert_ids_buffer.read_bytes()?.as_slice(),
+                    )
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let selected = plan
+                        .selected_expert_ids_scratch
+                        .iter()
+                        .copied()
+                        .map(|index| {
+                            usize::try_from(index).map_err(|_| {
+                                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                    format!("cuda router returned negative expert index {index}",),
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(
+                        ffn_input
+                            .len()
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
                     );
-                }
-                perf.stage_timings.expert_projection_ns = perf
+                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
+                        selected_count_target
+                            .saturating_mul(std::mem::size_of::<i32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                    perf.cuda.kernel_launches = perf
+                        .cuda
+                        .kernel_launches
+                        .saturating_add(report.encoded_operations);
+                    (selected, Vec::new(), true)
+                } else {
+                    let mut router_logits = Vec::new();
+                    layer
+                        .feed_forward_router_weight
+                        .matvec(ffn_input.as_slice(), &mut router_logits)?;
+                    if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                        add_bias_in_place(&mut router_logits, bias.as_slice());
+                    }
+                    let selected = top_k_indices(router_logits.as_slice(), selected_count_target);
+                    let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+                    (selected, routing, false)
+                };
+                perf.stage_timings.router_ns = perf
                     .stage_timings
-                    .expert_projection_ns
-                    .saturating_add(duration_ns(expert_down_start));
+                    .router_ns
+                    .saturating_add(duration_ns(router_start));
 
-                let route = routing[selected_index];
-                let expert_aggregation_start = Instant::now();
-                for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
-                    *dst += value * route;
+                let mut moe_out = vec![0.0; hidden_size];
+                let mut used_staged_selected4_cuda_path = false;
+                if selected.len() <= 4 {
+                    if let (Some(gate_up_host), Some(down_host)) = (
+                        layer.feed_forward_gate_up_experts_weight.host.as_ref(),
+                        layer.feed_forward_down_experts_weight.host.as_ref(),
+                    ) {
+                        let gate_rows = layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[0];
+                        let up_rows = layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[1];
+                        let selected_count = selected.len();
+                        if selected_count == 4 {
+                            if let Some(plan) = hybrid_selected4_plan.as_mut() {
+                                gate_up_host.selected_packed_bytes_into(
+                                    selected.as_slice(),
+                                    &mut plan.gate_up_weights_scratch,
+                                )?;
+                                down_host.selected_bytes_into(
+                                    selected.as_slice(),
+                                    &mut plan.down_weights_scratch,
+                                )?;
+                                if !routing_device_ready {
+                                    plan.hidden_input_host_buffer
+                                        .write_f32(ffn_input.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    plan.selected_weights_host_buffer
+                                        .write_f32(routing.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                }
+                                plan.gate_up_weights_host_buffer
+                                    .write_bytes(plan.gate_up_weights_scratch.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                plan.down_weights_host_buffer
+                                    .write_bytes(plan.down_weights_scratch.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+
+                                let gate_bias_device = if let Some(values) =
+                                    layer.feed_forward_gate_experts_bias.as_ref()
+                                {
+                                    gather_selected_expert_bias_rows_into(
+                                        values.as_slice(),
+                                        gate_rows,
+                                        selected.as_slice(),
+                                        &mut plan.gate_bias_scratch,
+                                    )?;
+                                    let host = plan.gate_bias_host_buffer.as_mut().ok_or_else(|| {
+                                    ReferenceTextGenerationError::Runtime(
+                                        super::RuntimeError::Backend(String::from(
+                                            "missing hybrid selected4 gate bias host buffer",
+                                        )),
+                                    )
+                                })?;
+                                    host.write_f32(plan.gate_bias_scratch.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    plan.gate_bias_buffer.as_ref()
+                                } else {
+                                    None
+                                };
+                                let up_bias_device = if let Some(values) =
+                                    layer.feed_forward_up_experts_bias.as_ref()
+                                {
+                                    gather_selected_expert_bias_rows_into(
+                                        values.as_slice(),
+                                        up_rows,
+                                        selected.as_slice(),
+                                        &mut plan.up_bias_scratch,
+                                    )?;
+                                    let host =
+                                        plan.up_bias_host_buffer.as_mut().ok_or_else(|| {
+                                            ReferenceTextGenerationError::Runtime(
+                                                super::RuntimeError::Backend(String::from(
+                                                    "missing hybrid selected4 up bias host buffer",
+                                                )),
+                                            )
+                                        })?;
+                                    host.write_f32(plan.up_bias_scratch.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    plan.up_bias_buffer.as_ref()
+                                } else {
+                                    None
+                                };
+                                let down_bias_device = if let Some(values) =
+                                    layer.feed_forward_down_experts_bias.as_ref()
+                                {
+                                    gather_selected_expert_bias_rows_into(
+                                        values.as_slice(),
+                                        layer.feed_forward_down_experts_weight.rows,
+                                        selected.as_slice(),
+                                        &mut plan.down_bias_scratch,
+                                    )?;
+                                    let host = plan.down_bias_host_buffer.as_mut().ok_or_else(|| {
+                                    ReferenceTextGenerationError::Runtime(
+                                        super::RuntimeError::Backend(String::from(
+                                            "missing hybrid selected4 down bias host buffer",
+                                        )),
+                                    )
+                                })?;
+                                    host.write_f32(plan.down_bias_scratch.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    plan.down_bias_buffer.as_ref()
+                                } else {
+                                    None
+                                };
+
+                                let expert_projection_start = Instant::now();
+                                let mut submission = backend.begin_submission()?;
+                                if !routing_device_ready {
+                                    submission.copy_host_to_device(
+                                        &plan.hidden_input_host_buffer,
+                                        &plan.hidden_input_buffer,
+                                    )?;
+                                    submission.copy_host_to_device(
+                                        &plan.selected_weights_host_buffer,
+                                        &plan.selected_weights_buffer,
+                                    )?;
+                                }
+                                submission.copy_host_to_device(
+                                    &plan.gate_up_weights_host_buffer,
+                                    &plan.gate_up_weights_buffer,
+                                )?;
+                                submission.copy_host_to_device(
+                                    &plan.down_weights_host_buffer,
+                                    &plan.down_weights_buffer,
+                                )?;
+                                if let (Some(host), Some(device)) =
+                                    (plan.gate_bias_host_buffer.as_ref(), gate_bias_device)
+                                {
+                                    submission.copy_host_to_device(host, device)?;
+                                }
+                                if let (Some(host), Some(device)) =
+                                    (plan.up_bias_host_buffer.as_ref(), up_bias_device)
+                                {
+                                    submission.copy_host_to_device(host, device)?;
+                                }
+                                if let (Some(host), Some(device)) =
+                                    (plan.down_bias_host_buffer.as_ref(), down_bias_device)
+                                {
+                                    submission.copy_host_to_device(host, device)?;
+                                }
+                                submission.quantize_f32_to_q8_1(
+                                    &plan.hidden_input_buffer,
+                                    1,
+                                    ffn_input.len(),
+                                    &plan.hidden_input_q8_1_buffer,
+                                )?;
+                                submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
+                                    &plan.gate_up_weights_buffer,
+                                    layer.feed_forward_gate_up_experts_weight.mode,
+                                    layer.feed_forward_gate_up_experts_weight.row_byte_len,
+                                    layer.feed_forward_gate_up_experts_weight.total_rows(),
+                                    layer.feed_forward_gate_up_experts_weight.columns,
+                                    gate_rows,
+                                    up_rows,
+                                    &plan.selected_ids_buffer,
+                                    selected_count,
+                                    &plan.hidden_input_q8_1_buffer,
+                                    gate_bias_device,
+                                    up_bias_device,
+                                    &plan.activated_q8_1_buffer,
+                                )?;
+                                submission.moe_down_project_q8_1_selected4(
+                                    &plan.down_weights_buffer,
+                                    layer.feed_forward_down_experts_weight.mode,
+                                    layer.feed_forward_down_experts_weight.row_byte_len,
+                                    layer.feed_forward_down_experts_weight.rows,
+                                    layer.feed_forward_down_experts_weight.columns,
+                                    &plan.selected_ids_buffer,
+                                    selected_count,
+                                    &plan.activated_q8_1_buffer,
+                                    down_bias_device,
+                                    &plan.projected_buffer,
+                                )?;
+                                submission.accumulate_selected4(
+                                    &plan.projected_buffer,
+                                    &plan.selected_weights_buffer,
+                                    selected_count,
+                                    hidden_size,
+                                    None,
+                                    &plan.output_buffer,
+                                )?;
+                                let report = submission
+                                    .commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                                moe_out = plan.output_buffer.read_f32()?;
+                                perf.stage_timings.expert_projection_ns = perf
+                                    .stage_timings
+                                    .expert_projection_ns
+                                    .saturating_add(duration_ns(expert_projection_start));
+                                perf.cuda.host_to_device_bytes =
+                                    perf.cuda.host_to_device_bytes.saturating_add(
+                                        ((if routing_device_ready {
+                                            0
+                                        } else {
+                                            ffn_input
+                                                .len()
+                                                .saturating_mul(std::mem::size_of::<f32>())
+                                        }) + if routing_device_ready {
+                                            0
+                                        } else {
+                                            routing.len().saturating_mul(std::mem::size_of::<f32>())
+                                        } + plan.gate_up_weights_scratch.len()
+                                            + plan.down_weights_scratch.len()
+                                            + plan
+                                                .gate_bias_scratch
+                                                .len()
+                                                .saturating_mul(std::mem::size_of::<f32>())
+                                            + plan
+                                                .up_bias_scratch
+                                                .len()
+                                                .saturating_mul(std::mem::size_of::<f32>())
+                                            + plan
+                                                .down_bias_scratch
+                                                .len()
+                                                .saturating_mul(std::mem::size_of::<f32>()))
+                                            as u64,
+                                    );
+                                perf.cuda.device_to_host_bytes =
+                                    perf.cuda.device_to_host_bytes.saturating_add(
+                                        hidden_size
+                                            .saturating_mul(std::mem::size_of::<f32>())
+                                            .try_into()
+                                            .unwrap_or(u64::MAX),
+                                    );
+                                perf.cuda.submission_count =
+                                    perf.cuda.submission_count.saturating_add(1);
+                                perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                                perf.cuda.kernel_launches = perf
+                                    .cuda
+                                    .kernel_launches
+                                    .saturating_add(report.encoded_operations);
+                                used_staged_selected4_cuda_path = true;
+                            }
+                        }
+                        if !used_staged_selected4_cuda_path {
+                            if routing_device_ready && routing.is_empty() {
+                                if let Some(plan) = hybrid_selected4_plan.as_ref() {
+                                    routing = plan
+                                        .selected_weights_buffer
+                                        .read_f32_at_offset(0, selected_count)
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                }
+                            }
+                            let selected_dense_ids = (0..selected_count)
+                                .map(|index| {
+                                    i32::try_from(index).map_err(|_| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(format!(
+                                                "selected expert index {index} exceeds i32 range",
+                                            )),
+                                        )
+                                    })
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            let gate_up_weights =
+                                gate_up_host.selected_packed_bytes(selected.as_slice())?;
+                            let down_weights = down_host.selected_bytes(selected.as_slice())?;
+                            let gate_bias = layer
+                                .feed_forward_gate_experts_bias
+                                .as_ref()
+                                .map(|values| {
+                                    gather_selected_expert_bias_rows(
+                                        values.as_slice(),
+                                        gate_rows,
+                                        selected.as_slice(),
+                                    )
+                                })
+                                .transpose()?;
+                            let up_bias = layer
+                                .feed_forward_up_experts_bias
+                                .as_ref()
+                                .map(|values| {
+                                    gather_selected_expert_bias_rows(
+                                        values.as_slice(),
+                                        up_rows,
+                                        selected.as_slice(),
+                                    )
+                                })
+                                .transpose()?;
+                            let down_bias = layer
+                                .feed_forward_down_experts_bias
+                                .as_ref()
+                                .map(|values| {
+                                    gather_selected_expert_bias_rows(
+                                        values.as_slice(),
+                                        layer.feed_forward_down_experts_weight.rows,
+                                        selected.as_slice(),
+                                    )
+                                })
+                                .transpose()?;
+                            let input_buffer = backend.input_buffer(
+                                Shape::new(vec![ffn_input.len()]),
+                                ffn_input.clone(),
+                            )?;
+                            let input_q8_1 = backend.byte_buffer(&vec![
+                                0_u8;
+                                ggml_q8_1_storage_bytes(
+                                    1,
+                                    ffn_input.len()
+                                )
+                                .map_err(
+                                    ReferenceTextGenerationError::Runtime
+                                )?
+                            ])?;
+                            let selected_ids_buffer = backend.byte_buffer(
+                                &i32_slice_to_ne_bytes(selected_dense_ids.as_slice()),
+                            )?;
+                            let selected_weights_buffer = backend
+                                .input_buffer(Shape::new(vec![routing.len()]), routing.clone())?;
+                            let gate_up_weights_buffer =
+                                backend.byte_buffer(gate_up_weights.as_slice())?;
+                            let down_weights_buffer =
+                                backend.byte_buffer(down_weights.as_slice())?;
+                            let gate_bias_buffer = gate_bias
+                                .as_ref()
+                                .map(|values| {
+                                    backend.input_buffer(
+                                        Shape::new(vec![values.len()]),
+                                        values.clone(),
+                                    )
+                                })
+                                .transpose()?;
+                            let up_bias_buffer = up_bias
+                                .as_ref()
+                                .map(|values| {
+                                    backend.input_buffer(
+                                        Shape::new(vec![values.len()]),
+                                        values.clone(),
+                                    )
+                                })
+                                .transpose()?;
+                            let down_bias_buffer = down_bias
+                                .as_ref()
+                                .map(|values| {
+                                    backend.input_buffer(
+                                        Shape::new(vec![values.len()]),
+                                        values.clone(),
+                                    )
+                                })
+                                .transpose()?;
+                            let activated_q8_1 = backend.byte_buffer(&vec![
+                            0_u8;
+                            ggml_q8_1_storage_bytes(
+                                selected_count,
+                                gate_rows
+                            )
+                            .map_err(
+                                ReferenceTextGenerationError::Runtime
+                            )?
+                        ])?;
+                            let projected_buffer =
+                                backend.f32_buffer(selected_count.saturating_mul(hidden_size))?;
+                            let output_buffer = backend.f32_buffer(hidden_size)?;
+                            let expert_projection_start = Instant::now();
+                            let mut submission = backend.begin_submission()?;
+                            submission.quantize_f32_to_q8_1(
+                                &input_buffer,
+                                1,
+                                ffn_input.len(),
+                                &input_q8_1,
+                            )?;
+                            submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
+                                &gate_up_weights_buffer,
+                                layer.feed_forward_gate_up_experts_weight.mode,
+                                layer.feed_forward_gate_up_experts_weight.row_byte_len,
+                                layer.feed_forward_gate_up_experts_weight.total_rows(),
+                                layer.feed_forward_gate_up_experts_weight.columns,
+                                gate_rows,
+                                up_rows,
+                                &selected_ids_buffer,
+                                selected_count,
+                                &input_q8_1,
+                                gate_bias_buffer.as_ref(),
+                                up_bias_buffer.as_ref(),
+                                &activated_q8_1,
+                            )?;
+                            submission.moe_down_project_q8_1_selected4(
+                                &down_weights_buffer,
+                                layer.feed_forward_down_experts_weight.mode,
+                                layer.feed_forward_down_experts_weight.row_byte_len,
+                                layer.feed_forward_down_experts_weight.rows,
+                                layer.feed_forward_down_experts_weight.columns,
+                                &selected_ids_buffer,
+                                selected_count,
+                                &activated_q8_1,
+                                down_bias_buffer.as_ref(),
+                                &projected_buffer,
+                            )?;
+                            submission.accumulate_selected4(
+                                &projected_buffer,
+                                &selected_weights_buffer,
+                                selected_count,
+                                hidden_size,
+                                None,
+                                &output_buffer,
+                            )?;
+                            let report = submission
+                                .commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                            moe_out = output_buffer.read_f32()?;
+                            perf.stage_timings.expert_projection_ns = perf
+                                .stage_timings
+                                .expert_projection_ns
+                                .saturating_add(duration_ns(expert_projection_start));
+                            perf.cuda.host_to_device_bytes =
+                                perf.cuda.host_to_device_bytes.saturating_add(
+                                    (ffn_input.len().saturating_mul(std::mem::size_of::<f32>())
+                                        + routing.len().saturating_mul(std::mem::size_of::<f32>())
+                                        + gate_up_weights.len()
+                                        + down_weights.len()
+                                        + selected_dense_ids
+                                            .len()
+                                            .saturating_mul(std::mem::size_of::<i32>())
+                                        + gate_bias.as_ref().map_or(0, |values| {
+                                            values.len().saturating_mul(std::mem::size_of::<f32>())
+                                        })
+                                        + up_bias.as_ref().map_or(0, |values| {
+                                            values.len().saturating_mul(std::mem::size_of::<f32>())
+                                        })
+                                        + down_bias.as_ref().map_or(0, |values| {
+                                            values.len().saturating_mul(std::mem::size_of::<f32>())
+                                        })) as u64,
+                                );
+                            perf.cuda.device_to_host_bytes =
+                                perf.cuda.device_to_host_bytes.saturating_add(
+                                    hidden_size
+                                        .saturating_mul(std::mem::size_of::<f32>())
+                                        .try_into()
+                                        .unwrap_or(u64::MAX),
+                                );
+                            perf.cuda.submission_count =
+                                perf.cuda.submission_count.saturating_add(1);
+                            perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                            perf.cuda.kernel_launches = perf
+                                .cuda
+                                .kernel_launches
+                                .saturating_add(report.encoded_operations);
+                            used_staged_selected4_cuda_path = true;
+                        }
+                    }
                 }
-                perf.stage_timings.expert_aggregation_ns = perf
-                    .stage_timings
-                    .expert_aggregation_ns
-                    .saturating_add(duration_ns(expert_aggregation_start));
+                if !used_staged_selected4_cuda_path {
+                    if routing_device_ready && routing.is_empty() {
+                        if let Some(plan) = hybrid_selected4_plan.as_ref() {
+                            routing = plan
+                                .selected_weights_buffer
+                                .read_f32_at_offset(0, selected.len())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                        }
+                    }
+                    for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                        let expert_projection_start = Instant::now();
+                        let (mut gate_up_outputs, gate_up_stats) = layer
+                            .feed_forward_gate_up_experts_weight
+                            .expert_matvec_profiled(backend, expert_index, ffn_input.as_slice())?;
+                        accumulate_cuda_matvec_stats(&mut perf, &gate_up_stats);
+                        let mut gate = gate_up_outputs.remove(0);
+                        if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
+                            add_expert_bias_in_place(
+                                &mut gate,
+                                bias.as_slice(),
+                                expert_index,
+                                layer
+                                    .feed_forward_gate_up_experts_weight
+                                    .rows_per_projection[0],
+                            );
+                        }
+
+                        let mut up = gate_up_outputs.remove(0);
+                        if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
+                            add_expert_bias_in_place(
+                                &mut up,
+                                bias.as_slice(),
+                                expert_index,
+                                layer
+                                    .feed_forward_gate_up_experts_weight
+                                    .rows_per_projection[1],
+                            );
+                        }
+                        perf.stage_timings.expert_projection_ns = perf
+                            .stage_timings
+                            .expert_projection_ns
+                            .saturating_add(duration_ns(expert_projection_start));
+
+                        let expert_activation_start = Instant::now();
+                        let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                        perf.stage_timings.expert_activation_ns = perf
+                            .stage_timings
+                            .expert_activation_ns
+                            .saturating_add(duration_ns(expert_activation_start));
+
+                        let expert_down_start = Instant::now();
+                        let mut expert = Vec::new();
+                        let expert_stats = layer
+                            .feed_forward_down_experts_weight
+                            .expert_matvec_profiled(
+                                backend,
+                                expert_index,
+                                activated.as_slice(),
+                                &mut expert,
+                            )?;
+                        accumulate_cuda_matvec_stats(&mut perf, &expert_stats);
+                        if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
+                            add_expert_bias_in_place(
+                                &mut expert,
+                                bias.as_slice(),
+                                expert_index,
+                                layer.feed_forward_down_experts_weight.rows,
+                            );
+                        }
+                        perf.stage_timings.expert_projection_ns = perf
+                            .stage_timings
+                            .expert_projection_ns
+                            .saturating_add(duration_ns(expert_down_start));
+
+                        let route = routing[selected_index];
+                        let expert_aggregation_start = Instant::now();
+                        for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
+                            *dst += value * route;
+                        }
+                        perf.stage_timings.expert_aggregation_ns = perf
+                            .stage_timings
+                            .expert_aggregation_ns
+                            .saturating_add(duration_ns(expert_aggregation_start));
+                    }
+                }
+                hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
+
+                bytes_moved = bytes_moved
+                    .saturating_add(layer.attention_qkv_weight.byte_length() as u64)
+                    .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                    .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
+                    .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
+                kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
             }
-            hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
 
-            bytes_moved = bytes_moved
-                .saturating_add(layer.attention_qkv_weight.byte_length() as u64)
-                .saturating_add(layer.attention_output_weight.byte_length() as u64)
-                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
-                .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
-            kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
+            let output_norm_start = Instant::now();
+            let final_hidden = rms_norm(
+                hidden.as_slice(),
+                self.output_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.output_norm_ns = perf
+                .stage_timings
+                .output_norm_ns
+                .saturating_add(duration_ns(output_norm_start));
+
+            let logits_projection_start = Instant::now();
+            let mut logits = Vec::new();
+            let logits_stats = if let (Some(plan), Some(storage)) =
+                (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+            {
+                let result = cuda_quantized_matvec_with_reused_buffers(
+                    backend,
+                    storage,
+                    0,
+                    self.output.mode,
+                    self.output.rows,
+                    self.output.columns,
+                    final_hidden.as_slice(),
+                    &mut plan.hidden_input_host_buffer,
+                    &plan.hidden_input_buffer,
+                    &plan.logits_buffer,
+                )?;
+                logits = result.values;
+                result.stats
+            } else {
+                self.output
+                    .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?
+            };
+            accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
+            bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+            kernel_count = kernel_count.saturating_add(1);
+            perf.stage_timings.logits_projection_ns = perf
+                .stage_timings
+                .logits_projection_ns
+                .saturating_add(duration_ns(logits_projection_start));
+
+            Ok(GptOssForwardStep {
+                key: cache_key,
+                value: cache_value,
+                logits,
+                selected_token: None,
+                kernel_count,
+                bytes_moved,
+                perf: Some(perf),
+            })
+        })();
+        if let Some(plan) = hybrid_selected4_plan {
+            self.release_hybrid_selected4_plan(plan);
         }
-
-        let output_norm_start = Instant::now();
-        let final_hidden = rms_norm(
-            hidden.as_slice(),
-            self.output_norm.as_slice(),
-            self.family_metadata.rms_norm_epsilon,
-        );
-        perf.stage_timings.output_norm_ns = perf
-            .stage_timings
-            .output_norm_ns
-            .saturating_add(duration_ns(output_norm_start));
-
-        let logits_projection_start = Instant::now();
-        let mut logits = Vec::new();
-        let logits_stats =
-            self.output
-                .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?;
-        accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
-        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
-        kernel_count = kernel_count.saturating_add(1);
-        perf.stage_timings.logits_projection_ns = perf
-            .stage_timings
-            .logits_projection_ns
-            .saturating_add(duration_ns(logits_projection_start));
-
-        Ok(GptOssForwardStep {
-            key: cache_key,
-            value: cache_value,
-            logits,
-            selected_token: None,
-            kernel_count,
-            bytes_moved,
-            perf: Some(perf),
-        })
+        result
     }
 }
 
@@ -7344,6 +8406,37 @@ impl QuantizedExpertTensor {
         self.storage.byte_length()
     }
 
+    fn selected_bytes_into(
+        &self,
+        selected: &[usize],
+        packed: &mut Vec<u8>,
+    ) -> Result<(), super::RuntimeError> {
+        let expert_stride = self.rows.saturating_mul(self.row_byte_len);
+        packed.clear();
+        packed.reserve(selected.len().saturating_mul(expert_stride));
+        for expert_index in selected {
+            if *expert_index >= self.outer {
+                return Err(super::RuntimeError::Backend(format!(
+                    "expert index {} exceeds expert count {}",
+                    expert_index, self.outer
+                )));
+            }
+            let offset = expert_index.saturating_mul(expert_stride);
+            let bytes = self
+                .storage
+                .read_range(offset, expert_stride)
+                .map_err(model_load_runtime_error)?;
+            packed.extend_from_slice(bytes);
+        }
+        Ok(())
+    }
+
+    fn selected_bytes(&self, selected: &[usize]) -> Result<Vec<u8>, super::RuntimeError> {
+        let mut packed = Vec::new();
+        self.selected_bytes_into(selected, &mut packed)?;
+        Ok(packed)
+    }
+
     fn expert_matvec(
         &self,
         expert_index: usize,
@@ -7393,6 +8486,50 @@ impl QuantizedExpertProjectionGroup {
         self.gate
             .byte_length()
             .saturating_add(self.up.byte_length())
+    }
+
+    fn selected_packed_bytes_into(
+        &self,
+        selected: &[usize],
+        packed: &mut Vec<u8>,
+    ) -> Result<(), super::RuntimeError> {
+        let gate_stride = self.gate.rows.saturating_mul(self.gate.row_byte_len);
+        let up_stride = self.up.rows.saturating_mul(self.up.row_byte_len);
+        packed.clear();
+        packed.reserve(
+            selected
+                .len()
+                .saturating_mul(gate_stride.saturating_add(up_stride)),
+        );
+        for expert_index in selected {
+            if *expert_index >= self.outer {
+                return Err(super::RuntimeError::Backend(format!(
+                    "expert index {} exceeds expert count {}",
+                    expert_index, self.outer
+                )));
+            }
+            let gate_offset = expert_index.saturating_mul(gate_stride);
+            let gate_bytes = self
+                .gate
+                .storage
+                .read_range(gate_offset, gate_stride)
+                .map_err(model_load_runtime_error)?;
+            packed.extend_from_slice(gate_bytes);
+            let up_offset = expert_index.saturating_mul(up_stride);
+            let up_bytes = self
+                .up
+                .storage
+                .read_range(up_offset, up_stride)
+                .map_err(model_load_runtime_error)?;
+            packed.extend_from_slice(up_bytes);
+        }
+        Ok(())
+    }
+
+    fn selected_packed_bytes(&self, selected: &[usize]) -> Result<Vec<u8>, super::RuntimeError> {
+        let mut packed = Vec::new();
+        self.selected_packed_bytes_into(selected, &mut packed)?;
+        Ok(packed)
     }
 
     fn expert_matvec(
