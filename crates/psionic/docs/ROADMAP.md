@@ -1,36 +1,38 @@
 # Psionic Roadmap
 
-> Status: updated 2026-03-09 after re-verifying live GitHub issue state with
+> Status: updated 2026-03-10 after re-verifying live GitHub issue state with
 > `gh issue list --state all` / `gh issue view`, after confirming the generic
 > Psionic replacement track through `PSI-178` and `OA-203` is landed on `main`,
 > after confirming the Psionic-only GPT-OSS enablement track `PSI-179` through
 > `PSI-183` remains landed on `main`, after confirming the early throughput
 > issues `#3242` through `#3246` are closed, after confirming `#3249` and
 > `#3247` are also closed, after keeping `#3248` open as the final NVIDIA
-> throughput umbrella, and after opening the narrower NVIDIA execution issues
-> `#3276` and `#3288`.
+> throughput umbrella, after opening the narrower NVIDIA execution issues
+> `#3276` and `#3288`, and after adding `ncu`-guided decode hotspot evidence
+> for the current RTX 4080 host.
 >
 > Benchmark truth correction: the earlier `134.62 tok/s` `prompt_cache_hit`
 > reading was a transient fast sample, not a durable code baseline. The exact
-> old `41a7b3568` checkpoint now reproduces at about `121.79 tok/s`, and
-> repeated current-`main` runs are clustering at about `123 tok/s` on the exact
-> `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` contract. Treat
-> `~123 tok/s` as the truthful current floor to beat on this RTX 4080 host,
-> with the same-moment `llama.cpp` control landing in roughly the `160 tok/s`
-> class on the same contract.
+> old `41a7b3568` checkpoint now reproduces at about `121.79 tok/s`, and the
+> current restored `main` floor on the exact
+> `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` contract is
+> `122.42 tok/s` for Psionic versus `166.32 tok/s` for `llama.cpp`. Treat the
+> `122 tok/s` class as the truthful current floor to beat on this RTX 4080
+> host until a new checkpoint reproduces above it.
 >
 > Direction correction: the next concrete NVIDIA work is no longer generic
-> "keep porting kernels until it gets faster". The most relevant new reference
-> signal from the official `~/code/gpt-oss` repo is now split in two:
-> its dense grouped `routing metadata -> scatter -> grouped expert compute ->
-> gather/accumulate` path is real but prefill-oriented, while the exact
-> `prompt_cache_hit` benchmark on this host matches the repo's small-token
-> `moe_matmul_swiglu -> moe_matmul -> accumulate` path more closely. Psionic
-> has now made that selected4 project-plus-accumulate shape the default decode
-> path for this GPT-OSS case and is clustering at about `123 tok/s` on the
-> exact contract, but the remaining work under `#3288` and `#3276` should now
-> follow the official small-token path first and only return to dense grouped
-> prefill work where it actually matters for the measured contract.
+> "keep porting kernels until it gets faster". Short `ncu` sampling on the
+> exact live server path now shows the sampled
+> `router_topk_softmax_32_kernel` at about `107.7 us`, the sampled selected4
+> `moe_gate_up_swiglu_q8_1` kernel at about `72.6 us`, and the sampled
+> selected4 expert-project kernel at about `33.3 us`, while sampled decode
+> attention is only about `4.7 us` on this contract. The most relevant
+> reference signal from the official `~/code/gpt-oss` repo is therefore still
+> its small-token selected4 MoE path first, but now with a narrower concrete
+> target: router matvec/top-k plus selected4 gate/up/project kernels. Keep the
+> dense grouped `routing metadata -> scatter -> grouped expert compute ->
+> gather/accumulate` path as the later dense-prefill branch instead of
+> treating it as the first decode bottleneck.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -53,12 +55,13 @@
 > `psionic-gpt-oss-server` HTTP surface on NVIDIA. The remaining open roadmap work
 > on this host is no longer "make GPT-OSS run at all"; it is throughput parity
 > on an already-working Psionic-owned path. The current truthful benchmark floor
-> is about `123 tok/s` for Psionic versus about `168 tok/s` for `llama.cpp` on
-> the exact same contract. The next work should therefore stay focused on the
-> official small-token GPT-OSS MoE path from `~/code/gpt-oss` first, then the
-> dense grouped prefill path where it is actually relevant, and then the more
-> literal `llama.cpp` MMID / MMVQ / `fattn.cu` parity work that remains after
-> those MoE-path corrections are in place.
+> is `122.42 tok/s` for Psionic versus `166.32 tok/s` for `llama.cpp` on the
+> exact same contract. The next work should therefore stay focused on the
+> decode-critical router matvec/top-k and selected4 gate/up/project kernels
+> first, using the official small-token GPT-OSS MoE path from `~/code/gpt-oss`
+> and live `ncu` evidence as the source of truth, then return to dense grouped
+> prefill work where it is actually relevant, and only after that resume the
+> broader `llama.cpp` MMID / MMVQ / `fattn.cu` parity work under `#3276`.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -728,8 +731,8 @@ state:
 | 79 | `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | The reusable GPT-OSS CUDA step-plan/runtime substrate is now landed; keep this in sequence but skip it when choosing the next issue. |
 | 80 | `GPT-OSS-PERF-6A` | [#3249](https://github.com/OpenAgentsInc/openagents/issues/3249) | Closed | The graph/fusion alignment checkpoint work is done and no longer the current bottleneck; keep it in sequence for history but skip it when choosing the next issue. |
 | 81 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Closed | Closed as superseded by the narrower current queue; keep it in sequence for history but skip it when choosing the next issue. |
-| 82 | `GPT-OSS-PERF-6B` | [#3276](https://github.com/OpenAgentsInc/openagents/issues/3276) | Open | This is the current NVIDIA throughput umbrella: the truthful floor to beat is now about `123 tok/s`, and the remaining work should be judged against that corrected benchmark contract rather than the earlier transient `134.62 tok/s` sample. |
-| 83 | `GPT-OSS-PERF-6C` | [#3288](https://github.com/OpenAgentsInc/openagents/issues/3288) | Open | This is the current next concrete issue: follow the official `gpt-oss` small-token MoE path first, especially the selected4 `moe_matmul_swiglu -> moe_matmul -> accumulate` decode shape, and keep the grouped routing-metadata / scatter / gather path as the later dense-prefill branch instead of treating it as the first decode bottleneck. |
+| 82 | `GPT-OSS-PERF-6B` | [#3276](https://github.com/OpenAgentsInc/openagents/issues/3276) | Open | This is the current NVIDIA throughput umbrella: the truthful floor to beat is now `122.42 tok/s`, and the remaining work should be judged against that corrected benchmark contract rather than the earlier transient `134.62 tok/s` sample. |
+| 83 | `GPT-OSS-PERF-6C` | [#3288](https://github.com/OpenAgentsInc/openagents/issues/3288) | Open | This is the current next concrete issue: follow `llama.cpp`'s OpenAI-MoE order exactly on the decode path by porting `topk_moe`, then ids-driven grouped expert matvec (`mul_mat_id` / MMVQ-MMID), then the fused gate/up plus GLU shape before returning to denser grouped-prefill work. |
 | 84 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Psionic HTTP path. |
 | 85 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
 | 86 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
@@ -761,7 +764,7 @@ baseline on `main` is:
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
   the local OpenAI-compatible `psionic-gpt-oss-server`
 - the active gap is now measured, not speculative: the current truthful
-  benchmark floor is about `123 tok/s` for Psionic versus about `160 tok/s`
+  benchmark floor is `122.42 tok/s` for Psionic versus `166.32 tok/s`
   for `llama.cpp`, so the remaining open roadmap work is the throughput-
   alignment track in `#3276`, `#3288`, and `#3248`, not feature-completeness
   for basic GPT-OSS execution
@@ -778,6 +781,15 @@ baseline on `main` is:
   - Psionic still reconstructs the CUDA KV mirror from host-owned prefix cache
     state on each HTTP request, so request-to-request prompt reuse is still not
     backend-resident the way it is in `llama.cpp`
+  - on the exact current decode contract, short `ncu` sampling shows the
+    sampled `router_topk_softmax_32_kernel` at about `107.7 us`, the sampled
+    selected4 `moe_gate_up_swiglu_q8_1` kernel at about `72.6 us`, and the
+    sampled selected4 expert-project kernel at about `33.3 us`, while sampled
+    decode attention is only about `4.7 us`
+  - that means the next honest work is not another generic fusion pass; it is
+    the router32 plus selected4 decode path tracked under `#3288`, with the
+    broader MMID / MMVQ / `fattn.cu` parity work under `#3276` only after those
+    decode-critical kernels improve
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage now extends to
   CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
@@ -1179,22 +1191,117 @@ shortcuts.
 | `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | Add graph-based GPT-OSS prefill and decode runtime on CUDA | `psionic-serve`, `psionic-runtime`, `psionic-backend-cuda` | Landed on `main`: Psionic now has a reusable GPT-OSS CUDA step-plan/runtime substrate and one-submission-per-token decode shape, but it still does not match `llama.cpp` graph/fusion architecture or CUDA kernel quality. |
 | `GPT-OSS-PERF-6A` | [#3249](https://github.com/OpenAgentsInc/openagents/issues/3249) | Closed | Mirror llama.cpp GPT-OSS graph and CUDA fusion architecture | `psionic-serve`, `psionic-runtime`, `psionic-backend-cuda` | Closed after the graph/fusion alignment checkpoint work landed and the remaining bottleneck was narrowed further; keep it here as history, but do not treat it as the next issue. |
 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Closed | Port llama.cpp GPT-OSS CUDA kernels and dispatch policy | `psionic-backend-cuda`, `psionic-serve` | Closed as superseded by the narrower execution queue under `#3276`; keep it here as history, but do not treat it as the next issue. |
-| `GPT-OSS-PERF-6B` | [#3276](https://github.com/OpenAgentsInc/openagents/issues/3276) | Open | Reach `150+ tok/s` on the exact GPT-OSS HTTP benchmark via MMID/MMVQ/fattn parity | `psionic-backend-cuda`, `psionic-serve`, docs/audit | Current NVIDIA throughput umbrella. The truthful floor to beat is now about `123 tok/s`, not the earlier transient `134.62 tok/s` sample, and each kept checkpoint should be logged against that corrected benchmark contract. |
-| `GPT-OSS-PERF-6C` | [#3288](https://github.com/OpenAgentsInc/openagents/issues/3288) | Open | Port the official GPT-OSS decode-relevant small-token MoE path to CUDA before the dense grouped prefill path | `psionic-backend-cuda`, `psionic-serve` | Current next concrete issue. The official `gpt-oss` repo's dense grouped metadata/scatter/gather path is real but prefill-oriented; the measured decode contract on this host is closer to the official small-token `moe_matmul_swiglu -> moe_matmul -> accumulate` path. Psionic has now landed the first default selected4 project/accumulate step from that direction, but deeper expert and attention work remains. |
+| `GPT-OSS-PERF-6B` | [#3276](https://github.com/OpenAgentsInc/openagents/issues/3276) | Open | Reach `150+ tok/s` on the exact GPT-OSS HTTP benchmark via MMID/MMVQ/fattn parity | `psionic-backend-cuda`, `psionic-serve`, docs/audit | Current NVIDIA throughput umbrella. The truthful floor to beat is now `122.42 tok/s`, not the earlier transient `134.62 tok/s` sample, and each kept checkpoint should be logged against that corrected benchmark contract. |
+| `GPT-OSS-PERF-6C` | [#3288](https://github.com/OpenAgentsInc/openagents/issues/3288) | Open | Port the official GPT-OSS decode-relevant small-token MoE path to CUDA before the dense grouped prefill path | `psionic-backend-cuda`, `psionic-serve` | Current next concrete issue. After reviewing `llama.cpp`, the concrete order is now explicit: port the delayed-softmax `topk_moe` route first, then ids-driven grouped expert matvec (`mul_mat_id` plus MMVQ/MMID), then the fused gate/up plus GLU shape. The denser grouped metadata/scatter/gather path remains real, but it should come later because live `ncu` sampling on this host still shows the decode-critical router32 plus selected4 expert stages first. |
 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Reach llama.cpp-class GPT-OSS throughput on the real Psionic HTTP path | docs/tests/benchmark path plus the serving stack | Keep this open until the exact benchmark contract reaches the promised speed class on the real Psionic-only HTTP lane. |
 
 Recent checkpoint note:
 The newer graph/fusion and hot-path fixes were real, but the benchmark floor was
-later re-verified more carefully. The current truthful floor is about
-`123 tok/s`, and the next step is now the official GPT-OSS small-token MoE path
-from `~/code/gpt-oss` rather than more isolated helper-kernel cleanup or a
-premature jump straight to the dense grouped-prefill path.
+later re-verified more carefully. The current truthful floor is now
+`122.42 tok/s`, and the next step is no longer generic helper-kernel cleanup.
+The next step is the exact router32 plus selected4 decode path from the
+official GPT-OSS small-token MoE flow, guided by live `ncu` evidence on this
+host, before any return to the denser grouped-prefill path.
 
 Live host-ceiling note:
 On this host, the local `llama.cpp` control on the same exact benchmark
-contract is currently landing in roughly the `160 tok/s` class. Do not claim
-closure above any higher target unless both Psionic and the `llama.cpp` control
-are rerun above that threshold on the same benchmark contract.
+contract is currently landing in the `166 tok/s` class on the corrected
+baseline run. Do not claim closure above any higher target unless both Psionic
+and the `llama.cpp` control are rerun above that threshold on the same
+benchmark contract.
+
+### Exact `llama.cpp` parity plan for `#3288` then `#3276`
+
+The remaining gap is now concrete enough that the next work should mirror
+`llama.cpp` in the same order that its GPT-OSS/OpenAI-MoE CUDA path actually
+executes:
+
+1. Port the `topk_moe` delayed-softmax router path first.
+   Reference:
+   `~/code/llama.cpp/src/llama-graph.cpp` (`build_moe_ffn(...)`),
+   `~/code/llama.cpp/ggml/src/ggml-cuda/ggml-cuda.cu`
+   (`ggml_cuda_topk_moe_fusion(...)`, the special GPT-OSS delayed-softmax
+   branch), and `~/code/llama.cpp/ggml/src/ggml-cuda/topk-moe.cu`.
+   Psionic target:
+   [gpt_oss.rs](../psionic-serve/src/gpt_oss.rs),
+   [lib.rs](../psionic-backend-cuda/src/lib.rs), and
+   [quantized_matvec.cu](../psionic-backend-cuda/src/kernels/quantized_matvec.cu).
+   Required change:
+   stop treating router32 as a bespoke helper kernel hanging off the serve path.
+   Add a reusable backend op that matches `llama.cpp`'s GPT-OSS/OpenAI-MoE
+   delayed-softmax contract and emits ids plus weights in one pass, including
+   the same tie-breaking and post-top-k softmax behavior.
+   Done when:
+   the current `router_topk_softmax_32_kernel` path is no longer the primary
+   GPT-OSS route, correctness matches the current route exactly, and `ncu`
+   shows the router stage materially below the current `~107.7 us` sample.
+
+2. Port ids-driven grouped expert matvec as the primary expert substrate.
+   Reference:
+   `~/code/llama.cpp/ggml/src/ggml-cuda/ggml-cuda.cu`
+   (`ggml_cuda_mul_mat_id(...)`) plus
+   `~/code/llama.cpp/ggml/src/ggml-cuda/mmvq.cu`.
+   Psionic target:
+   [gpt_oss.rs](../psionic-serve/src/gpt_oss.rs),
+   [lib.rs](../psionic-backend-cuda/src/lib.rs), and
+   [quantized_matvec.cu](../psionic-backend-cuda/src/kernels/quantized_matvec.cu).
+   Required change:
+   stop making the selected4 gate/up/down path rely on separate Psionic-only
+   custom kernels as the primary execution model. Introduce a generic
+   ids-enabled quantized expert matvec substrate, with the same small-batch
+   MMVQ/MMID fast path and the same sorted-token grouped-expert fallback shape
+   that `llama.cpp` uses.
+   Done when:
+   GPT-OSS selected experts are expressed as ids-driven expert matvecs in the
+   backend/runtime surface, not as ad hoc selected4-only orchestration in
+   `psionic-serve`, and `ncu` shows the sampled gate/up plus project stages
+   materially below the current `~72.6 us` plus `~33.3 us` samples.
+
+3. Match `MUL_MAT_ID (+ADD_ID) + GLU` fusion before revisiting attention.
+   Reference:
+   `~/code/llama.cpp/src/llama-graph.cpp` (`build_moe_ffn(...)`) and
+   `~/code/llama.cpp/ggml/src/ggml-cuda/ggml-cuda.cu`
+   (`ggml_cuda_can_fuse(...)`, `ggml_cuda_should_fuse_mul_mat(...)`).
+   Psionic target:
+   [gpt_oss.rs](../psionic-serve/src/gpt_oss.rs),
+   [lib.rs](../psionic-backend-cuda/src/lib.rs), and
+   [quantized_matvec.cu](../psionic-backend-cuda/src/kernels/quantized_matvec.cu).
+   Required change:
+   fuse the OpenAI-MoE gate/up expert loads and SwiGLU in the same structural
+   place `llama.cpp` does, instead of keeping the current
+   `moe_gate_up_swiglu_q8_1_selected4_quantized_kernel` as a special-case end
+   state. If that means packing or re-expressing gate/up expert tensors inside
+   Psionic's model/runtime surface, do that explicitly.
+   Done when:
+   the primary GPT-OSS gate/up path follows the same ids-driven fusion shape as
+   `llama.cpp`, and the roadmap no longer needs a separate "selected4 custom
+   kernel" story to explain expert execution.
+
+4. Only then align decode-attention dispatch with `fattn.cu`.
+   Reference:
+   `~/code/llama.cpp/ggml/src/ggml-cuda/fattn.cu`.
+   Psionic target:
+   [gpt_oss.rs](../psionic-serve/src/gpt_oss.rs),
+   [lib.rs](../psionic-backend-cuda/src/lib.rs), and
+   [quantized_matvec.cu](../psionic-backend-cuda/src/kernels/quantized_matvec.cu)
+   if new attention helpers are needed.
+   Required change:
+   port the relevant head-dimension, GQA-ratio, and cache-length dispatch rules
+   for the GPT-OSS decode contract on this host, but only after router plus
+   expert execution stop dominating the `ncu` sample.
+   Done when:
+   attention dispatch becomes the next measured bottleneck instead of a smaller
+   background cost, and the benchmark floor is already above the current
+   router/MoE-bound band.
+
+5. Keep the benchmark contract and issue discipline strict.
+   Required change:
+   every kept checkpoint under `#3288`, `#3276`, and `#3248` must log the
+   current Psionic floor, the same-run `llama.cpp` control, and the measured
+   before/after kernel samples from `ncu`.
+   Done when:
+   the roadmap, audit, and issue comments all describe the same benchmark
+   contract and the same bottleneck ordering.
 
 ### Epic I: Native Rust Metal GPT-OSS completion track
 
@@ -1248,7 +1355,9 @@ The shortest honest path from today's `main` is:
 10. The active next work on this host is the GPT-OSS throughput track:
     `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, `#3249`
     and `#3247` are closed, and the current execution order is `#3276` then
-    `#3288` then `#3248`.
+    `#3288` then `#3248`, with `#3288` now narrowed to the measured router32
+    plus selected4 decode kernels before broader MMID / MMVQ / `fattn.cu`
+    parity work resumes.
 11. The Apple Silicon native-Rust Metal track is now explicit too: keep the
     landed groundwork from `#3250` and `#3252` through `#3260`, but execute the
     remaining queue in order `#3270` -> `#3268` -> `#3269` -> `#3271` ->
@@ -1403,9 +1512,43 @@ The right near-term target is smaller:
   `121.79 tok/s`.
 - The earlier `134.62 tok/s` reading is therefore not a durable source-level
   baseline and should not be treated as the floor to beat on `#3276`.
-- The next concrete direction is now issue `#3288`: port the official
-  `~/code/gpt-oss` grouped routing-metadata / scatter / grouped expert /
-  gather-and-accumulate MoE path into Psionic CUDA.
-- After that grouped path is in place, continue the broader MMID / MMVQ /
-  `fattn.cu` parity work tracked under umbrella issue `#3276`, with `#3248`
-  still left open as the final throughput target.
+- The next concrete direction is now issue `#3288`, but the later `ncu`
+  evidence below narrowed that further: target the exact router32
+  matvec/top-k and selected4 gate/up/project kernels first, using the
+  official `~/code/gpt-oss` small-token MoE path as the reference shape.
+- Only after those decode-critical kernels improve should the work return to
+  the denser grouped routing-metadata / scatter / gather path and then the
+  broader MMID / MMVQ / `fattn.cu` parity work tracked under umbrella issue
+  `#3276`, with `#3248` still left open as the final throughput target.
+
+## 2026-03-10 GPT-OSS NCU Decode Hotspot Checkpoint
+
+- Current truthful exact benchmark floor on this NVIDIA host:
+  Psionic `prompt_cache_hit = 122.42 tok/s`
+- Current same-run control:
+  `llama.cpp prompt_cache_hit = 166.32 tok/s`
+- Short `ncu` sampling on the exact live Psionic server path now gives a more
+  concrete hotspot split for the decode contract on this host:
+  `router_topk_softmax_32_kernel` is about `107.7 us`,
+  `moe_gate_up_swiglu_q8_1_selected4_quantized_kernel` is about `72.6 us`,
+  `expert_mul_mat_vec_q8_1_project_kernel` is about `33.3 us`,
+  `attention_decode_rope_cache_f16_kv_q8_1_kernel` is about `4.7 us`,
+  `quantize_q8_1_rows_kernel` is about `2.3 us`, and
+  `accumulate_selected4_kernel` is about `2.4 us`.
+- This rules out the current generic substitution ideas as the next step on
+  this GPU. The following branches were re-tested on the exact benchmark and
+  reverted after regressing it:
+  row-per-warp selected4 down-project, fused `f32 -> q8_1` expert-input
+  quantization inside selected4 gate/up, a `4`-warp / `8`-rows-per-warp
+  selected4 gate/up launch, enabling the fused
+  `add_residual_rms_norm_q8_1_router_topk` path on real GPT-OSS decode, and
+  forcing the exact `32 x 2880` router shape onto the generic 256-thread
+  router kernel.
+- Recommended next step: keep issue `#3288` focused on the exact router32
+  matvec/top-k path and the selected4 gate/up/project kernels, but execute that
+  in the same order `llama.cpp` does: delayed-softmax `topk_moe`, then
+  ids-driven grouped expert matvec (`mul_mat_id` plus MMVQ/MMID), then the
+  fused gate/up plus GLU shape. Use `ncu` measurements as the acceptance guide,
+  and return to the broader MMID / MMVQ / `fattn.cu` parity work under `#3276`
+  only after those decode-critical stages move the measured floor materially
+  upward.
