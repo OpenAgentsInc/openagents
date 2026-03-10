@@ -49,8 +49,10 @@
 > through `PSI-225` as `#3335` through `#3337` for the declared cluster
 > capability-profile follow-on queue, after landing `PSI-223` / `#3335` in
 > `37183c6cb`, after landing `PSI-224` / `#3336` in `9aad9af8d`, after
-> landing `PSI-225` / `#3337` in `efa52005e`, and after checking live GitHub
-> issue search so this roadmap reflects
+> landing `PSI-225` / `#3337` in `efa52005e`, after opening `PSI-226`
+> through `PSI-228` as `#3341`, `#3339`, and `#3340` for the advertised
+> capability-profile publication follow-on queue, and after checking live
+> GitHub issue search so this roadmap reflects
 > the current GitHub queue rather than local placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
@@ -177,6 +179,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-223` / [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) is landed on `main`
     - `PSI-224` / [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) is landed on `main`
     - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is landed on `main`
+  - the advertised capability-profile publication follow-on queue is now open on GitHub
+    - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is open
+    - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is open
+    - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is open
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -874,6 +880,19 @@ lanes and by adding an explicit validation drill for those claims.
 | `PSI-224` | [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) | Closed | Make cluster planners consume declared execution capability profiles | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Landed in `9aad9af8d`: whole-request, replicated, layer-sharded, and tensor-sharded planners now consume declared `ClusterExecutionCapabilityProfile` truth instead of widening lane support from backend labels; `ClusterCommunicationEligibility` now carries the stable capability-profile digest it was derived from; and provider/runtime evidence surfaces now preserve that declared-profile digest alongside cluster execution context. |
 | `PSI-225` | [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) | Closed | Add capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `efa52005e`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit capability-profile drill with exact runtime, cluster, and provider commands plus failure interpretation, and this roadmap now closes the H1 queue explicitly instead of leaving declared capability-profile validation as a vague follow-on. |
 
+### Phase H2: advertised capability-profile publication follow-on
+
+This is the current active post-H1 queue. It closes the next remaining gap
+between declared clustered-lane truth and provider-side publication by making
+advertised capability surfaces publish declared cluster execution capability
+profiles before any request is planned.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-226` | [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) | Open | Publish declared cluster execution capability profiles in runtime capability surfaces | `psionic-runtime`, `psionic-provider`, tests | Declared cluster capability profiles exist and planners consume them, but provider/runtime capability advertisement still does not publish that truth as a stable machine-checkable capability surface. This issue adds the reusable advertised model truth before any execution occurs. |
+| `PSI-227` | [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) | Open | Thread advertised cluster capability profiles through provider capability envelopes | `psionic-provider`, `psionic-cluster`, tests | The capability-side model is not enough unless provider capability exports actually populate it and keep it aligned with the planner-side declared profiles for remote, replicated, and sharded lanes. |
+| `PSI-228` | [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) | Open | Add advertised capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once advertised profiles publish through capability surfaces, the runbook and roadmap need an explicit operator drill and closeout so those new claims are repeatable instead of implicit. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -900,11 +919,14 @@ The shortest honest path from today's `main` is:
    and an operator drill instead of a vague follow-on gap.
 10. Treat H1 as landed on `main`, with the capability-profile validation drill
     and queue closeout now anchored in `efa52005e`.
-11. Keep current authenticated configured-peer posture explicit and bounded;
+11. Work H2 in order: land `#3341`, then `#3339`, then `#3340`, so declared
+    cluster capability truth becomes first-class advertised provider truth
+    before the next queue widens downstream claims.
+12. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-12. If stronger trust or wider network claims are needed beyond H1, open a new
+13. If stronger trust or wider network claims are needed beyond H2, open a new
     GitHub-backed queue instead of extending this roadmap with local placeholders.
-13. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+14. Keep current Metal GPT-OSS nodes refused for cluster execution until the
     Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
