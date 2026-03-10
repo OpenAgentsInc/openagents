@@ -8,14 +8,14 @@ use psionic_runtime::{
     AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
-    CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterEvidenceBundlePayload,
-    ClusterEvidenceBundleStatus, ClusterExecutionCapabilityProfile, ClusterExecutionContext,
-    ClusterSettlementProvenanceInput, CompilePathEvidence, DeliveredExecutionContext,
-    DeviceInventoryQualifiers, ExecutionCapabilityProfile, ExecutionDeliveryProof,
-    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
-    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
-    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterComputeMarketTrustAssessment,
+    ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus, ClusterExecutionCapabilityProfile,
+    ClusterExecutionContext, ClusterSettlementProvenanceInput, CompilePathEvidence,
+    DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
+    ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy,
+    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
+    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
+    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
     SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
     SignedClusterEvidenceBundle, ValidationMatrixReference,
@@ -667,6 +667,18 @@ impl SandboxExecutionCapabilityEnvelope {
             .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
         self
     }
+
+    /// Attaches published cluster trust posture independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_compute_market_trust_assessment(
+        mut self,
+        cluster_compute_market_trust_assessment: ClusterComputeMarketTrustAssessment,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_compute_market_trust_assessment(cluster_compute_market_trust_assessment);
+        self
+    }
 }
 
 /// Provider-facing receipt for one bounded sandbox-execution request.
@@ -958,6 +970,18 @@ impl CapabilityEnvelope {
         self.backend_selection = self
             .backend_selection
             .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
+        self
+    }
+
+    /// Attaches published cluster trust posture independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_compute_market_trust_assessment(
+        mut self,
+        cluster_compute_market_trust_assessment: ClusterComputeMarketTrustAssessment,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_compute_market_trust_assessment(cluster_compute_market_trust_assessment);
         self
     }
 
@@ -1496,6 +1520,18 @@ impl TextGenerationCapabilityEnvelope {
         self.backend_selection = self
             .backend_selection
             .with_cluster_execution_capability_profile(cluster_execution_capability_profile);
+        self
+    }
+
+    /// Attaches published cluster trust posture independently of realized execution.
+    #[must_use]
+    pub fn with_cluster_compute_market_trust_assessment(
+        mut self,
+        cluster_compute_market_trust_assessment: ClusterComputeMarketTrustAssessment,
+    ) -> Self {
+        self.backend_selection = self
+            .backend_selection
+            .with_cluster_compute_market_trust_assessment(cluster_compute_market_trust_assessment);
         self
     }
 }
@@ -2264,7 +2300,8 @@ fn failed_generation_cache_observations(request: &GenerationRequest) -> Vec<Cach
 mod tests {
     use ed25519_dalek::SigningKey;
     use psionic_cluster::{
-        LayerShardedExecutionRequest, NodeId, TensorShardedExecutionRequest,
+        ClusterTrustPolicy, ConfiguredClusterPeer, LayerShardedExecutionRequest,
+        NodeAttestationRequirement, NodeId, TensorShardedExecutionRequest,
         TensorShardedModelEligibility, WholeRequestSchedulingRequest,
     };
     use psionic_core::{
@@ -2279,20 +2316,21 @@ mod tests {
         BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
         ClusterAdmissionFactKind, ClusterArtifactResidencyDisposition,
         ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
-        ClusterCommitAuthorityEvidence, ClusterExecutionCapabilityProfile, ClusterExecutionContext,
-        ClusterExecutionDisposition, ClusterExecutionLane, ClusterFallbackReason,
-        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
-        ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass,
-        DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
-        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
-        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        ClusterCommitAuthorityEvidence, ClusterComputeMarketTrustAssessment,
+        ClusterComputeMarketTrustDisposition, ClusterComputeMarketTrustRefusalReason,
+        ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
+        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
+        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof,
+        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
+        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
+        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
+        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
@@ -3582,6 +3620,47 @@ mod tests {
     }
 
     #[test]
+    fn capability_envelope_can_publish_trusted_lan_cluster_trust_assessment_without_execution()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let trust_assessment = trusted_lan_cluster_trust_assessment();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection(),
+            &model,
+            ProviderReadiness::ready("trusted-LAN cluster trust advertised"),
+        )
+        .with_cluster_compute_market_trust_assessment(trust_assessment.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_compute_market_trust_assessment,
+            Some(trust_assessment.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["posture"],
+            json!("trusted_lan_shared_admission")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["disposition"],
+            json!("refused")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["refusal_reasons"],
+            json!([
+                "trusted_lan_shared_admission_only",
+                "missing_authenticated_transport",
+                "missing_attested_node_identity_admission",
+                "missing_non_lan_discovery_posture"
+            ])
+        );
+        assert_eq!(encoded.get("cluster_execution"), None);
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
     fn capability_envelope_publishes_whole_request_cluster_profile_from_cluster_request()
     -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
@@ -3608,6 +3687,53 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch"])
+        );
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn text_generation_capability_envelope_can_publish_attested_cluster_trust_assessment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_decoder_descriptor();
+        let trust_assessment = attested_cluster_trust_assessment();
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            cuda_backend_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("attested cluster trust advertised"),
+        )
+        .with_cluster_compute_market_trust_assessment(trust_assessment.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_compute_market_trust_assessment,
+            Some(trust_assessment.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["posture"],
+            json!("attested_configured_peers")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["disposition"],
+            json!("refused")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_compute_market_trust_assessment"]["refusal_reasons"],
+            json!(["missing_non_lan_discovery_posture"])
+        );
+        assert_eq!(
+            trust_assessment.disposition,
+            ClusterComputeMarketTrustDisposition::Refused
+        );
+        assert_eq!(
+            trust_assessment.refusal_reasons,
+            vec![ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture]
         );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
@@ -5643,6 +5769,25 @@ mod tests {
 
     fn sample_scheduler_node_id() -> NodeId {
         NodeId::new("scheduler-node")
+    }
+
+    fn trusted_lan_cluster_trust_assessment() -> ClusterComputeMarketTrustAssessment {
+        ClusterTrustPolicy::trusted_lan().compute_market_trust_assessment()
+    }
+
+    fn attested_cluster_trust_assessment() -> ClusterComputeMarketTrustAssessment {
+        ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(
+                NodeId::new("worker-a"),
+                std::net::SocketAddr::from(([127, 0, 0, 1], 31001)),
+                "peer-key-a",
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-a", "attestation-a")
+                    .with_device_identity_digest("device-a"),
+            ),
+        ])
+        .compute_market_trust_assessment()
     }
 
     fn cpu_backend_selection() -> BackendSelection {
