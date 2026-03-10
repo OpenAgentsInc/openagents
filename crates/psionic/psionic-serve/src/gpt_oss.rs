@@ -180,6 +180,18 @@ fn can_use_q8_1_attention_output_fusion(
         && attention_output_columns % 32 == 0
 }
 
+fn can_use_hybrid_cuda_hidden_residency_layer(layer: &GptOssCudaLayer, hidden_size: usize) -> bool {
+    can_use_q8_1_norm_fusion(hidden_size)
+        && layer.attention_norm_device.is_some()
+        && layer.attention_qkv_bias_device.is_some()
+        && layer.attention_qkv_weight.storage.is_some()
+        && layer.attention_output_weight.storage.is_some()
+        && layer.feed_forward_norm_device.is_some()
+        && layer.feed_forward_router_weight_transposed_device.is_some()
+        && layer.feed_forward_gate_up_experts_weight.host.is_some()
+        && layer.feed_forward_down_experts_weight.host.is_some()
+}
+
 fn gpt_oss_metal_logits_output_mode(
     output_mode: MetalLogitsOutputMode,
 ) -> GptOssMetalLogitsOutputMode {
@@ -5604,8 +5616,755 @@ impl GptOssCudaModelInner {
             } else {
                 None
             };
+            let mut hidden_device_ready = false;
 
             for (layer_index, layer) in self.layers.iter().enumerate() {
+                let can_use_device_hidden_residency = output_mode
+                    == CudaStepOutputMode::DeviceArgmax
+                    && hybrid_selected4_plan.is_some()
+                    && cuda_cache.is_some()
+                    && cache_write_index.is_some()
+                    && can_use_hybrid_cuda_hidden_residency_layer(layer, hidden_size);
+                if !can_use_device_hidden_residency && hidden_device_ready {
+                    let plan = hybrid_selected4_plan.as_ref().expect("checked above");
+                    hidden = plan
+                        .output_buffer
+                        .read_f32_at_offset(0, hidden_size)
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
+                        hidden_size
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    hidden_device_ready = false;
+                }
+                if can_use_device_hidden_residency {
+                    let plan = hybrid_selected4_plan.as_mut().expect("checked above");
+                    let cuda_cache = cuda_cache.as_deref_mut().expect("checked above");
+                    let cache_write_index = cache_write_index.expect("checked above");
+                    let q_rows = layer.attention_qkv_weight.rows_per_projection[0];
+                    let k_rows = layer.attention_qkv_weight.rows_per_projection[1];
+                    let gate_rows = layer
+                        .feed_forward_gate_up_experts_weight
+                        .rows_per_projection[0];
+                    let up_rows = layer
+                        .feed_forward_gate_up_experts_weight
+                        .rows_per_projection[1];
+                    if gate_rows != up_rows {
+                        return Err(ReferenceTextGenerationError::Runtime(
+                            super::RuntimeError::Backend(format!(
+                                "cuda gpt-oss hybrid MoE path requires matching gate/up expert widths, got gate {} and up {}",
+                                gate_rows, up_rows
+                            )),
+                        ));
+                    }
+                    let cache_offset = layer_index.saturating_mul(kv_width);
+                    let use_q8_1_attention_output_fusion =
+                        can_use_q8_1_mmvq(layer.attention_output_weight.mode)
+                            && can_use_q8_1_attention_output_fusion(
+                                layer.attention_output_weight.columns,
+                                head_count,
+                                head_dim,
+                            );
+                    let layer_start = Instant::now();
+                    let dense_start = Instant::now();
+                    let mut dense_submission = backend.begin_submission()?;
+                    if hidden_device_ready {
+                        dense_submission
+                            .copy_buffer(&plan.output_buffer, &plan.hidden_input_buffer)?;
+                    } else {
+                        plan.hidden_input_host_buffer
+                            .write_f32(hidden.as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        dense_submission.copy_host_to_device(
+                            &plan.hidden_input_host_buffer,
+                            &plan.hidden_input_buffer,
+                        )?;
+                    }
+                    if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode) {
+                        dense_submission.rms_norm_q8_1(
+                            &plan.hidden_input_buffer,
+                            layer.attention_norm_device.as_ref().expect("checked above"),
+                            &plan.hidden_input_q8_1_buffer,
+                            hidden_size,
+                            self.family_metadata.rms_norm_epsilon,
+                        )?;
+                        dense_submission.quantized_matvec_q8_1(
+                            layer
+                                .attention_qkv_weight
+                                .storage
+                                .as_ref()
+                                .expect("checked above"),
+                            0,
+                            layer.attention_qkv_weight.mode,
+                            layer.attention_qkv_weight.total_rows(),
+                            layer.attention_qkv_weight.columns,
+                            &plan.hidden_input_q8_1_buffer,
+                            Some(
+                                layer
+                                    .attention_qkv_bias_device
+                                    .as_ref()
+                                    .expect("checked above"),
+                            ),
+                            &plan.qkv_buffer,
+                        )?;
+                    } else {
+                        dense_submission.rms_norm(
+                            &plan.hidden_input_buffer,
+                            layer.attention_norm_device.as_ref().expect("checked above"),
+                            &plan.attention_input_buffer,
+                            hidden_size,
+                            self.family_metadata.rms_norm_epsilon,
+                        )?;
+                        dense_submission.quantized_matvec(
+                            layer
+                                .attention_qkv_weight
+                                .storage
+                                .as_ref()
+                                .expect("checked above"),
+                            0,
+                            layer.attention_qkv_weight.mode,
+                            layer.attention_qkv_weight.total_rows(),
+                            layer.attention_qkv_weight.columns,
+                            &plan.attention_input_buffer,
+                            &plan.qkv_buffer,
+                        )?;
+                        dense_submission.add_f32_in_place(
+                            &plan.qkv_buffer,
+                            0,
+                            layer
+                                .attention_qkv_bias_device
+                                .as_ref()
+                                .expect("checked above"),
+                            layer.attention_qkv_weight.total_rows(),
+                        )?;
+                    }
+                    if use_q8_1_attention_output_fusion {
+                        dense_submission.attention_decode_rope_cache_f16_kv_q8_1(
+                            &plan.qkv_buffer,
+                            0,
+                            q_rows,
+                            q_rows.saturating_add(k_rows),
+                            &cuda_cache.key_buffer,
+                            &cuda_cache.value_buffer,
+                            cuda_cache.width,
+                            cache_offset,
+                            cache_write_index,
+                            self.family_metadata.sliding_window.unwrap_or(0),
+                            head_count,
+                            kv_head_count,
+                            head_dim,
+                            rotary_dim,
+                            position,
+                            freq_scale,
+                            ext_factor,
+                            corr_dims,
+                            theta_scale,
+                            layer.attention_sinks_device.as_ref(),
+                            &plan.hidden_input_q8_1_buffer,
+                        )?;
+                        dense_submission.quantized_matvec_q8_1(
+                            layer
+                                .attention_output_weight
+                                .storage
+                                .as_ref()
+                                .expect("checked above"),
+                            0,
+                            layer.attention_output_weight.mode,
+                            layer.attention_output_weight.rows,
+                            layer.attention_output_weight.columns,
+                            &plan.hidden_input_q8_1_buffer,
+                            None,
+                            &plan.output_buffer,
+                        )?;
+                    } else {
+                        dense_submission.attention_decode_rope_cache_f16_kv(
+                            &plan.qkv_buffer,
+                            0,
+                            q_rows,
+                            q_rows.saturating_add(k_rows),
+                            &cuda_cache.key_buffer,
+                            &cuda_cache.value_buffer,
+                            cuda_cache.width,
+                            cache_offset,
+                            cache_write_index,
+                            self.family_metadata.sliding_window.unwrap_or(0),
+                            head_count,
+                            kv_head_count,
+                            head_dim,
+                            rotary_dim,
+                            position,
+                            freq_scale,
+                            ext_factor,
+                            corr_dims,
+                            theta_scale,
+                            layer.attention_sinks_device.as_ref(),
+                            &plan.attention_input_buffer,
+                        )?;
+                        if can_use_q8_1_mmvq(layer.attention_output_weight.mode) {
+                            dense_submission.quantize_f32_to_q8_1(
+                                &plan.attention_input_buffer,
+                                1,
+                                layer.attention_output_weight.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                            )?;
+                            dense_submission.quantized_matvec_q8_1(
+                                layer
+                                    .attention_output_weight
+                                    .storage
+                                    .as_ref()
+                                    .expect("checked above"),
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                                None,
+                                &plan.output_buffer,
+                            )?;
+                        } else {
+                            dense_submission.quantized_matvec(
+                                layer
+                                    .attention_output_weight
+                                    .storage
+                                    .as_ref()
+                                    .expect("checked above"),
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                &plan.attention_input_buffer,
+                                &plan.output_buffer,
+                            )?;
+                        }
+                    }
+                    dense_submission.add_residual_rms_norm_q8_1(
+                        &plan.output_buffer,
+                        &plan.hidden_input_buffer,
+                        layer.attention_output_bias_device.as_ref(),
+                        layer
+                            .feed_forward_norm_device
+                            .as_ref()
+                            .expect("checked above"),
+                        &plan.attention_input_buffer,
+                        &plan.projected_buffer,
+                        &plan.hidden_input_q8_1_buffer,
+                        hidden_size,
+                        self.family_metadata.rms_norm_epsilon,
+                    )?;
+                    dense_submission.matmul(
+                        &plan.projected_buffer,
+                        layer
+                            .feed_forward_router_weight_transposed_device
+                            .as_ref()
+                            .expect("checked above"),
+                        &plan.router_logits_buffer,
+                        1,
+                        layer.feed_forward_router_weight.columns,
+                        layer.feed_forward_router_weight.rows,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                        dense_submission.add_f32_in_place(
+                            &plan.router_logits_buffer,
+                            0,
+                            bias,
+                            layer.feed_forward_router_weight.rows,
+                        )?;
+                    }
+                    dense_submission.router_topk_delayed_softmax(
+                        &plan.router_logits_buffer,
+                        layer.feed_forward_router_weight.rows,
+                        4,
+                        &plan.selected_expert_ids_buffer,
+                        &plan.selected_weights_buffer,
+                    )?;
+                    let dense_report = dense_submission
+                        .commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    plan.selected_expert_ids_scratch = i32_ne_bytes_to_values(
+                        plan.selected_expert_ids_buffer.read_bytes()?.as_slice(),
+                    )
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let selected = plan
+                        .selected_expert_ids_scratch
+                        .iter()
+                        .copied()
+                        .map(|index| {
+                            usize::try_from(index).map_err(|_| {
+                                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                    format!("cuda router returned negative expert index {index}"),
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    perf.cuda.host_to_device_bytes =
+                        perf.cuda
+                            .host_to_device_bytes
+                            .saturating_add(if hidden_device_ready {
+                                0
+                            } else {
+                                hidden
+                                    .len()
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX)
+                            });
+                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
+                        (selected.len().saturating_mul(std::mem::size_of::<i32>()))
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                    perf.cuda.kernel_launches = perf
+                        .cuda
+                        .kernel_launches
+                        .saturating_add(dense_report.encoded_operations);
+                    let dense_stage_ns = duration_ns(dense_start);
+                    let attn_stage_ns = dense_stage_ns / 2;
+                    perf.stage_timings.attention_ns = perf
+                        .stage_timings
+                        .attention_ns
+                        .saturating_add(attn_stage_ns);
+                    perf.stage_timings.attention_output_projection_ns = perf
+                        .stage_timings
+                        .attention_output_projection_ns
+                        .saturating_add(attn_stage_ns / 2);
+                    perf.stage_timings.feed_forward_norm_ns = perf
+                        .stage_timings
+                        .feed_forward_norm_ns
+                        .saturating_add(attn_stage_ns / 2);
+                    perf.stage_timings.router_ns = perf
+                        .stage_timings
+                        .router_ns
+                        .saturating_add(dense_stage_ns.saturating_sub(attn_stage_ns));
+
+                    let selected_count = selected.len();
+                    if selected_count == 4 {
+                        let gate_up_host = layer
+                            .feed_forward_gate_up_experts_weight
+                            .host
+                            .as_ref()
+                            .expect("checked above");
+                        let down_host = layer
+                            .feed_forward_down_experts_weight
+                            .host
+                            .as_ref()
+                            .expect("checked above");
+                        let selected_key =
+                            <[usize; 4]>::try_from(selected.as_slice()).map_err(|_| {
+                                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                    String::from(
+                                        "hybrid selected4 path received a non-4 expert set",
+                                    ),
+                                ))
+                            })?;
+                        let gate_stride = gate_up_host
+                            .gate
+                            .rows
+                            .saturating_mul(gate_up_host.gate.row_byte_len);
+                        let up_stride = gate_up_host
+                            .up
+                            .rows
+                            .saturating_mul(gate_up_host.up.row_byte_len);
+                        let gate_up_expert_stride = gate_stride.saturating_add(up_stride);
+                        let down_expert_stride =
+                            down_host.rows.saturating_mul(down_host.row_byte_len);
+                        let mut staged_selected4_host_bytes = 0usize;
+                        let mut selected_slot_ids = [0_i32, 1_i32, 2_i32, 3_i32];
+                        let using_layer_cache = if let Some(layer_cache) = plan
+                            .layer_caches
+                            .get_mut(layer_index)
+                            .and_then(Option::as_mut)
+                        {
+                            let mut reserved_slots =
+                                [false; HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS];
+                            let slot_count = layer_cache.slot_count;
+                            for (selected_index, expert_index) in
+                                selected_key.iter().copied().enumerate()
+                            {
+                                let slot = layer_cache
+                                    .cached_experts
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(slot, cached)| {
+                                        *slot < slot_count
+                                            && !reserved_slots[*slot]
+                                            && **cached == Some(expert_index)
+                                    })
+                                    .map(|(slot, _)| slot)
+                                    .unwrap_or_else(|| {
+                                        layer_cache
+                                            .cached_experts
+                                            .iter()
+                                            .enumerate()
+                                            .filter(|(slot, _)| {
+                                                *slot < slot_count && !reserved_slots[*slot]
+                                            })
+                                            .min_by_key(|(slot, cached)| {
+                                                (
+                                                    cached.is_some(),
+                                                    layer_cache.slot_last_used[*slot],
+                                                )
+                                            })
+                                            .map(|(slot, _)| slot)
+                                            .unwrap_or(0)
+                                    });
+                                if layer_cache.cached_experts[slot] != Some(expert_index) {
+                                    let (gate_bytes, up_bytes) =
+                                        gate_up_host.expert_projection_bytes(expert_index)?;
+                                    layer_cache
+                                        .gate_up_weights_buffer
+                                        .write_bytes_at_offset(
+                                            slot.saturating_mul(gate_up_expert_stride),
+                                            gate_bytes,
+                                        )
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    layer_cache
+                                        .gate_up_weights_buffer
+                                        .write_bytes_at_offset(
+                                            slot.saturating_mul(gate_up_expert_stride)
+                                                .saturating_add(gate_stride),
+                                            up_bytes,
+                                        )
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    staged_selected4_host_bytes = staged_selected4_host_bytes
+                                        .saturating_add(
+                                            gate_bytes.len().saturating_add(up_bytes.len()),
+                                        );
+                                    let down_bytes = down_host.expert_bytes(expert_index)?;
+                                    layer_cache
+                                        .down_weights_buffer
+                                        .write_bytes_at_offset(
+                                            slot.saturating_mul(down_expert_stride),
+                                            down_bytes,
+                                        )
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    staged_selected4_host_bytes = staged_selected4_host_bytes
+                                        .saturating_add(down_bytes.len());
+                                    if let Some(values) =
+                                        layer.feed_forward_gate_experts_bias.as_ref()
+                                    {
+                                        let bias = selected_expert_bias_rows(
+                                            values.as_slice(),
+                                            gate_rows,
+                                            expert_index,
+                                        )?;
+                                        let device = layer_cache
+                                            .gate_bias_buffer
+                                            .as_mut()
+                                            .ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 gate bias buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        device
+                                            .write_f32_at_offset(
+                                                slot.saturating_mul(gate_rows),
+                                                bias,
+                                            )
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                bias.len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    if let Some(values) =
+                                        layer.feed_forward_up_experts_bias.as_ref()
+                                    {
+                                        let bias = selected_expert_bias_rows(
+                                            values.as_slice(),
+                                            up_rows,
+                                            expert_index,
+                                        )?;
+                                        let device = layer_cache
+                                            .up_bias_buffer
+                                            .as_mut()
+                                            .ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 up bias buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        device
+                                            .write_f32_at_offset(slot.saturating_mul(up_rows), bias)
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                bias.len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    if let Some(values) =
+                                        layer.feed_forward_down_experts_bias.as_ref()
+                                    {
+                                        let bias = selected_expert_bias_rows(
+                                            values.as_slice(),
+                                            layer.feed_forward_down_experts_weight.rows,
+                                            expert_index,
+                                        )?;
+                                        let device = layer_cache
+                                            .down_bias_buffer
+                                            .as_mut()
+                                            .ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 down bias buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        device
+                                            .write_f32_at_offset(
+                                                slot.saturating_mul(
+                                                    layer.feed_forward_down_experts_weight.rows,
+                                                ),
+                                                bias,
+                                            )
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                bias.len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    layer_cache.cached_experts[slot] = Some(expert_index);
+                                }
+                                reserved_slots[slot] = true;
+                                layer_cache.slot_last_used[slot] = layer_cache.usage_clock;
+                                layer_cache.usage_clock = layer_cache.usage_clock.saturating_add(1);
+                                selected_slot_ids[selected_index] =
+                                    i32::try_from(slot).map_err(|_| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(format!(
+                                                "hybrid selected4 slot {slot} exceeds i32 range",
+                                            )),
+                                        )
+                                    })?;
+                            }
+                            true
+                        } else {
+                            gate_up_host.selected_packed_bytes_into(
+                                selected.as_slice(),
+                                &mut plan.gate_up_weights_scratch,
+                            )?;
+                            down_host.selected_bytes_into(
+                                selected.as_slice(),
+                                &mut plan.down_weights_scratch,
+                            )?;
+                            plan.gate_up_weights_host_buffer
+                                .write_bytes(plan.gate_up_weights_scratch.as_slice())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            plan.down_weights_host_buffer
+                                .write_bytes(plan.down_weights_scratch.as_slice())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            staged_selected4_host_bytes = staged_selected4_host_bytes
+                                .saturating_add(plan.gate_up_weights_scratch.len())
+                                .saturating_add(plan.down_weights_scratch.len());
+                            if let Some(values) = layer.feed_forward_gate_experts_bias.as_ref() {
+                                gather_selected_expert_bias_rows_into(
+                                    values.as_slice(),
+                                    gate_rows,
+                                    selected.as_slice(),
+                                    &mut plan.gate_bias_scratch,
+                                )?;
+                                let host =
+                                    plan.gate_bias_host_buffer.as_mut().ok_or_else(|| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(String::from(
+                                                "missing hybrid selected4 gate bias host buffer",
+                                            )),
+                                        )
+                                    })?;
+                                host.write_f32(plan.gate_bias_scratch.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                staged_selected4_host_bytes = staged_selected4_host_bytes
+                                    .saturating_add(
+                                        plan.gate_bias_scratch
+                                            .len()
+                                            .saturating_mul(std::mem::size_of::<f32>()),
+                                    );
+                            }
+                            if let Some(values) = layer.feed_forward_up_experts_bias.as_ref() {
+                                gather_selected_expert_bias_rows_into(
+                                    values.as_slice(),
+                                    up_rows,
+                                    selected.as_slice(),
+                                    &mut plan.up_bias_scratch,
+                                )?;
+                                let host = plan.up_bias_host_buffer.as_mut().ok_or_else(|| {
+                                    ReferenceTextGenerationError::Runtime(
+                                        super::RuntimeError::Backend(String::from(
+                                            "missing hybrid selected4 up bias host buffer",
+                                        )),
+                                    )
+                                })?;
+                                host.write_f32(plan.up_bias_scratch.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                staged_selected4_host_bytes = staged_selected4_host_bytes
+                                    .saturating_add(
+                                        plan.up_bias_scratch
+                                            .len()
+                                            .saturating_mul(std::mem::size_of::<f32>()),
+                                    );
+                            }
+                            if let Some(values) = layer.feed_forward_down_experts_bias.as_ref() {
+                                gather_selected_expert_bias_rows_into(
+                                    values.as_slice(),
+                                    layer.feed_forward_down_experts_weight.rows,
+                                    selected.as_slice(),
+                                    &mut plan.down_bias_scratch,
+                                )?;
+                                let host =
+                                    plan.down_bias_host_buffer.as_mut().ok_or_else(|| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(String::from(
+                                                "missing hybrid selected4 down bias host buffer",
+                                            )),
+                                        )
+                                    })?;
+                                host.write_f32(plan.down_bias_scratch.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                staged_selected4_host_bytes = staged_selected4_host_bytes
+                                    .saturating_add(
+                                        plan.down_bias_scratch
+                                            .len()
+                                            .saturating_mul(std::mem::size_of::<f32>()),
+                                    );
+                            }
+                            false
+                        };
+                        let selected_id_bytes = i32_slice_to_ne_bytes(selected_slot_ids.as_slice());
+                        plan.selected_ids_buffer
+                            .write_bytes(selected_id_bytes.as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let layer_cache =
+                            plan.layer_caches.get(layer_index).and_then(Option::as_ref);
+                        let gate_up_weights_device = layer_cache
+                            .map(|cache| &cache.gate_up_weights_buffer)
+                            .unwrap_or(&plan.gate_up_weights_buffer);
+                        let down_weights_device = layer_cache
+                            .map(|cache| &cache.down_weights_buffer)
+                            .unwrap_or(&plan.down_weights_buffer);
+                        let gate_bias_device = layer_cache
+                            .and_then(|cache| cache.gate_bias_buffer.as_ref())
+                            .or_else(|| plan.gate_bias_buffer.as_ref());
+                        let up_bias_device = layer_cache
+                            .and_then(|cache| cache.up_bias_buffer.as_ref())
+                            .or_else(|| plan.up_bias_buffer.as_ref());
+                        let down_bias_device = layer_cache
+                            .and_then(|cache| cache.down_bias_buffer.as_ref())
+                            .or_else(|| plan.down_bias_buffer.as_ref());
+                        let expert_projection_start = Instant::now();
+                        let mut expert_submission = backend.begin_submission()?;
+                        if !using_layer_cache {
+                            expert_submission.copy_host_to_device(
+                                &plan.gate_up_weights_host_buffer,
+                                gate_up_weights_device,
+                            )?;
+                            expert_submission.copy_host_to_device(
+                                &plan.down_weights_host_buffer,
+                                down_weights_device,
+                            )?;
+                            if let (Some(host), Some(device)) =
+                                (plan.gate_bias_host_buffer.as_ref(), gate_bias_device)
+                            {
+                                expert_submission.copy_host_to_device(host, device)?;
+                            }
+                            if let (Some(host), Some(device)) =
+                                (plan.up_bias_host_buffer.as_ref(), up_bias_device)
+                            {
+                                expert_submission.copy_host_to_device(host, device)?;
+                            }
+                            if let (Some(host), Some(device)) =
+                                (plan.down_bias_host_buffer.as_ref(), down_bias_device)
+                            {
+                                expert_submission.copy_host_to_device(host, device)?;
+                            }
+                        }
+                        expert_submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
+                            gate_up_weights_device,
+                            layer.feed_forward_gate_up_experts_weight.mode,
+                            layer.feed_forward_gate_up_experts_weight.row_byte_len,
+                            layer.feed_forward_gate_up_experts_weight.total_rows(),
+                            layer.feed_forward_gate_up_experts_weight.columns,
+                            gate_rows,
+                            up_rows,
+                            &plan.selected_ids_buffer,
+                            selected_count,
+                            &plan.hidden_input_q8_1_buffer,
+                            gate_bias_device,
+                            up_bias_device,
+                            &plan.activated_q8_1_buffer,
+                        )?;
+                        expert_submission.moe_down_project_q8_1_selected4(
+                            down_weights_device,
+                            layer.feed_forward_down_experts_weight.mode,
+                            layer.feed_forward_down_experts_weight.row_byte_len,
+                            layer.feed_forward_down_experts_weight.rows,
+                            layer.feed_forward_down_experts_weight.columns,
+                            &plan.selected_ids_buffer,
+                            selected_count,
+                            &plan.activated_q8_1_buffer,
+                            down_bias_device,
+                            &plan.projected_buffer,
+                        )?;
+                        expert_submission.accumulate_selected4(
+                            &plan.projected_buffer,
+                            &plan.selected_weights_buffer,
+                            selected_count,
+                            hidden_size,
+                            None,
+                            &plan.output_buffer,
+                        )?;
+                        expert_submission.add_f32_in_place(
+                            &plan.output_buffer,
+                            0,
+                            &plan.attention_input_buffer,
+                            hidden_size,
+                        )?;
+                        let expert_report = expert_submission
+                            .commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                        perf.stage_timings.expert_projection_ns = perf
+                            .stage_timings
+                            .expert_projection_ns
+                            .saturating_add(duration_ns(expert_projection_start));
+                        perf.cuda.host_to_device_bytes =
+                            perf.cuda.host_to_device_bytes.saturating_add(
+                                (selected_id_bytes
+                                    .len()
+                                    .saturating_add(staged_selected4_host_bytes))
+                                .try_into()
+                                .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                        perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                        perf.cuda.kernel_launches = perf
+                            .cuda
+                            .kernel_launches
+                            .saturating_add(expert_report.encoded_operations);
+                        hidden_device_ready = true;
+                        bytes_moved = bytes_moved
+                            .saturating_add(layer.attention_qkv_weight.byte_length() as u64)
+                            .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                            .saturating_add(
+                                layer.feed_forward_gate_up_experts_weight.byte_length() as u64
+                            )
+                            .saturating_add(
+                                layer.feed_forward_down_experts_weight.byte_length() as u64
+                            );
+                        kernel_count = kernel_count
+                            .saturating_add(dense_report.encoded_operations)
+                            .saturating_add(expert_report.encoded_operations);
+                        let layer_ns = duration_ns(layer_start);
+                        perf.stage_timings.step_wall_ns =
+                            perf.stage_timings.step_wall_ns.saturating_add(layer_ns);
+                        continue;
+                    }
+                }
                 let residual = hidden.clone();
                 let attention_norm_start = Instant::now();
                 let hidden_norm = rms_norm(
@@ -6934,41 +7693,42 @@ impl GptOssCudaModelInner {
                 cuda_cache.len = cache_write_index.saturating_add(1);
             }
 
-            let output_norm_start = Instant::now();
-            let final_hidden = rms_norm(
-                hidden.as_slice(),
-                self.output_norm.as_slice(),
-                self.family_metadata.rms_norm_epsilon,
-            );
-            perf.stage_timings.output_norm_ns = perf
-                .stage_timings
-                .output_norm_ns
-                .saturating_add(duration_ns(output_norm_start));
-
             let logits_projection_start = Instant::now();
             let mut logits = Vec::new();
             let mut selected_token = None;
-            if output_mode == CudaStepOutputMode::DeviceArgmax {
-                if let (Some(plan), Some(storage)) =
-                    (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+            if hidden_device_ready {
+                if let (Some(cuda_cache), Some(cache_write_index)) =
+                    (cuda_cache.as_deref_mut(), cache_write_index)
                 {
-                    plan.hidden_input_host_buffer
-                        .write_f32(final_hidden.as_slice())
-                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let (key, value) = cuda_cache.read_entry(cache_write_index)?;
+                    perf.cuda.device_to_host_bytes = perf
+                        .cuda
+                        .device_to_host_bytes
+                        .saturating_add(cache_key_value_byte_len(cuda_cache.width));
+                    cache_key = key;
+                    cache_value = value;
+                }
+            }
+            if output_mode == CudaStepOutputMode::DeviceArgmax && hidden_device_ready {
+                if let (Some(plan), Some(storage), Some(output_norm_device)) = (
+                    hybrid_selected4_plan.as_mut(),
+                    self.output.storage.as_ref(),
+                    self.output_norm_device.as_ref(),
+                ) {
+                    let output_norm_start = Instant::now();
                     let mut submission = backend.begin_submission()?;
-                    submission.copy_host_to_device(
-                        &plan.hidden_input_host_buffer,
-                        &plan.hidden_input_buffer,
-                    )?;
-                    if can_use_q8_1_mmvq(self.output.mode) {
+                    if can_use_q8_1_mmvq(self.output.mode)
+                        && can_use_q8_1_norm_fusion(self.output.columns)
+                    {
                         plan.argmax_state_host_buffer
                             .write_bytes(initial_cuda_argmax_pair_bytes().as_slice())
                             .map_err(ReferenceTextGenerationError::Runtime)?;
-                        submission.quantize_f32_to_q8_1(
-                            &plan.hidden_input_buffer,
-                            1,
-                            self.output.columns,
+                        submission.rms_norm_q8_1(
+                            &plan.output_buffer,
+                            output_norm_device,
                             &plan.hidden_input_q8_1_buffer,
+                            self.output.columns,
+                            self.family_metadata.rms_norm_epsilon,
                         )?;
                         submission.copy_host_to_device(
                             &plan.argmax_state_host_buffer,
@@ -6989,35 +7749,69 @@ impl GptOssCudaModelInner {
                             &plan.argmax_state_host_buffer,
                         )?;
                     } else {
-                        submission.quantized_matvec(
-                            storage,
-                            0,
-                            self.output.mode,
-                            self.output.rows,
-                            self.output.columns,
+                        submission.rms_norm(
+                            &plan.output_buffer,
+                            output_norm_device,
                             &plan.hidden_input_buffer,
-                            &plan.logits_buffer,
+                            hidden_size,
+                            self.family_metadata.rms_norm_epsilon,
                         )?;
-                        submission.argmax_f32(
-                            &plan.logits_buffer,
-                            1,
-                            self.output.rows,
-                            &plan.next_token_buffer,
-                        )?;
-                        submission.copy_device_to_host(
-                            &plan.next_token_buffer,
-                            &plan.next_token_host_buffer,
-                        )?;
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            plan.argmax_state_host_buffer
+                                .write_bytes(initial_cuda_argmax_pair_bytes().as_slice())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            submission.quantize_f32_to_q8_1(
+                                &plan.hidden_input_buffer,
+                                1,
+                                self.output.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                            )?;
+                            submission.copy_host_to_device(
+                                &plan.argmax_state_host_buffer,
+                                &plan.argmax_state_buffer,
+                            )?;
+                            submission.quantized_matvec_q8_1_argmax(
+                                storage,
+                                0,
+                                self.output.mode,
+                                self.output.rows,
+                                self.output.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                                None,
+                                &plan.argmax_state_buffer,
+                            )?;
+                            submission.copy_device_to_host(
+                                &plan.argmax_state_buffer,
+                                &plan.argmax_state_host_buffer,
+                            )?;
+                        } else {
+                            submission.quantized_matvec(
+                                storage,
+                                0,
+                                self.output.mode,
+                                self.output.rows,
+                                self.output.columns,
+                                &plan.hidden_input_buffer,
+                                &plan.logits_buffer,
+                            )?;
+                            submission.argmax_f32(
+                                &plan.logits_buffer,
+                                1,
+                                self.output.rows,
+                                &plan.next_token_buffer,
+                            )?;
+                            submission.copy_device_to_host(
+                                &plan.next_token_buffer,
+                                &plan.next_token_host_buffer,
+                            )?;
+                        }
                     }
                     let report =
                         submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
-                    perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(
-                        final_hidden
-                            .len()
-                            .saturating_mul(std::mem::size_of::<f32>())
-                            .try_into()
-                            .unwrap_or(u64::MAX),
-                    );
+                    perf.stage_timings.output_norm_ns = perf
+                        .stage_timings
+                        .output_norm_ns
+                        .saturating_add(duration_ns(output_norm_start));
                     perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
                         if can_use_q8_1_mmvq(self.output.mode) {
                             std::mem::size_of::<u64>()
@@ -7053,44 +7847,180 @@ impl GptOssCudaModelInner {
                         .saturating_add(report.encoded_operations);
                     kernel_count = kernel_count.saturating_add(report.encoded_operations);
                 } else {
-                    let logits_stats = self.output.matvec_profiled(
-                        backend,
-                        final_hidden.as_slice(),
-                        &mut logits,
-                    )?;
+                    let plan = hybrid_selected4_plan.as_ref().expect("checked above");
+                    hidden = plan
+                        .output_buffer
+                        .read_f32_at_offset(0, hidden_size)
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
+                        hidden_size
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    hidden_device_ready = false;
+                }
+            }
+            if !hidden_device_ready {
+                let output_norm_start = Instant::now();
+                let final_hidden = rms_norm(
+                    hidden.as_slice(),
+                    self.output_norm.as_slice(),
+                    self.family_metadata.rms_norm_epsilon,
+                );
+                perf.stage_timings.output_norm_ns = perf
+                    .stage_timings
+                    .output_norm_ns
+                    .saturating_add(duration_ns(output_norm_start));
+                if output_mode == CudaStepOutputMode::DeviceArgmax {
+                    if let (Some(plan), Some(storage)) =
+                        (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+                    {
+                        plan.hidden_input_host_buffer
+                            .write_f32(final_hidden.as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let mut submission = backend.begin_submission()?;
+                        submission.copy_host_to_device(
+                            &plan.hidden_input_host_buffer,
+                            &plan.hidden_input_buffer,
+                        )?;
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            plan.argmax_state_host_buffer
+                                .write_bytes(initial_cuda_argmax_pair_bytes().as_slice())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            submission.quantize_f32_to_q8_1(
+                                &plan.hidden_input_buffer,
+                                1,
+                                self.output.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                            )?;
+                            submission.copy_host_to_device(
+                                &plan.argmax_state_host_buffer,
+                                &plan.argmax_state_buffer,
+                            )?;
+                            submission.quantized_matvec_q8_1_argmax(
+                                storage,
+                                0,
+                                self.output.mode,
+                                self.output.rows,
+                                self.output.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                                None,
+                                &plan.argmax_state_buffer,
+                            )?;
+                            submission.copy_device_to_host(
+                                &plan.argmax_state_buffer,
+                                &plan.argmax_state_host_buffer,
+                            )?;
+                        } else {
+                            submission.quantized_matvec(
+                                storage,
+                                0,
+                                self.output.mode,
+                                self.output.rows,
+                                self.output.columns,
+                                &plan.hidden_input_buffer,
+                                &plan.logits_buffer,
+                            )?;
+                            submission.argmax_f32(
+                                &plan.logits_buffer,
+                                1,
+                                self.output.rows,
+                                &plan.next_token_buffer,
+                            )?;
+                            submission.copy_device_to_host(
+                                &plan.next_token_buffer,
+                                &plan.next_token_host_buffer,
+                            )?;
+                        }
+                        let report =
+                            submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                        perf.cuda.host_to_device_bytes =
+                            perf.cuda.host_to_device_bytes.saturating_add(
+                                final_hidden
+                                    .len()
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.device_to_host_bytes =
+                            perf.cuda.device_to_host_bytes.saturating_add(
+                                if can_use_q8_1_mmvq(self.output.mode) {
+                                    std::mem::size_of::<u64>()
+                                } else {
+                                    std::mem::size_of::<i32>()
+                                }
+                                .try_into()
+                                .unwrap_or(u64::MAX),
+                            );
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            perf.cuda.host_to_device_bytes =
+                                perf.cuda.host_to_device_bytes.saturating_add(
+                                    std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX),
+                                );
+                            selected_token = Some(cuda_argmax_token_from_packed_host_buffer(
+                                &plan.argmax_state_host_buffer,
+                            )?);
+                        } else {
+                            let token = plan.next_token_host_buffer.read_i32().map_err(|error| {
+                                ReferenceTextGenerationError::Runtime(
+                                    super::RuntimeError::Backend(format!(
+                                        "cuda argmax returned an invalid host token buffer: {error}",
+                                    )),
+                                )
+                            })?;
+                            selected_token = Some(cuda_argmax_token_id(token)?);
+                        }
+                        perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                        perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                        perf.cuda.kernel_launches = perf
+                            .cuda
+                            .kernel_launches
+                            .saturating_add(report.encoded_operations);
+                        kernel_count = kernel_count.saturating_add(report.encoded_operations);
+                    } else {
+                        let logits_stats = self.output.matvec_profiled(
+                            backend,
+                            final_hidden.as_slice(),
+                            &mut logits,
+                        )?;
+                        accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
+                        selected_token = logits
+                            .iter()
+                            .copied()
+                            .enumerate()
+                            .max_by(|(_, left), (_, right)| left.total_cmp(right))
+                            .and_then(|(index, _)| u32::try_from(index).ok().map(TokenId));
+                        kernel_count = kernel_count.saturating_add(1);
+                    }
+                } else {
+                    let logits_stats = if let (Some(plan), Some(storage)) =
+                        (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+                    {
+                        let result = cuda_quantized_matvec_with_reused_buffers(
+                            backend,
+                            storage,
+                            0,
+                            self.output.mode,
+                            self.output.rows,
+                            self.output.columns,
+                            final_hidden.as_slice(),
+                            &mut plan.hidden_input_host_buffer,
+                            &plan.hidden_input_buffer,
+                            &plan.logits_buffer,
+                        )?;
+                        logits = result.values;
+                        result.stats
+                    } else {
+                        self.output.matvec_profiled(
+                            backend,
+                            final_hidden.as_slice(),
+                            &mut logits,
+                        )?
+                    };
                     accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
-                    selected_token = logits
-                        .iter()
-                        .copied()
-                        .enumerate()
-                        .max_by(|(_, left), (_, right)| left.total_cmp(right))
-                        .and_then(|(index, _)| u32::try_from(index).ok().map(TokenId));
                     kernel_count = kernel_count.saturating_add(1);
                 }
-            } else {
-                let logits_stats = if let (Some(plan), Some(storage)) =
-                    (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
-                {
-                    let result = cuda_quantized_matvec_with_reused_buffers(
-                        backend,
-                        storage,
-                        0,
-                        self.output.mode,
-                        self.output.rows,
-                        self.output.columns,
-                        final_hidden.as_slice(),
-                        &mut plan.hidden_input_host_buffer,
-                        &plan.hidden_input_buffer,
-                        &plan.logits_buffer,
-                    )?;
-                    logits = result.values;
-                    result.stats
-                } else {
-                    self.output
-                        .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?
-                };
-                accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
-                kernel_count = kernel_count.saturating_add(1);
             }
             bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
             perf.stage_timings.logits_projection_ns = perf

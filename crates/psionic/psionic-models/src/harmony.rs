@@ -1274,7 +1274,10 @@ mod tests {
         let content = GgufContent::read_path(&path)?;
         let metadata = content.load_tokenizer()?;
         let tokenizer = GptOssTokenizer::from_gguf(&metadata)?;
-        let messages = vec![PromptMessage::new(PromptMessageRole::User, "What is 2 + 2?")];
+        let messages = vec![PromptMessage::new(
+            PromptMessageRole::User,
+            "What is 2 + 2?",
+        )];
         let prompt_options = PromptRenderOptions {
             gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
                 reasoning_effort: Some(PromptReasoningEffort::Low),
