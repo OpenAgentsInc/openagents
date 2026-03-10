@@ -4,7 +4,11 @@
 > `docs/OWNERSHIP.md`, after re-reading the retained Apple FM audit in
 > `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md`, and after
 > inspecting `~/code/python-apple-fm-sdk` across its exported API, user docs,
-> and test suite.
+> and test suite, and after re-reading the current Mission Control pane and its
+> plan in `apps/autopilot-desktop/src/pane_renderer.rs`,
+> `apps/autopilot-desktop/src/input/actions.rs`,
+> `apps/autopilot-desktop/src/app_state.rs`, and
+> `docs/plans/mission-control-pane.md`.
 >
 > This is the live roadmap for the Apple Foundation Models lane. For the MVP,
 > `Mac = Apple Foundation Models via our Swift bridge`, `NVIDIA = Psionic
@@ -26,6 +30,12 @@ Choose the reference that owns the layer being changed:
   exported symbols, documented behavior, and conformance expectations
 - start with `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md` for the
   current retained repo truth and the known integration gaps
+- start with the current Mission Control implementation in
+  `apps/autopilot-desktop/src/pane_renderer.rs`,
+  `apps/autopilot-desktop/src/input/actions.rs`,
+  `apps/autopilot-desktop/src/app_state.rs`, and
+  `docs/plans/mission-control-pane.md` when the work touches the earn-first
+  shell on macOS
 - start with `swift/foundation-bridge/` and
   `apps/autopilot-desktop/src/apple_fm_bridge.rs` for the currently shipped
   bridge contract and desktop supervision model
@@ -47,6 +57,8 @@ ship as the macOS local-model story:
   workbench, and provider flows
 - the Rust surface reaches full semantic coverage of the Apple FM API exposed
   by `python-apple-fm-sdk`
+- on macOS, Mission Control and the user-facing local-model surfaces show Apple
+  FM truth instead of GPT-OSS-specific loading language
 - the desktop stops treating Apple FM as a provider-only sidecar and instead
   uses it as the default Mac local inference lane when it is available
 
@@ -112,6 +124,8 @@ What the retained tree does not have today:
 - typed error mapping
 - truthful generation options coverage
 - Apple FM as the default Mac local inference lane
+- a Mission Control pane that speaks Apple FM truth on macOS instead of
+  hard-coded GPT-OSS 20B load semantics
 
 The Python SDK makes the gap unmistakable: Apple FM is not just "one endpoint
 that returns a string." It is a full sessioned API with streaming, transcript
@@ -136,6 +150,32 @@ guardrail configuration, and a real error taxonomy.
 
 That is a legitimate base to build on, but it is still only an initial bridge,
 not a Psionic-owned SDK or a complete Apple FM runtime lane.
+
+## Mission Control Reality On Main
+
+Mission Control is now an explicit part of this roadmap, because the current
+Mac earn-first shell is still coded around GPT-OSS model loading rather than
+Apple FM readiness.
+
+Current Mission Control truth on `main`:
+
+- the main pane copy, CTA label, and hints still say `GPT-OSS 20B`
+- the `LOAD` action records and renders `Queued GPT-OSS 20B load`
+- the log stream emits lines such as `Local GPT-OSS 20B is loading`
+- the pane fallback model label is still `GPT-OSS 20B`
+- the current Mission Control plan document explicitly requires GPT-OSS 20B to
+  be loaded before `GO ONLINE`
+
+This matters because the product rule is now different:
+
+- on macOS, Mission Control should present Apple FM as the local model truth
+- on macOS, the earn gate should reflect Apple FM readiness and its blockers,
+  not GGUF artifact presence
+- the GPT-OSS-specific Mission Control contract should remain only for the
+  non-Mac paths that still actually depend on it
+
+So Mission Control is not a side note under desktop polish. It is part of the
+Mac Apple FM cutover definition of done.
 
 ## Coverage Target From `python-apple-fm-sdk`
 
@@ -221,6 +261,9 @@ least the following:
 - no typed Rust error taxonomy aligned to the Apple FM model contract
 - the desktop still defaults local inference to Psionic GPT-OSS rather than
   Apple FM on macOS
+- Mission Control still gates `GO ONLINE`, button copy, log copy, and model
+  status around GPT-OSS-specific local-runtime fields instead of Apple FM
+  readiness on macOS
 
 ## Marching Orders
 
@@ -453,7 +496,7 @@ Acceptance:
   failure strings
 - desktop/provider surfaces can present truthful actionable errors
 
-### FM-10: Desktop cutover, workbench integration, and packaging
+### FM-10: Desktop cutover, Mission Control, workbench integration, and packaging
 
 Required outcome:
 
@@ -466,12 +509,22 @@ Deliverables:
   `LocalInferenceRuntime` seam
 - make macOS runtime selection prefer Apple FM over Metal/CPU GPT-OSS when
   Apple FM is available
+- cut Mission Control over so macOS no longer presents `LOAD GPT-OSS 20B` as
+  the primary local-model action
+- make Mission Control source its `Model`, `Backend`, `Load`, CTA, and log
+  lines from the active backend truth rather than from GPT-OSS-only local
+  artifact assumptions
+- on macOS, gate Mission Control `GO ONLINE` on Apple FM readiness and Apple FM
+  blockers, not on GGUF artifact presence
 - add chat/workbench usage through the same reusable Psionic Apple FM surface
 - keep provider execution and user-facing local inference on the same runtime
   truth
 - preserve packaging rules already called out in the retained audit:
   wrapper-style bridge packaging when entitlements require it, explicit bridge
   discovery, and clear unsupported-platform messaging
+- update `docs/plans/mission-control-pane.md` so the product plan matches the
+  new Mac rule instead of codifying GPT-OSS 20B as the universal Mission
+  Control gate
 
 Acceptance:
 
@@ -479,6 +532,10 @@ Acceptance:
   `user local inference GPT-OSS` lane on macOS
 - Apple FM is visible, selectable, and truthful in the same app-owned runtime
   seam as other local runtimes
+- on macOS, Mission Control shows Apple FM readiness, Apple FM blocker text,
+  and Apple FM log lines instead of GPT-OSS-specific copy
+- the Mission Control action button and `GO ONLINE` gate are backend-aware:
+  Apple FM on macOS, GPT-OSS only where that is still the actual runtime truth
 
 ## Recommended Execution Queue
 
@@ -493,7 +550,7 @@ Until this roadmap is updated after landed work, the next-item order is:
 7. `FM-7` structured generation and schema support
 8. `FM-8` tools
 9. `FM-9` typed errors and metrics truth
-10. `FM-10` desktop cutover and packaging cleanup
+10. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and
@@ -516,6 +573,9 @@ when all of the following are true:
   hacks
 - tool calling is real, session-aware, and transcripted
 - on macOS, Apple FM is the default app local-model lane when available
+- on macOS, Mission Control no longer tells the user to load GPT-OSS 20B and
+  instead reflects Apple FM truth throughout its sell-compute lane and log
+  stream
 - the provider lane and user-facing local-inference lane use the same Apple FM
   runtime truth
 - usage and token counts are explicit about whether they are exact, derived, or
