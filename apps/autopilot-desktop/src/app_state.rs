@@ -6863,6 +6863,46 @@ const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
     "wss://relay.nostr.band",
 ];
 
+// NIP-28 default channel configuration.
+// Override at runtime via environment variables (sourced before launching the app).
+pub(crate) const ENV_DEFAULT_NIP28_RELAY_URL: &str = "OA_DEFAULT_NIP28_RELAY_URL";
+pub(crate) const ENV_DEFAULT_NIP28_CHANNEL_ID: &str = "OA_DEFAULT_NIP28_CHANNEL_ID";
+
+// Compile-time fallback relay reuses the primary Nexus relay.
+// channel_id must be a 64-char lowercase hex Nostr event ID of the kind-40 creation event.
+// Leave empty to disable auto-connect until a real channel is configured.
+const DEFAULT_NIP28_RELAY_URL: &str = DEFAULT_NEXUS_PRIMARY_RELAY_URL;
+const DEFAULT_NIP28_CHANNEL_ID: &str = "";
+
+/// Identifies the single default NIP-28 public channel users auto-connect to.
+///
+/// Loaded from env vars `OA_DEFAULT_NIP28_RELAY_URL` / `OA_DEFAULT_NIP28_CHANNEL_ID`;
+/// falls back to compile-time constants when env vars are absent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefaultNip28ChannelConfig {
+    pub relay_url: String,
+    /// 64-char lowercase hex Nostr event ID of the kind-40 channel creation event.
+    pub channel_id: String,
+}
+
+impl DefaultNip28ChannelConfig {
+    /// Loads config, preferring env-var overrides over compile-time defaults.
+    pub fn from_env_or_default() -> Self {
+        Self {
+            relay_url: std::env::var(ENV_DEFAULT_NIP28_RELAY_URL)
+                .unwrap_or_else(|_| DEFAULT_NIP28_RELAY_URL.to_string()),
+            channel_id: std::env::var(ENV_DEFAULT_NIP28_CHANNEL_ID)
+                .unwrap_or_else(|_| DEFAULT_NIP28_CHANNEL_ID.to_string()),
+        }
+    }
+
+    /// Returns `true` when `channel_id` is a valid 64-char lowercase hex string.
+    pub fn is_valid(&self) -> bool {
+        let id = &self.channel_id;
+        id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsDocumentV1 {
     pub schema_version: u16,
