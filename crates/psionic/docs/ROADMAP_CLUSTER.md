@@ -10,9 +10,10 @@
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
 > after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
 > `f2e758720`, after landing `PSI-186` / `#3291` in `cc60eea89`, after
-> confirming that `#3292` is now the only remaining C1 queue item, after
-> opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, and after
-> checking live GitHub issue search so this roadmap reflects the current
+> opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, after
+> landing `PSI-187` / `#3292` through `PSI-190` / `#3299` in `bcd73940b`,
+> after confirming that `#3300` is now the next open cluster queue item, and
+> after checking live GitHub issue search so this roadmap reflects the current
 > GitHub queue rather than local placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
@@ -99,10 +100,12 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-184` / [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) is landed on `main`
   - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) is landed on `main`
   - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) is landed on `main`
-  - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is open
+  - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are open
+    `PSI-190` / [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) are landed on `main`
+  - `PSI-191` / [#3300](https://github.com/OpenAgentsInc/openagents/issues/3300) through
+    `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -157,6 +160,27 @@ on:
     Psionic-owned `ClusterEventLog`, contiguous indexed apply discipline,
     replayable `ClusterState`/`ClusterSnapshot`, stable state digests, and unit
     coverage for ordering, replay, and out-of-order refusal
+- `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292)
+  - landed in `bcd73940b`
+  - catchup requests and responses, compacted snapshots, bounded replay tails,
+    full-resync versus snapshot-install recovery dispositions, and unit
+    coverage proving rejoin and schema-mismatch recovery semantics
+- `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297)
+  - landed in `bcd73940b`
+  - cluster topology, link-class, transport, backend-readiness, and node
+    telemetry facts now live in authoritative cluster state with separate
+    topology digests and replay coverage
+- `PSI-189` / [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298)
+  - landed in `bcd73940b`
+  - artifact residency and cluster staging truth now live beside topology
+    facts as separate digests and explicit residency status records rather than
+    hidden scheduler assumptions
+- `PSI-190` / [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299)
+  - landed in `bcd73940b`
+  - runtime-owned `ClusterExecutionContext` now flows through
+    `psionic-runtime`, `psionic-serve`, and provider capability and receipt
+    surfaces with policy digests, selected nodes, residency posture, transport
+    class, and fallback history
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -173,10 +197,10 @@ one:
   extend instead of replacing
 - there is now a `psionic-cluster` crate with trusted-LAN hello/ping
   discovery, persistent node identity, explicit admission policy,
-  machine-checkable join refusals, and a replayable ordered-state model, but
-  there is still no catchup/compaction/recovery seam, no topology-fact
-  publication beyond the local state model, and no truthful remote-node
-  scheduling path
+  machine-checkable join refusals, replayable ordered state, catchup,
+  snapshots, compaction, recovery, topology and telemetry facts, artifact
+  residency truth, and cluster execution evidence seams, but there is still no
+  truthful remote-node scheduling path
 - the first honest cluster scope is still a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
@@ -251,35 +275,37 @@ Practical roadmap consequence:
 
 ### Cluster identity, membership, and ordered truth
 
-Tracked by proposed `PSI-184` through `PSI-187`.
+Tracked by `PSI-184` through `PSI-187`, now landed on `main`.
 
 Current truth:
 
-- there is no reusable cluster crate
-- there is no persistent `ClusterId`, `NodeId`, `NodeEpoch`, or `NodeRole`
-- there is no authoritative ordered event stream, catchup path, or snapshot
-  policy
+- `psionic-cluster` now owns reusable cluster transport, identity, and ordered
+  state substrate
+- persistent `ClusterId`, `NodeId`, `NodeEpoch`, and node-role truth now exist
+- authoritative ordered history, catchup, snapshots, compaction, and recovery
+  semantics are now explicit and replayable
 
 Required outcome:
 
-- cluster state becomes replayable, inspectable, and refusal-capable
+- the next phases should consume this control-plane substrate rather than
+  rebuilding cluster truth inside scheduling code
 
 ### Topology, residency, and evidence mapping
 
-Tracked by proposed `PSI-188` through `PSI-190`.
+Tracked by `PSI-188` through `PSI-190`, now landed on `main`.
 
 Current truth:
 
-- Psionic can describe local topology plans, but it cannot yet replicate live
-  cluster facts
-- placement and artifact readiness are not yet separate runtime truths
-- provider evidence does not yet carry cluster-specific digests or residency
-  facts
+- authoritative cluster state now carries topology, link-class, transport, and
+  node telemetry facts with stable digests
+- artifact residency and placement readiness are now separate cluster truths
+- provider capabilities and receipts can now carry cluster-specific digests,
+  selected nodes, residency posture, transport class, and fallback history
 
 Required outcome:
 
-- placement decisions become justified from explicit shared state and appear in
-  receipts without app-local reconstruction
+- the next scheduling phase should consume these facts to make remote-node
+  routing decisions truthful rather than purely local
 
 ### Cluster-aware scheduling and serving policy
 
@@ -359,15 +385,15 @@ Already on `main`:
 | `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Closed | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Landed in `64c2a8fc6`: established the crate seam and proved that seeded local Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution behavior. |
 | `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Closed | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Landed in `f2e758720`: persistent local node identity, explicit namespace/admission config, role-visible node epoch truth, and machine-checkable refusal of admission mismatch, cluster mismatch, and stale-node ambiguity. |
 | `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Closed | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | Landed in `cc60eea89`: typed control-plane schemas, contiguous indexed-event apply rules, replayable authoritative cluster state, and stable digests that later receipts and diagnostics can reference. |
-| `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Open | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Event sourcing is not operationally real until replay bounds, catchup windows, and recovery semantics are explicit. |
+| `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Closed | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Landed in `bcd73940b`: event history now supports bounded replay, compacted snapshots, snapshot-install versus full-resync recovery, and rejoin coverage. |
 
 ### Phase C2: topology, staging, and evidence truth
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-188` | [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) | Open | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Placement should consume explicit shared facts, not hidden scheduler heuristics. |
-| `PSI-189` | [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298) | Open | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Placement and artifact readiness are different truths and must stay separate in cluster receipts. |
-| `PSI-190` | [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) | Open | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Cluster claims need digests, selected nodes, residency, transport, and degraded/fallback history to remain machine-checkable. |
+| `PSI-188` | [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) | Closed | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Landed in `bcd73940b`: authoritative state now carries topology and telemetry facts with explicit link classes, readiness posture, and stable topology digests. |
+| `PSI-189` | [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298) | Closed | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Landed in `bcd73940b`: cluster state now tracks artifact residency separately from topology with explicit staging status and dedicated residency digests. |
+| `PSI-190` | [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) | Closed | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Landed in `bcd73940b`: provider and serve surfaces now expose cluster digests, selected nodes, residency posture, transport class, and fallback history through a runtime-owned evidence type. |
 
 ### Phase C3: cluster-aware single-node scheduling and policy
 
@@ -400,9 +426,7 @@ Already on `main`:
 
 The shortest honest path from today's `main` is:
 
-1. Execute the remaining open C1 queue
-   `#3292`, then execute
-   `#3297` -> `#3298` -> `#3299`.
+1. Treat C1 and C2 as landed on `main` in `bcd73940b`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
    `#3300` -> `#3301` -> `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
