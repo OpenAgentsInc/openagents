@@ -18,6 +18,8 @@ This runbook validates two cluster trust postures:
   multi-subnet clusters
 - coordinator term/fence truth in clustered execution evidence for operator-
   managed failover paths
+- command-authorization refusal truth and payout-facing cluster provenance
+  surfaces for operator-managed multi-subnet clusters
 
 This runbook still does not claim internet-wide adversarial safety. It validates
 the current truthful cluster claims and the current homogeneous CUDA planning
@@ -51,6 +53,8 @@ What these cover:
   - degraded whole-request scheduling with explicit artifact staging truth
   - replicated serving reroute away from a slow replica
   - layer-sharded and tensor-sharded evidence surfaces
+  - allowed versus refused cluster-command authorization coverage
+  - whole-request and sharded command provenance surfaced for settlement/audit use
   - fault-injected shard-mesh refusal
   - stale-leader diagnostics, split-brain refusal, and failover fence rotation
 
@@ -66,6 +70,7 @@ The fault seam currently covers:
 - low-memory pressure on candidate nodes
 - degraded scheduler links
 - unsuitable or missing inter-shard mesh links
+- command-authorization refusal and provenance-preservation checks
 
 If a new cluster claim cannot be validated by one of those seams, extend the
 fixture before broadening the roadmap claim.
@@ -163,6 +168,25 @@ Interpretation:
 - split-brain refusal failure means the ordered-state failover path can no
   longer reject conflicting same-term authority explicitly
 
+## Authorization And Payout Provenance Drill
+
+Use this sequence before claiming stronger operator-audit posture or any
+future payout/dispute story built on cluster provenance:
+
+1. Run `cargo test -p psionic-cluster --test cluster_validation_matrix authorization_validation_covers_allowed_and_refused_cluster_commands`.
+2. Run `cargo test -p psionic-cluster --test cluster_validation_matrix scheduling_validation_covers_staging_and_degraded_candidate sharding_validation_covers_layer_and_tensor_evidence`.
+3. Run `cargo test -p psionic-provider text_generation_receipt_preserves_cluster_execution_from_provenance text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth`.
+4. If any step fails, do not claim payout-grade cluster provenance or stronger operator-facing authorization auditability for the current build.
+
+Interpretation:
+
+- authorization validation failure means allowed/refused cluster-command flows
+  are no longer evidence-backed enough to support operator policy claims
+- cluster scheduling/sharding provenance failure means bounded admission truth
+  is no longer carried through whole-request or sharded execution surfaces
+- provider receipt failure means settlement-facing JSON no longer preserves the
+  cluster provenance required for later audit or dispute handling
+
 ## Recovery Drill
 
 Use this sequence when validating recovery behavior intentionally:
@@ -223,5 +247,7 @@ The current cluster claim remains evidence-backed only when:
 - the authenticated membership drill is green before any configured-peer or
   multi-subnet rollout claim
 - the coordinator failover drill is green before claiming fenced failover truth
+- the authorization and payout provenance drill is green before claiming
+  stronger operator audit or payout/dispute posture
 - the release benchmark gate is green
 - roadmap and issue comments reference the exact tests and runbook paths above

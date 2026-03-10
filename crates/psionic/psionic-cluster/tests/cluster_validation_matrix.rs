@@ -3,20 +3,21 @@ mod support;
 use std::io::Error;
 
 use psionic_cluster::{
-    ClusterArtifactResidencyStatus, ClusterCatchupPayload, ClusterEvent, ClusterEventIndex,
-    ClusterHistoryError, ClusterLeaseTick, ClusterRecoveryDisposition, ClusterRecoveryReason,
+    plan_replicated_serving, schedule_layer_sharded_execution, schedule_remote_whole_request,
+    schedule_tensor_sharded_execution, ClusterArtifactResidencyStatus, ClusterCatchupPayload,
+    ClusterCommand, ClusterCommandAuthorizationError, ClusterCommandAuthorizationPolicy,
+    ClusterCommandAuthorizationRefusalCode, ClusterEvent, ClusterEventIndex, ClusterHistoryError,
+    ClusterLeaseTick, ClusterRecoveryDisposition, ClusterRecoveryReason,
     ClusterReplicaLifecyclePolicy, ClusterServingPolicy, ClusterTerm, IndexedClusterEvent,
-    LayerShardedSchedulingFailureCode, TensorShardedSchedulingFailureCode, plan_replicated_serving,
-    schedule_layer_sharded_execution, schedule_remote_whole_request,
-    schedule_tensor_sharded_execution,
+    LayerShardedSchedulingFailureCode, NodeId, TensorShardedSchedulingFailureCode,
 };
 use psionic_runtime::{
-    ClusterPolicyDigestKind, ClusterReplicaRoutingDisposition, ClusterShardHandoffKind,
-    ExecutionTopologyKind,
+    ClusterAdmissionFactKind, ClusterPolicyDigestKind, ClusterReplicaRoutingDisposition,
+    ClusterSettlementProvenanceInput, ClusterShardHandoffKind, ExecutionTopologyKind,
 };
 use support::{
-    ClusterValidationFault, ClusterValidationFixture, recovery_policy, sample_cluster_id,
-    sample_recovery_log, stale_rejoin_request,
+    recovery_policy, sample_cluster_id, sample_recovery_log, stale_rejoin_request,
+    ClusterValidationFault, ClusterValidationFixture,
 };
 
 fn fixture_error(detail: impl Into<String>) -> Error {
@@ -24,8 +25,8 @@ fn fixture_error(detail: impl Into<String>) -> Error {
 }
 
 #[test]
-fn recovery_validation_installs_snapshot_after_compaction_boundary()
--> Result<(), Box<dyn std::error::Error>> {
+fn recovery_validation_installs_snapshot_after_compaction_boundary(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut log = sample_recovery_log();
     let policy = recovery_policy();
 
@@ -56,9 +57,11 @@ fn recovery_validation_installs_snapshot_after_compaction_boundary()
 }
 
 #[test]
-fn scheduling_validation_covers_staging_and_degraded_candidate()
--> Result<(), Box<dyn std::error::Error>> {
+fn scheduling_validation_covers_staging_and_degraded_candidate(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = ClusterValidationFixture::new();
+    fixture.set_leadership("scheduler", ClusterTerm::initial(), 4, 10);
+    fixture.seed_command_provenance();
     fixture.inject(ClusterValidationFault::ArtifactStatus {
         node_id: "worker-a",
         status: ClusterArtifactResidencyStatus::CopyRequired,
@@ -86,14 +89,16 @@ fn scheduling_validation_covers_staging_and_degraded_candidate()
     assert_eq!(schedule.selected_node_id.as_str(), "worker-a");
     assert!(schedule.selection_notes.iter().any(|note| note.code
         == psionic_cluster::WholeRequestSchedulingSelectionCode::ArtifactCopyRequired));
-    assert!(
-        schedule.selection_notes.iter().any(|note| note.code
-            == psionic_cluster::WholeRequestSchedulingSelectionCode::BackendDegraded)
-    );
-    assert!(
-        schedule.selection_notes.iter().any(|note| note.code
-            == psionic_cluster::WholeRequestSchedulingSelectionCode::TransportDegraded)
-    );
+    assert!(schedule
+        .selection_notes
+        .iter()
+        .any(|note| note.code
+            == psionic_cluster::WholeRequestSchedulingSelectionCode::BackendDegraded));
+    assert!(schedule
+        .selection_notes
+        .iter()
+        .any(|note| note.code
+            == psionic_cluster::WholeRequestSchedulingSelectionCode::TransportDegraded));
     assert_eq!(
         schedule
             .cluster_execution
@@ -102,12 +107,30 @@ fn scheduling_validation_covers_staging_and_degraded_candidate()
             .and_then(|node| node.artifact_residency),
         Some(psionic_runtime::ClusterArtifactResidencyDisposition::CopyRequired)
     );
-    assert!(
+    assert!(schedule
+        .cluster_execution
+        .degraded_reason
+        .as_deref()
+        .is_some_and(|detail| detail.contains("requires peer-copy artifact staging")));
+    assert_eq!(schedule.cluster_execution.command_provenance.len(), 4);
+    assert!(schedule
+        .cluster_execution
+        .command_provenance
+        .iter()
+        .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::Leadership));
+    let settlement_provenance =
+        ClusterSettlementProvenanceInput::from_cluster_execution(&schedule.cluster_execution)
+            .ok_or_else(|| {
+                fixture_error("whole-request schedule should yield settlement provenance")
+            })?;
+    assert_eq!(settlement_provenance.command_provenance.len(), 4);
+    assert_eq!(
+        settlement_provenance.coordinator_authority_digest,
         schedule
             .cluster_execution
-            .degraded_reason
-            .as_deref()
-            .is_some_and(|detail| detail.contains("requires peer-copy artifact staging"))
+            .commit_authority
+            .as_ref()
+            .map(|authority| authority.authority_digest.clone())
     );
     Ok(())
 }
@@ -131,36 +154,34 @@ fn replication_validation_reroutes_away_from_slow_replica() -> Result<(), Box<dy
         decision.serving_decision.schedule.selected_node_id.as_str(),
         "worker-b"
     );
-    assert!(
-        decision
-            .serving_decision
-            .schedule
-            .cluster_execution
-            .fallback_history
-            .iter()
-            .any(|step| {
-                step.from_node_id.as_deref() == Some("worker-a") && step.to_node_id == "worker-b"
-            })
-    );
-    assert!(
-        decision
-            .serving_decision
-            .schedule
-            .cluster_execution
-            .replica_nodes
-            .iter()
-            .any(|replica| {
-                replica.node.node_id == "worker-a"
-                    && replica.routing == ClusterReplicaRoutingDisposition::WarmStandby
-            })
-    );
+    assert!(decision
+        .serving_decision
+        .schedule
+        .cluster_execution
+        .fallback_history
+        .iter()
+        .any(|step| {
+            step.from_node_id.as_deref() == Some("worker-a") && step.to_node_id == "worker-b"
+        }));
+    assert!(decision
+        .serving_decision
+        .schedule
+        .cluster_execution
+        .replica_nodes
+        .iter()
+        .any(|replica| {
+            replica.node.node_id == "worker-a"
+                && replica.routing == ClusterReplicaRoutingDisposition::WarmStandby
+        }));
     Ok(())
 }
 
 #[test]
 fn sharding_validation_covers_layer_and_tensor_evidence() -> Result<(), Box<dyn std::error::Error>>
 {
-    let fixture = ClusterValidationFixture::new();
+    let mut fixture = ClusterValidationFixture::new();
+    fixture.set_leadership("scheduler", ClusterTerm::initial(), 4, 10);
+    fixture.seed_command_provenance();
     let layer_schedule = schedule_layer_sharded_execution(
         &fixture.state(),
         &fixture.layer_request(),
@@ -203,6 +224,65 @@ fn sharding_validation_covers_layer_and_tensor_evidence() -> Result<(), Box<dyn 
         Some(0)
     );
     assert_eq!(tensor_schedule.shard_handoffs[0].tensor_range_end, Some(32));
+    assert_eq!(layer_schedule.cluster_execution.command_provenance.len(), 6);
+    assert_eq!(
+        tensor_schedule.cluster_execution.command_provenance.len(),
+        6
+    );
+    assert!(layer_schedule
+        .cluster_execution
+        .command_provenance
+        .iter()
+        .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::Leadership));
+    assert!(tensor_schedule
+        .cluster_execution
+        .command_provenance
+        .iter()
+        .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::ArtifactResidency));
+    Ok(())
+}
+
+#[test]
+fn authorization_validation_covers_allowed_and_refused_cluster_commands(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = ClusterValidationFixture::new();
+    fixture.set_leadership("scheduler", ClusterTerm::initial(), 4, 10);
+    let state = fixture.state();
+    let allowed = state
+        .authorize_command(
+            &NodeId::new("worker-a"),
+            &ClusterCommand::ReconcileMembership {
+                membership: fixture
+                    .snapshot
+                    .memberships
+                    .get(&NodeId::new("worker-a"))
+                    .cloned()
+                    .ok_or_else(|| fixture_error("worker-a membership should exist"))?,
+            },
+            &ClusterCommandAuthorizationPolicy::default(),
+        )
+        .map_err(|err| {
+            fixture_error(format!(
+                "worker self-membership reconcile should succeed: {err:?}"
+            ))
+        })?;
+    assert_eq!(allowed.submitter_node_id.as_str(), "worker-a");
+
+    let refusal = state
+        .authorize_command(
+            &NodeId::new("worker-a"),
+            &ClusterCommand::RemoveMember {
+                node_id: NodeId::new("worker-c"),
+                reason: String::from("validation refusal"),
+            },
+            &ClusterCommandAuthorizationPolicy::default(),
+        )
+        .expect_err("non-coordinator member removal should be refused");
+    assert!(matches!(
+        refusal,
+        ClusterCommandAuthorizationError::Refused { refusal }
+            if refusal.code == ClusterCommandAuthorizationRefusalCode::CoordinatorRequired
+    ));
     Ok(())
 }
 
@@ -249,8 +329,8 @@ fn fault_injection_covers_mesh_refusal_for_sharded_paths() -> Result<(), Box<dyn
 }
 
 #[test]
-fn coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation()
--> Result<(), Box<dyn std::error::Error>> {
+fn coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = ClusterValidationFixture::new();
     fixture.set_leadership("scheduler", ClusterTerm::initial(), 4, 10);
 
@@ -289,8 +369,8 @@ fn coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rot
 }
 
 #[test]
-fn split_brain_validation_refuses_conflicting_same_term_leadership()
--> Result<(), Box<dyn std::error::Error>> {
+fn split_brain_validation_refuses_conflicting_same_term_leadership(
+) -> Result<(), Box<dyn std::error::Error>> {
     let cluster_id = sample_cluster_id();
     let mut state = psionic_cluster::ClusterState::new(cluster_id.clone());
     let first = IndexedClusterEvent::new(
