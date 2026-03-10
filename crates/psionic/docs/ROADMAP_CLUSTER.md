@@ -179,10 +179,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-223` / [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) is landed on `main`
     - `PSI-224` / [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) is landed on `main`
     - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is landed on `main`
-  - the advertised capability-profile publication follow-on queue is active on `main`
+  - the advertised capability-profile publication follow-on queue is now landed on `main`
     - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is landed on `main`
     - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is landed on `main`
-    - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is open
+    - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -891,7 +891,7 @@ profiles before any request is planned.
 | --- | --- | --- | --- | --- | --- |
 | `PSI-226` | [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) | Closed | Publish declared cluster execution capability profiles in runtime capability surfaces | `psionic-runtime`, `psionic-provider`, tests | Landed in `9ebb90a3e`: `BackendSelection` now exposes an optional advertised `cluster_execution_capability_profile`, capability-side runtime/provider serialization now round-trips that declared truth before any request executes, and provider tests keep that advertised profile distinct from realized `cluster_execution` evidence. |
 | `PSI-227` | [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) | Closed | Thread advertised cluster capability profiles through provider capability envelopes | `psionic-provider`, `psionic-cluster`, tests | Landed in `e2a4c1f84`: provider capability envelopes now expose dedicated `with_cluster_execution_capability_profile(...)` builders, provider publication tests source declared profiles from cluster whole-request, replica-routed, layer-sharded, and tensor-sharded request builders, and advertised lane support now publishes independently of realized `cluster_execution` evidence. |
-| `PSI-228` | [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) | Open | Add advertised capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once advertised profiles publish through capability surfaces, the runbook and roadmap need an explicit operator drill and closeout so those new claims are repeatable instead of implicit. |
+| `PSI-228` | [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) | Closed | Add advertised capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `478387b58`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit advertised capability-publication drill with exact runtime/provider commands, pass/fail interpretation, and separation between advertised support and realized execution evidence, and this roadmap now closes H2 explicitly instead of leaving provider-side publication validation implicit. |
 
 ## Recommended Order
 
@@ -919,9 +919,8 @@ The shortest honest path from today's `main` is:
    and an operator drill instead of a vague follow-on gap.
 10. Treat H1 as landed on `main`, with the capability-profile validation drill
     and queue closeout now anchored in `efa52005e`.
-11. Finish H2 by landing `#3340`, now that `#3341` and `#3339` have made
-    declared cluster capability truth machine-checkable and provider-published
-    before any request executes.
+11. Treat H2 as landed on `main`, with the advertised capability-publication
+    validation drill and queue closeout now anchored in `478387b58`.
 12. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 13. If stronger trust or wider network claims are needed beyond H2, open a new
