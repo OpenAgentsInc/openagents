@@ -179,8 +179,8 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-223` / [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) is landed on `main`
     - `PSI-224` / [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) is landed on `main`
     - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is landed on `main`
-  - the advertised capability-profile publication follow-on queue is now open on GitHub
-    - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is open
+  - the advertised capability-profile publication follow-on queue is active on `main`
+    - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is landed on `main`
     - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is open
     - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is open
 - the current backend execution gates are still real and must remain visible
@@ -889,7 +889,7 @@ profiles before any request is planned.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-226` | [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) | Open | Publish declared cluster execution capability profiles in runtime capability surfaces | `psionic-runtime`, `psionic-provider`, tests | Declared cluster capability profiles exist and planners consume them, but provider/runtime capability advertisement still does not publish that truth as a stable machine-checkable capability surface. This issue adds the reusable advertised model truth before any execution occurs. |
+| `PSI-226` | [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) | Closed | Publish declared cluster execution capability profiles in runtime capability surfaces | `psionic-runtime`, `psionic-provider`, tests | Landed in `9ebb90a3e`: `BackendSelection` now exposes an optional advertised `cluster_execution_capability_profile`, capability-side runtime/provider serialization now round-trips that declared truth before any request executes, and provider tests keep that advertised profile distinct from realized `cluster_execution` evidence. |
 | `PSI-227` | [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) | Open | Thread advertised cluster capability profiles through provider capability envelopes | `psionic-provider`, `psionic-cluster`, tests | The capability-side model is not enough unless provider capability exports actually populate it and keep it aligned with the planner-side declared profiles for remote, replicated, and sharded lanes. |
 | `PSI-228` | [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) | Open | Add advertised capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once advertised profiles publish through capability surfaces, the runbook and roadmap need an explicit operator drill and closeout so those new claims are repeatable instead of implicit. |
 
@@ -919,9 +919,9 @@ The shortest honest path from today's `main` is:
    and an operator drill instead of a vague follow-on gap.
 10. Treat H1 as landed on `main`, with the capability-profile validation drill
     and queue closeout now anchored in `efa52005e`.
-11. Work H2 in order: land `#3341`, then `#3339`, then `#3340`, so declared
-    cluster capability truth becomes first-class advertised provider truth
-    before the next queue widens downstream claims.
+11. Work the rest of H2 in order: land `#3339`, then `#3340`, now that
+    `#3341` has made declared cluster capability truth machine-checkable on
+    capability-side runtime/provider models before any request executes.
 12. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 13. If stronger trust or wider network claims are needed beyond H2, open a new
