@@ -10,9 +10,10 @@
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
 > after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
 > `f2e758720`, after landing `PSI-186` / `#3291` in `cc60eea89`, after
-> confirming that `#3292` is now the only remaining C1 queue item, and after
-> checking live GitHub issue search and confirming that later cluster phases
-> `PSI-188` through `PSI-197` still do not appear to be opened yet.
+> confirming that `#3292` is now the only remaining C1 queue item, after
+> opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, and after
+> checking live GitHub issue search so this roadmap reflects the current
+> GitHub queue rather than local placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
 > `crates/psionic/*`. It is intentionally narrower than
@@ -22,11 +23,10 @@
 
 Agent execution instruction: implement this roadmap in dependency order, not by
 raw local ID ordering and not by whichever backend issue looks most exciting at
-the moment. Open the missing cluster issues first or map these local IDs onto
-real GitHub issues, then work the queue below one issue at a time. After each
-cluster issue lands, update this document before moving on so it reflects the
-new GitHub state, landed commit hash, current backend gate, and remaining
-cluster queue.
+the moment. Work the GitHub-backed queue below one issue at a time, keep the
+local `PSI-*` IDs aligned with the real issue numbers, and update this document
+after each cluster issue lands so it reflects the new GitHub state, landed
+commit hash, current backend gate, and remaining cluster queue.
 
 Reference-first instruction: cluster work must not be implemented from memory.
 Choose the reference that owns the layer being changed:
@@ -100,8 +100,9 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) is landed on `main`
   - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) is landed on `main`
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is open
-- later cluster phases `PSI-188` through `PSI-197` are still proposed rather
-  than opened
+- the next cluster phases now also exist on GitHub
+  - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
+    `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -327,11 +328,11 @@ Required outcome:
 
 - cluster claims become evidence-backed and supportable before scope widening
 
-## Proposed GitHub-Backed Roadmap Items
+## GitHub-Backed Roadmap Items
 
-Phase C1 is now opened on GitHub. The later local IDs below still come from the
-2026-03-09 cluster audit and should be opened as real GitHub issues before
-execution reaches those phases.
+Phases C1 through C6 are now opened on GitHub. The local `PSI-*` IDs below
+still come from the 2026-03-09 cluster audit, but this roadmap now maps them to
+their real GitHub issue numbers directly.
 
 ### Phase C0: shipped cluster-adjacent baseline
 
@@ -364,53 +365,54 @@ Already on `main`:
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-188` | To open | Proposed | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Placement should consume explicit shared facts, not hidden scheduler heuristics. |
-| `PSI-189` | To open | Proposed | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Placement and artifact readiness are different truths and must stay separate in cluster receipts. |
-| `PSI-190` | To open | Proposed | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Cluster claims need digests, selected nodes, residency, transport, and degraded/fallback history to remain machine-checkable. |
+| `PSI-188` | [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) | Open | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Placement should consume explicit shared facts, not hidden scheduler heuristics. |
+| `PSI-189` | [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298) | Open | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Placement and artifact readiness are different truths and must stay separate in cluster receipts. |
+| `PSI-190` | [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) | Open | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Cluster claims need digests, selected nodes, residency, transport, and degraded/fallback history to remain machine-checkable. |
 
 ### Phase C3: cluster-aware single-node scheduling and policy
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-191` | To open | Proposed | Add whole-request remote scheduling for one-node execution | `psionic-cluster`, `psionic-serve`, `psionic-provider` | The first useful cluster behavior is choosing the best node for the whole request while keeping execution local to that node. |
-| `PSI-192` | To open | Proposed | Add queue policy, fairness, cancellation, and backpressure rules | `psionic-cluster`, `psionic-runtime`, `psionic-serve` | A cluster that ignores fairness and slow-node behavior will underperform while still looking correct on paper. |
+| `PSI-191` | [#3300](https://github.com/OpenAgentsInc/openagents/issues/3300) | Open | Add whole-request remote scheduling for one-node execution | `psionic-cluster`, `psionic-serve`, `psionic-provider` | The first useful cluster behavior is choosing the best node for the whole request while keeping execution local to that node. |
+| `PSI-192` | [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) | Open | Add queue policy, fairness, cancellation, and backpressure rules | `psionic-cluster`, `psionic-runtime`, `psionic-serve` | A cluster that ignores fairness and slow-node behavior will underperform while still looking correct on paper. |
 
 ### Phase C4: replicated serving for one validated backend lane
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-193` | To open | Proposed | Ship replicated cluster serving for one validated backend lane | `psionic-cluster`, `psionic-runtime`, `psionic-serve`, `psionic-provider` | Replication is the first operationally useful scale-out story and should land before true sharding. |
+| `PSI-193` | [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) | Open | Ship replicated cluster serving for one validated backend lane | `psionic-cluster`, `psionic-runtime`, `psionic-serve`, `psionic-provider` | Replication is the first operationally useful scale-out story and should land before true sharding. |
 
 ### Phase C5: first truthful sharded execution lane
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-194` | To open | Proposed | Add homogeneous CUDA layer-sharded execution | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Layer sharding is the safest first real multi-node execution claim after the local CUDA lane is stable. |
-| `PSI-195` | To open | Proposed | Add homogeneous CUDA tensor-sharded execution and transport policy | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Tensor sharding requires explicit transport requirements, model eligibility gates, and refusal semantics instead of aspirational topology claims. |
+| `PSI-194` | [#3303](https://github.com/OpenAgentsInc/openagents/issues/3303) | Open | Add homogeneous CUDA layer-sharded execution | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Layer sharding is the safest first real multi-node execution claim after the local CUDA lane is stable. |
+| `PSI-195` | [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) | Open | Add homogeneous CUDA tensor-sharded execution and transport policy | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Tensor sharding requires explicit transport requirements, model eligibility gates, and refusal semantics instead of aspirational topology claims. |
 
 ### Phase C6: validation, security, and rollout hardening
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-196` | To open | Proposed | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Cluster claims need a real validation matrix, not just unit-test confidence. |
-| `PSI-197` | To open | Proposed | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | The first shipped cluster scope is LAN-trusted only; wider cluster claims need explicit authentication, replay protection, and stronger admission rules. |
+| `PSI-196` | [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) | Open | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Cluster claims need a real validation matrix, not just unit-test confidence. |
+| `PSI-197` | [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) | Open | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | The first shipped cluster scope is LAN-trusted only; wider cluster claims need explicit authentication, replay protection, and stronger admission rules. |
 
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
 
-1. Open the missing cluster issue queue and keep the IDs aligned to
-   `PSI-188` through `PSI-197`.
-2. Execute the remaining open C1 queue
-   `#3292`, then open and execute
-   `PSI-188` through `PSI-190`.
+1. Execute the remaining open C1 queue
+   `#3292`, then execute
+   `#3297` -> `#3298` -> `#3299`.
+2. Keep the opened later-phase queue aligned to the roadmap and only pull work
+   forward when its dependency notes are actually satisfied:
+   `#3300` -> `#3301` -> `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-4. Treat closure of that local CUDA lane as the gate for `PSI-191` onward.
-5. Execute `PSI-191` then `PSI-192` then `PSI-193`.
-6. Execute `PSI-194` then `PSI-195` only for one homogeneous CUDA lane.
-7. Execute `PSI-196` and `PSI-197` before widening scope beyond the first
+4. Treat closure of that local CUDA lane as the gate for `#3300` onward.
+5. Execute `#3300` then `#3301` then `#3302`.
+6. Execute `#3303` then `#3304` only for one homogeneous CUDA lane.
+7. Execute `#3305` and `#3306` before widening scope beyond the first
    trusted-LAN cluster claim.
 8. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
