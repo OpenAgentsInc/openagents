@@ -173,6 +173,11 @@ than replace:
   app-owned local projection, restores review/compaction context from
   `thread/read`, and renders compact latest-review/latest-diff/latest-compact
   sections directly in the main coding transcript
+- `CX-7` landed on `main`: Codex threads now carry explicit workspace root,
+  project id/name, and honest git branch + dirty/clean state in app-owned
+  desktop state; the chat surface shows that identity in thread rows, status,
+  and saved plan/diff artifacts; `Open ws` opens the active project workspace;
+  and the desktop keeps a minimal per-project defaults registry for new threads
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -187,8 +192,6 @@ These are the current gaps that matter most:
 - we do not expose many already-supported lane capabilities as a coherent
   operator workflow in desktop chat; this is especially true for coding-shell
   actions beyond the current chat/session/review/compact surface
-- we do not yet have minimal workspace identity, project identity, or git
-  context attached to Codex threads
 - we do not yet have the T3 Code-class coding shell: branch/worktree/PR
   controls, thread-scoped PTY terminals, or checkpointed coding artifacts
 - we do not yet have an app-owned non-interactive `exec`-style surface for
@@ -231,7 +234,7 @@ Status:
 
 Next:
 
-- `CX-7` is now the first open execution item for Codex replacement work
+- `CX-8` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -394,6 +397,20 @@ Later extension within this lane:
 ### Phase C. Coding Shell Parity
 
 ### CX-7. Workspace And Project Identity ([#3364](https://github.com/OpenAgentsInc/openagents/issues/3364))
+
+Status:
+
+- shipped on `main`
+- desktop chat threads now carry explicit workspace root, project id/name, and
+  honest git branch + dirty/clean state in app-owned state instead of deriving
+  that ad hoc in the view layer
+- the desktop now builds a minimal per-workspace project registry with
+  project-level defaults, uses that registry when starting new threads in the
+  same project, shows project/workspace identity in chat status + thread rows,
+  and stamps saved plan/diff artifacts with the same workspace context
+- the chat rail now exposes `Open ws`, which opens the active project workspace
+  in a configured editor when available and otherwise falls back to the
+  platform default opener
 
 Scope:
 

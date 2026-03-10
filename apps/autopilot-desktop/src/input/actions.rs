@@ -2487,12 +2487,28 @@ pub(super) fn current_chat_session_cwd(state: &crate::app_state::RenderState) ->
         })
 }
 
+fn current_chat_workspace_root(state: &crate::app_state::RenderState) -> Option<String> {
+    goal_scoped_turn_cwd(state)
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .active_thread_workspace_root()
+                .map(str::to_string)
+        })
+        .or_else(|| state.autopilot_chat.active_thread_cwd().map(str::to_string))
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|value| value.into_os_string().into_string().ok())
+        })
+}
+
 fn chat_session_workspace_roots(state: &crate::app_state::RenderState) -> Vec<String> {
     let roots = normalized_policy_file_roots(state);
     if !roots.is_empty() {
         return roots;
     }
-    current_chat_session_cwd(state).into_iter().collect()
+    current_chat_workspace_root(state).into_iter().collect()
 }
 
 pub(super) fn chat_session_approval_policy(
@@ -2912,7 +2928,7 @@ fn sync_chat_thread_search_term(state: &mut crate::app_state::RenderState) {
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
     sync_chat_thread_search_term(state);
-    let cwd = current_chat_session_cwd(state).or_else(|| {
+    let cwd = current_chat_workspace_root(state).or_else(|| {
         std::env::current_dir()
             .ok()
             .and_then(|value| value.into_os_string().into_string().ok())
@@ -2938,16 +2954,39 @@ pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::Rend
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
     sync_chat_composer_draft(state);
-    let cwd = current_chat_session_cwd(state);
-    let model_override = state.autopilot_chat.selected_model_override();
+    let project_defaults = state
+        .autopilot_chat
+        .active_project()
+        .map(|project| project.defaults.clone());
+    let cwd = state
+        .autopilot_chat
+        .active_project()
+        .map(|project| project.workspace_root.clone())
+        .or_else(|| current_chat_workspace_root(state));
+    let model_override = project_defaults
+        .as_ref()
+        .and_then(|defaults| defaults.model.clone())
+        .or_else(|| state.autopilot_chat.selected_model_override());
     let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
         model: model_override,
         model_provider: None,
-        service_tier: chat_session_service_tier(state),
+        service_tier: project_defaults
+            .as_ref()
+            .and_then(|defaults| defaults.service_tier.request_value())
+            .or_else(|| chat_session_service_tier(state)),
         cwd,
-        approval_policy: chat_session_approval_policy(state),
-        sandbox: chat_session_thread_sandbox_mode(state),
-        personality: chat_session_personality(state),
+        approval_policy: project_defaults
+            .as_ref()
+            .and_then(|defaults| defaults.approval_policy)
+            .or_else(|| chat_session_approval_policy(state)),
+        sandbox: project_defaults
+            .as_ref()
+            .and_then(|defaults| defaults.sandbox_mode)
+            .or_else(|| chat_session_thread_sandbox_mode(state)),
+        personality: project_defaults
+            .as_ref()
+            .and_then(|defaults| defaults.personality.request_value())
+            .or_else(|| chat_session_personality(state)),
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {
@@ -3163,6 +3202,55 @@ pub(super) fn run_chat_reload_thread_action(state: &mut crate::app_state::Render
     true
 }
 
+pub(super) fn run_chat_open_workspace_in_editor_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error =
+            Some("No active thread workspace is available to open".to_string());
+        return true;
+    };
+    let metadata = state.autopilot_chat.thread_metadata.get(&thread_id);
+    let path = state
+        .autopilot_chat
+        .active_project()
+        .map(|project| std::path::PathBuf::from(project.workspace_root.clone()))
+        .or_else(|| {
+            metadata
+                .and_then(|metadata| metadata.workspace_root.as_deref())
+                .map(std::path::PathBuf::from)
+        })
+        .or_else(|| {
+            metadata
+                .and_then(|metadata| metadata.cwd.as_deref())
+                .map(std::path::PathBuf::from)
+        })
+        .or_else(|| {
+            metadata
+                .and_then(|metadata| metadata.path.as_deref())
+                .map(std::path::PathBuf::from)
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        });
+    let Some(path) = path else {
+        state.autopilot_chat.last_error =
+            Some("This thread does not have a workspace path to open".to_string());
+        return true;
+    };
+
+    match open_path_in_editor_or_default_app(path.as_path()) {
+        Ok(summary) => {
+            state.autopilot_chat.last_error = None;
+            state
+                .autopilot_chat
+                .set_copy_notice(std::time::Instant::now(), summary);
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
 pub(super) fn run_chat_copy_last_output_action(state: &mut crate::app_state::RenderState) -> bool {
     let now = std::time::Instant::now();
     let latest_message_id = state
@@ -3249,11 +3337,12 @@ pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) 
         state.autopilot_chat.last_error = Some("No active thread to review".to_string());
         return true;
     };
-    let command = crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
-        thread_id,
-        target: codex_client::ReviewTarget::UncommittedChanges,
-        delivery: Some(codex_client::ReviewDelivery::Inline),
-    });
+    let command =
+        crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
+            thread_id,
+            target: codex_client::ReviewTarget::UncommittedChanges,
+            delivery: Some(codex_client::ReviewDelivery::Inline),
+        });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
     }
@@ -6219,6 +6308,57 @@ fn open_mission_control_documentation() -> Result<std::path::PathBuf, String> {
     }
     open_path_in_default_app(path.as_path())?;
     Ok(path)
+}
+
+fn spawn_editor_command(
+    program: &str,
+    args: &[&str],
+    path: &std::path::Path,
+) -> Result<(), String> {
+    std::process::Command::new(program)
+        .args(args)
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to launch editor '{program}': {error}"))
+}
+
+fn open_path_in_editor_or_default_app(path: &std::path::Path) -> Result<String, String> {
+    for variable in ["OPENAGENTS_CODEX_EDITOR", "VISUAL", "EDITOR"] {
+        let Ok(command) = std::env::var(variable) else {
+            continue;
+        };
+        let command = command.trim();
+        if command.is_empty() {
+            continue;
+        }
+        let mut parts = command.split_whitespace();
+        let Some(program) = parts.next() else {
+            continue;
+        };
+        let args = parts.collect::<Vec<_>>();
+        if spawn_editor_command(program, &args, path).is_ok() {
+            return Ok(format!(
+                "Opened workspace in {}",
+                command.split_whitespace().next().unwrap_or(program)
+            ));
+        }
+    }
+
+    for (program, args, label) in [
+        ("code", vec!["-r"], "VS Code"),
+        ("cursor", vec![], "Cursor"),
+        ("windsurf", vec![], "Windsurf"),
+        ("zed", vec![], "Zed"),
+        ("subl", vec![], "Sublime Text"),
+    ] {
+        if spawn_editor_command(program, &args, path).is_ok() {
+            return Ok(format!("Opened workspace in {label}"));
+        }
+    }
+
+    open_path_in_default_app(path)?;
+    Ok("Opened workspace in the default app".to_string())
 }
 
 fn open_path_in_default_app(path: &std::path::Path) -> Result<(), String> {

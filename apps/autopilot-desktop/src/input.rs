@@ -2580,6 +2580,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
         PaneHitAction::ChatRenameThread => run_chat_rename_thread_action(state),
         PaneHitAction::ChatReloadThread => run_chat_reload_thread_action(state),
+        PaneHitAction::ChatOpenWorkspaceInEditor => run_chat_open_workspace_in_editor_action(state),
         PaneHitAction::ChatCopyLastOutput => run_chat_copy_last_output_action(state),
         PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
         PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
