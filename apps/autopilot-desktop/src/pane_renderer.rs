@@ -169,6 +169,7 @@ impl PaneRenderer {
                     paint_autopilot_chat_pane(
                         content_bounds,
                         autopilot_chat,
+                        codex_account,
                         spacetime_presence,
                         chat_inputs,
                         paint,
@@ -491,6 +492,7 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
 fn paint_autopilot_chat_pane(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    codex_account: &CodexAccountPaneState,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
@@ -498,6 +500,7 @@ fn paint_autopilot_chat_pane(
     chat_pane::paint(
         content_bounds,
         autopilot_chat,
+        codex_account.account_summary.as_str(),
         spacetime_presence,
         chat_inputs,
         paint,

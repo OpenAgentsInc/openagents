@@ -35,12 +35,13 @@ const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 68.0;
 const CHAT_WORKSPACE_SLOT_HEIGHT: f32 = 52.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 208.0;
 const CHAT_COLUMN_GAP: f32 = 10.0;
-const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 68.0;
+const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 122.0;
 const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
 const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
-const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
-const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 24.0;
+const CHAT_HEADER_BUTTON_WIDTH: f32 = 104.0;
+const CHAT_HEADER_BUTTON_GAP: f32 = 8.0;
 /// Compact + button next to "Threads" to start a new thread
 const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
@@ -733,6 +734,12 @@ pub enum PaneHitAction {
     ChatRefreshThreads,
     ChatNewThread,
     ChatCycleModel,
+    ChatCycleReasoningEffort,
+    ChatCycleServiceTier,
+    ChatCyclePersonality,
+    ChatCycleCollaborationMode,
+    ChatCycleApprovalMode,
+    ChatCycleSandboxMode,
     ChatInterruptTurn,
     ChatToggleArchivedFilter,
     ChatCycleSortFilter,
@@ -1407,18 +1414,79 @@ pub fn chat_new_thread_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let transcript = chat_transcript_bounds(content_bounds);
+    let controls_top = transcript.origin.y + 54.0;
     Bounds::new(
         transcript.origin.x + 10.0,
-        transcript.origin.y + 28.0,
+        controls_top,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_reasoning_effort_button_bounds(content_bounds: Bounds) -> Bounds {
+    let model = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        model.max_x() + CHAT_HEADER_BUTTON_GAP,
+        model.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_service_tier_button_bounds(content_bounds: Bounds) -> Bounds {
+    let effort = chat_cycle_reasoning_effort_button_bounds(content_bounds);
+    Bounds::new(
+        effort.max_x() + CHAT_HEADER_BUTTON_GAP,
+        effort.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_personality_button_bounds(content_bounds: Bounds) -> Bounds {
+    let tier = chat_cycle_service_tier_button_bounds(content_bounds);
+    Bounds::new(
+        tier.max_x() + CHAT_HEADER_BUTTON_GAP,
+        tier.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_collaboration_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let model = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        model.origin.x,
+        model.max_y() + 6.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_approval_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let collab = chat_cycle_collaboration_mode_button_bounds(content_bounds);
+    Bounds::new(
+        collab.max_x() + CHAT_HEADER_BUTTON_GAP,
+        collab.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_sandbox_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let approvals = chat_cycle_approval_mode_button_bounds(content_bounds);
+    Bounds::new(
+        approvals.max_x() + CHAT_HEADER_BUTTON_GAP,
+        approvals.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
 }
 
 pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
-    let cycle = chat_cycle_model_button_bounds(content_bounds);
+    let cycle = chat_cycle_sandbox_mode_button_bounds(content_bounds);
     Bounds::new(
-        cycle.max_x() + 8.0,
+        cycle.max_x() + CHAT_HEADER_BUTTON_GAP,
         cycle.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
@@ -3679,6 +3747,30 @@ fn pane_hit_action_for_pane(
                 }
                 if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatRefreshThreads);
+                }
+                if chat_cycle_model_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleModel);
+                }
+                if chat_cycle_reasoning_effort_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleReasoningEffort);
+                }
+                if chat_cycle_service_tier_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleServiceTier);
+                }
+                if chat_cycle_personality_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCyclePersonality);
+                }
+                if chat_cycle_collaboration_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleCollaborationMode);
+                }
+                if chat_cycle_approval_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleApprovalMode);
+                }
+                if chat_cycle_sandbox_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleSandboxMode);
+                }
+                if chat_interrupt_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatInterruptTurn);
                 }
             }
             if state.autopilot_chat.chat_has_browseable_content() {

@@ -150,6 +150,11 @@ than replace:
   `crates/codex-client`, lane snapshot propagation, unified readiness refresh,
   and desktop config-constraint summaries derived from `config/read` layers plus
   `configRequirements/read`
+- `CX-2` landed on `main`: chat-header session controls now cover
+  model/effort/service-tier/personality/collaboration/approval/sandbox, the
+  desktop lane now preserves thread-start/resume session truth from Codex
+  responses, and Autopilot shows a compact always-visible coding status summary
+  with workspace/git/auth/token context
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -219,9 +224,19 @@ Status:
 
 Next:
 
-- `CX-2` is now the first open execution item for Codex replacement work
+- `CX-3` is now the first open execution item for Codex replacement work
 
-### CX-2. Session Controls And Status Parity
+### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
+
+Status:
+
+- shipped on `main`
+- desktop chat now exposes session controls for model, reasoning effort,
+  service tier, personality, collaboration mode, approval mode, and sandbox
+  mode directly in the main coding flow
+- thread start/resume responses now feed back real Codex session truth into
+  desktop state so the header/status rail reflects actual model, permissions,
+  cwd, and reasoning state rather than stale local assumptions
 
 Scope:
 

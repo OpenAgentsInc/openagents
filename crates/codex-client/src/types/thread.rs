@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{AskForApproval, ReasoningEffort, SandboxMode, SandboxPolicy};
+use super::{
+    AskForApproval, Personality, ReasoningEffort, SandboxMode, SandboxPolicy, ServiceTier,
+    deserialize_double_option, serialize_double_option,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -13,12 +16,21 @@ pub struct ThreadStartParams {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_double_option",
+        serialize_with = "serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub service_tier: Option<Option<ServiceTier>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval_policy: Option<AskForApproval>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personality: Option<Personality>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dynamic_tools: Option<Vec<DynamicToolSpec>>,
 }
@@ -44,6 +56,16 @@ pub struct ThreadStartResponse {
     pub model: String,
     #[serde(default)]
     pub model_provider: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<ServiceTier>,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub approval_policy: Option<AskForApproval>,
+    #[serde(default, rename = "sandbox")]
+    pub sandbox_policy: Option<SandboxPolicy>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -56,12 +78,21 @@ pub struct ThreadResumeParams {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_double_option",
+        serialize_with = "serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub service_tier: Option<Option<ServiceTier>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval_policy: Option<AskForApproval>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personality: Option<Personality>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +102,16 @@ pub struct ThreadResumeResponse {
     pub model: String,
     #[serde(default)]
     pub model_provider: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<ServiceTier>,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub approval_policy: Option<AskForApproval>,
+    #[serde(default, rename = "sandbox")]
+    pub sandbox_policy: Option<SandboxPolicy>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -283,6 +324,13 @@ pub struct ThreadForkParams {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_double_option",
+        serialize_with = "serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub service_tier: Option<Option<ServiceTier>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,6 +354,16 @@ pub struct ThreadForkResponse {
     pub model: String,
     #[serde(default)]
     pub model_provider: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<ServiceTier>,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub approval_policy: Option<AskForApproval>,
+    #[serde(default, rename = "sandbox")]
+    pub sandbox_policy: Option<SandboxPolicy>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

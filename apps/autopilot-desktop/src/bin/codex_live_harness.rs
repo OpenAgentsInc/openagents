@@ -1027,9 +1027,11 @@ async fn run(args: HarnessArgs) -> Result<()> {
         .thread_start(ThreadStartParams {
             model: resolved_model.clone(),
             model_provider: None,
+            service_tier: Some(None),
             cwd: Some(args.cwd.display().to_string()),
             approval_policy: Some(AskForApproval::Never),
             sandbox: Some(SandboxMode::DangerFullAccess),
+            personality: None,
             dynamic_tools: args
                 .include_openagents_dynamic_tools
                 .then(openagents_dynamic_tools::openagents_dynamic_tool_specs),
@@ -1136,6 +1138,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 approval_policy: Some(AskForApproval::Never),
                 sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                 model: resolved_model.clone(),
+                service_tier: Some(None),
                 effort: None,
                 summary: None,
                 personality: None,
@@ -1302,6 +1305,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
                 path: None,
                 model: resolved_model.clone(),
                 model_provider: None,
+                service_tier: Some(None),
                 cwd: Some(args.cwd.display().to_string()),
                 approval_policy: Some(AskForApproval::Never),
                 sandbox: Some(SandboxMode::DangerFullAccess),

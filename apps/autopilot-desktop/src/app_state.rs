@@ -953,6 +953,112 @@ pub struct AutopilotAuthRefreshRequest {
     pub previous_account_id: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatServiceTier {
+    #[default]
+    Default,
+    Fast,
+    Flex,
+}
+
+impl AutopilotChatServiceTier {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Fast => "fast",
+            Self::Flex => "flex",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Default => Self::Fast,
+            Self::Fast => Self::Flex,
+            Self::Flex => Self::Default,
+        }
+    }
+
+    pub const fn request_value(self) -> Option<Option<codex_client::ServiceTier>> {
+        match self {
+            Self::Default => Some(None),
+            Self::Fast => Some(Some(codex_client::ServiceTier::Fast)),
+            Self::Flex => Some(Some(codex_client::ServiceTier::Flex)),
+        }
+    }
+
+    pub const fn from_response(value: Option<codex_client::ServiceTier>) -> Self {
+        match value {
+            Some(codex_client::ServiceTier::Fast) => Self::Fast,
+            Some(codex_client::ServiceTier::Flex) => Self::Flex,
+            None => Self::Default,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatPersonality {
+    #[default]
+    Auto,
+    Friendly,
+    Pragmatic,
+    None,
+}
+
+impl AutopilotChatPersonality {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Friendly => "friendly",
+            Self::Pragmatic => "pragmatic",
+            Self::None => "none",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::Friendly,
+            Self::Friendly => Self::Pragmatic,
+            Self::Pragmatic => Self::None,
+            Self::None => Self::Auto,
+        }
+    }
+
+    pub const fn request_value(self) -> Option<codex_client::Personality> {
+        match self {
+            Self::Auto => None,
+            Self::Friendly => Some(codex_client::Personality::Friendly),
+            Self::Pragmatic => Some(codex_client::Personality::Pragmatic),
+            Self::None => Some(codex_client::Personality::None),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatCollaborationMode {
+    #[default]
+    Off,
+    Default,
+    Plan,
+}
+
+impl AutopilotChatCollaborationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Default => "default",
+            Self::Plan => "plan",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Default,
+            Self::Default => Self::Plan,
+            Self::Plan => Self::Off,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
@@ -960,6 +1066,32 @@ pub struct AutopilotThreadMetadata {
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub model: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub reasoning_effort: Option<String>,
+    pub approval_policy: Option<codex_client::AskForApproval>,
+    pub sandbox_mode: Option<codex_client::SandboxMode>,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+}
+
+impl Default for AutopilotThreadMetadata {
+    fn default() -> Self {
+        Self {
+            thread_name: None,
+            status: None,
+            loaded: false,
+            cwd: None,
+            path: None,
+            model: None,
+            service_tier: AutopilotChatServiceTier::Default,
+            reasoning_effort: Some("medium".to_string()),
+            approval_policy: Some(codex_client::AskForApproval::Never),
+            sandbox_mode: Some(codex_client::SandboxMode::DangerFullAccess),
+            personality: AutopilotChatPersonality::Auto,
+            collaboration_mode: AutopilotChatCollaborationMode::Off,
+        }
+    }
 }
 
 pub struct AutopilotThreadResumeTarget {
@@ -1012,6 +1144,11 @@ pub struct AutopilotChatState {
     pub models: Vec<String>,
     pub selected_model: usize,
     pub reasoning_effort: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+    pub approval_mode: codex_client::AskForApproval,
+    pub sandbox_mode: codex_client::SandboxMode,
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub active_thread_id: Option<String>,
@@ -1070,6 +1207,11 @@ impl Default for AutopilotChatState {
             models: vec!["auto".to_string()],
             selected_model: 0,
             reasoning_effort: Some("medium".to_string()),
+            service_tier: AutopilotChatServiceTier::Default,
+            personality: AutopilotChatPersonality::Auto,
+            collaboration_mode: AutopilotChatCollaborationMode::Off,
+            approval_mode: codex_client::AskForApproval::Never,
+            sandbox_mode: codex_client::SandboxMode::DangerFullAccess,
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             active_thread_id: None,
@@ -1200,6 +1342,13 @@ impl AutopilotChatState {
         }
     }
 
+    pub fn active_thread_cwd(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.cwd.as_deref())
+    }
+
     pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
         let sanitized = models
             .into_iter()
@@ -1257,7 +1406,207 @@ impl AutopilotChatState {
             return;
         }
         self.selected_model = (self.selected_model + 1) % self.models.len();
+        self.record_active_session_preferences();
         self.last_error = None;
+    }
+
+    pub fn select_or_insert_model(&mut self, model: impl AsRef<str>) {
+        let value = model.as_ref().trim();
+        if value.is_empty() {
+            return;
+        }
+        if let Some(index) = self.models.iter().position(|candidate| candidate == value) {
+            self.selected_model = index;
+        } else {
+            self.models.push(value.to_string());
+            self.selected_model = self.models.len().saturating_sub(1);
+        }
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_reasoning_effort(&mut self, reasoning_effort: Option<String>) {
+        self.reasoning_effort = reasoning_effort
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_reasoning_effort(&mut self, supported_efforts: &[String]) {
+        let fallback = [
+            "minimal".to_string(),
+            "low".to_string(),
+            "medium".to_string(),
+            "high".to_string(),
+        ];
+        let options = if supported_efforts.is_empty() {
+            fallback.as_slice()
+        } else {
+            supported_efforts
+        };
+        if options.is_empty() {
+            return;
+        }
+        let current = self
+            .reasoning_effort
+            .as_deref()
+            .unwrap_or("medium")
+            .trim()
+            .to_ascii_lowercase();
+        let next_index = options
+            .iter()
+            .position(|value| value.eq_ignore_ascii_case(current.as_str()))
+            .map(|index| (index + 1) % options.len())
+            .unwrap_or(0);
+        self.set_reasoning_effort(options.get(next_index).cloned());
+    }
+
+    pub fn cycle_service_tier(&mut self) {
+        self.service_tier = self.service_tier.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_personality(&mut self) {
+        self.personality = self.personality.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_collaboration_mode(&mut self) {
+        self.collaboration_mode = self.collaboration_mode.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_approval_mode(&mut self) {
+        self.approval_mode = match self.approval_mode {
+            codex_client::AskForApproval::Never => codex_client::AskForApproval::OnFailure,
+            codex_client::AskForApproval::OnFailure => codex_client::AskForApproval::OnRequest,
+            codex_client::AskForApproval::OnRequest => codex_client::AskForApproval::UnlessTrusted,
+            codex_client::AskForApproval::UnlessTrusted
+            | codex_client::AskForApproval::Reject { .. } => codex_client::AskForApproval::Never,
+        };
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_sandbox_mode(&mut self) {
+        self.sandbox_mode = match self.sandbox_mode {
+            codex_client::SandboxMode::DangerFullAccess => {
+                codex_client::SandboxMode::WorkspaceWrite
+            }
+            codex_client::SandboxMode::WorkspaceWrite => codex_client::SandboxMode::ReadOnly,
+            codex_client::SandboxMode::ReadOnly => codex_client::SandboxMode::DangerFullAccess,
+        };
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    fn record_active_session_preferences(&mut self) {
+        let Some(thread_id) = self.active_thread_id.clone() else {
+            return;
+        };
+        let selected_model = self.selected_model_override();
+        let reasoning_effort = self.reasoning_effort.clone();
+        let service_tier = self.service_tier;
+        let approval_mode = self.approval_mode;
+        let sandbox_mode = self.sandbox_mode;
+        let personality = self.personality;
+        let collaboration_mode = self.collaboration_mode;
+        if let Some(metadata) = self.thread_metadata.get_mut(&thread_id) {
+            metadata.model = selected_model;
+            metadata.service_tier = service_tier;
+            metadata.reasoning_effort = reasoning_effort;
+            metadata.approval_policy = Some(approval_mode);
+            metadata.sandbox_mode = Some(sandbox_mode);
+            metadata.personality = personality;
+            metadata.collaboration_mode = collaboration_mode;
+        }
+    }
+
+    pub fn apply_thread_session_configuration(
+        &mut self,
+        thread_id: &str,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<codex_client::AskForApproval>,
+        sandbox_mode: Option<codex_client::SandboxMode>,
+        service_tier: Option<codex_client::ServiceTier>,
+        reasoning_effort: Option<String>,
+    ) {
+        let service_tier_selection = AutopilotChatServiceTier::from_response(service_tier);
+        let normalized_model = model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let normalized_effort = reasoning_effort
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+
+        {
+            let metadata = self
+                .thread_metadata
+                .entry(thread_id.to_string())
+                .or_default();
+            if let Some(value) = normalized_model.as_ref() {
+                metadata.model = Some(value.clone());
+            }
+            if let Some(value) = cwd {
+                metadata.cwd = Some(value);
+            }
+            if let Some(value) = normalized_effort.as_ref() {
+                metadata.reasoning_effort = Some(value.clone());
+            }
+            if let Some(value) = approval_policy {
+                metadata.approval_policy = Some(value);
+            }
+            if let Some(value) = sandbox_mode {
+                metadata.sandbox_mode = Some(value);
+            }
+            metadata.service_tier = service_tier_selection;
+        }
+
+        if self.is_active_thread(thread_id) {
+            if let Some(value) = normalized_model.as_ref() {
+                self.select_or_insert_model(value);
+            }
+            self.service_tier = service_tier_selection;
+            if let Some(value) = normalized_effort {
+                self.reasoning_effort = Some(value);
+            }
+            if let Some(value) = approval_policy {
+                self.approval_mode = value;
+            }
+            if let Some(value) = sandbox_mode {
+                self.sandbox_mode = value;
+            }
+            self.record_active_session_preferences();
+        }
+    }
+
+    pub fn restore_session_preferences_from_thread(&mut self, thread_id: &str) {
+        let Some(metadata) = self.thread_metadata.get(thread_id).cloned() else {
+            return;
+        };
+        if let Some(model) = metadata.model.as_ref() {
+            self.select_or_insert_model(model);
+        }
+        self.service_tier = metadata.service_tier;
+        self.reasoning_effort = metadata.reasoning_effort.clone();
+        if let Some(value) = metadata.approval_policy {
+            self.approval_mode = value;
+        }
+        if let Some(value) = metadata.sandbox_mode {
+            self.sandbox_mode = value;
+        }
+        self.personality = metadata.personality;
+        self.collaboration_mode = metadata.collaboration_mode;
+        self.record_active_session_preferences();
     }
 
     pub fn set_connection_status(&mut self, status: impl Into<String>) {
@@ -1874,14 +2223,25 @@ impl AutopilotChatState {
             .collect();
         self.thread_metadata.clear();
         for entry in entries {
+            let previous = previous_metadata
+                .get(&entry.thread_id)
+                .cloned()
+                .unwrap_or_default();
             self.thread_metadata.insert(
                 entry.thread_id.clone(),
                 AutopilotThreadMetadata {
                     thread_name: entry.thread_name,
                     status: entry.status,
                     loaded: entry.loaded,
-                    cwd: entry.cwd,
-                    path: entry.path,
+                    cwd: entry.cwd.or(previous.cwd),
+                    path: entry.path.or(previous.path),
+                    model: previous.model,
+                    service_tier: previous.service_tier,
+                    reasoning_effort: previous.reasoning_effort,
+                    approval_policy: previous.approval_policy,
+                    sandbox_mode: previous.sandbox_mode,
+                    personality: previous.personality,
+                    collaboration_mode: previous.collaboration_mode,
                 },
             );
         }
@@ -1893,13 +2253,7 @@ impl AutopilotChatState {
                     previous_metadata
                         .get(&active_id)
                         .cloned()
-                        .unwrap_or(AutopilotThreadMetadata {
-                            thread_name: None,
-                            status: None,
-                            loaded: false,
-                            cwd: None,
-                            path: None,
-                        }),
+                        .unwrap_or_default(),
                 );
             }
             self.active_thread_id = Some(active_id);
@@ -1927,15 +2281,7 @@ impl AutopilotChatState {
         if !self.threads.iter().any(|existing| existing == &thread_id) {
             self.threads.insert(0, thread_id.clone());
         }
-        self.thread_metadata
-            .entry(thread_id.clone())
-            .or_insert_with(|| AutopilotThreadMetadata {
-                thread_name: None,
-                status: None,
-                loaded: false,
-                cwd: None,
-                path: None,
-            });
+        self.thread_metadata.entry(thread_id.clone()).or_default();
         if self.active_thread_id.is_none() {
             self.active_thread_id = Some(thread_id);
         }
@@ -2844,16 +3190,9 @@ impl AutopilotChatState {
             metadata.status = status;
             return;
         }
-        self.thread_metadata.insert(
-            thread_id.to_string(),
-            AutopilotThreadMetadata {
-                thread_name: None,
-                status,
-                loaded: false,
-                cwd: None,
-                path: None,
-            },
-        );
+        let mut metadata = AutopilotThreadMetadata::default();
+        metadata.status = status;
+        self.thread_metadata.insert(thread_id.to_string(), metadata);
     }
 
     pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
@@ -2861,16 +3200,9 @@ impl AutopilotChatState {
             metadata.thread_name = thread_name;
             return;
         }
-        self.thread_metadata.insert(
-            thread_id.to_string(),
-            AutopilotThreadMetadata {
-                thread_name,
-                status: None,
-                loaded: false,
-                cwd: None,
-                path: None,
-            },
-        );
+        let mut metadata = AutopilotThreadMetadata::default();
+        metadata.thread_name = thread_name;
+        self.thread_metadata.insert(thread_id.to_string(), metadata);
     }
 
     pub fn active_thread_status(&self) -> Option<&str> {
@@ -6349,6 +6681,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -6382,6 +6718,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -6440,6 +6780,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -7244,6 +7588,81 @@ mod tests {
         assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
         assert_eq!(params.search_term.as_deref(), Some("alpha"));
         assert_eq!(params.cwd.as_deref(), Some("/workspace"));
+    }
+
+    #[test]
+    fn chat_state_restores_session_preferences_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.select_or_insert_model("gpt-5.2-codex");
+        chat.set_reasoning_effort(Some("high".to_string()));
+        chat.cycle_service_tier();
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+        chat.cycle_approval_mode();
+        chat.cycle_sandbox_mode();
+
+        let thread_a = chat
+            .thread_metadata
+            .get("thread-a")
+            .cloned()
+            .expect("thread-a metadata should exist");
+        assert_eq!(thread_a.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(thread_a.service_tier, super::AutopilotChatServiceTier::Fast);
+        assert_eq!(thread_a.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            thread_a.approval_policy,
+            Some(codex_client::AskForApproval::OnFailure)
+        );
+        assert_eq!(
+            thread_a.sandbox_mode,
+            Some(codex_client::SandboxMode::WorkspaceWrite)
+        );
+        assert_eq!(
+            thread_a.personality,
+            super::AutopilotChatPersonality::Friendly
+        );
+        assert_eq!(
+            thread_a.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+
+        chat.ensure_thread("thread-b".to_string());
+        chat.apply_thread_session_configuration(
+            "thread-b",
+            Some("gpt-5.3-codex".to_string()),
+            Some("/tmp/thread-b".to_string()),
+            Some(codex_client::AskForApproval::OnRequest),
+            Some(codex_client::SandboxMode::ReadOnly),
+            Some(codex_client::ServiceTier::Flex),
+            Some("low".to_string()),
+        );
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+
+        assert_eq!(chat.current_model(), "gpt-5.3-codex");
+        assert_eq!(chat.service_tier, super::AutopilotChatServiceTier::Flex);
+        assert_eq!(chat.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(chat.approval_mode, codex_client::AskForApproval::OnRequest);
+        assert_eq!(chat.sandbox_mode, codex_client::SandboxMode::ReadOnly);
+        assert_eq!(chat.personality, super::AutopilotChatPersonality::Pragmatic);
+        assert_eq!(
+            chat.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Plan
+        );
+
+        chat.ensure_thread("thread-a".to_string());
+        chat.restore_session_preferences_from_thread("thread-a");
+        assert_eq!(chat.current_model(), "gpt-5.2-codex");
+        assert_eq!(chat.service_tier, super::AutopilotChatServiceTier::Fast);
+        assert_eq!(chat.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(chat.approval_mode, codex_client::AskForApproval::OnFailure);
+        assert_eq!(chat.sandbox_mode, codex_client::SandboxMode::WorkspaceWrite);
+        assert_eq!(chat.personality, super::AutopilotChatPersonality::Friendly);
+        assert_eq!(
+            chat.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
     }
 
     #[test]

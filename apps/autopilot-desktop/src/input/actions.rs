@@ -255,10 +255,14 @@ pub(super) fn run_chat_submit_action_with_trigger(
             submitted_at_epoch_ms,
             thread_id: thread_id.clone(),
             input,
-            cwd: goal_scoped_turn_cwd(state).map(std::path::PathBuf::from),
-            approval_policy: cad_turn_approval_policy(classification.is_cad_turn),
-            sandbox_policy: goal_scoped_turn_sandbox_policy(state),
+            cwd: current_chat_session_cwd(state).map(std::path::PathBuf::from),
+            approval_policy: chat_session_approval_policy(state),
+            sandbox_policy: chat_session_turn_sandbox_policy(state),
             model: model_override.clone(),
+            service_tier: chat_session_service_tier(state),
+            effort: chat_session_reasoning_effort(state),
+            personality: chat_session_personality(state),
+            collaboration_mode: chat_session_collaboration_mode(state),
         },
     );
     state.autopilot_chat.record_turn_submission_metadata(
@@ -2363,6 +2367,116 @@ pub(super) fn dangerous_sandbox_mode() -> Option<codex_client::SandboxMode> {
     Some(codex_client::SandboxMode::DangerFullAccess)
 }
 
+pub(super) fn current_chat_session_cwd(state: &crate::app_state::RenderState) -> Option<String> {
+    goal_scoped_turn_cwd(state)
+        .or_else(|| state.autopilot_chat.active_thread_cwd().map(str::to_string))
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|value| value.into_os_string().into_string().ok())
+        })
+}
+
+fn chat_session_workspace_roots(state: &crate::app_state::RenderState) -> Vec<String> {
+    let roots = normalized_policy_file_roots(state);
+    if !roots.is_empty() {
+        return roots;
+    }
+    current_chat_session_cwd(state).into_iter().collect()
+}
+
+pub(super) fn chat_session_approval_policy(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::AskForApproval> {
+    Some(state.autopilot_chat.approval_mode)
+}
+
+pub(super) fn chat_session_thread_sandbox_mode(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::SandboxMode> {
+    Some(state.autopilot_chat.sandbox_mode)
+}
+
+pub(super) fn chat_session_turn_sandbox_policy(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::SandboxPolicy> {
+    match state.autopilot_chat.sandbox_mode {
+        codex_client::SandboxMode::DangerFullAccess => dangerous_sandbox_policy(),
+        codex_client::SandboxMode::ReadOnly => Some(codex_client::SandboxPolicy::ReadOnly),
+        codex_client::SandboxMode::WorkspaceWrite => {
+            let writable_roots = chat_session_workspace_roots(state);
+            Some(codex_client::SandboxPolicy::WorkspaceWrite {
+                writable_roots,
+                network_access: true,
+                exclude_tmpdir_env_var: false,
+                exclude_slash_tmp: false,
+            })
+        }
+    }
+}
+
+pub(super) fn chat_session_service_tier(
+    state: &crate::app_state::RenderState,
+) -> Option<Option<codex_client::ServiceTier>> {
+    state.autopilot_chat.service_tier.request_value()
+}
+
+pub(super) fn chat_session_personality(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::Personality> {
+    state.autopilot_chat.personality.request_value()
+}
+
+pub(super) fn chat_session_reasoning_effort(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::ReasoningEffort> {
+    let value = state.autopilot_chat.reasoning_effort.as_deref()?.trim();
+    serde_json::from_str::<codex_client::ReasoningEffort>(&format!("\"{value}\"")).ok()
+}
+
+fn chat_session_concrete_model(state: &crate::app_state::RenderState) -> Option<String> {
+    state
+        .autopilot_chat
+        .selected_model_override()
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .active_thread_id
+                .as_ref()
+                .and_then(|thread_id| state.autopilot_chat.thread_metadata.get(thread_id))
+                .and_then(|metadata| metadata.model.clone())
+        })
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .models
+                .iter()
+                .find(|value| !value.eq_ignore_ascii_case("auto"))
+                .cloned()
+        })
+}
+
+pub(super) fn chat_session_collaboration_mode(
+    state: &crate::app_state::RenderState,
+) -> Option<serde_json::Value> {
+    let mode = match state.autopilot_chat.collaboration_mode {
+        crate::app_state::AutopilotChatCollaborationMode::Off => return None,
+        crate::app_state::AutopilotChatCollaborationMode::Default => "default",
+        crate::app_state::AutopilotChatCollaborationMode::Plan => "plan",
+    };
+    let Some(model) = chat_session_concrete_model(state) else {
+        return None;
+    };
+    Some(serde_json::json!({
+        "mode": mode,
+        "settings": {
+            "model": model,
+            "reasoning_effort": state.autopilot_chat.reasoning_effort.clone(),
+            "developer_instructions": serde_json::Value::Null,
+        }
+    }))
+}
+
 fn active_goal_autonomy_policy(
     state: &crate::app_state::RenderState,
 ) -> Option<&crate::state::autopilot_goals::GoalAutonomyPolicy> {
@@ -2495,18 +2609,16 @@ pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::Rend
 
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
-    let cwd = goal_scoped_turn_cwd(state).or_else(|| {
-        std::env::current_dir()
-            .ok()
-            .and_then(|value| value.into_os_string().into_string().ok())
-    });
+    let cwd = current_chat_session_cwd(state);
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
         model: model_override,
         model_provider: None,
+        service_tier: chat_session_service_tier(state),
         cwd,
-        approval_policy: cad_turn_approval_policy(false),
-        sandbox: goal_scoped_thread_sandbox_mode(state),
+        approval_policy: chat_session_approval_policy(state),
+        sandbox: chat_session_thread_sandbox_mode(state),
+        personality: chat_session_personality(state),
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {
@@ -2519,6 +2631,53 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
 
 pub(super) fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
     state.autopilot_chat.cycle_model();
+    true
+}
+
+pub(super) fn run_chat_cycle_reasoning_effort_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let supported = state
+        .codex_models
+        .entries
+        .iter()
+        .find(|entry| entry.model == state.autopilot_chat.current_model())
+        .map(|entry| entry.supported_reasoning_efforts.clone())
+        .unwrap_or_default();
+    state.autopilot_chat.cycle_reasoning_effort(&supported);
+    true
+}
+
+pub(super) fn run_chat_cycle_service_tier_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.cycle_service_tier();
+    true
+}
+
+pub(super) fn run_chat_cycle_personality_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_personality();
+    true
+}
+
+pub(super) fn run_chat_cycle_collaboration_mode_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.cycle_collaboration_mode();
+    true
+}
+
+pub(super) fn run_chat_cycle_approval_mode_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.cycle_approval_mode();
+    true
+}
+
+pub(super) fn run_chat_cycle_sandbox_mode_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.cycle_sandbox_mode();
     true
 }
 
@@ -2589,18 +2748,17 @@ pub(super) fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderSt
         state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
         return true;
     };
-    let cwd = std::env::current_dir()
-        .ok()
-        .and_then(|value| value.into_os_string().into_string().ok());
+    let cwd = current_chat_session_cwd(state);
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
         thread_id,
         path: None,
         model: model_override,
         model_provider: None,
+        service_tier: chat_session_service_tier(state),
         cwd,
-        approval_policy: cad_turn_approval_policy(false),
-        sandbox: dangerous_sandbox_mode(),
+        approval_policy: chat_session_approval_policy(state),
+        sandbox: chat_session_thread_sandbox_mode(state),
         config: None,
         base_instructions: None,
         developer_instructions: None,
@@ -2746,13 +2904,19 @@ pub(super) fn run_chat_select_thread_action(
                 experimental_api
             );
 
+            state
+                .autopilot_chat
+                .restore_session_preferences_from_thread(&target.thread_id);
+
             let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
                 thread_id: target.thread_id,
-                model: None,
+                model: state.autopilot_chat.selected_model_override(),
                 model_provider: None,
-                cwd: target.cwd,
-                approval_policy: cad_turn_approval_policy(false),
-                sandbox: dangerous_sandbox_mode(),
+                service_tier: chat_session_service_tier(state),
+                cwd: target.cwd.or_else(|| current_chat_session_cwd(state)),
+                approval_policy: chat_session_approval_policy(state),
+                sandbox: chat_session_thread_sandbox_mode(state),
+                personality: chat_session_personality(state),
                 path: resume_path.map(std::path::PathBuf::from),
             });
             if let Err(error) = state.queue_codex_command(command) {
