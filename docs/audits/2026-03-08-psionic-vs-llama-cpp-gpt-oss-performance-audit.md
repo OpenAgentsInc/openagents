@@ -1334,3 +1334,57 @@ Interpretation:
 - Future work in this area should now be framed as headroom, portability, or
   maintenance work rather than as unfinished closure for the original
   `llama.cpp` parity issue.
+
+## 2026-03-10 GPT-OSS 120B Addendum
+
+The 20B parity queue is closed, but the same host still exposes a separate
+headroom problem on the larger hybrid 120B model:
+`/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`.
+
+Current truthful 120B floor on the exact cold / warm-non-hit /
+prompt-cache-hit contract:
+
+- Psionic:
+  - `2.23 tok/s`
+  - `6.34 tok/s`
+  - `10.01 tok/s`
+
+What is already landed on the kept hybrid branch:
+
+- the model now loads truthfully on this RTX 4080 through a hybrid placement
+  path instead of crashing on `cudaMalloc`
+- decode attention for the hybrid path now uses CUDA with a `CudaKvCacheMirror`
+- hybrid selected4 layer caches reuse selected experts across decode steps
+- feed-forward prep for host-backed MoE layers now keeps residual add, RMSNorm,
+  `Q8_1` prep, and router prep on CUDA before the selected4 path
+- selected-expert cache fills no longer do an extra single-expert scratch
+  repack before writing into the per-layer CUDA caches
+
+What we re-tested and ruled out after those landings:
+
+- simple cache-shape retunes around the kept branch:
+  - `7` expanded slots on the last `4` layers regressed to about `9.89 tok/s`
+  - `6` expanded slots on the last `8` layers regressed to about `9.92 tok/s`
+- full CUDA-visible duplicated host-weight experiments:
+  - either OOM or materially slower than the kept branch
+- mapped-host selected-expert caches:
+  - slower than the kept branch
+
+What the remaining gap now points to:
+
+- the heavy cost is still host-backed selected-expert staging on each decode
+  step, not another small cache-slot tweak
+- the next honest direction is therefore `#3338`: port a `llama.cpp`-style
+  registered host-buffer path for the real host-backed MoE weights so the
+  selected4 decode lane can read truthful host-backed expert tensors directly,
+  instead of repacking selected experts into fresh CUDA cache slices every
+  decode step
+
+Relevant `llama.cpp` references for that next step:
+
+- `~/code/llama.cpp/ggml/src/ggml-cuda/ggml-cuda.cu`
+  - `ggml_backend_cuda_host_buffer_type_*`
+  - `ggml_backend_cuda_register_host_buffer(...)`
+  - `ggml_backend_cuda_unregister_host_buffer(...)`
+- `~/code/llama.cpp/src/llama-model-loader.cpp`
+  - host-buffer / async upload setup around the loader path

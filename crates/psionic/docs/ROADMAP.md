@@ -57,11 +57,12 @@
 > `llama.cpp`, while remaining valid as compute-market substrate."
 >
 > Host execution note: the active accelerator execution queues now split across
-> two concrete host classes: the NVIDIA GPT-OSS throughput queue is now empty
-> on this host, and the Apple Silicon native-Rust Metal
-> completion queue `#3270` -> `#3268` -> `#3269` -> `#3271` -> `#3272` ->
-> `#3261` -> `#3262`. The AMD follow-on issues `PSI-151` through `PSI-154`
-> were intentionally closed as not planned and are excluded from the active
+> three concrete host classes on this machine: the original NVIDIA GPT-OSS 20B
+> parity queue is closed on this host, a new NVIDIA GPT-OSS 120B headroom queue
+> is now open at `#3338`, and the Apple Silicon native-Rust Metal completion
+> queue remains `#3270` -> `#3268` -> `#3269` -> `#3271` -> `#3272` -> `#3261`
+> -> `#3262`. The AMD follow-on issues `PSI-151` through `PSI-154` were
+> intentionally closed as not planned and are excluded from the active
 > dependency queue unless a future reprioritization reopens them.
 >
 > GPT-OSS host note: the local
@@ -69,14 +70,15 @@
 > been verified to run on this machine both via `~/code/llama.cpp` as a
 > reference oracle and via Psionic alone through the local
 > `psionic-gpt-oss-server` HTTP surface on NVIDIA. The remaining open roadmap work
-> on this host is no longer "make GPT-OSS run at all"; it is throughput parity
-> on an already-working Psionic-owned path. The current truthful benchmark floor
-> is now in the low `171 tok/s` class for Psionic on the exact same contract,
-> up from the old `122-123 tok/s` floor after `#3293` landed, and `#3294` has
-> now moved the expert-matvec path onto the reusable ids-driven backend
-> surface without losing that floor. The next work should therefore stay
-> focused on keeping the benchmark contract rerunnable and honest after the
-> now-closed NVIDIA parity chain.
+> on this host is no longer "make GPT-OSS run at all"; the 20B work is
+> throughput parity and is already closed, while the active remaining NVIDIA
+> work is 120B throughput on the same host. The truthful 20B benchmark floor
+> remains in the low `171 tok/s` class for Psionic on the exact same contract,
+> and the current 120B hybrid host-backed floor is `2.23 tok/s` cold,
+> `6.34 tok/s` warm-non-hit, and `10.01 tok/s` prompt-cache-hit on
+> `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`. The next
+> 120B work should stay on the new `#3338` registered-host-buffer path, not on
+> more cache-slot reshaping.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -753,21 +755,24 @@ state:
 | 86 | `GPT-OSS-PERF-6F` | [#3295](https://github.com/OpenAgentsInc/openagents/issues/3295) | Closed | Closed after `#3294` because the benchmark target was already honestly met on this host without needing a riskier fused gate/up rewrite. Keep the idea as future cleanup, but it is no longer an active blocker for the tracked GPT-OSS parity contract. |
 | 87 | `GPT-OSS-PERF-6G` | [#3296](https://github.com/OpenAgentsInc/openagents/issues/3296) | Closed | Closed after parity was already reached on the tracked benchmark without needing an attention-dispatch rewrite. Keep `fattn.cu` alignment as future headroom work, not as the current blocker for this host contract. |
 | 88 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Closed | Closed after the benchmark script itself was made contract-clean on both servers and Psionic still measured ahead of the local `llama.cpp` control with the same visible output on the exact prompt-cache-hit lane. |
-| 89 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
-| 90 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
-| 91 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
-| 92 | `METAL-GPT-OSS-4` | [#3271](https://github.com/OpenAgentsInc/openagents/issues/3271) | Open | After the decode math is truly device-owned, the next high-value work is removing the one-op-submit / wait / readback pattern and replacing it with reusable scratch buffers plus chained command submission. |
-| 93 | `METAL-GPT-OSS-5` | [#3272](https://github.com/OpenAgentsInc/openagents/issues/3272) | Open | Bounded logits output is the next cleanup after the native hot path stops round-tripping every intermediate value, because greedy and bounded-candidate requests should not read back full raw logits by default. |
-| 94 | `METAL-GPT-OSS-6` | [#3261](https://github.com/OpenAgentsInc/openagents/issues/3261) | Open | Keep the validation and benchmark-evidence issue open until the native Rust Metal path, not the proxy path, has seeded parity coverage plus warm and prompt-cache-hit receipts. |
-| 95 | `METAL-GPT-OSS-7` | [#3262](https://github.com/OpenAgentsInc/openagents/issues/3262) | Open | Keep the Apple throughput umbrella open until the same-host native Rust Metal path reaches the agreed llama.cpp-relative throughput band on the real benchmark contract. |
+| 89 | `GPT-OSS-120B-PERF-1` | [#3338](https://github.com/OpenAgentsInc/openagents/issues/3338) | Open | The active NVIDIA throughput issue on this host is now the hybrid `gpt-oss-120b-mxfp4.gguf` path: the current truthful floor is `2.23 tok/s` cold, `6.34 tok/s` warm-non-hit, and `10.01 tok/s` prompt-cache-hit, and the next honest direction is a `llama.cpp`-style registered host-buffer MoE path instead of more cache-slot retuning. |
+| 90 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
+| 91 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
+| 92 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
+| 93 | `METAL-GPT-OSS-4` | [#3271](https://github.com/OpenAgentsInc/openagents/issues/3271) | Open | After the decode math is truly device-owned, the next high-value work is removing the one-op-submit / wait / readback pattern and replacing it with reusable scratch buffers plus chained command submission. |
+| 94 | `METAL-GPT-OSS-5` | [#3272](https://github.com/OpenAgentsInc/openagents/issues/3272) | Open | Bounded logits output is the next cleanup after the native hot path stops round-tripping every intermediate value, because greedy and bounded-candidate requests should not read back full raw logits by default. |
+| 95 | `METAL-GPT-OSS-6` | [#3261](https://github.com/OpenAgentsInc/openagents/issues/3261) | Open | Keep the validation and benchmark-evidence issue open until the native Rust Metal path, not the proxy path, has seeded parity coverage plus warm and prompt-cache-hit receipts. |
+| 96 | `METAL-GPT-OSS-7` | [#3262](https://github.com/OpenAgentsInc/openagents/issues/3262) | Open | Keep the Apple throughput umbrella open until the same-host native Rust Metal path reaches the agreed llama.cpp-relative throughput band on the real benchmark contract. |
 
-The active roadmap issues on this host are no longer in the NVIDIA GPT-OSS
-throughput chain. Do not restart from the GPT-OSS enablement or parity issues
-unless the benchmark regresses or the contract changes.
+The active roadmap issues on this host now split across one NVIDIA headroom
+item and the Apple Silicon native-Rust Metal queue. Do not reopen the closed
+20B parity chain unless the benchmark regresses or the contract changes.
 
-The active Apple Silicon native-Rust Metal queue is now `#3270` then `#3268`
-then `#3269` then `#3271` then `#3272` then `#3261` then `#3262`. Do not use
-proxy-mode benchmark results to claim closure for any of those Metal issues.
+The active NVIDIA queue is now `#3338`, focused only on the GPT-OSS 120B
+hybrid path. The active Apple Silicon native-Rust Metal queue is `#3270` then
+`#3268` then `#3269` then `#3271` then `#3272` then `#3261` then `#3262`. Do
+not use proxy-mode benchmark results to claim closure for any of those Metal
+issues.
 
 ## Current Reality
 
@@ -790,9 +795,18 @@ baseline on `main` is:
 - the kept pre-close Psionic floor on the older script form remains in the low
   `171 tok/s` class, with runs at `173.19 tok/s`, `171.29 tok/s`, `173.05
   tok/s`, and `170.05 tok/s`
-- the remaining open roadmap work is no longer this NVIDIA parity chain, not
-  feature-completeness for basic GPT-OSS execution and no longer the
-  `150+ tok/s` umbrella from `#3276`
+- the 20B NVIDIA parity chain is closed, but the active remaining NVIDIA work
+  is now the hybrid 120B path under `#3338`
+  - current truthful 120B floor on the exact contract is `2.23 tok/s` cold,
+    `6.34 tok/s` warm-non-hit, and `10.01 tok/s` prompt-cache-hit
+  - quick cache-shape retunes around the current kept branch were already
+    measured and rejected: `7` expanded slots on the last `4` layers fell to
+    `9.89 tok/s`, and `6` expanded slots on the last `8` layers fell to
+    `9.92 tok/s`
+  - the next honest 120B direction is a `llama.cpp`-style registered
+    host-buffer MoE path so selected-expert decode can read truthful host-backed
+    weights directly instead of repacking selected experts into fresh CUDA cache
+    slices every decode step
 - the Apple Silicon Metal groundwork from `#3250` and `#3252` through `#3260`
   is already landed in-tree, but the 2026-03-09 audit shows the native serve
   path still does not consume that substrate end to end: the benchmark defaults
@@ -1689,3 +1703,25 @@ The right near-term target is smaller:
   the NVIDIA GPT-OSS parity queue is closed honestly on this host. Any future
   router/MoE/attention work should be treated as headroom or portability work,
   not as unfinished closure for the original parity track.
+
+## 2026-03-10 GPT-OSS 120B Hybrid Decode Checkpoint
+
+- Opened `#3338` as the active NVIDIA throughput issue for the local
+  `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf` path.
+- Current truthful 120B floor on the exact cold / warm-non-hit /
+  prompt-cache-hit contract:
+  Psionic `2.23 tok/s`, `6.34 tok/s`, and `10.01 tok/s`.
+- Current kept implementation direction:
+  the hybrid 120B path already keeps more of feed-forward prep and decode
+  attention on CUDA, trims single-expert cache repacking, and reuses hybrid
+  selected-expert layer caches where that actually wins.
+- Ruled-out nearby branches:
+  cache-shape probes with `7` expanded slots on the last `4` layers and `6`
+  expanded slots on the last `8` layers were both slower than the kept branch,
+  and full CUDA-visible duplicated host-weight experiments were either OOM or
+  materially slower.
+- Next honest step:
+  port the `llama.cpp` registered host-buffer path for host-backed MoE weights
+  so the selected4 decode lane can read truthful host-backed expert tensors
+  directly, instead of staging and repacking selected experts into fresh CUDA
+  cache slices every decode step.
