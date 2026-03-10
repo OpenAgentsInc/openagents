@@ -11,7 +11,7 @@
 > after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
 > `f2e758720`, after landing `PSI-186` / `#3291` in `cc60eea89`, after
 > opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, after
-> landing `PSI-187` / `#3292` through `PSI-190` / `#3299` in `bcd73940b`,
+> landing `PSI-187` / `#3292` through `PSI-190` / `#3299` in `2acc2ecf6`,
 > after confirming that `#3300` is now the next open cluster queue item, and
 > after checking live GitHub issue search so this roadmap reflects the current
 > GitHub queue rather than local placeholders.
@@ -161,22 +161,22 @@ on:
     replayable `ClusterState`/`ClusterSnapshot`, stable state digests, and unit
     coverage for ordering, replay, and out-of-order refusal
 - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292)
-  - landed in `bcd73940b`
+  - landed in `2acc2ecf6`
   - catchup requests and responses, compacted snapshots, bounded replay tails,
     full-resync versus snapshot-install recovery dispositions, and unit
     coverage proving rejoin and schema-mismatch recovery semantics
 - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297)
-  - landed in `bcd73940b`
+  - landed in `2acc2ecf6`
   - cluster topology, link-class, transport, backend-readiness, and node
     telemetry facts now live in authoritative cluster state with separate
     topology digests and replay coverage
 - `PSI-189` / [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298)
-  - landed in `bcd73940b`
+  - landed in `2acc2ecf6`
   - artifact residency and cluster staging truth now live beside topology
     facts as separate digests and explicit residency status records rather than
     hidden scheduler assumptions
 - `PSI-190` / [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299)
-  - landed in `bcd73940b`
+  - landed in `2acc2ecf6`
   - runtime-owned `ClusterExecutionContext` now flows through
     `psionic-runtime`, `psionic-serve`, and provider capability and receipt
     surfaces with policy digests, selected nodes, residency posture, transport
@@ -385,15 +385,15 @@ Already on `main`:
 | `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Closed | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Landed in `64c2a8fc6`: established the crate seam and proved that seeded local Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution behavior. |
 | `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Closed | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Landed in `f2e758720`: persistent local node identity, explicit namespace/admission config, role-visible node epoch truth, and machine-checkable refusal of admission mismatch, cluster mismatch, and stale-node ambiguity. |
 | `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Closed | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | Landed in `cc60eea89`: typed control-plane schemas, contiguous indexed-event apply rules, replayable authoritative cluster state, and stable digests that later receipts and diagnostics can reference. |
-| `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Closed | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Landed in `bcd73940b`: event history now supports bounded replay, compacted snapshots, snapshot-install versus full-resync recovery, and rejoin coverage. |
+| `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Closed | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Landed in `2acc2ecf6`: event history now supports bounded replay, compacted snapshots, snapshot-install versus full-resync recovery, and rejoin coverage. |
 
 ### Phase C2: topology, staging, and evidence truth
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-188` | [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) | Closed | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Landed in `bcd73940b`: authoritative state now carries topology and telemetry facts with explicit link classes, readiness posture, and stable topology digests. |
-| `PSI-189` | [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298) | Closed | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Landed in `bcd73940b`: cluster state now tracks artifact residency separately from topology with explicit staging status and dedicated residency digests. |
-| `PSI-190` | [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) | Closed | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Landed in `bcd73940b`: provider and serve surfaces now expose cluster digests, selected nodes, residency posture, transport class, and fallback history through a runtime-owned evidence type. |
+| `PSI-188` | [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) | Closed | Publish topology, link-class, and node telemetry facts | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Landed in `2acc2ecf6`: authoritative state now carries topology and telemetry facts with explicit link classes, readiness posture, and stable topology digests. |
+| `PSI-189` | [#3298](https://github.com/OpenAgentsInc/openagents/issues/3298) | Closed | Add artifact residency and cluster staging truth | `psionic-cluster`, `psionic-models`, `psionic-catalog`, `psionic-provider` | Landed in `2acc2ecf6`: cluster state now tracks artifact residency separately from topology with explicit staging status and dedicated residency digests. |
+| `PSI-190` | [#3299](https://github.com/OpenAgentsInc/openagents/issues/3299) | Closed | Extend capability and receipt evidence for clustered execution | `psionic-runtime`, `psionic-provider`, `psionic-serve` | Landed in `2acc2ecf6`: provider and serve surfaces now expose cluster digests, selected nodes, residency posture, transport class, and fallback history through a runtime-owned evidence type. |
 
 ### Phase C3: cluster-aware single-node scheduling and policy
 
@@ -426,7 +426,7 @@ Already on `main`:
 
 The shortest honest path from today's `main` is:
 
-1. Treat C1 and C2 as landed on `main` in `bcd73940b`.
+1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
    `#3300` -> `#3301` -> `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
