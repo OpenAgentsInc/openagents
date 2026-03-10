@@ -25,8 +25,9 @@
 > `#3311` through `#3314` for the coordinator-authority multi-subnet follow-on
 > queue, after landing `PSI-202` / `#3311` in `1e65c56c9`, after landing
 > `PSI-203` / `#3312` in `ddc092cbb`, after landing `PSI-204` / `#3313` in
-> `313fbdc25`, after landing `PSI-205` / `#3314` in `4732fbc26`, and after
-> checking live
+> `313fbdc25`, after landing `PSI-205` / `#3314` in `4732fbc26`, after
+> opening `PSI-206` through `PSI-209` as `#3315` through `#3318` for the
+> command-authorization and payout-provenance follow-on queue, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -128,7 +129,11 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) is landed on `main`
     - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is landed on `main`
     - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is landed on `main`
-  - there are currently no remaining open cluster roadmap issues
+  - the next follow-on queue is now open for command authorization and payout provenance
+    - `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) is open
+    - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is open
+    - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is open
+    - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -562,15 +567,45 @@ Current truth:
 
 Required outcome:
 
-- keep the new failover drill authoritative; any stronger coordinator or wider-
-  network claim now needs a new GitHub-backed queue rather than a local note
+- keep the new failover drill authoritative while the next queue adds typed
+  command authorization and payout-grade provenance rather than silently
+  inferring who was allowed to mutate authoritative state
+
+### Command authorization and payout provenance follow-on
+
+Tracked by open `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315)
+through open `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318).
+
+Current truth:
+
+- authenticated operator-managed clusters now have signed transport, replay
+  protection, manifest/dial/rollout truth, coordinator lease state, split-
+  brain refusal, and fenced commit authority on `main`
+- `ClusterCommand` and authoritative `ClusterEvent` schemas exist, but commands
+  still do not carry a typed authorization policy or stable submitter
+  provenance contract
+- clustered execution evidence already carries topology, residency, fallback,
+  and coordinator authority truth, but not which authorized command path or
+  admission posture led to the executed decision
+- that leaves operator audit and any future payout/dispute posture thinner than
+  the rest of the cluster substrate
+
+Required outcome:
+
+- add machine-checkable command authorization and refusal semantics before
+  widening operator-managed clusters into stronger payout or market-facing
+  claims
+- preserve command provenance through ordered history, catchup, and snapshot
+  flows so replay can explain who requested a mutation and under which policy
+- extend runtime/provider execution and settlement evidence with the same
+  bounded provenance truth, then add validation gates for those claims
 
 ## GitHub-Backed Roadmap Items
 
 Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs
 below still come from the 2026-03-09 cluster audit, but this roadmap now maps
 them to their real GitHub issue numbers directly. The next multi-subnet
-follow-on queue now also has real GitHub issue numbers instead of placeholder
+follow-on queues now also have real GitHub issue numbers instead of placeholder
 notes.
 
 ### Phase C0: shipped cluster-adjacent baseline
@@ -661,6 +696,19 @@ clusters now that manifest, recovery, dial-health, and rotation truth exist on
 | `PSI-204` | [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) | Closed | Add failover fencing tokens and commit authority truth | `psionic-cluster`, `psionic-runtime`, `psionic-provider`, docs | Landed in `313fbdc25`: Psionic now derives stable coordinator fence tokens and authority digests from ordered leadership truth, threads commit-authority evidence through runtime/provider execution context, and attaches authority digests to whole-request and sharded schedules so stale coordinators cannot look current after failover. |
 | `PSI-205` | [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) | Closed | Add coordinator failover validation drills and runbook gates | docs/tests/validation plus cluster crates | Landed in `4732fbc26`: `cluster_validation_matrix` now covers stale-leader diagnostics, split-brain refusal, and failover fence rotation, while the operator runbook now has an explicit coordinator failover drill and exit gate for fenced coordinator claims. |
 
+### Phase D3: command authorization and payout provenance follow-on
+
+These issues are the next honest queue for operator-managed multi-subnet
+clusters now that signed transport and coordinator authority truth exist on
+`main`, but command authorization and payout-grade provenance still do not.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-206` | [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) | Open | Add typed cluster command authorization policy and refusal diagnostics | `psionic-cluster`, ordered-state/tests | Signed transport and coordinator authority still do not answer who is allowed to submit which cluster mutation. This issue adds machine-checkable command authorization, stable authorization digests, and explicit refusal diagnostics instead of trusting implicit role assumptions. |
+| `PSI-207` | [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) | Open | Preserve command provenance through authoritative cluster events | `psionic-cluster`, recovery/tests | Later payout or dispute surfaces need more than current state: they need ordered provenance for who submitted a command, under which authority scope, and under which authorization digest. This issue keeps that truth through append, replay, catchup, and snapshot flows. |
+| `PSI-208` | [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) | Open | Extend cluster execution and settlement evidence with command provenance truth | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Cluster execution evidence is already topology-aware, but it still cannot name the admitted command path or authorization digest that led to the work. This issue threads bounded command/admission provenance into runtime/provider evidence and settlement-linkage inputs. |
+| `PSI-209` | [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) | Open | Add cluster authorization and payout-provenance validation gates | docs/tests/validation plus cluster crates | Stronger operator or payout-oriented claims are not supportable without validation drills. This issue adds refusal/provenance coverage and runbook gates so the new authorization contract is evidence-backed instead of code-only. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -671,17 +719,19 @@ The shortest honest path from today's `main` is:
    on queue closing in `ac9dd2285`.
 3. Treat D2 as landed on `main`, with the coordinator-authority follow-on queue
    closing in `4732fbc26`.
-4. Keep the active local CUDA throughput queue
+4. Work D3 in order as the active operator-managed follow-on queue:
+   `#3315` -> `#3316` -> `#3317` -> `#3318`.
+5. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-5. Treat closure of that local CUDA lane as the gate for widening cluster
+6. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-6. Keep current authenticated configured-peer posture explicit and bounded;
+7. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-7. If stronger trust or wider network claims are needed beyond D2, open a new GitHub-
+8. If stronger trust or wider network claims are needed beyond D3, open a new GitHub-
    backed queue instead of extending this roadmap with local placeholders.
-8. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+9. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
@@ -743,7 +793,7 @@ scope:
 - optional Exo interoperability experiments, only after Psionic's own cluster
   substrate is credible
 - adversarial or compute-market trust hardening beyond the operator-managed D1
-  and D2 queues now tracked in this roadmap
+  through D3 queues now tracked in this roadmap
 - Apple clustered execution, but only after the native Metal GPT-OSS roadmap is
   complete and cluster placement can express communication-class eligibility
   honestly
