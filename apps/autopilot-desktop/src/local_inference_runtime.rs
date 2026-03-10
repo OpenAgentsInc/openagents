@@ -966,11 +966,9 @@ fn configured_gpt_oss_model_path() -> PathBuf {
     std::env::var(ENV_GPT_OSS_MODEL_PATH)
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            if cfg!(target_os = "macos") {
-                PathBuf::from("/Users/christopherdavid/models/gpt-oss").join(GPT_OSS_20B_FILENAME)
-            } else {
-                PathBuf::from("/home/christopherdavid/models/gpt-oss").join(GPT_OSS_20B_FILENAME)
-            }
+            dirs::home_dir()
+                .map(|home| home.join("models").join("gpt-oss").join(GPT_OSS_20B_FILENAME))
+                .unwrap_or_else(|| PathBuf::from("models/gpt-oss").join(GPT_OSS_20B_FILENAME))
         })
 }
 
