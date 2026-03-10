@@ -51,7 +51,9 @@
 > `37183c6cb`, after landing `PSI-224` / `#3336` in `9aad9af8d`, after
 > landing `PSI-225` / `#3337` in `efa52005e`, after opening `PSI-226`
 > through `PSI-228` as `#3341`, `#3339`, and `#3340` for the advertised
-> capability-profile publication follow-on queue, and after checking live
+> capability-profile publication follow-on queue, after opening `PSI-229`
+> through `PSI-231` as `#3342`, `#3343`, and `#3344` for the cluster trust-
+> publication follow-on queue, and after checking live
 > GitHub issue search so this roadmap reflects
 > the current GitHub queue rather than local placeholders.
 >
@@ -183,6 +185,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-226` / [#3341](https://github.com/OpenAgentsInc/openagents/issues/3341) is landed on `main`
     - `PSI-227` / [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) is landed on `main`
     - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is landed on `main`
+  - the cluster trust-publication follow-on queue is now open on GitHub
+    - `PSI-229` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is open
+    - `PSI-230` / [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) is open
+    - `PSI-231` / [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) is open
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -893,6 +899,19 @@ profiles before any request is planned.
 | `PSI-227` | [#3339](https://github.com/OpenAgentsInc/openagents/issues/3339) | Closed | Thread advertised cluster capability profiles through provider capability envelopes | `psionic-provider`, `psionic-cluster`, tests | Landed in `e2a4c1f84`: provider capability envelopes now expose dedicated `with_cluster_execution_capability_profile(...)` builders, provider publication tests source declared profiles from cluster whole-request, replica-routed, layer-sharded, and tensor-sharded request builders, and advertised lane support now publishes independently of realized `cluster_execution` evidence. |
 | `PSI-228` | [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) | Closed | Add advertised capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `478387b58`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit advertised capability-publication drill with exact runtime/provider commands, pass/fail interpretation, and separation between advertised support and realized execution evidence, and this roadmap now closes H2 explicitly instead of leaving provider-side publication validation implicit. |
 
+### Phase H3: cluster trust-publication follow-on
+
+This is the current active post-H2 queue. It closes the next remaining gap
+between advertised clustered-lane support and the trust posture that bounds
+those claims by making provider-visible capability publication carry explicit
+cluster trust posture and compute-market trust refusal truth.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-229` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Open | Add runtime-owned cluster trust publication types | `psionic-runtime`, `psionic-cluster`, tests | Cluster trust posture and compute-market trust assessment currently live only in `psionic-cluster`, which blocks capability-side publication without a dependency inversion. This issue moves the publication model into a runtime-owned seam first. |
+| `PSI-230` | [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) | Open | Publish cluster trust assessments through provider capability surfaces | `psionic-provider`, `psionic-cluster`, tests | Advertised cluster capability claims are still missing the trust posture that bounds them. Provider capability surfaces need to publish whether cluster support is trusted-LAN-only, operator-managed, attested, or otherwise refused for compute-market claims. |
+| `PSI-231` | [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) | Open | Add cluster trust-publication validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once trust posture publishes through capability surfaces, the runbook and roadmap need explicit validation commands and closeout criteria so those bounded trust claims remain repeatable instead of doc-only. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -921,11 +940,14 @@ The shortest honest path from today's `main` is:
     and queue closeout now anchored in `efa52005e`.
 11. Treat H2 as landed on `main`, with the advertised capability-publication
     validation drill and queue closeout now anchored in `478387b58`.
-12. Keep current authenticated configured-peer posture explicit and bounded;
+12. Work H3 in order: land `#3342`, then `#3343`, then `#3344`, so provider-
+    published cluster capability claims stay explicitly bounded by trust
+    posture before any stronger market-facing interpretation leaks in.
+13. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-13. If stronger trust or wider network claims are needed beyond H2, open a new
+14. If stronger trust or wider network claims are needed beyond H3, open a new
     GitHub-backed queue instead of extending this roadmap with local placeholders.
-14. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+15. Keep current Metal GPT-OSS nodes refused for cluster execution until the
     Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
