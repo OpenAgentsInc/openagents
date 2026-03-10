@@ -1341,13 +1341,13 @@ The 20B parity queue is closed, but the same host still exposes a separate
 headroom problem on the larger hybrid 120B model:
 `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf`.
 
-Current truthful 120B floor on the exact cold / warm-non-hit /
+Current truthful 120B stateless band on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.24 tok/s`
-  - `6.43 tok/s`
-  - `10.42 tok/s`
+  - `10.23-10.26 tok/s`
+  - `10.09-10.10 tok/s`
+  - `10.29-10.34 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1390,19 +1390,28 @@ What the newest kept checkpoint proved:
   documented `10.07 tok/s` floor to `10.42` and `10.44 tok/s`
 - that means the old host hidden-vector bounce was part of the problem, but it
   was not the whole problem
+- the next stateless follow-up was real too: once the no-session hybrid CUDA
+  device-argmax lane stopped materializing generated KV entries back onto the
+  host cache, repeated exact-contract 120B runs moved the cold and
+  warm-non-hit lanes into the same `~10 tok/s` class as the prompt-cache-hit
+  lane instead of leaving them in the old `2-6 tok/s` class
+- the prompt-cache-hit lane itself stayed roughly flat at `10.29-10.34 tok/s`,
+  which is strong evidence that the remaining limiter is no longer the
+  stateless host-KV readback
 
 What the remaining gap now points to:
 
 - the heavy cost is no longer well-described as only "expert staging" in the
-  abstract; the hybrid path is still bouncing the full hidden-state vector back
-  to the CPU between CUDA-capable substeps inside the host-backed MoE lane
-- after the first hidden-state-residency landing, the remaining concrete
-  materializations are now clearer: stateless host-KV readback on decode and
-  the surviving host-backed selected4 staging traffic
+  abstract; most dense decode state now stays on CUDA, but the hybrid path
+  still has to stage selected experts from host-backed MoE storage into CUDA
+  caches on the hot decode lane
+- after the hidden-state-residency landing plus the stateless host-KV skip,
+  the remaining concrete bottleneck is clearer: surviving host-to-device
+  selected4 expert staging traffic inside the host-backed MoE lane
 - the next honest direction is therefore still `#3345`, but narrowed:
   keep the hybrid hidden state resident on CUDA across the host-backed
-  selected4 lane and now remove the remaining host readback/staging that still
-  forces per-token PCIe traffic
+  selected4 lane and now reduce or restructure the remaining selected-expert
+  staging that still forces heavy per-token PCIe traffic
 
 Relevant `llama.cpp` references for that next step:
 

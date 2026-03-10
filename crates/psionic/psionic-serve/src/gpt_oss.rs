@@ -1953,6 +1953,7 @@ fn run_cuda_hybrid_generation_request(
                 &cache,
                 CudaStepOutputMode::FullLogits,
                 Some(&mut cuda_cache),
+                true,
             )?;
             let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
             perf.stage_timings.step_wall_ns = perf
@@ -1985,11 +1986,17 @@ fn run_cuda_hybrid_generation_request(
             .stage_timings
             .sampling_ns
             .saturating_add(duration_ns(sampling_start));
+        let can_skip_host_kv_materialization = request.session_id.is_none()
+            && use_cuda_argmax_fast_path
+            && loaded_model
+                .inner
+                .supports_hybrid_cuda_device_argmax_fast_path();
+        let mut generated_cache_tokens = cache.len();
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
             }
-            if cache.len() >= cache.max_context() {
+            if generated_cache_tokens >= cache.max_context() {
                 break super::TerminationReason::ContextLimit;
             }
             if loaded_model.is_end_of_sequence(pending_token) {
@@ -2001,7 +2008,7 @@ fn run_cuda_hybrid_generation_request(
             let step = loaded_model.inner.forward_step_with_output_mode(
                 backend,
                 pending_token,
-                cache.len(),
+                generated_cache_tokens,
                 &cache,
                 if use_cuda_argmax_fast_path {
                     CudaStepOutputMode::DeviceArgmax
@@ -2009,6 +2016,7 @@ fn run_cuda_hybrid_generation_request(
                     CudaStepOutputMode::FullLogits
                 },
                 Some(&mut cuda_cache),
+                !can_skip_host_kv_materialization,
             )?;
             let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
             perf.stage_timings.step_wall_ns = perf
@@ -2021,7 +2029,12 @@ fn run_cuda_hybrid_generation_request(
             kernel_count = kernel_count.saturating_add(step.kernel_count);
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
-            cache.append(pending_token, step.key.clone(), step.value.clone())?;
+            if can_skip_host_kv_materialization {
+                generated_cache_tokens = generated_cache_tokens.saturating_add(1);
+            } else {
+                cache.append(pending_token, step.key.clone(), step.value.clone())?;
+                generated_cache_tokens = cache.len();
+            }
             token_history.push(pending_token.as_u32());
 
             let stop_check_start = Instant::now();
@@ -3966,6 +3979,22 @@ impl GptOssCudaModelInner {
         !self.uses_host_backed_weights()
     }
 
+    fn supports_hybrid_cuda_device_argmax_fast_path(&self) -> bool {
+        self.family_metadata.expert_used_count == Some(4)
+            && self.layers.iter().any(|layer| {
+                layer.feed_forward_gate_up_experts_weight.host.is_some()
+                    && layer.feed_forward_down_experts_weight.host.is_some()
+            })
+            && self.layers.iter().all(|layer| {
+                can_use_hybrid_cuda_hidden_residency_layer(
+                    layer,
+                    self.descriptor.config.hidden_size,
+                )
+            })
+            && self.output.storage.is_some()
+            && self.output_norm_device.is_some()
+    }
+
     fn cache_width(&self) -> usize {
         self.descriptor
             .config
@@ -5570,6 +5599,7 @@ impl GptOssCudaModelInner {
         cache: &super::InMemoryKvCache,
         output_mode: CudaStepOutputMode,
         mut cuda_cache: Option<&mut CudaKvCacheMirror>,
+        materialize_host_kv: bool,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         let mut hybrid_selected4_plan = if self.family_metadata.expert_used_count == Some(4)
             && self.layers.iter().any(|layer| {
@@ -7696,7 +7726,7 @@ impl GptOssCudaModelInner {
             let logits_projection_start = Instant::now();
             let mut logits = Vec::new();
             let mut selected_token = None;
-            if hidden_device_ready {
+            if hidden_device_ready && materialize_host_kv {
                 if let (Some(cuda_cache), Some(cache_write_index)) =
                     (cuda_cache.as_deref_mut(), cache_write_index)
                 {
@@ -8058,6 +8088,7 @@ impl GptOssCudaModelInner {
             cache,
             CudaStepOutputMode::FullLogits,
             None,
+            true,
         )
     }
 }
