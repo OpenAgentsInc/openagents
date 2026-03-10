@@ -74,7 +74,9 @@ impl Default for App {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+const PANE_SIZE_MEMORY_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PaneKind {
     Empty,
     AutopilotChat,
@@ -168,6 +170,171 @@ pub struct DesktopPane {
     pub bounds: Bounds,
     pub z_index: i32,
     pub frame: PaneFrame,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PaneSizeMemoryDocumentV1 {
+    schema_version: u32,
+    panes: Vec<PaneSizeMemoryRecord>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+struct PaneSizeMemoryRecord {
+    kind: PaneKind,
+    width: f32,
+    height: f32,
+}
+
+pub struct PaneSizeMemory {
+    file_path: PathBuf,
+    panes: Vec<PaneSizeMemoryRecord>,
+    dirty: bool,
+}
+
+impl Default for PaneSizeMemory {
+    fn default() -> Self {
+        Self {
+            file_path: Self::default_file_path(),
+            panes: Vec::new(),
+            dirty: false,
+        }
+    }
+}
+
+impl PaneSizeMemory {
+    pub fn load_or_default() -> Self {
+        Self::load_or_default_at(Self::default_file_path())
+    }
+
+    fn load_or_default_at(file_path: PathBuf) -> Self {
+        let mut memory = Self {
+            file_path,
+            panes: Vec::new(),
+            dirty: false,
+        };
+        let raw = match std::fs::read_to_string(memory.file_path.as_path()) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return memory,
+            Err(_) => return memory,
+        };
+        let Ok(document) = serde_json::from_str::<PaneSizeMemoryDocumentV1>(&raw) else {
+            return memory;
+        };
+        if document.schema_version != PANE_SIZE_MEMORY_SCHEMA_VERSION {
+            return memory;
+        }
+
+        for pane in document.panes {
+            if !pane.width.is_finite()
+                || !pane.height.is_finite()
+                || pane.width <= 0.0
+                || pane.height <= 0.0
+            {
+                continue;
+            }
+            memory.panes.retain(|existing| existing.kind != pane.kind);
+            memory.panes.push(pane);
+        }
+        memory
+    }
+
+    fn default_file_path() -> PathBuf {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".openagents")
+            .join("autopilot-pane-sizes-v1.json")
+    }
+
+    pub fn size_for(&self, kind: PaneKind) -> Option<wgpui::Size> {
+        self.panes
+            .iter()
+            .find(|pane| pane.kind == kind)
+            .map(|pane| wgpui::Size::new(pane.width, pane.height))
+    }
+
+    pub fn remember(&mut self, kind: PaneKind, size: wgpui::Size) {
+        if !size.width.is_finite()
+            || !size.height.is_finite()
+            || size.width <= 0.0
+            || size.height <= 0.0
+        {
+            return;
+        }
+
+        let mut changed = true;
+        if let Some(existing) = self.panes.iter_mut().find(|pane| pane.kind == kind) {
+            changed = (existing.width - size.width).abs() > f32::EPSILON
+                || (existing.height - size.height).abs() > f32::EPSILON;
+            if changed {
+                existing.width = size.width;
+                existing.height = size.height;
+            }
+        } else {
+            self.panes.push(PaneSizeMemoryRecord {
+                kind,
+                width: size.width,
+                height: size.height,
+            });
+        }
+
+        if changed {
+            self.dirty = true;
+        }
+    }
+
+    pub fn persist_if_dirty(&mut self) -> Result<(), String> {
+        if !self.dirty {
+            return Ok(());
+        }
+        if let Some(parent) = self.file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create pane size dir: {error}"))?;
+        }
+        let document = PaneSizeMemoryDocumentV1 {
+            schema_version: PANE_SIZE_MEMORY_SCHEMA_VERSION,
+            panes: self.panes.clone(),
+        };
+        let payload = serde_json::to_string_pretty(&document)
+            .map_err(|error| format!("Failed to encode pane sizes: {error}"))?;
+        let temp_path = self.file_path.with_extension("tmp");
+        std::fs::write(&temp_path, payload)
+            .map_err(|error| format!("Failed to write pane size temp file: {error}"))?;
+        std::fs::rename(&temp_path, self.file_path.as_path())
+            .map_err(|error| format!("Failed to persist pane sizes: {error}"))?;
+        self.dirty = false;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod pane_size_memory_tests {
+    use super::{PaneKind, PaneSizeMemory};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use wgpui::Size;
+
+    #[test]
+    fn pane_size_memory_round_trips_to_disk() {
+        let now_nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("autopilot-pane-sizes-{now_nanos}.json"));
+        let mut memory = PaneSizeMemory::load_or_default_at(path.clone());
+        memory.remember(PaneKind::GoOnline, Size::new(704.0, 436.0));
+        memory
+            .persist_if_dirty()
+            .expect("pane size memory should persist");
+
+        let loaded = PaneSizeMemory::load_or_default_at(path.clone());
+        let remembered = loaded
+            .size_for(PaneKind::GoOnline)
+            .expect("remembered pane size should reload");
+        assert_eq!(remembered.width, 704.0);
+        assert_eq!(remembered.height, 436.0);
+
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 pub struct SparkPaneInputs {
@@ -5350,6 +5517,7 @@ pub struct RenderState {
     pub event_context: EventContext,
     pub input_modifiers: Modifiers,
     pub panes: Vec<DesktopPane>,
+    pub pane_size_memory: PaneSizeMemory,
     pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
     pub nostr_secret_state: NostrSecretState,

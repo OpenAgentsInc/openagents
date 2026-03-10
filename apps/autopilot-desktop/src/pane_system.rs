@@ -811,6 +811,15 @@ impl PaneDescriptor {
     }
 }
 
+fn initial_pane_size(
+    pane_size_memory: &crate::app_state::PaneSizeMemory,
+    descriptor: PaneDescriptor,
+) -> Size {
+    pane_size_memory
+        .size_for(descriptor.kind)
+        .unwrap_or_else(|| Size::new(descriptor.width, descriptor.height))
+}
+
 fn pane_minimum_size(kind: PaneKind) -> Size {
     let spec = pane_spec(kind);
     let pane_size_for_content = |content_width: f32, content_height: f32| {
@@ -878,8 +887,9 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
     let min_size = pane_minimum_size(descriptor.kind);
+    let initial_size = initial_pane_size(&state.pane_size_memory, descriptor);
     let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, descriptor.width, descriptor.height),
+        Bounds::new(x, y, initial_size.width, initial_size.height),
         logical,
         sidebar_width,
         min_size,
@@ -1035,6 +1045,7 @@ pub fn handle_pane_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool
     }
 
     if state.pane_drag_mode.take().is_some() {
+        let _ = state.pane_size_memory.persist_if_dirty();
         handled = true;
     }
 
@@ -1097,6 +1108,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     .min_size(min_size.width, min_size.height)
                     .resize_bounds(edge, start_bounds, start_mouse, current_mouse);
                 pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width, min_size);
+                state.pane_size_memory.remember(pane.kind, pane.bounds.size);
                 return true;
             }
         }
@@ -5082,6 +5094,21 @@ mod tests {
                 spec.kind
             );
         }
+    }
+
+    #[test]
+    fn initial_pane_size_prefers_remembered_dimensions() {
+        let descriptor = PaneDescriptor::for_kind(crate::app_state::PaneKind::GoOnline);
+        let mut pane_size_memory = crate::app_state::PaneSizeMemory::default();
+        pane_size_memory.remember(
+            crate::app_state::PaneKind::GoOnline,
+            Size::new(704.0, 436.0),
+        );
+
+        let size = super::initial_pane_size(&pane_size_memory, descriptor);
+
+        assert_eq!(size.width, 704.0);
+        assert_eq!(size.height, 436.0);
     }
 
     #[test]
