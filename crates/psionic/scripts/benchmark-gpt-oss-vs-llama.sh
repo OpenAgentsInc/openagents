@@ -217,15 +217,18 @@ trap cleanup EXIT
 
 build_request_json() {
   local sentence=$1
+  local model_name
+  model_name=$(basename "$MODEL_PATH")
   # Keep the benchmark request explicit and stable across both servers. The
   # local llama.cpp GPT-OSS template only reliably reaches the final sentence
   # within the 64-token budget on this host when the canonical system contract
   # is present explicitly instead of relying on the built-in default.
   jq -cn \
     --arg sentence "$sentence" \
+    --arg model_name "$model_name" \
     --argjson max_tokens "$MAX_TOKENS" \
     '{
-      model: "gpt-oss-20b-mxfp4.gguf",
+      model: $model_name,
       messages: [
         {
           role: "system",
