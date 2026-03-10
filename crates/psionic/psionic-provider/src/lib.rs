@@ -140,6 +140,22 @@ fn execution_topology_for_selection(
     backend_selection.execution_topology_plan()
 }
 
+fn apply_cluster_execution_surface(
+    selected_device_inventory: &mut Option<DeviceInventoryQualifiers>,
+    selected_devices: &mut Vec<DeviceInventoryQualifiers>,
+    execution_topology: &mut Option<ExecutionTopologyPlan>,
+    cluster_execution: &ClusterExecutionContext,
+) {
+    if let Some(cluster_execution_topology) = &cluster_execution.execution_topology {
+        *execution_topology = Some(cluster_execution_topology.clone());
+    }
+    let cluster_selected_devices = cluster_execution.selected_devices_inventory();
+    if let Some(first_cluster_device) = cluster_selected_devices.first().cloned() {
+        *selected_device_inventory = Some(first_cluster_device);
+        *selected_devices = cluster_selected_devices;
+    }
+}
+
 fn embedding_delivery_proof(response: &EmbeddingResponse) -> Option<ExecutionDeliveryProof> {
     response
         .provenance
@@ -563,6 +579,12 @@ impl SandboxExecutionCapabilityEnvelope {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -688,6 +710,12 @@ impl SandboxExecutionReceipt {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -832,6 +860,12 @@ impl CapabilityEnvelope {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -997,6 +1031,19 @@ impl ExecutionReceipt {
         let served_artifact =
             served_artifact_identity_for_embedding_model(&request.model, &backend_selection);
         let delivery_proof = embedding_delivery_proof(response);
+        let cluster_execution = embedding_cluster_execution(response);
+        let mut selected_device_inventory =
+            selected_device_inventory_for_selection(&backend_selection);
+        let mut selected_devices = selected_devices_inventory_for_selection(&backend_selection);
+        let mut execution_topology = execution_topology_for_selection(&backend_selection);
+        if let Some(cluster_execution) = cluster_execution.as_ref() {
+            apply_cluster_execution_surface(
+                &mut selected_device_inventory,
+                &mut selected_devices,
+                &mut execution_topology,
+                cluster_execution,
+            );
+        }
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
                 request_digest.clone(),
@@ -1017,10 +1064,10 @@ impl ExecutionReceipt {
                 request.product_id.as_str(),
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
-            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
-            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
-            execution_topology: execution_topology_for_selection(&backend_selection),
-            cluster_execution: embedding_cluster_execution(response),
+            selected_device_inventory,
+            selected_devices,
+            execution_topology,
+            cluster_execution,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1147,6 +1194,12 @@ impl ExecutionReceipt {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -1298,6 +1351,12 @@ impl TextGenerationCapabilityEnvelope {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -1458,6 +1517,19 @@ impl TextGenerationReceipt {
                 served_artifact_identity_for_decoder_model(&request.model, &backend_selection)
             });
         let delivery_proof = generation_delivery_proof(response);
+        let cluster_execution = generation_cluster_execution(response);
+        let mut selected_device_inventory =
+            selected_device_inventory_for_selection(&backend_selection);
+        let mut selected_devices = selected_devices_inventory_for_selection(&backend_selection);
+        let mut execution_topology = execution_topology_for_selection(&backend_selection);
+        if let Some(cluster_execution) = cluster_execution.as_ref() {
+            apply_cluster_execution_surface(
+                &mut selected_device_inventory,
+                &mut selected_devices,
+                &mut execution_topology,
+                cluster_execution,
+            );
+        }
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
                 request_digest.clone(),
@@ -1478,10 +1550,10 @@ impl TextGenerationReceipt {
                 &request.model.model.family,
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
-            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
-            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
-            execution_topology: execution_topology_for_selection(&backend_selection),
-            cluster_execution: generation_cluster_execution(response),
+            selected_device_inventory,
+            selected_devices,
+            execution_topology,
+            cluster_execution,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1663,6 +1735,12 @@ impl TextGenerationReceipt {
     /// Attaches explicit clustered execution or scheduling context.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        apply_cluster_execution_surface(
+            &mut self.selected_device_inventory,
+            &mut self.selected_devices,
+            &mut self.execution_topology,
+            &cluster_execution,
+        );
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -3279,6 +3357,46 @@ mod tests {
     }
 
     #[test]
+    fn capability_envelope_overrides_surface_for_replicated_cluster_execution()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let cluster_execution = sample_replicated_cluster_execution_context();
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection(),
+            &model,
+            ProviderReadiness::ready("replicated cluster lane ready"),
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        assert_eq!(
+            envelope.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(psionic_runtime::ExecutionTopologyKind::Replicated)
+        );
+        assert_eq!(envelope.selected_devices.len(), 2);
+        assert_eq!(
+            envelope
+                .selected_device_inventory
+                .as_ref()
+                .map(|device| { device.stable_device_id.as_str() }),
+            Some(first.stable_device_id.as_str())
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["execution_topology"]["kind"], json!("replicated"));
+        assert_eq!(
+            encoded["selected_devices"][1]["stable_device_id"],
+            json!(second.stable_device_id)
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["replica_nodes"][0]["routing"],
+            json!("selected")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn capability_envelope_without_probe_reports_compiled_only_toolchain_truth() {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
@@ -3948,6 +4066,103 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<TextGenerationReceipt>(encoded)?,
             receipt
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn text_generation_receipt_surfaces_replicated_cluster_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "gen-cluster-replicated-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-cluster-replicated-1")),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let cluster_execution = sample_replicated_cluster_execution_context();
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            psionic_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(75),
+                load_duration_ns: Some(25),
+                prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(15),
+                context_window: None,
+                eval_count: Some(1),
+                eval_duration_ns: Some(60),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
+            },
+            GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
+                execution_plan_digest: String::from("cluster-plan-replicated"),
+                cluster_execution: Some(cluster_execution.clone()),
+                load_state: GenerationLoadState::Warm,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+                streaming_policy: None,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: None,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+                compile_path: None,
+                delivery_proof: None,
+                cache_observations: Vec::new(),
+            },
+        );
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            "cluster-plan-replicated",
+            10,
+            85,
+        );
+
+        assert_eq!(
+            receipt.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(psionic_runtime::ExecutionTopologyKind::Replicated)
+        );
+        assert_eq!(receipt.selected_devices.len(), 2);
+        assert_eq!(
+            receipt
+                .selected_device_inventory
+                .as_ref()
+                .map(|device| { device.stable_device_id.as_str() }),
+            Some(first.stable_device_id.as_str())
+        );
+        assert_eq!(receipt.cluster_execution, Some(cluster_execution.clone()));
+
+        let encoded = serde_json::to_value(&receipt)?;
+        assert_eq!(encoded["execution_topology"]["kind"], json!("replicated"));
+        assert_eq!(
+            encoded["cluster_execution"]["replica_state_digest"],
+            json!("replica-state-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["policy_digests"][0]["kind"],
+            json!("replication")
+        );
+        assert_eq!(
+            encoded["selected_devices"][1]["stable_device_id"],
+            json!(second.stable_device_id)
         );
         Ok(())
     }
@@ -4700,6 +4915,71 @@ mod tests {
                 .with_detail("initial worker dropped during admission"),
         )
         .with_degraded_reason("scheduler routed to the remaining healthy worker")
+    }
+
+    fn sample_replicated_cluster_execution_context() -> ClusterExecutionContext {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::ReplicaRouted,
+        )
+        .with_replica_state_digest("replica-state-digest")
+        .with_execution_topology(ExecutionTopologyPlan::replicated(
+            "cuda",
+            vec![first.clone(), second.clone()],
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Replication,
+            "replication-policy-digest",
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Admission,
+            "admission-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_device_inventory(first.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+            ClusterSelectedNode::new("worker-b", "cuda")
+                .with_role("worker")
+                .with_device_inventory(second.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ])
+        .with_replica_nodes(vec![
+            psionic_runtime::ClusterReplicaNode::new(
+                0,
+                ClusterSelectedNode::new("worker-a", "cuda")
+                    .with_role("worker")
+                    .with_device_inventory(first)
+                    .with_served_artifact_digest("served-artifact-digest")
+                    .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+                psionic_runtime::ClusterReplicaWarmState::Warm,
+                psionic_runtime::ClusterReplicaRoutingDisposition::Selected,
+            )
+            .with_load(2, 0)
+            .with_detail("served request on the least-loaded warm replica"),
+            psionic_runtime::ClusterReplicaNode::new(
+                1,
+                ClusterSelectedNode::new("worker-b", "cuda")
+                    .with_role("worker")
+                    .with_device_inventory(second)
+                    .with_served_artifact_digest("served-artifact-digest")
+                    .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+                psionic_runtime::ClusterReplicaWarmState::Warm,
+                psionic_runtime::ClusterReplicaRoutingDisposition::WarmStandby,
+            )
+            .with_load(0, 0)
+            .with_detail("warm standby retained for failover"),
+        ])
+        .with_degraded_reason("replicated lane admitted with one standby replica")
     }
 
     fn sample_backend_runtime_resources() -> BackendRuntimeResources {

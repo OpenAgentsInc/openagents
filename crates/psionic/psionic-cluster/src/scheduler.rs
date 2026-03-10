@@ -574,6 +574,7 @@ pub fn schedule_remote_whole_request(
     );
     let mut selected_node =
         RuntimeClusterSelectedNode::new(best.node_id.as_str(), request.requested_backend.clone())
+            .with_device_inventory(selected_device.clone())
             .with_role(node_role_name(best.membership.identity.role))
             .with_stable_device_id(selected_device.stable_device_id.clone())
             .with_artifact_residency(runtime_artifact_residency(best.artifact_status));
@@ -600,6 +601,7 @@ pub fn schedule_remote_whole_request(
         runtime_transport_class(best.link.transport),
         ClusterExecutionDisposition::RemoteWholeRequest,
     )
+    .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(vec![selected_node]);
     if let Some(artifact_residency_digest) = artifact_residency_digest {
         cluster_execution =
