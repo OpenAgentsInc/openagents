@@ -1,3 +1,4 @@
+use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -18,6 +19,9 @@ pub const APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 
 /// Session-response streaming suffix exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_STREAM_SUFFIX: &str = "/stream";
+
+/// Session-transcript export suffix exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX: &str = "/transcript";
 
 /// Typed system-model use cases exposed by Apple's Foundation Models surface.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -915,8 +919,18 @@ pub struct AppleFmSession {
     pub transcript_json: Option<String>,
 }
 
+impl AppleFmSession {
+    /// Decodes the typed transcript snapshot if the bridge included one.
+    pub fn transcript(&self) -> Result<Option<AppleFmTranscript>, AppleFmTranscriptError> {
+        self.transcript_json
+            .as_deref()
+            .map(AppleFmTranscript::from_json_str)
+            .transpose()
+    }
+}
+
 /// Session-creation / session-restore request.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppleFmSessionCreateRequest {
     /// Optional system instructions for the new session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -930,6 +944,9 @@ pub struct AppleFmSessionCreateRequest {
     /// Optional transcript JSON used to restore a session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_json: Option<String>,
+    /// Optional typed transcript dictionary used to restore a session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<AppleFmTranscript>,
 }
 
 impl AppleFmSessionCreateRequest {
@@ -945,6 +962,47 @@ impl AppleFmSessionCreateRequest {
             model,
             tools,
             transcript_json: Some(transcript_json.into()),
+            transcript: None,
+        }
+    }
+
+    /// Builds a session-restore request from a typed transcript snapshot.
+    #[must_use]
+    pub fn from_transcript(
+        transcript: AppleFmTranscript,
+        model: Option<AppleFmSystemLanguageModel>,
+        tools: Vec<AppleFmSessionToolMetadata>,
+    ) -> Self {
+        Self {
+            instructions: None,
+            model,
+            tools,
+            transcript_json: None,
+            transcript: Some(transcript),
+        }
+    }
+
+    /// Resolves the typed transcript requested for restore, if any.
+    pub fn normalized_transcript(
+        &self,
+    ) -> Result<Option<AppleFmTranscript>, AppleFmTranscriptError> {
+        match (self.transcript.as_ref(), self.transcript_json.as_deref()) {
+            (Some(transcript), Some(transcript_json)) => {
+                let parsed = AppleFmTranscript::from_json_str(transcript_json)?;
+                if parsed != *transcript {
+                    return Err(AppleFmTranscriptError::ConflictingInputs);
+                }
+                transcript.validate()?;
+                Ok(Some(transcript.clone()))
+            }
+            (Some(transcript), None) => {
+                transcript.validate()?;
+                Ok(Some(transcript.clone()))
+            }
+            (None, Some(transcript_json)) => {
+                AppleFmTranscript::from_json_str(transcript_json).map(Some)
+            }
+            (None, None) => Ok(None),
         }
     }
 }
@@ -1000,6 +1058,10 @@ mod tests {
         AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
         AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
         AppleFmTextGenerationRequest, AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
+    };
+    use crate::transcript::{
+        APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
+        AppleFmTranscriptEntry, AppleFmTranscriptError, AppleFmTranscriptPayload,
     };
 
     #[test]
@@ -1257,6 +1319,76 @@ mod tests {
         assert_eq!(request.model, Some(AppleFmSystemLanguageModel::default()));
         assert_eq!(request.tools.len(), 1);
         assert_eq!(request.tools[0].name, "search");
+        assert!(request.transcript.is_none());
+    }
+
+    #[test]
+    fn typed_session_restore_request_preserves_transcript_model_and_tools() {
+        let transcript = AppleFmTranscript {
+            transcript_type: APPLE_FM_TRANSCRIPT_TYPE.to_string(),
+            transcript: AppleFmTranscriptPayload {
+                entries: vec![AppleFmTranscriptEntry {
+                    id: Some("entry-1".to_string()),
+                    role: "user".to_string(),
+                    contents: vec![AppleFmTranscriptContent {
+                        content_type: "text".to_string(),
+                        id: Some("content-1".to_string()),
+                        extra: [(
+                            "text".to_string(),
+                            serde_json::Value::String("hello".to_string()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    }],
+                    extra: Default::default(),
+                }],
+            },
+            ..AppleFmTranscript::default()
+        };
+        let request = AppleFmSessionCreateRequest::from_transcript(
+            transcript.clone(),
+            Some(AppleFmSystemLanguageModel::default()),
+            vec![],
+        );
+
+        assert!(request.transcript_json.is_none());
+        assert_eq!(request.transcript, Some(transcript.clone()));
+        assert_eq!(
+            request
+                .normalized_transcript()
+                .expect("normalize transcript"),
+            Some(transcript)
+        );
+    }
+
+    #[test]
+    fn session_restore_request_rejects_conflicting_transcript_inputs() {
+        let request = AppleFmSessionCreateRequest {
+            instructions: None,
+            model: None,
+            tools: vec![],
+            transcript_json: Some(
+                r#"{"version":1,"type":"FoundationModels.Transcript","transcript":{"entries":[]}}"#
+                    .to_string(),
+            ),
+            transcript: Some(AppleFmTranscript {
+                transcript_type: APPLE_FM_TRANSCRIPT_TYPE.to_string(),
+                transcript: AppleFmTranscriptPayload {
+                    entries: vec![AppleFmTranscriptEntry {
+                        id: Some("entry-1".to_string()),
+                        role: "user".to_string(),
+                        contents: vec![],
+                        extra: Default::default(),
+                    }],
+                },
+                ..AppleFmTranscript::default()
+            }),
+        };
+
+        let error = request
+            .normalized_transcript()
+            .expect_err("conflicting transcript inputs should fail");
+        assert_eq!(error, AppleFmTranscriptError::ConflictingInputs);
     }
 
     #[test]

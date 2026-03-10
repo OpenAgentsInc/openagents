@@ -9,13 +9,15 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
-    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmCompletionResult,
-    AppleFmErrorResponse, AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError,
-    AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
-    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
-    AppleFmSystemLanguageModelAvailability, AppleFmTextGenerationRequest,
-    AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
+    APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
+    AppleFmCompletionResult, AppleFmErrorResponse, AppleFmGenerationOptions,
+    AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelsResponse,
+    AppleFmSession, AppleFmSessionCreateRequest, AppleFmSessionCreateResponse,
+    AppleFmSessionRespondRequest, AppleFmSessionRespondResponse, AppleFmSessionToolMetadata,
+    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
+    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
 };
+use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 
 /// Reusable blocking client for the current Apple FM bridge contract.
 #[derive(Clone, Debug)]
@@ -129,6 +131,12 @@ impl AppleFmBridgeClient {
         &self,
         request: &AppleFmSessionCreateRequest,
     ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        request.normalized_transcript().map_err(|error| {
+            AppleFmBridgeClientError::TranscriptValidation {
+                operation: "create_session",
+                error,
+            }
+        })?;
         self.client
             .post(self.endpoint(APPLE_FM_BRIDGE_SESSIONS_PATH)?)
             .json(request)
@@ -150,6 +158,17 @@ impl AppleFmBridgeClient {
             })
     }
 
+    /// Creates a session from a typed transcript snapshot.
+    pub fn create_session_from_transcript(
+        &self,
+        transcript: AppleFmTranscript,
+        model: Option<AppleFmSystemLanguageModel>,
+        tools: Vec<AppleFmSessionToolMetadata>,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        let request = AppleFmSessionCreateRequest::from_transcript(transcript, model, tools);
+        self.create_session(&request)
+    }
+
     /// Fetches current session state.
     pub fn session(&self, session_id: &str) -> Result<AppleFmSession, AppleFmBridgeClientError> {
         self.client
@@ -167,6 +186,30 @@ impl AppleFmBridgeClient {
             .json::<AppleFmSession>()
             .map_err(|error| AppleFmBridgeClientError::Decode {
                 operation: "session",
+                error: error.to_string(),
+            })
+    }
+
+    /// Exports the current session transcript as a typed transcript snapshot.
+    pub fn session_transcript(
+        &self,
+        session_id: &str,
+    ) -> Result<AppleFmTranscript, AppleFmBridgeClientError> {
+        self.client
+            .get(self.endpoint(&session_transcript_path(session_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "session_transcript",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "session_transcript",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmTranscript>()
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "session_transcript",
                 error: error.to_string(),
             })
     }
@@ -474,6 +517,14 @@ fn session_stream_path(session_id: &str) -> String {
     )
 }
 
+fn session_transcript_path(session_id: &str) -> String {
+    format!(
+        "{}{}",
+        session_path(session_id),
+        APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX
+    )
+}
+
 #[derive(Default)]
 struct PendingSseEvent {
     event_name: Option<String>,
@@ -611,6 +662,14 @@ pub enum AppleFmBridgeClientError {
         /// Validation detail.
         error: AppleFmGenerationOptionsValidationError,
     },
+    /// Local transcript validation failed before transport.
+    #[error("Apple FM {operation} transcript validation failed: {error}")]
+    TranscriptValidation {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Transcript validation detail.
+        error: AppleFmTranscriptError,
+    },
     /// Stream endpoint returned the wrong content type.
     #[error("Apple FM {operation} returned non-stream content type: {content_type}")]
     InvalidStreamContentType {
@@ -664,6 +723,40 @@ mod tests {
         AppleFmSessionRespondRequest, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase, AppleFmUsageTruth,
     };
+    use crate::transcript::{
+        APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
+        AppleFmTranscriptEntry, AppleFmTranscriptPayload,
+    };
+
+    fn empty_transcript_json() -> String {
+        serde_json::json!({
+            "version": 1,
+            "type": APPLE_FM_TRANSCRIPT_TYPE,
+            "transcript": {
+                "entries": []
+            }
+        })
+        .to_string()
+    }
+
+    fn non_empty_transcript_json() -> String {
+        serde_json::json!({
+            "version": 1,
+            "type": APPLE_FM_TRANSCRIPT_TYPE,
+            "transcript": {
+                "entries": [{
+                    "id": "entry-1",
+                    "role": "user",
+                    "contents": [{
+                        "id": "content-1",
+                        "type": "text",
+                        "text": "hello"
+                    }]
+                }]
+            }
+        })
+        .to_string()
+    }
 
     fn spawn_mock_bridge() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock bridge");
@@ -714,10 +807,62 @@ mod tests {
                     })
                     .to_string())
                 } else if method == "POST" && path == "/v1/sessions" {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str()).expect("session create json");
                     let next_id = session_counter_handle.fetch_add(1, Ordering::SeqCst) + 1;
-                    (200, serde_json::json!({
-                        "session": {
-                            "id": format!("sess-{next_id}"),
+                    let tools = request_json["tools"].clone();
+                    let transcript_json = request_json["transcript"]
+                        .as_object()
+                        .map(|_| request_json["transcript"].to_string())
+                        .or_else(|| {
+                            request_json["transcript_json"]
+                                .as_str()
+                                .map(ToString::to_string)
+                        })
+                        .unwrap_or_else(empty_transcript_json);
+                    (
+                        200,
+                        serde_json::json!({
+                            "session": {
+                                "id": format!("sess-{next_id}"),
+                                "instructions": "You are a helper",
+                                "model": {
+                                    "id": "apple-foundation-model",
+                                    "use_case": "general",
+                                    "guardrails": "default"
+                                },
+                                "tools": tools,
+                                "is_responding": false,
+                                "transcript_json": transcript_json
+                            }
+                        })
+                        .to_string(),
+                    )
+                } else if method == "GET"
+                    && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/transcript")
+                {
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/transcript")
+                        .trim_end_matches('/');
+                    let transcript_json = if session_id == "sess-1" {
+                        empty_transcript_json()
+                    } else {
+                        non_empty_transcript_json()
+                    };
+                    (200, transcript_json)
+                } else if method == "GET" && path.starts_with("/v1/sessions/sess-") {
+                    let session_id = path.trim_start_matches("/v1/sessions/");
+                    let transcript_json = if session_id == "sess-1" {
+                        empty_transcript_json()
+                    } else {
+                        non_empty_transcript_json()
+                    };
+                    (
+                        200,
+                        serde_json::json!({
+                            "id": session_id,
                             "instructions": "You are a helper",
                             "model": {
                                 "id": "apple-foundation-model",
@@ -726,25 +871,10 @@ mod tests {
                             },
                             "tools": [{ "name": "search", "description": "Search docs" }],
                             "is_responding": false,
-                            "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
-                        }
-                    })
-                    .to_string())
-                } else if method == "GET" && path.starts_with("/v1/sessions/sess-") {
-                    let session_id = path.trim_start_matches("/v1/sessions/");
-                    (200, serde_json::json!({
-                        "id": session_id,
-                        "instructions": "You are a helper",
-                        "model": {
-                            "id": "apple-foundation-model",
-                            "use_case": "general",
-                            "guardrails": "default"
-                        },
-                        "tools": [{ "name": "search", "description": "Search docs" }],
-                        "is_responding": false,
-                        "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
-                    })
-                    .to_string())
+                            "transcript_json": transcript_json
+                        })
+                        .to_string(),
+                    )
                 } else if method == "POST"
                     && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/reset")
@@ -753,19 +883,22 @@ mod tests {
                         .trim_start_matches("/v1/sessions/")
                         .trim_end_matches("/reset")
                         .trim_end_matches('/');
-                    (200, serde_json::json!({
-                        "id": session_id,
-                        "instructions": "You are a helper",
-                        "model": {
-                            "id": "apple-foundation-model",
-                            "use_case": "general",
-                            "guardrails": "default"
-                        },
-                        "tools": [{ "name": "search", "description": "Search docs" }],
-                        "is_responding": false,
-                        "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}"
-                    })
-                    .to_string())
+                    (
+                        200,
+                        serde_json::json!({
+                            "id": session_id,
+                            "instructions": "You are a helper",
+                            "model": {
+                                "id": "apple-foundation-model",
+                                "use_case": "general",
+                                "guardrails": "default"
+                            },
+                            "tools": [{ "name": "search", "description": "Search docs" }],
+                            "is_responding": false,
+                            "transcript_json": empty_transcript_json()
+                        })
+                        .to_string(),
+                    )
                 } else if method == "POST" && path == "/v1/sessions/busy/responses" {
                     (
                         409,
@@ -793,31 +926,34 @@ mod tests {
                         .trim_start_matches("/v1/sessions/")
                         .trim_end_matches("/responses")
                         .trim_end_matches('/');
-                    (200, serde_json::json!({
-                        "session": {
-                            "id": session_id,
-                            "instructions": "You are a helper",
-                            "model": {
-                                "id": "apple-foundation-model",
-                                "use_case": "general",
-                                "guardrails": "default"
+                    (
+                        200,
+                        serde_json::json!({
+                            "session": {
+                                "id": session_id,
+                                "instructions": "You are a helper",
+                                "model": {
+                                    "id": "apple-foundation-model",
+                                    "use_case": "general",
+                                    "guardrails": "default"
+                                },
+                                "tools": [{ "name": "search", "description": "Search docs" }],
+                                "is_responding": false,
+                                "transcript_json": non_empty_transcript_json()
                             },
-                            "tools": [{ "name": "search", "description": "Search docs" }],
-                            "is_responding": false,
-                            "transcript_json": "{\"type\":\"FoundationModels.Transcript\",\"entries\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
-                        },
-                        "model": "apple-foundation-model",
-                        "output": "session hello from apple fm",
-                        "usage": {
-                            "prompt_tokens": 6,
-                            "completion_tokens": 5,
-                            "total_tokens": 11,
-                            "prompt_tokens_detail": { "value": 6, "truth": "exact" },
-                            "completion_tokens_detail": { "value": 5, "truth": "estimated" },
-                            "total_tokens_detail": { "value": 11, "truth": "estimated" }
-                        }
-                    })
-                    .to_string())
+                            "model": "apple-foundation-model",
+                            "output": "session hello from apple fm",
+                            "usage": {
+                                "prompt_tokens": 6,
+                                "completion_tokens": 5,
+                                "total_tokens": 11,
+                                "prompt_tokens_detail": { "value": 6, "truth": "exact" },
+                                "completion_tokens_detail": { "value": 5, "truth": "estimated" },
+                                "total_tokens_detail": { "value": 11, "truth": "estimated" }
+                            }
+                        })
+                        .to_string(),
+                    )
                 } else if method == "POST"
                     && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/responses/stream")
@@ -825,7 +961,7 @@ mod tests {
                     let response = "event: snapshot\n\
 data: {\"kind\":\"snapshot\",\"model\":\"apple-foundation-model\",\"output\":\"hello\"}\n\n\
 event: completed\n\
-data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"hello world\",\"usage\":{\"total_tokens_detail\":{\"value\":11,\"truth\":\"estimated\"}},\"session\":{\"id\":\"sess-1\",\"instructions\":\"You are a helper\",\"model\":{\"id\":\"apple-foundation-model\",\"use_case\":\"general\",\"guardrails\":\"default\"},\"tools\":[],\"is_responding\":false,\"transcript_json\":\"{\\\"type\\\":\\\"FoundationModels.Transcript\\\"}\"}}\n\n";
+data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"hello world\",\"usage\":{\"total_tokens_detail\":{\"value\":11,\"truth\":\"estimated\"}},\"session\":{\"id\":\"sess-1\",\"instructions\":\"You are a helper\",\"model\":{\"id\":\"apple-foundation-model\",\"use_case\":\"general\",\"guardrails\":\"default\"},\"tools\":[],\"is_responding\":false,\"transcript_json\":\"{\\\"version\\\":1,\\\"type\\\":\\\"FoundationModels.Transcript\\\",\\\"transcript\\\":{\\\"entries\\\":[]}}\"}}\n\n";
                     write_response_with_content_type(
                         &mut stream,
                         200,
@@ -987,6 +1123,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     description: Some("Search docs".to_string()),
                 }],
                 transcript_json: None,
+                transcript: None,
             })
             .expect("create session");
         assert_eq!(session.id, "sess-1");
@@ -1001,6 +1138,14 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         assert_eq!(
             fetched_session.model.guardrails,
             AppleFmSystemLanguageModelGuardrails::Default
+        );
+        assert_eq!(
+            fetched_session
+                .transcript()
+                .expect("decode fetched transcript")
+                .as_ref()
+                .map(AppleFmTranscript::entry_count),
+            Some(0)
         );
 
         let response = client
@@ -1036,7 +1181,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
 
         let restored_session = client
             .create_session(&AppleFmSessionCreateRequest::from_transcript_json(
-                "{\"type\":\"FoundationModels.Transcript\",\"entries\":[]}",
+                empty_transcript_json(),
                 Some(AppleFmSystemLanguageModel::default()),
                 vec![],
             ))
@@ -1059,6 +1204,83 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 ..
             }
         ));
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_exports_transcripts_and_restores_from_typed_transcript() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let empty_session = client
+            .create_session(&AppleFmSessionCreateRequest {
+                instructions: None,
+                model: Some(AppleFmSystemLanguageModel::default()),
+                tools: vec![],
+                transcript_json: None,
+                transcript: None,
+            })
+            .expect("create empty session");
+        let empty_transcript = client
+            .session_transcript(empty_session.id.as_str())
+            .expect("export empty transcript");
+        assert_eq!(empty_transcript.entry_count(), 0);
+
+        let typed_transcript = AppleFmTranscript {
+            transcript_type: APPLE_FM_TRANSCRIPT_TYPE.to_string(),
+            transcript: AppleFmTranscriptPayload {
+                entries: vec![AppleFmTranscriptEntry {
+                    id: Some("entry-1".to_string()),
+                    role: "instructions".to_string(),
+                    contents: vec![AppleFmTranscriptContent {
+                        content_type: "text".to_string(),
+                        id: Some("content-1".to_string()),
+                        extra: [(
+                            "text".to_string(),
+                            serde_json::Value::String("You are a helper".to_string()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    }],
+                    extra: [(
+                        "tools".to_string(),
+                        serde_json::json!([{
+                            "type": "function",
+                            "function": {
+                                "name": "search",
+                                "description": "Search docs"
+                            }
+                        }]),
+                    )]
+                    .into_iter()
+                    .collect(),
+                }],
+            },
+            ..AppleFmTranscript::default()
+        };
+
+        let restored_session = client
+            .create_session_from_transcript(
+                typed_transcript.clone(),
+                Some(AppleFmSystemLanguageModel::default()),
+                vec![],
+            )
+            .expect("restore from typed transcript");
+        assert_eq!(restored_session.id, "sess-2");
+        assert!(
+            restored_session.tools.is_empty(),
+            "historical tool mentions in the transcript must not enable new tools"
+        );
+
+        let exported_transcript = client
+            .session_transcript(restored_session.id.as_str())
+            .expect("export restored transcript");
+        assert_eq!(exported_transcript.entry_count(), 1);
+        assert_eq!(
+            exported_transcript.transcript.entries[0].contents[0].text(),
+            Some("hello")
+        );
 
         handle.join().expect("mock bridge thread");
     }
@@ -1089,6 +1311,32 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             error,
             AppleFmBridgeClientError::Validation {
                 operation: "generate_text",
+                ..
+            }
+        ));
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_rejects_invalid_transcript_locally() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let error = client
+            .create_session(&AppleFmSessionCreateRequest {
+                instructions: None,
+                model: Some(AppleFmSystemLanguageModel::default()),
+                tools: vec![],
+                transcript_json: Some("{".to_string()),
+                transcript: None,
+            })
+            .expect_err("invalid transcript should fail before transport");
+
+        assert!(matches!(
+            error,
+            AppleFmBridgeClientError::TranscriptValidation {
+                operation: "create_session",
                 ..
             }
         ));

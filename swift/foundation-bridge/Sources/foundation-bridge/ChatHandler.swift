@@ -71,12 +71,18 @@ actor ChatHandler {
     }
 
     func createSession(request: SessionCreateRequest) throws -> SessionCreateResponse {
+        if request.transcriptJSON != nil && request.transcript != nil {
+            throw FMError.invalidRequest(
+                "Provide only one of 'transcript_json' or 'transcript' when restoring an Apple FM session"
+            )
+        }
         let sessionID = "sess-\(UUID().uuidString.lowercased())"
         let model = request.model ?? defaultSessionModelConfiguration()
         let session = try makeSession(
             instructions: request.instructions,
             model: model,
-            transcriptJSON: request.transcriptJSON
+            transcriptJSON: request.transcriptJSON,
+            transcript: request.transcript
         )
         let transcriptJSONSnapshot = try transcriptJSONString(for: session)
         sessions[sessionID] = SessionRecord(
@@ -88,6 +94,16 @@ actor ChatHandler {
             transcriptJSONSnapshot: transcriptJSONSnapshot
         )
         return SessionCreateResponse(session: try sessionState(sessionID: sessionID))
+    }
+
+    func sessionTranscript(sessionID: String) throws -> Transcript {
+        guard let record = sessions[sessionID] else {
+            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+        }
+        if let transcriptJSON = record.transcriptJSONSnapshot {
+            return try decodedTranscript(fromJSONString: transcriptJSON)
+        }
+        return record.session.transcript
     }
 
     func session(sessionID: String) throws -> SessionState {
@@ -270,7 +286,8 @@ actor ChatHandler {
         let session = try makeSession(
             instructions: nil,
             model: defaultSessionModelConfiguration(),
-            transcriptJSON: nil
+            transcriptJSON: nil,
+            transcript: nil
         )
 
         let startTime = Date()
@@ -312,18 +329,23 @@ actor ChatHandler {
     private func makeSession(
         instructions: String?,
         model: SessionModelConfiguration,
-        transcriptJSON: String?
+        transcriptJSON: String?,
+        transcript: Transcript?
     ) throws -> LanguageModelSession {
         let foundationModel = SystemLanguageModel(
             useCase: model.useCase.foundationModelsValue,
             guardrails: model.guardrails.foundationModelsValue
         )
         let tools: [any Tool] = []
-        if let transcriptJSON {
-            let transcript = try JSONDecoder().decode(
-                Transcript.self,
-                from: Data(transcriptJSON.utf8)
+        if let transcript {
+            return LanguageModelSession(
+                model: foundationModel,
+                tools: tools,
+                transcript: transcript
             )
+        }
+        if let transcriptJSON {
+            let transcript = try decodedTranscript(fromJSONString: transcriptJSON)
             return LanguageModelSession(
                 model: foundationModel,
                 tools: tools,
@@ -356,11 +378,25 @@ actor ChatHandler {
         return String(data: transcriptData, encoding: .utf8)
     }
 
+    private func decodedTranscript(fromJSONString transcriptJSON: String) throws -> Transcript {
+        do {
+            return try JSONDecoder().decode(
+                Transcript.self,
+                from: Data(transcriptJSON.utf8)
+            )
+        } catch {
+            throw FMError.invalidRequest(
+                "Invalid Apple FM transcript: \(error.localizedDescription)"
+            )
+        }
+    }
+
     private func restoredRecord(from record: SessionRecord) throws -> SessionRecord {
         let session = try makeSession(
             instructions: record.instructions,
             model: record.model,
-            transcriptJSON: record.transcriptJSONSnapshot
+            transcriptJSON: record.transcriptJSONSnapshot,
+            transcript: nil
         )
         return SessionRecord(
             session: session,
