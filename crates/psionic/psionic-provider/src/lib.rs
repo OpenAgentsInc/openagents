@@ -4272,6 +4272,118 @@ mod tests {
     }
 
     #[test]
+    fn text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "gen-cluster-tensor-sharded-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-cluster-tensor-sharded-1")),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let cluster_execution = sample_tensor_sharded_cluster_execution_context();
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            psionic_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(75),
+                load_duration_ns: Some(25),
+                prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(15),
+                context_window: None,
+                eval_count: Some(1),
+                eval_duration_ns: Some(60),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
+            },
+            GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
+                execution_plan_digest: String::from("cluster-plan-tensor-sharded"),
+                cluster_execution: Some(cluster_execution.clone()),
+                load_state: GenerationLoadState::Warm,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+                streaming_policy: None,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: None,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+                compile_path: None,
+                delivery_proof: None,
+                cache_observations: Vec::new(),
+            },
+        );
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            "cluster-plan-tensor-sharded",
+            10,
+            85,
+        );
+
+        assert_eq!(
+            receipt.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(psionic_runtime::ExecutionTopologyKind::TensorSharded)
+        );
+        assert_eq!(receipt.selected_devices.len(), 2);
+        assert_eq!(receipt.cluster_execution, Some(cluster_execution.clone()));
+
+        let encoded = serde_json::to_value(&receipt)?;
+        assert_eq!(
+            encoded["execution_topology"]["kind"],
+            json!("tensor_sharded")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["policy_digests"][0]["kind"],
+            json!("sharding")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
+            json!("tensor_collective")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["shard_handoffs"][0]["tensor_axis"],
+            json!(1)
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["shard_handoffs"][0]["tensor_range_start"],
+            json!(0)
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["shard_handoffs"][0]["tensor_range_end"],
+            json!(32)
+        );
+        assert_eq!(
+            encoded["selected_devices"][1]["stable_device_id"],
+            json!(second.stable_device_id)
+        );
+        assert_eq!(
+            receipt
+                .selected_device_inventory
+                .as_ref()
+                .map(|device| device.stable_device_id.as_str()),
+            Some(first.stable_device_id.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
     fn text_generation_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-3",
@@ -5143,6 +5255,55 @@ mod tests {
             .with_detail("forward kv cache across the shard boundary"),
         ])
         .with_degraded_reason("layer-sharded lane uses mixed scheduler and handoff transport")
+    }
+
+    fn sample_tensor_sharded_cluster_execution_context() -> ClusterExecutionContext {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::Mixed,
+            ClusterExecutionDisposition::Sharded,
+        )
+        .with_artifact_residency_digest("artifact-residency-digest")
+        .with_execution_topology(ExecutionTopologyPlan::tensor_sharded(
+            "cuda",
+            1,
+            vec![(first.clone(), 0, 32), (second.clone(), 32, 64)],
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Sharding,
+            "tensor-sharding-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_device_inventory(first.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+            ClusterSelectedNode::new("worker-b", "cuda")
+                .with_role("worker")
+                .with_device_inventory(second.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ])
+        .with_shard_handoffs(vec![
+            psionic_runtime::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                psionic_runtime::ClusterShardHandoffKind::TensorCollective,
+                ClusterTransportClass::TrustedLanStream,
+                0,
+                16_384,
+            )
+            .with_tensor_partition(1, 0, 32)
+            .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
+        ])
     }
 
     fn sample_backend_runtime_resources() -> BackendRuntimeResources {
