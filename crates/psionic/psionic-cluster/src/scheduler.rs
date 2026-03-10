@@ -4,9 +4,9 @@ use psionic_runtime::{
     ClusterAdmissionFactKind,
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
     ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
-    ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
-    ClusterPolicyDigest, ClusterPolicyDigestKind,
-    ClusterSelectedNode as RuntimeClusterSelectedNode,
+    ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
+    ClusterExecutionContext, ClusterExecutionDisposition, ClusterPolicyDigest,
+    ClusterPolicyDigestKind, ClusterSelectedNode as RuntimeClusterSelectedNode,
     ClusterTransportClass as RuntimeClusterTransportClass, DeviceInventoryQualifiers,
     DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan,
 };
@@ -200,6 +200,119 @@ impl WholeRequestSchedulingRequest {
     }
 }
 
+const METAL_CLUSTER_BLOCK_DETAIL: &str = "backend `metal` remains refused for cluster execution until the Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes";
+
+/// Returns communication-class eligibility for one whole-request remote dispatch lane.
+#[must_use]
+pub fn remote_dispatch_communication_eligibility(
+    runtime_backend: &str,
+) -> ClusterCommunicationEligibility {
+    cluster_communication_eligibility(runtime_backend, ClusterCommunicationClass::RemoteDispatch)
+}
+
+/// Returns communication-class eligibility for one replicated-routing lane.
+#[must_use]
+pub fn replica_routing_communication_eligibility(
+    runtime_backend: &str,
+) -> ClusterCommunicationEligibility {
+    cluster_communication_eligibility(runtime_backend, ClusterCommunicationClass::ReplicaRouting)
+}
+
+/// Returns communication-class eligibility for one layer-sharded handoff lane.
+#[must_use]
+pub fn layer_shard_handoff_communication_eligibility(
+    runtime_backend: &str,
+) -> ClusterCommunicationEligibility {
+    cluster_communication_eligibility(
+        runtime_backend,
+        ClusterCommunicationClass::LayerShardHandoff,
+    )
+}
+
+/// Returns communication-class eligibility for one tensor-collective mesh lane.
+#[must_use]
+pub fn tensor_collective_communication_eligibility(
+    runtime_backend: &str,
+) -> ClusterCommunicationEligibility {
+    cluster_communication_eligibility(
+        runtime_backend,
+        ClusterCommunicationClass::TensorCollectiveMesh,
+    )
+}
+
+fn cluster_communication_eligibility(
+    runtime_backend: &str,
+    required_class: ClusterCommunicationClass,
+) -> ClusterCommunicationEligibility {
+    let supported_classes = supported_communication_classes(runtime_backend);
+    let detail = communication_eligibility_detail(runtime_backend, required_class);
+    ClusterCommunicationEligibility::new(runtime_backend, required_class)
+        .with_supported_classes(supported_classes)
+        .with_detail(detail)
+}
+
+fn supported_communication_classes(runtime_backend: &str) -> Vec<ClusterCommunicationClass> {
+    match runtime_backend {
+        "metal" => Vec::new(),
+        "cuda" => vec![
+            ClusterCommunicationClass::RemoteDispatch,
+            ClusterCommunicationClass::ReplicaRouting,
+            ClusterCommunicationClass::LayerShardHandoff,
+            ClusterCommunicationClass::TensorCollectiveMesh,
+        ],
+        "cpu" => vec![
+            ClusterCommunicationClass::RemoteDispatch,
+            ClusterCommunicationClass::ReplicaRouting,
+        ],
+        _ => vec![
+            ClusterCommunicationClass::RemoteDispatch,
+            ClusterCommunicationClass::ReplicaRouting,
+        ],
+    }
+}
+
+fn communication_eligibility_detail(
+    runtime_backend: &str,
+    required_class: ClusterCommunicationClass,
+) -> String {
+    match (runtime_backend, required_class) {
+        ("metal", _) => String::from(METAL_CLUSTER_BLOCK_DETAIL),
+        ("cuda", ClusterCommunicationClass::RemoteDispatch) => String::from(
+            "backend `cuda` supports whole-request remote dispatch on ready cluster nodes",
+        ),
+        ("cuda", ClusterCommunicationClass::ReplicaRouting) => {
+            String::from("backend `cuda` supports replica routing across warm cluster lanes")
+        }
+        ("cuda", ClusterCommunicationClass::LayerShardHandoff) => String::from(
+            "backend `cuda` supports layer-sharded cluster handoff under explicit stream-capable transport policy",
+        ),
+        ("cuda", ClusterCommunicationClass::TensorCollectiveMesh) => String::from(
+            "backend `cuda` supports tensor collectives under explicit low-latency mesh transport policy",
+        ),
+        ("cpu", ClusterCommunicationClass::RemoteDispatch) => String::from(
+            "backend `cpu` supports whole-request remote dispatch but not cross-node model partitioning",
+        ),
+        ("cpu", ClusterCommunicationClass::ReplicaRouting) => String::from(
+            "backend `cpu` supports replica routing but not cross-node model partitioning",
+        ),
+        ("cpu", _) => String::from(
+            "backend `cpu` does not expose cross-node model-state handoff or collectives for sharded cluster execution",
+        ),
+        (_, ClusterCommunicationClass::RemoteDispatch) => format!(
+            "backend `{runtime_backend}` is eligible for whole-request remote dispatch when local backend truth and cluster admission facts are ready"
+        ),
+        (_, ClusterCommunicationClass::ReplicaRouting) => format!(
+            "backend `{runtime_backend}` is eligible for replica routing when local backend truth and warm replica facts are ready"
+        ),
+        (_, ClusterCommunicationClass::LayerShardHandoff) => format!(
+            "backend `{runtime_backend}` does not yet advertise explicit layer-shard handoff eligibility"
+        ),
+        (_, ClusterCommunicationClass::TensorCollectiveMesh) => format!(
+            "backend `{runtime_backend}` does not yet advertise explicit tensor-collective mesh eligibility"
+        ),
+    }
+}
+
 /// Stable refusal code for one remote whole-request candidate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -308,6 +421,8 @@ pub enum WholeRequestSchedulingFailureCode {
     SchedulerNodeUnknown,
     /// The supplied scheduler node is present, but not ready to make remote scheduling decisions.
     SchedulerNodeNotReady,
+    /// The requested backend does not satisfy the required communication class for cluster execution.
+    CommunicationClassIneligible,
     /// No eligible remote execution candidate exists under the current cluster facts.
     NoEligibleRemoteNode,
 }
@@ -335,6 +450,8 @@ pub struct WholeRequestSchedulingFailure {
     /// Stable policy digests that constrained the failed decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit backend communication-class eligibility for the failed path.
+    pub communication_eligibility: ClusterCommunicationEligibility,
     /// Explicit per-candidate refusals that explain why scheduling failed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refusals: Vec<WholeRequestSchedulingRefusal>,
@@ -373,6 +490,8 @@ pub fn schedule_remote_whole_request(
     let cluster_state_digest = state.stable_digest();
     let topology_digest = state.topology_digest();
     let artifact_residency_digest = Some(state.artifact_residency_digest());
+    let communication_eligibility =
+        remote_dispatch_communication_eligibility(request.requested_backend.as_str());
     let Some(scheduler_membership) = state.memberships().get(&request.scheduler_node_id) else {
         return Err(Box::new(WholeRequestSchedulingFailure {
             code: WholeRequestSchedulingFailureCode::SchedulerNodeUnknown,
@@ -387,6 +506,7 @@ pub fn schedule_remote_whole_request(
             topology_digest,
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
+            communication_eligibility,
             refusals: Vec::new(),
         }));
     };
@@ -404,6 +524,30 @@ pub fn schedule_remote_whole_request(
             topology_digest,
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
+            communication_eligibility,
+            refusals: Vec::new(),
+        }));
+    }
+    if !communication_eligibility.eligible {
+        return Err(Box::new(WholeRequestSchedulingFailure {
+            code: WholeRequestSchedulingFailureCode::CommunicationClassIneligible,
+            detail: communication_eligibility
+                .detail
+                .clone()
+                .unwrap_or_else(|| {
+                    format!(
+                        "backend `{}` does not satisfy whole-request cluster dispatch communication eligibility",
+                        request.requested_backend
+                    )
+                }),
+            cluster_id: state.cluster_id().clone(),
+            scheduler_node_id: request.scheduler_node_id.clone(),
+            requested_backend: request.requested_backend.clone(),
+            cluster_state_digest,
+            topology_digest,
+            artifact_residency_digest,
+            policy_digests: request.policy_digests.clone(),
+            communication_eligibility,
             refusals: Vec::new(),
         }));
     }
@@ -645,6 +789,7 @@ pub fn schedule_remote_whole_request(
             topology_digest,
             artifact_residency_digest,
             policy_digests: request.policy_digests.clone(),
+            communication_eligibility: communication_eligibility.clone(),
             refusals,
         }));
     };
@@ -695,6 +840,7 @@ pub fn schedule_remote_whole_request(
         runtime_transport_class(best.link.transport),
         ClusterExecutionDisposition::RemoteWholeRequest,
     )
+    .with_communication_eligibility(communication_eligibility)
     .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(vec![selected_node]);
     cluster_execution = cluster_execution
@@ -1199,8 +1345,8 @@ mod tests {
     use std::io::Error;
 
     use psionic_runtime::{
-        ClusterAdmissionFactKind, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ExecutionTopologyKind,
+        ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterPolicyDigest,
+        ClusterPolicyDigestKind, ExecutionTopologyKind,
     };
 
     use crate::{
@@ -1264,6 +1410,14 @@ mod tests {
             .with_cpu_logical_cores(16)
             .with_accelerator_count(1)
             .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready)
+    }
+
+    fn ready_metal_telemetry(node_id: &str, free_memory_bytes: u64) -> ClusterNodeTelemetry {
+        ClusterNodeTelemetry::new(crate::NodeId::new(node_id))
+            .with_memory(Some(64 * 1024 * 1024 * 1024), Some(free_memory_bytes))
+            .with_cpu_logical_cores(16)
+            .with_accelerator_count(1)
+            .with_backend_readiness("metal", ClusterBackendReadinessStatus::Ready)
     }
 
     fn sample_command_authorization(
@@ -1769,6 +1923,42 @@ mod tests {
             refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-b"))
                 && refusal.code == WholeRequestSchedulingRefusalCode::TransportUnavailable
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_refuses_metal_cluster_dispatch_explicitly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.telemetry.insert(
+            crate::NodeId::new("worker-a"),
+            ready_metal_telemetry("worker-a", 32 * 1024 * 1024 * 1024),
+        );
+        snapshot.telemetry.insert(
+            crate::NodeId::new("worker-b"),
+            ready_metal_telemetry("worker-b", 48 * 1024 * 1024 * 1024),
+        );
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "metal");
+
+        let failure = schedule_remote_whole_request(&state, &request)
+            .expect_err("metal cluster dispatch should remain explicitly refused");
+
+        assert_eq!(
+            failure.code,
+            WholeRequestSchedulingFailureCode::CommunicationClassIneligible
+        );
+        assert_eq!(
+            failure.communication_eligibility.required_class,
+            ClusterCommunicationClass::RemoteDispatch
+        );
+        assert!(!failure.communication_eligibility.eligible);
+        assert!(
+            failure
+                .detail
+                .contains("`#3286` -> `#3285` -> `#3269` -> `#3262`"),
+            "refusal detail should point at the active Metal gate"
+        );
         Ok(())
     }
 }

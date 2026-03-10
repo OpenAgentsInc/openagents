@@ -786,6 +786,74 @@ impl ClusterShardHandoff {
     }
 }
 
+/// High-level backend communication class required for one clustered execution lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCommunicationClass {
+    /// Forward the full request to one remote node without cross-node model-state handoff.
+    RemoteDispatch,
+    /// Route the request through one warm replica lane without model partitioning.
+    ReplicaRouting,
+    /// Stream activation or KV state across layer-sharded boundaries.
+    LayerShardHandoff,
+    /// Exchange mesh-style tensor collectives across tensor shards.
+    TensorCollectiveMesh,
+}
+
+/// Explicit backend communication-class eligibility used by cluster planning and evidence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommunicationEligibility {
+    /// Runtime backend the eligibility applies to.
+    pub runtime_backend: String,
+    /// Communication class required for this clustered path.
+    pub required_class: ClusterCommunicationClass,
+    /// Communication classes the backend truthfully supports today.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_classes: Vec<ClusterCommunicationClass>,
+    /// Whether the backend currently satisfies the required class.
+    pub eligible: bool,
+    /// Plain-language detail describing the eligibility or refusal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterCommunicationEligibility {
+    /// Creates one communication-class eligibility record for a runtime backend.
+    #[must_use]
+    pub fn new(
+        runtime_backend: impl Into<String>,
+        required_class: ClusterCommunicationClass,
+    ) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            required_class,
+            supported_classes: Vec::new(),
+            eligible: false,
+            detail: None,
+        }
+    }
+
+    /// Replaces the supported communication-class set and updates eligibility.
+    #[must_use]
+    pub fn with_supported_classes(
+        mut self,
+        mut supported_classes: Vec<ClusterCommunicationClass>,
+    ) -> Self {
+        supported_classes.sort_unstable();
+        supported_classes.dedup();
+        self.eligible = supported_classes.contains(&self.required_class);
+        self.supported_classes = supported_classes;
+        self
+    }
+
+    /// Attaches plain-language eligibility or refusal detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
 /// Stable scheduler fallback reason for one clustered execution path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -882,6 +950,9 @@ pub struct ClusterExecutionContext {
     /// Stable policy digests that constrained the decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit backend communication-class eligibility for this clustered path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub communication_eligibility: Option<ClusterCommunicationEligibility>,
     /// Explicit placement diagnostics that explain optional external hint intake.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub placement_diagnostics: Vec<String>,
@@ -928,6 +999,7 @@ impl ClusterExecutionContext {
             disposition,
             execution_topology: None,
             policy_digests: Vec::new(),
+            communication_eligibility: None,
             placement_diagnostics: Vec::new(),
             selected_nodes: Vec::new(),
             replica_nodes: Vec::new(),
@@ -973,6 +1045,16 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_policy_digest(mut self, policy_digest: ClusterPolicyDigest) -> Self {
         self.policy_digests.push(policy_digest);
+        self
+    }
+
+    /// Attaches explicit backend communication-class eligibility truth.
+    #[must_use]
+    pub fn with_communication_eligibility(
+        mut self,
+        communication_eligibility: ClusterCommunicationEligibility,
+    ) -> Self {
+        self.communication_eligibility = Some(communication_eligibility);
         self
     }
 
@@ -7129,6 +7211,19 @@ mod tests {
             ClusterTransportClass::TrustedLanDatagram,
             ClusterExecutionDisposition::RemoteWholeRequest,
         )
+        .with_communication_eligibility(
+            crate::ClusterCommunicationEligibility::new(
+                "cuda",
+                crate::ClusterCommunicationClass::RemoteDispatch,
+            )
+            .with_supported_classes(vec![
+                crate::ClusterCommunicationClass::RemoteDispatch,
+                crate::ClusterCommunicationClass::ReplicaRouting,
+            ])
+            .with_detail(
+                "backend `cuda` supports whole-request remote dispatch on ready cluster nodes",
+            ),
+        )
         .with_artifact_residency_digest("artifact-residency-digest")
         .with_commit_authority(ClusterCommitAuthorityEvidence::new(
             "coordinator-a",
@@ -7196,6 +7291,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["selected_nodes"][0]["artifact_residency"],
             json!("resident")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["communication_eligibility"]["required_class"],
+            json!("remote_dispatch")
         );
         assert_eq!(
             encoded["cluster_execution"]["command_provenance"][0]["fact_kind"],
@@ -7425,6 +7524,20 @@ mod tests {
             ClusterTransportClass::Mixed,
             ClusterExecutionDisposition::Sharded,
         )
+        .with_communication_eligibility(
+            crate::ClusterCommunicationEligibility::new(
+                "cuda",
+                crate::ClusterCommunicationClass::LayerShardHandoff,
+            )
+            .with_supported_classes(vec![
+                crate::ClusterCommunicationClass::RemoteDispatch,
+                crate::ClusterCommunicationClass::ReplicaRouting,
+                crate::ClusterCommunicationClass::LayerShardHandoff,
+            ])
+            .with_detail(
+                "backend `cuda` supports layer-sharded cluster handoff under explicit stream-capable transport policy",
+            ),
+        )
         .with_execution_topology(ExecutionTopologyPlan::layer_sharded(
             "cuda",
             vec![(first.clone(), 0, 20), (second.clone(), 20, 40)],
@@ -7487,6 +7600,14 @@ mod tests {
                 .map(|cluster| cluster.shard_handoffs[0].kind),
             Some(crate::ClusterShardHandoffKind::Activation)
         );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.communication_eligibility.as_ref())
+                .map(|eligibility| eligibility.required_class),
+            Some(crate::ClusterCommunicationClass::LayerShardHandoff)
+        );
         Ok(())
     }
 
@@ -7505,6 +7626,21 @@ mod tests {
             "scheduler-node",
             ClusterTransportClass::Mixed,
             ClusterExecutionDisposition::Sharded,
+        )
+        .with_communication_eligibility(
+            crate::ClusterCommunicationEligibility::new(
+                "cuda",
+                crate::ClusterCommunicationClass::TensorCollectiveMesh,
+            )
+            .with_supported_classes(vec![
+                crate::ClusterCommunicationClass::RemoteDispatch,
+                crate::ClusterCommunicationClass::ReplicaRouting,
+                crate::ClusterCommunicationClass::LayerShardHandoff,
+                crate::ClusterCommunicationClass::TensorCollectiveMesh,
+            ])
+            .with_detail(
+                "backend `cuda` supports tensor collectives under explicit low-latency mesh transport policy",
+            ),
         )
         .with_execution_topology(ExecutionTopologyPlan::tensor_sharded(
             "cuda",
@@ -7579,6 +7715,14 @@ mod tests {
                 .as_ref()
                 .and_then(|cluster| cluster.shard_handoffs[0].tensor_range_end),
             Some(32)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.communication_eligibility.as_ref())
+                .map(|eligibility| eligibility.required_class),
+            Some(crate::ClusterCommunicationClass::TensorCollectiveMesh)
         );
         Ok(())
     }
