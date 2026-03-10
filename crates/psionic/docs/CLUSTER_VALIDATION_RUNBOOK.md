@@ -24,6 +24,8 @@ This runbook validates two cluster trust postures:
   to planner refusals plus provider-facing execution evidence
 - advertised cluster execution capability profiles published through provider
   capability envelopes before any request executes
+- provider-published cluster trust posture and compute-market trust refusal
+  truth before any request executes
 - command-authorization refusal truth and payout-facing cluster provenance
   surfaces for operator-managed multi-subnet clusters
 
@@ -297,6 +299,31 @@ Interpretation:
 - realized-evidence failure means provider surfaces may be conflating advertised
   capability claims with realized cluster execution truth
 
+## Cluster Trust Publication Drill
+
+Use this sequence before claiming that provider capability surfaces truthfully
+publish the cluster trust posture and compute-market trust refusal truth that
+bound advertised clustered-lane support:
+
+1. Run `cargo test -p psionic-cluster compute_market_assessment_`.
+2. Run `cargo test -p psionic-runtime cluster_compute_market_trust_assessment`.
+3. Run `cargo test -p psionic-runtime backend_selection_can_publish_cluster_compute_market_trust_assessment_truth`.
+4. Run `cargo test -p psionic-provider cluster_trust_assessment`.
+5. If any step fails, do not claim provider-published cluster trust posture or compute-market trust refusal truth for the current build.
+
+Interpretation:
+
+- trust-policy derivation failure means the cluster-owned trust policy no longer
+  produces bounded compute-market trust assessments for trusted-LAN,
+  authenticated configured-peer, or attested configured-peer postures
+- runtime publication failure means the published trust-assessment model or its
+  stable digest is no longer safe to expose through provider capability
+  surfaces
+- provider publication failure means capability envelopes no longer surface the
+  bounded trust posture and refusal reasons operators need, or they are
+  fabricating realized `cluster_execution` evidence while publishing that trust
+  posture
+
 ## Recovery Drill
 
 Use this sequence when validating recovery behavior intentionally:
@@ -391,6 +418,8 @@ The current cluster claim remains evidence-backed only when:
   support or refusal truth
 - the advertised capability publication drill is green before claiming provider-
   published clustered-lane support ahead of execution
+- the cluster trust publication drill is green before claiming provider-
+  published cluster trust posture or compute-market trust refusal truth
 - the authorization and payout provenance drill is green before claiming
   stronger operator audit or payout/dispute posture
 - the benchmark receipt drill is green before claiming benchmark-backed
