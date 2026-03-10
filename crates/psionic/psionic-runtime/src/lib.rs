@@ -5485,6 +5485,9 @@ pub struct BackendSelection {
     /// Declared clustered execution capability profile advertised before any request executes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster_execution_capability_profile: Option<ClusterExecutionCapabilityProfile>,
+    /// Published cluster trust posture that bounds advertised cluster capability claims.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_compute_market_trust_assessment: Option<ClusterComputeMarketTrustAssessment>,
 }
 
 impl BackendSelection {
@@ -5521,6 +5524,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5581,6 +5585,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5615,6 +5620,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5650,6 +5656,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5686,6 +5693,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5724,6 +5732,7 @@ impl BackendSelection {
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
             cluster_execution_capability_profile: None,
+            cluster_compute_market_trust_assessment: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5838,6 +5847,17 @@ impl BackendSelection {
         cluster_execution_capability_profile: ClusterExecutionCapabilityProfile,
     ) -> Self {
         self.cluster_execution_capability_profile = Some(cluster_execution_capability_profile);
+        self
+    }
+
+    /// Attaches published cluster trust posture for capability-side publication.
+    #[must_use]
+    pub fn with_cluster_compute_market_trust_assessment(
+        mut self,
+        cluster_compute_market_trust_assessment: ClusterComputeMarketTrustAssessment,
+    ) -> Self {
+        self.cluster_compute_market_trust_assessment =
+            Some(cluster_compute_market_trust_assessment);
         self
     }
 
@@ -7605,6 +7625,53 @@ mod tests {
         assert_eq!(
             value["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch", "replica_routing"])
+        );
+
+        let decoded: BackendSelection = serde_json::from_value(value)?;
+        assert_eq!(decoded, selection);
+        Ok(())
+    }
+
+    #[test]
+    fn backend_selection_can_publish_cluster_compute_market_trust_assessment_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let trust_assessment = ClusterComputeMarketTrustAssessment {
+            posture: ClusterTrustPosture::TrustedLanSharedAdmission,
+            discovery_posture: ClusterDiscoveryPosture::TrustedLanSeedPeers,
+            trust_policy_digest: String::from("trust-policy-digest"),
+            disposition: ClusterComputeMarketTrustDisposition::Refused,
+            refusal_reasons: vec![
+                ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly,
+                ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport,
+            ],
+        };
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        )
+        .with_cluster_compute_market_trust_assessment(trust_assessment.clone());
+
+        assert_eq!(
+            selection.cluster_compute_market_trust_assessment,
+            Some(trust_assessment.clone())
+        );
+
+        let value = serde_json::to_value(&selection)?;
+        assert_eq!(
+            value["cluster_compute_market_trust_assessment"]["posture"],
+            json!("trusted_lan_shared_admission")
+        );
+        assert_eq!(
+            value["cluster_compute_market_trust_assessment"]["disposition"],
+            json!("refused")
+        );
+        assert_eq!(
+            value["cluster_compute_market_trust_assessment"]["refusal_reasons"],
+            json!([
+                "trusted_lan_shared_admission_only",
+                "missing_authenticated_transport"
+            ])
         );
 
         let decoded: BackendSelection = serde_json::from_value(value)?;
