@@ -8,8 +8,9 @@
 > landed on `main`, after confirming that the active NVIDIA local-runtime gate
 > remains `#3276` -> `#3288` -> `#3248`, after confirming that the active
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
-> after landing `PSI-184` / `#3289` in `64c2a8fc6`, after confirming that
-> `#3290` through `#3292` are now the active remaining C1 queue, and after
+> after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
+> `6eb1d4e18`, after confirming that `#3291` and `#3292` are now the active
+> remaining C1 queue, and after
 > checking live GitHub issue search and confirming that later cluster phases
 > `PSI-188` through `PSI-197` still do not appear to be opened yet.
 >
@@ -96,7 +97,7 @@ As of 2026-03-10, the current issue reality is:
 
 - the first dedicated cluster queue now exists on GitHub
   - `PSI-184` / [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) is landed on `main`
-  - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) is open
+  - `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) is landed on `main`
   - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) is open
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is open
 - later cluster phases `PSI-188` through `PSI-197` are still proposed rather
@@ -142,6 +143,12 @@ on:
     typed UDP `hello`/`ping` handshake, generated `ClusterId`/`NodeId`,
     surfaced node-role truth, and integration coverage proving seeded local
     nodes discover each other without claiming scheduling or execution behavior
+- `PSI-185` / [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290)
+  - landed in `6eb1d4e18`
+  - first-class `ClusterNamespace`, `AdmissionToken`, `ClusterAdmissionConfig`,
+    `NodeEpoch`, and file-backed identity persistence; explicit cross-cluster,
+    admission-mismatch, and stale-epoch refusal diagnostics; and integration
+    coverage proving node identity survives restart while epoch truth advances
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -156,9 +163,11 @@ one:
 - Psionic already has artifact identity, cache invalidation, provenance,
   hardware validation, and delivery-proof substrate that a cluster lane can
   extend instead of replacing
-- there is still no `psionic-cluster` crate, no ordered cluster event log, no
-  membership protocol, no topology-fact replication, and no truthful remote-
-  node scheduling path
+- there is now a `psionic-cluster` crate with trusted-LAN hello/ping
+  discovery, persistent node identity, explicit admission policy, and
+  machine-checkable join refusals, but there is still no ordered cluster event
+  log, authoritative membership protocol, topology-fact replication, or
+  truthful remote-node scheduling path
 - the first honest cluster scope is still a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
@@ -339,7 +348,7 @@ Already on `main`:
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Closed | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Landed in `64c2a8fc6`: established the crate seam and proved that seeded local Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution behavior. |
-| `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Open | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Cluster identity must be persistent, refusal-capable, and distinct from session-local discovery IDs. |
+| `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Closed | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Landed in `6eb1d4e18`: persistent local node identity, explicit namespace/admission config, role-visible node epoch truth, and machine-checkable refusal of admission mismatch, cluster mismatch, and stale-node ambiguity. |
 | `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Open | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | This is the minimum control-plane vocabulary needed for deterministic, replayable cluster truth. |
 | `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Open | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Event sourcing is not operationally real until replay bounds, catchup windows, and recovery semantics are explicit. |
 
@@ -385,7 +394,7 @@ The shortest honest path from today's `main` is:
 1. Open the missing cluster issue queue and keep the IDs aligned to
    `PSI-188` through `PSI-197`.
 2. Execute the remaining open C1 queue
-   `#3290` -> `#3291` -> `#3292`, then open and execute
+   `#3291` -> `#3292`, then open and execute
    `PSI-188` through `PSI-190`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
