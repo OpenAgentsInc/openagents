@@ -234,7 +234,7 @@ Status:
 
 Next:
 
-- `CX-9` is now the first open execution item for Codex replacement work
+- `CX-10` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -457,6 +457,20 @@ Acceptance:
 - this closes the most important T3 Code workbench gap
 
 ### CX-9. Thread-Scoped Terminal And Background Command Lane ([#3366](https://github.com/OpenAgentsInc/openagents/issues/3366))
+
+Status:
+
+- shipped on `main`
+- desktop chat now owns a per-thread shell session lane with `/term open`,
+  `/term write`, `/term resize`, `/term clear`, `/term restart`, and
+  `/term close`, with background output pumped into app state instead of being
+  confused with Codex protocol items
+- active threads now render a dedicated terminal card above the transcript so
+  shell output stays visible and thread-scoped while the user keeps working in
+  the same chat surface
+- `/ps` now lists terminal sessions and `/clean` removes inactive ones, while
+  `Cmd/Ctrl+Shift+T` opens or restarts the active thread terminal without
+  leaving the chat composer flow
 
 Scope:
 

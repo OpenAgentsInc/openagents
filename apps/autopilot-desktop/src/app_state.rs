@@ -976,6 +976,47 @@ pub struct AutopilotProjectIdentity {
     pub defaults: AutopilotProjectDefaults,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotTerminalSessionStatus {
+    Pending,
+    Running,
+    Exited,
+    Failed,
+    Closed,
+}
+
+impl AutopilotTerminalSessionStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Exited => "exited",
+            Self::Failed => "failed",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub const fn is_active(self) -> bool {
+        matches!(self, Self::Pending | Self::Running)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotTerminalSession {
+    pub thread_id: String,
+    pub workspace_root: String,
+    pub shell: String,
+    pub pid: Option<u32>,
+    pub cols: u16,
+    pub rows: u16,
+    pub status: AutopilotTerminalSessionStatus,
+    pub exit_code: Option<i32>,
+    pub lines: Vec<TerminalLine>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+    pub last_error: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AutopilotTurnMetadata {
     pub submission_seq: u64,
@@ -1268,6 +1309,7 @@ pub struct AutopilotChatState {
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub project_registry: std::collections::HashMap<String, AutopilotProjectIdentity>,
+    pub terminal_sessions: std::collections::HashMap<String, AutopilotTerminalSession>,
     pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
     thread_plan_artifacts: std::collections::HashMap<String, AutopilotPlanArtifact>,
     thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
@@ -1366,6 +1408,7 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             project_registry: std::collections::HashMap::new(),
+            terminal_sessions: std::collections::HashMap::new(),
             thread_transcript_cache: std::collections::HashMap::new(),
             thread_plan_artifacts: std::collections::HashMap::new(),
             thread_diff_artifacts,
@@ -1765,6 +1808,13 @@ fn project_name_for_workspace_root(workspace_root: &str) -> String {
         .unwrap_or_else(|| workspace_root.to_string())
 }
 
+fn current_epoch_millis_for_state() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn project_defaults_from_thread_metadata(
     metadata: &AutopilotThreadMetadata,
 ) -> AutopilotProjectDefaults {
@@ -2058,6 +2108,244 @@ impl AutopilotChatState {
             }
         }
         self.rebuild_project_registry();
+    }
+
+    pub fn active_terminal_session(&self) -> Option<&AutopilotTerminalSession> {
+        let thread_id = self.active_thread_id.as_deref()?;
+        self.terminal_sessions.get(thread_id)
+    }
+
+    pub fn terminal_session_inventory(&self) -> Vec<&AutopilotTerminalSession> {
+        let mut sessions = self.terminal_sessions.values().collect::<Vec<_>>();
+        sessions.sort_by(|left, right| {
+            right
+                .updated_at_epoch_ms
+                .cmp(&left.updated_at_epoch_ms)
+                .then_with(|| left.thread_id.cmp(&right.thread_id))
+        });
+        sessions
+    }
+
+    pub fn terminal_session_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Option<&AutopilotTerminalSession> {
+        self.terminal_sessions.get(thread_id)
+    }
+
+    pub fn prepare_terminal_session(
+        &mut self,
+        thread_id: &str,
+        workspace_root: String,
+        shell: String,
+        cols: u16,
+        rows: u16,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: workspace_root.clone(),
+                shell: shell.clone(),
+                pid: None,
+                cols,
+                rows,
+                status: AutopilotTerminalSessionStatus::Pending,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session.workspace_root = workspace_root;
+        session.shell = shell;
+        session.cols = cols;
+        session.rows = rows;
+        session.status = AutopilotTerminalSessionStatus::Pending;
+        session.exit_code = None;
+        session.updated_at_epoch_ms = now;
+        session.last_error = None;
+    }
+
+    pub fn record_terminal_session_opened(
+        &mut self,
+        thread_id: &str,
+        workspace_root: String,
+        shell: String,
+        pid: u32,
+        cols: u16,
+        rows: u16,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: workspace_root.clone(),
+                shell: shell.clone(),
+                pid: Some(pid),
+                cols,
+                rows,
+                status: AutopilotTerminalSessionStatus::Running,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session.workspace_root = workspace_root;
+        session.shell = shell;
+        session.pid = Some(pid);
+        session.cols = cols;
+        session.rows = rows;
+        session.status = AutopilotTerminalSessionStatus::Running;
+        session.exit_code = None;
+        session.updated_at_epoch_ms = now;
+        session.last_error = None;
+    }
+
+    pub fn append_terminal_session_output(
+        &mut self,
+        thread_id: &str,
+        stream: TerminalStream,
+        text: impl Into<String>,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let text = text.into();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let fallback_workspace = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.clone())
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.clone())
+            })
+            .unwrap_or_default();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: fallback_workspace,
+                shell: String::new(),
+                pid: None,
+                cols: 120,
+                rows: 32,
+                status: AutopilotTerminalSessionStatus::Running,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session
+            .lines
+            .push(TerminalLine::new(stream, trimmed.to_string()));
+        if session.lines.len() > 256 {
+            let drop_count = session.lines.len().saturating_sub(256);
+            session.lines.drain(0..drop_count);
+        }
+        session.updated_at_epoch_ms = now;
+    }
+
+    pub fn resize_terminal_session(&mut self, thread_id: &str, cols: u16, rows: u16) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.cols = cols;
+        session.rows = rows;
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn clear_terminal_session_output(&mut self, thread_id: &str) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.lines.clear();
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn record_terminal_session_closed(
+        &mut self,
+        thread_id: &str,
+        exit_code: Option<i32>,
+        reason: Option<String>,
+    ) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.pid = None;
+        session.exit_code = exit_code;
+        session.status = if reason.is_some() {
+            AutopilotTerminalSessionStatus::Failed
+        } else if exit_code.is_some() {
+            AutopilotTerminalSessionStatus::Exited
+        } else {
+            AutopilotTerminalSessionStatus::Closed
+        };
+        session.last_error = reason.clone();
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+        if let Some(reason) = reason {
+            session
+                .lines
+                .push(TerminalLine::new(TerminalStream::Stderr, reason));
+        }
+    }
+
+    pub fn record_terminal_session_failure(&mut self, thread_id: &str, error: String) {
+        let now = current_epoch_millis_for_state();
+        let fallback_workspace = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.clone())
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.clone())
+            })
+            .unwrap_or_default();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: fallback_workspace,
+                shell: String::new(),
+                pid: None,
+                cols: 120,
+                rows: 32,
+                status: AutopilotTerminalSessionStatus::Failed,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: Some(error.clone()),
+            });
+        session.status = AutopilotTerminalSessionStatus::Failed;
+        session.last_error = Some(error.clone());
+        session.updated_at_epoch_ms = now;
+        session
+            .lines
+            .push(TerminalLine::new(TerminalStream::Stderr, error));
+        if session.lines.len() > 256 {
+            let drop_count = session.lines.len().saturating_sub(256);
+            session.lines.drain(0..drop_count);
+        }
+    }
+
+    pub fn remove_inactive_terminal_sessions(&mut self) -> usize {
+        let before = self.terminal_sessions.len();
+        self.terminal_sessions
+            .retain(|_, session| session.status.is_active());
+        before.saturating_sub(self.terminal_sessions.len())
     }
 
     pub fn active_plan_artifact(&self) -> Option<&AutopilotPlanArtifact> {
@@ -3188,6 +3476,7 @@ impl AutopilotChatState {
     pub fn remove_thread(&mut self, thread_id: &str) {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
+        self.terminal_sessions.remove(thread_id);
         self.thread_transcript_cache.remove(thread_id);
         self.thread_plan_artifacts.remove(thread_id);
         self.thread_diff_artifacts.remove(thread_id);
@@ -7422,6 +7711,7 @@ pub struct RenderState {
     pub skill_trust_revocation: SkillTrustRevocationPaneState,
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
+    pub chat_terminal_worker: crate::chat_terminal::ChatTerminalWorker,
     pub cad_demo: CadDemoPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
@@ -7659,21 +7949,22 @@ mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
-        AutopilotMessageStatus, AutopilotRole, AutopilotTurnPlanStep, BuyerResolutionMode,
-        BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap,
-        CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection,
-        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
-        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        AutopilotMessageStatus, AutopilotRole, AutopilotTerminalSessionStatus,
+        AutopilotTurnPlanStep, BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass,
+        CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState,
+        CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode,
+        CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
+        CadThreeDMouseMode, CadThreeDMouseProfile, EarnJobLifecycleProjectionRow,
+        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
+        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
+        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase,
     };
     use crate::bitcoin_display::BitcoinAmountDisplayMode;
     use chrono::TimeZone;
@@ -9662,6 +9953,77 @@ mod tests {
             Some(("thread-a".to_string(), "continue".to_string()))
         );
         assert_eq!(chat.take_pending_steer_submission(11), None);
+    }
+
+    #[test]
+    fn chat_state_tracks_terminal_sessions_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.prepare_terminal_session(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_opened(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            4242,
+            120,
+            32,
+        );
+        chat.append_terminal_session_output("thread-a", TerminalStream::Stdout, "cargo test");
+        chat.append_terminal_session_output("thread-a", TerminalStream::Stderr, "warning");
+
+        let session = chat.active_terminal_session().expect("terminal session");
+        assert_eq!(session.status, AutopilotTerminalSessionStatus::Running);
+        assert_eq!(session.pid, Some(4242));
+        assert_eq!(session.lines.len(), 2);
+
+        chat.record_terminal_session_closed(
+            "thread-a",
+            Some(0),
+            Some("shell exited from /tmp/project-a with status 0".to_string()),
+        );
+        let session = chat
+            .active_terminal_session()
+            .expect("closed terminal session");
+        assert_eq!(session.status, AutopilotTerminalSessionStatus::Failed);
+        assert!(session.last_error.is_some());
+    }
+
+    #[test]
+    fn chat_state_cleans_inactive_terminal_sessions() {
+        let mut chat = AutopilotChatState::default();
+        chat.prepare_terminal_session(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_opened(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            1,
+            120,
+            32,
+        );
+        chat.prepare_terminal_session(
+            "thread-b",
+            "/tmp/project-b".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_failure("thread-b", "failed to start".to_string());
+
+        assert_eq!(chat.remove_inactive_terminal_sessions(), 1);
+        assert!(chat.terminal_session_for_thread("thread-a").is_some());
+        assert!(chat.terminal_session_for_thread("thread-b").is_none());
     }
 
     #[test]

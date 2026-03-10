@@ -199,6 +199,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
+        let chat_terminal_worker = crate::chat_terminal::ChatTerminalWorker::spawn();
         let local_inference_runtime = default_local_inference_runtime().map_err(|error| {
             anyhow::anyhow!("failed to start default local inference runtime: {error}")
         })?;
@@ -357,6 +358,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
+            chat_terminal_worker,
             cad_demo: crate::app_state::CadDemoPaneState::default(),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
             autopilot_goals,

@@ -102,6 +102,18 @@ enum ChatGitComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatTerminalComposerIntent {
+    Open,
+    Write { text: String },
+    Resize { cols: u16, rows: u16 },
+    Clear,
+    Restart,
+    Close,
+    ListSessions,
+    CleanClosed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -157,6 +169,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
     match parse_chat_git_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_chat_git_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_terminal_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_terminal_action(state, prompt, intent);
         }
         Ok(None) => {}
         Err(error) => {
@@ -3252,6 +3274,479 @@ fn build_pr_prep_response(
         response,
         thread_workspace_override: None,
     })
+}
+
+fn parse_chat_terminal_intent(prompt: &str) -> Result<Option<ChatTerminalComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.eq("/ps") {
+        return Ok(Some(ChatTerminalComposerIntent::ListSessions));
+    }
+    if trimmed.eq("/clean") {
+        return Ok(Some(ChatTerminalComposerIntent::CleanClosed));
+    }
+    if matches!(
+        trimmed,
+        "/term" | "/terminal" | "/term open" | "/terminal open"
+    ) {
+        return Ok(Some(ChatTerminalComposerIntent::Open));
+    }
+    if matches!(trimmed, "/term clear" | "/terminal clear") {
+        return Ok(Some(ChatTerminalComposerIntent::Clear));
+    }
+    if matches!(trimmed, "/term restart" | "/terminal restart") {
+        return Ok(Some(ChatTerminalComposerIntent::Restart));
+    }
+    if matches!(trimmed, "/term close" | "/terminal close") {
+        return Ok(Some(ChatTerminalComposerIntent::Close));
+    }
+    if let Some(text) = trimmed
+        .strip_prefix("/term write ")
+        .or_else(|| trimmed.strip_prefix("/terminal write "))
+        .or_else(|| trimmed.strip_prefix("/term send "))
+        .or_else(|| trimmed.strip_prefix("/terminal send "))
+    {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("Usage: `/term write <text>`.".to_string());
+        }
+        return Ok(Some(ChatTerminalComposerIntent::Write {
+            text: text.to_string(),
+        }));
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("/term resize ")
+        .or_else(|| trimmed.strip_prefix("/terminal resize "))
+    {
+        let parts = parse_shell_like_words(rest)?;
+        if parts.len() != 2 {
+            return Err("Usage: `/term resize <cols> <rows>`.".to_string());
+        }
+        let cols = parts[0]
+            .parse::<u16>()
+            .map_err(|_| "Terminal resize requires numeric `<cols>`.".to_string())?;
+        let rows = parts[1]
+            .parse::<u16>()
+            .map_err(|_| "Terminal resize requires numeric `<rows>`.".to_string())?;
+        return Ok(Some(ChatTerminalComposerIntent::Resize { cols, rows }));
+    }
+    if trimmed.starts_with("/term") || trimmed.starts_with("/terminal") {
+        return Err(
+            "Unsupported terminal command. Try `/term open`, `/term write <text>`, `/term resize <cols> <rows>`, `/ps`, or `/clean`."
+                .to_string(),
+        );
+    }
+    Ok(None)
+}
+
+fn active_terminal_thread_id(state: &crate::app_state::RenderState) -> Result<String, String> {
+    state
+        .autopilot_chat
+        .active_thread_id
+        .clone()
+        .ok_or_else(|| "No active thread is selected for terminal control.".to_string())
+}
+
+fn terminal_workspace_for_thread(
+    state: &crate::app_state::RenderState,
+    thread_id: &str,
+) -> Result<String, String> {
+    let metadata = state.autopilot_chat.thread_metadata.get(thread_id);
+    metadata
+        .and_then(|value| value.workspace_root.clone())
+        .or_else(|| metadata.and_then(|value| value.cwd.clone()))
+        .or_else(|| current_chat_workspace_root(state))
+        .or_else(|| current_chat_session_cwd(state))
+        .ok_or_else(|| "No workspace is available for the active thread terminal.".to_string())
+}
+
+fn current_terminal_shell_label() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            if cfg!(target_os = "windows") {
+                Some("cmd".to_string())
+            } else {
+                Some("shell".to_string())
+            }
+        })
+        .unwrap_or_else(|| "shell".to_string())
+}
+
+fn terminal_thread_label(
+    state: &crate::app_state::RenderState,
+    session: &crate::app_state::AutopilotTerminalSession,
+) -> String {
+    state
+        .autopilot_chat
+        .thread_metadata
+        .get(&session.thread_id)
+        .and_then(|metadata| metadata.thread_name.clone())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| session.thread_id.clone())
+}
+
+fn format_terminal_session_inventory(state: &crate::app_state::RenderState) -> String {
+    let sessions = state.autopilot_chat.terminal_session_inventory();
+    if sessions.is_empty() {
+        return "No terminal sessions yet. Use `/term open` inside a thread to start one."
+            .to_string();
+    }
+    let mut lines = vec!["Terminal sessions:".to_string()];
+    for session in sessions {
+        let thread_label = terminal_thread_label(state, session);
+        let pid = session
+            .pid
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        lines.push(format!(
+            "- {} [{}] pid:{} size:{}x{} ws:{}",
+            thread_label,
+            session.status.label(),
+            pid,
+            session.cols,
+            session.rows,
+            session.workspace_root
+        ));
+    }
+    lines.join("\n")
+}
+
+fn queue_terminal_command(
+    state: &mut crate::app_state::RenderState,
+    command: crate::chat_terminal::ChatTerminalCommand,
+) -> Result<(), String> {
+    state.chat_terminal_worker.enqueue(command)
+}
+
+fn run_chat_terminal_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatTerminalComposerIntent,
+) -> bool {
+    let active_thread_id = state.autopilot_chat.active_thread_id.clone();
+    if let Some(thread_id) = active_thread_id.as_deref() {
+        state
+            .autopilot_chat
+            .remember_submission_draft(thread_id, prompt.clone());
+    }
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+
+    match intent {
+        ChatTerminalComposerIntent::ListSessions => {
+            let response = format_terminal_session_inventory(state);
+            state
+                .autopilot_chat
+                .append_local_exchange(prompt, response, false);
+            true
+        }
+        ChatTerminalComposerIntent::CleanClosed => {
+            let removed = state.autopilot_chat.remove_inactive_terminal_sessions();
+            let response = if removed == 0 {
+                "No closed terminal sessions needed cleanup.".to_string()
+            } else {
+                format!("Removed {removed} closed terminal session(s).")
+            };
+            state
+                .autopilot_chat
+                .append_local_exchange(prompt, response, false);
+            true
+        }
+        ChatTerminalComposerIntent::Clear => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            if state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .is_none()
+            {
+                state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "No terminal session exists for this thread.",
+                    true,
+                );
+                return true;
+            }
+            state
+                .autopilot_chat
+                .clear_terminal_session_output(thread_id.as_str());
+            state.autopilot_chat.append_local_exchange(
+                prompt,
+                "Cleared the active thread terminal buffer.",
+                false,
+            );
+            true
+        }
+        ChatTerminalComposerIntent::Open => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            if state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .is_some_and(|session| session.status.is_active())
+            {
+                state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "A terminal session is already active for this thread. Use `/term restart` or `/term write <text>`.",
+                    true,
+                );
+                return true;
+            }
+            let workspace = match terminal_workspace_for_thread(state, thread_id.as_str()) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            let (cols, rows) = crate::chat_terminal::default_terminal_size();
+            state.autopilot_chat.prepare_terminal_session(
+                thread_id.as_str(),
+                workspace.clone(),
+                current_terminal_shell_label(),
+                cols,
+                rows,
+            );
+            match queue_terminal_command(
+                state,
+                crate::chat_terminal::ChatTerminalCommand::Open {
+                    thread_id: thread_id.clone(),
+                    workspace: workspace.clone(),
+                    cols,
+                    rows,
+                },
+            ) {
+                Ok(()) => state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    format!("Opening thread terminal in `{workspace}`."),
+                    false,
+                ),
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .record_terminal_session_failure(thread_id.as_str(), error.clone());
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                }
+            }
+            true
+        }
+        ChatTerminalComposerIntent::Write { text } => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            if !state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .is_some_and(|session| session.status.is_active())
+            {
+                state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "No active terminal session exists for this thread. Use `/term open` first.",
+                    true,
+                );
+                return true;
+            }
+            match queue_terminal_command(
+                state,
+                crate::chat_terminal::ChatTerminalCommand::Write {
+                    thread_id: thread_id.clone(),
+                    text: text.clone(),
+                },
+            ) {
+                Ok(()) => state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    format!("Sent to thread terminal: `{}`", truncate_line(&text, 72)),
+                    false,
+                ),
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .record_terminal_session_failure(thread_id.as_str(), error.clone());
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                }
+            }
+            true
+        }
+        ChatTerminalComposerIntent::Resize { cols, rows } => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            if !state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .is_some_and(|session| session.status.is_active())
+            {
+                state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "No active terminal session exists for this thread. Use `/term open` first.",
+                    true,
+                );
+                return true;
+            }
+            let cols = crate::chat_terminal::normalize_terminal_cols(cols);
+            let rows = crate::chat_terminal::normalize_terminal_rows(rows);
+            state
+                .autopilot_chat
+                .resize_terminal_session(thread_id.as_str(), cols, rows);
+            match queue_terminal_command(
+                state,
+                crate::chat_terminal::ChatTerminalCommand::Resize {
+                    thread_id: thread_id.clone(),
+                    cols,
+                    rows,
+                },
+            ) {
+                Ok(()) => state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    format!("Resized the thread terminal to {}x{}.", cols, rows),
+                    false,
+                ),
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .record_terminal_session_failure(thread_id.as_str(), error.clone());
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                }
+            }
+            true
+        }
+        ChatTerminalComposerIntent::Restart => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            let workspace = match terminal_workspace_for_thread(state, thread_id.as_str()) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            let (cols, rows) = state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .map(|session| (session.cols, session.rows))
+                .unwrap_or_else(crate::chat_terminal::default_terminal_size);
+            state.autopilot_chat.prepare_terminal_session(
+                thread_id.as_str(),
+                workspace.clone(),
+                current_terminal_shell_label(),
+                cols,
+                rows,
+            );
+            match queue_terminal_command(
+                state,
+                crate::chat_terminal::ChatTerminalCommand::Restart {
+                    thread_id: thread_id.clone(),
+                    workspace: workspace.clone(),
+                    cols,
+                    rows,
+                },
+            ) {
+                Ok(()) => state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    format!("Restarting the thread terminal in `{workspace}`."),
+                    false,
+                ),
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .record_terminal_session_failure(thread_id.as_str(), error.clone());
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                }
+            }
+            true
+        }
+        ChatTerminalComposerIntent::Close => {
+            let thread_id = match active_terminal_thread_id(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                    return true;
+                }
+            };
+            if state
+                .autopilot_chat
+                .terminal_session_for_thread(thread_id.as_str())
+                .is_none()
+            {
+                state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "No terminal session exists for this thread.",
+                    true,
+                );
+                return true;
+            }
+            match queue_terminal_command(
+                state,
+                crate::chat_terminal::ChatTerminalCommand::Close {
+                    thread_id: thread_id.clone(),
+                },
+            ) {
+                Ok(()) => state.autopilot_chat.append_local_exchange(
+                    prompt,
+                    "Closing the active thread terminal session.",
+                    false,
+                ),
+                Err(error) => {
+                    state
+                        .autopilot_chat
+                        .record_terminal_session_failure(thread_id.as_str(), error.clone());
+                    state
+                        .autopilot_chat
+                        .append_local_exchange(prompt, error, true);
+                }
+            }
+            true
+        }
+    }
 }
 
 fn chat_session_workspace_roots(state: &crate::app_state::RenderState) -> Vec<String> {
@@ -10298,20 +10793,20 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatGitComposerIntent, ChatSpacetimeComposerIntent, ChatWalletComposerIntent,
-        ChatWalletMessagePayload, DirectMessageComposerIntent, ManagedChatComposerIntent,
-        build_direct_message_outbound_message, build_managed_chat_join_request_event,
-        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
-        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
-        build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
-        classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
-        extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
-        git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
-        loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_git_intent,
-        parse_chat_spacetime_intent, parse_chat_wallet_intent,
-        parse_direct_message_creation_intent, parse_direct_message_room_intent,
-        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
-        resolve_wallet_blink_env_from_secure_values,
+        ChatGitComposerIntent, ChatSpacetimeComposerIntent, ChatTerminalComposerIntent,
+        ChatWalletComposerIntent, ChatWalletMessagePayload, DirectMessageComposerIntent,
+        ManagedChatComposerIntent, build_direct_message_outbound_message,
+        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
+        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
+        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
+        chat_wallet_payment_status_summary, classify_provider_failure, default_pr_base_branch,
+        extract_chat_wallet_payload, extract_target_provider_pubkeys, git_common_worktree_root,
+        git_current_branch, git_local_branch_exists, github_compare_url,
+        is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, parse_chat_git_intent, parse_chat_spacetime_intent,
+        parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
+        parse_direct_message_room_intent, parse_managed_chat_composer_intent,
+        parse_managed_chat_mention_prefix, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
@@ -11133,6 +11628,36 @@ mod tests {
             })
         );
         assert!(parse_chat_git_intent("/git worktree add ../feature-only").is_err());
+    }
+
+    #[test]
+    fn chat_terminal_commands_parse_session_and_cleanup_syntax() {
+        assert_eq!(
+            parse_chat_terminal_intent("/term open").unwrap(),
+            Some(ChatTerminalComposerIntent::Open)
+        );
+        assert_eq!(
+            parse_chat_terminal_intent("/term write cargo test -p autopilot-desktop").unwrap(),
+            Some(ChatTerminalComposerIntent::Write {
+                text: "cargo test -p autopilot-desktop".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_terminal_intent("/term resize 140 48").unwrap(),
+            Some(ChatTerminalComposerIntent::Resize {
+                cols: 140,
+                rows: 48
+            })
+        );
+        assert_eq!(
+            parse_chat_terminal_intent("/ps").unwrap(),
+            Some(ChatTerminalComposerIntent::ListSessions)
+        );
+        assert_eq!(
+            parse_chat_terminal_intent("/clean").unwrap(),
+            Some(ChatTerminalComposerIntent::CleanClosed)
+        );
+        assert!(parse_chat_terminal_intent("/term resize 140").is_err());
     }
 
     #[test]

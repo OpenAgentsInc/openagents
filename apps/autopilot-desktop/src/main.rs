@@ -12,6 +12,7 @@ mod apple_fm_bridge;
 mod bitcoin_display;
 mod cad_rebuild_worker;
 mod chat_spacetime;
+mod chat_terminal;
 mod codex_lane;
 mod credentials;
 mod economy_kernel_receipts;
