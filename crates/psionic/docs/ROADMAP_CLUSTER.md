@@ -136,6 +136,11 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is landed on `main`
     - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is landed on `main`
     - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is landed on `main`
+  - the next follow-on queue is now open for compute-market trust hardening
+    - `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) is open
+    - `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) is open
+    - `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) is open
+    - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -620,6 +625,32 @@ Required outcome:
 - keep runtime/provider execution and settlement evidence aligned with the same
   bounded provenance truth, then add validation gates for those claims
 
+### Compute-market trust hardening follow-on
+
+Tracked by open `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319)
+through `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322).
+
+Current truth:
+
+- the D1 through D3 queues made operator-managed clusters explicit, signed, and
+  provenance-aware, but they did not make current postures market-safe
+- current cluster trust postures are still trusted-LAN or authenticated
+  configured-peer only, which is truthful for one operator or one lab but not a
+  wider compute-market
+- there is still no market-facing trust refusal contract, signed cluster
+  evidence bundle export, attested node-identity seam, or non-LAN discovery
+  posture suitable for a distributed-cluster claim
+- any compute-market distributed-cluster language would still outrun the code
+  unless that boundary is made machine-checkable
+
+Required outcome:
+
+- make current non-market-safe postures refusal-capable instead of doc-only
+- bind clustered execution evidence into signed exportable bundles before
+  talking about audit or dispute handling outside operator-managed posture
+- add attestation-aware admission and explicit non-LAN discovery posture before
+  widening cluster claims toward a compute-market fabric
+
 ## GitHub-Backed Roadmap Items
 
 Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs
@@ -729,6 +760,15 @@ clusters now that signed transport and coordinator authority truth exist on
 | `PSI-208` | [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) | Closed | Extend cluster execution and settlement evidence with command provenance truth | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Landed in `24dd4aee8`: `ClusterExecutionContext` and settlement-linkage inputs now retain bounded command/admission provenance, whole-request and sharded cluster planners now emit that truth from authoritative membership/residency/leadership facts, and provider receipts now serialize payout-facing cluster provenance for audit or later dispute handling. |
 | `PSI-209` | [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) | Closed | Add cluster authorization and payout-provenance validation gates | docs/tests/validation plus cluster crates | Landed in `715539147`: `cluster_validation_matrix` now covers allowed versus refused command flows plus whole-request and sharded payout-provenance surfaces, while the cluster validation runbook now defines the authorization/payout provenance drill and exit gate for stronger audit or dispute claims. |
 
+### Phase D4: compute-market trust hardening follow-on
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-210` | [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) | Open | Define compute-market trust posture and refusal diagnostics | `psionic-cluster`, docs/tests | D3 made operator-managed clusters explicit and provenance-aware, but the code still needs a machine-checkable refusal contract for any broader compute-market trust claim. |
+| `PSI-211` | [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) | Open | Add signed cluster evidence bundle export | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Cluster provenance exists, but there is still no immutable signed bundle that packages clustered execution evidence for later audit or dispute handling. |
+| `PSI-212` | [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) | Open | Add attested node-identity admission seams | `psionic-cluster`, docs/tests | Configured-peer keys are enough for operator-managed rollout, but not enough for market-facing node admission claims. |
+| `PSI-213` | [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) | Open | Add non-LAN discovery posture diagnostics | `psionic-cluster`, docs/tests | Current discovery assumptions are still LAN or configured-peer shaped, so a future distributed-cluster claim needs an explicit wider-network posture and refusal boundary. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -741,17 +781,20 @@ The shortest honest path from today's `main` is:
    closing in `4732fbc26`.
 4. Treat D3 as landed on `main`, with the authorization and payout-provenance
    queue closing in `715539147`.
-5. Keep the active local CUDA throughput queue
+5. Open D4 explicitly instead of widening cluster claims implicitly; work the
+   compute-market hardening queue in order as bounded refusal/hardening work:
+   `#3319` -> `#3320` -> `#3321` -> `#3322`.
+6. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-6. Treat closure of that local CUDA lane as the gate for widening cluster
+7. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-7. Keep current authenticated configured-peer posture explicit and bounded;
+8. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-8. If stronger trust or wider network claims are needed beyond D3, open a new GitHub-
+9. If stronger trust or wider network claims are needed beyond D4, open a new GitHub-
    backed queue instead of extending this roadmap with local placeholders.
-9. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+10. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
@@ -805,15 +848,15 @@ true:
 - downstream OpenAgents systems can tell exactly what cluster topology was
   promised, selected, delivered, and degraded
 
-## Likely Follow-On After This Roadmap
+## Likely Follow-On Beyond D4
 
-There are three likely follow-ons that should remain outside the first cluster
-scope:
+There are three likely follow-ons that should remain outside the current D4
+queue:
 
 - optional Exo interoperability experiments, only after Psionic's own cluster
   substrate is credible
-- adversarial or compute-market trust hardening beyond the operator-managed D1
-  through D3 queues now tracked in this roadmap
+- full compute-market distributed-cluster rollout, but only after D4 and the
+  local CUDA truth gate both close
 - Apple clustered execution, but only after the native Metal GPT-OSS roadmap is
   complete and cluster placement can express communication-class eligibility
   honestly
