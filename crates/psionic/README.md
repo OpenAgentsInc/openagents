@@ -25,6 +25,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-ir`: canonical graph and execution-plan representation.
 - `psionic-compiler`: lowering and scheduling boundaries over IR.
 - `psionic-runtime`: runtime traits for devices, allocation, and execution.
+- `psionic-cluster`: trusted-LAN cluster control-plane substrate.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
 - `psionic-provider`: capability, readiness, and receipt-facing types.
