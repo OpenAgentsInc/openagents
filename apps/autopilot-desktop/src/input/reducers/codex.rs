@@ -690,6 +690,7 @@ fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
         approval_policy: super::super::actions::chat_session_approval_policy(state),
         sandbox: super::super::actions::chat_session_thread_sandbox_mode(state),
         personality: super::super::actions::chat_session_personality(state),
+        ephemeral: None,
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {

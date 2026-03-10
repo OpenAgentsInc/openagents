@@ -241,7 +241,8 @@ Status:
 
 Next:
 
-- `CX-11` is now the first open execution item for Codex replacement work
+- `CX-12` is now the first open remote-companion item for Codex replacement
+  work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -524,6 +525,19 @@ Acceptance:
   without needing the Codex TUI as a fallback control panel
 
 ### CX-11. Non-Interactive `exec` Replacement ([#3368](https://github.com/OpenAgentsInc/openagents/issues/3368))
+
+Status:
+
+- shipped on `main`
+- `autopilot-codex-exec` now provides an app-owned one-shot Codex runner with
+  prompt/stdin input, image attachments, thread resume-by-id, sandbox and
+  approval selection, optional ephemeral threads, output-schema forwarding, and
+  final-message file output
+- the binary now emits stable JSONL automation events with familiar Codex event
+  names such as `thread.started`, `turn.completed`, and `item.completed`,
+  while preserving the underlying app-server item payload in each emitted item
+- the public usage contract for local scripts now lives in
+  `docs/codex/EXEC.md`
 
 Scope:
 

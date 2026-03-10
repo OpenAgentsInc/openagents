@@ -1179,6 +1179,10 @@ fn probe_executable_version(program: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::panic,
+    reason = "These installation-probe tests use explicit panic messages for fixture setup."
+)]
 mod tests {
     use super::{probe_codex_installation, resolve_app_server_command};
     use std::fs;

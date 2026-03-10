@@ -537,6 +537,7 @@ dependencies = [
  "base64 0.22.1",
  "bitcoin 0.32.8",
  "chrono",
+ "clap",
  "codex-client",
  "dirs 6.0.0",
  "futures-util",
