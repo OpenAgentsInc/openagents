@@ -39,7 +39,7 @@
 > in `1102bffa4`, after landing `PSI-215` / `#3324` in `47410298a`, after
 > landing `PSI-216` / `#3325` in `7c0f34503`, after opening `PSI-217`
 > through `PSI-219` as `#3329` through `#3331` for the post-E1 follow-on
-> queue, and after checking live
+> queue, after landing `PSI-217` / `#3329` in `7aa76a2a9`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -156,7 +156,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is landed on `main`
     - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is landed on `main`
   - the post-E1 follow-on queue now exists on GitHub
-    - `PSI-217` / [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) is open
+    - `PSI-217` / [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) is landed on `main`
     - `PSI-218` / [#3330](https://github.com/OpenAgentsInc/openagents/issues/3330) is open
     - `PSI-219` / [#3331](https://github.com/OpenAgentsInc/openagents/issues/3331) is open
 - the current backend execution gates are still real and must remain visible
@@ -817,7 +817,7 @@ evidence truth.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-217` | [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) | Open | Add bounded Exo placement-hint adapter for remote scheduling | `psionic-cluster`, runtime evidence/tests | The first honest Exo follow-on is not delegating execution, but testing whether Exo-derived placement input can bias Psionic scheduling without widening eligibility or weakening Psionic-owned receipts and evidence. |
+| `PSI-217` | [#3329](https://github.com/OpenAgentsInc/openagents/issues/3329) | Closed | Add bounded Exo placement-hint adapter for remote scheduling | `psionic-cluster`, runtime evidence/tests | Landed in `7aa76a2a9`: Psionic now has a bounded `ExoPlacementHint` seam that can bias tie-breaking among already-eligible whole-request candidates, surfaces accepted or ignored hint diagnostics in selection notes and runtime cluster evidence, and retains final placement authority plus eligibility truth inside Psionic-owned scheduling and receipts. |
 | `PSI-218` | [#3330](https://github.com/OpenAgentsInc/openagents/issues/3330) | Open | Make an explicit keep/discard decision on optional Exo interoperability | docs/tests plus cluster crates | The Exo interop seam must end in a deliberate decision rather than accidental dependency drift, with a concrete memo pointing at real integration cost, evidence truth, and dependency risk. |
 
 ### Phase F2: post-Metal communication-class eligibility follow-on
@@ -848,8 +848,8 @@ The shortest honest path from today's `main` is:
 6. Treat E1 as landed on `main`, with the wider-network discovery queue now
    closing in `7c0f34503`.
 7. Treat the former local CUDA truth gate `#3276` -> `#3288` -> `#3248` as
-   closed on `main`, and use that closure to work the active F1 queue in order:
-   `#3329` -> `#3330`.
+   closed on `main`, and use that closure to work the remaining active F1 queue
+   in order: `#3330`.
 8. Keep `#3331` explicitly blocked on the Metal roadmap queue
    `#3286` -> `#3285` -> `#3269` -> `#3262`; do not use Exo or generic cluster
    work to backdoor Apple cluster eligibility claims.
