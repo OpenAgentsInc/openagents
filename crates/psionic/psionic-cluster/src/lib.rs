@@ -18,6 +18,7 @@ use std::{
 };
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use psionic_runtime::{ClusterEvidenceBundleVerificationError, SignedClusterEvidenceBundle};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -727,6 +728,54 @@ pub struct ClusterNodeIdentity {
     pub role: NodeRole,
     /// Message-signing public key advertised by this node.
     pub auth_public_key: String,
+}
+
+impl ClusterNodeIdentity {
+    /// Verifies that a signed cluster evidence bundle was exported by this node identity.
+    pub fn verify_signed_evidence_bundle(
+        &self,
+        bundle: &SignedClusterEvidenceBundle,
+    ) -> Result<(), ClusterEvidenceBundleIdentityError> {
+        if bundle.signature.signer_node_id != self.node_id.as_str() {
+            return Err(ClusterEvidenceBundleIdentityError::SignerNodeMismatch {
+                expected: self.node_id.clone(),
+                actual: bundle.signature.signer_node_id.clone(),
+            });
+        }
+        if bundle.signature.signer_public_key != self.auth_public_key {
+            return Err(ClusterEvidenceBundleIdentityError::SignerKeyMismatch {
+                expected: self.auth_public_key.clone(),
+                actual: bundle.signature.signer_public_key.clone(),
+            });
+        }
+        bundle
+            .verify()
+            .map_err(ClusterEvidenceBundleIdentityError::Verification)
+    }
+}
+
+/// Verification failure while binding one signed evidence bundle to a cluster node identity.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterEvidenceBundleIdentityError {
+    /// The bundle was signed by a different node ID than the current identity.
+    #[error("cluster evidence bundle signer node mismatch: expected {expected:?}, found {actual}")]
+    SignerNodeMismatch {
+        /// Node ID surfaced by the current cluster identity.
+        expected: NodeId,
+        /// Signer node ID carried by the bundle.
+        actual: String,
+    },
+    /// The bundle was signed by a different public key than the current identity.
+    #[error("cluster evidence bundle signer key mismatch: expected {expected}, found {actual}")]
+    SignerKeyMismatch {
+        /// Public key surfaced by the current cluster identity.
+        expected: String,
+        /// Public key carried by the bundle.
+        actual: String,
+    },
+    /// The bundle signature or digest was invalid.
+    #[error(transparent)]
+    Verification(#[from] ClusterEvidenceBundleVerificationError),
 }
 
 /// Minimal local-cluster transport configuration for the first trusted-LAN seam.
@@ -2117,6 +2166,83 @@ mod tests {
             .compute_market_trust_assessment();
 
         assert_ne!(trusted_lan.stable_digest(), configured.stable_digest());
+    }
+
+    #[test]
+    fn cluster_node_identity_verifies_signed_evidence_bundle() {
+        let admission = sample_admission();
+        let signing_key = sample_signing_key(13);
+        let identity = sample_identity(&admission, "exporter", NodeRole::Mixed, &signing_key);
+        let bundle = psionic_runtime::ClusterEvidenceBundlePayload::new(
+            "text_generation",
+            "request-1",
+            "request-digest",
+            "fixture-decoder-v0",
+            "v0",
+            "cuda",
+            "served-artifact-digest",
+            "weight-bundle-digest",
+            psionic_runtime::ClusterEvidenceBundleStatus::Succeeded,
+            psionic_runtime::ClusterExecutionContext::new(
+                identity.cluster_id.as_str(),
+                "cluster-state-digest",
+                "cluster-topology-digest",
+                identity.node_id.as_str(),
+                psionic_runtime::ClusterTransportClass::TrustedLanDatagram,
+                psionic_runtime::ClusterExecutionDisposition::RemoteWholeRequest,
+            ),
+        )
+        .sign(identity.node_id.as_str(), &signing_key);
+
+        let verification = identity.verify_signed_evidence_bundle(&bundle);
+
+        assert!(
+            verification.is_ok(),
+            "bundle should verify against node identity"
+        );
+    }
+
+    #[test]
+    fn cluster_node_identity_refuses_bundle_with_wrong_signer_key() {
+        let admission = sample_admission();
+        let identity_signing_key = sample_signing_key(14);
+        let identity = sample_identity(
+            &admission,
+            "exporter",
+            NodeRole::Mixed,
+            &identity_signing_key,
+        );
+        let other_signing_key = sample_signing_key(15);
+        let bundle = psionic_runtime::ClusterEvidenceBundlePayload::new(
+            "text_generation",
+            "request-1",
+            "request-digest",
+            "fixture-decoder-v0",
+            "v0",
+            "cuda",
+            "served-artifact-digest",
+            "weight-bundle-digest",
+            psionic_runtime::ClusterEvidenceBundleStatus::Succeeded,
+            psionic_runtime::ClusterExecutionContext::new(
+                identity.cluster_id.as_str(),
+                "cluster-state-digest",
+                "cluster-topology-digest",
+                identity.node_id.as_str(),
+                psionic_runtime::ClusterTransportClass::TrustedLanDatagram,
+                psionic_runtime::ClusterExecutionDisposition::RemoteWholeRequest,
+            ),
+        )
+        .sign(identity.node_id.as_str(), &other_signing_key);
+
+        let verification = identity.verify_signed_evidence_bundle(&bundle);
+
+        assert!(
+            matches!(
+                verification,
+                Err(ClusterEvidenceBundleIdentityError::SignerKeyMismatch { .. })
+            ),
+            "bundle with a different control-plane key should be refused"
+        );
     }
 
     #[test]
