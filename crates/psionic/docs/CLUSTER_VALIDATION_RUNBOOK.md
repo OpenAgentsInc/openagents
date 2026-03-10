@@ -294,6 +294,28 @@ Budget override env vars:
 Do not loosen those budgets in the roadmap or issue closure comment without
 recording why.
 
+## Benchmark Receipt Drill
+
+Use this sequence before claiming that cluster planner performance is backed by
+typed benchmark receipts rather than by ad hoc timing notes:
+
+1. Run `crates/psionic/scripts/benchmark-cluster-gates.sh --json-out /tmp/psionic-cluster-bench`.
+2. Confirm the script reports `benchmark_receipt_json_out=/tmp/psionic-cluster-bench`.
+3. Confirm the directory contains `whole_request_scheduler.json`, `recovery_catchup.json`, `replicated_serving.json`, `layer_sharded_planner.json`, and `tensor_sharded_planner.json`.
+4. Inspect one receipt directly, for example `sed -n '1,80p' /tmp/psionic-cluster-bench/whole_request_scheduler.json`, and confirm it includes `schema_version`, the matching `benchmark_id`, and `outcome: "passed"`.
+5. If any step fails, do not claim benchmark-receipt-backed performance truth for the current build.
+
+Interpretation:
+
+- script failure means the release benchmark gate no longer emits the typed
+  receipt artifacts the roadmap depends on
+- missing receipt files mean the output naming contract is no longer stable
+  enough for operator or CI consumers
+- schema or benchmark-id mismatch means the persisted JSON no longer matches
+  the typed receipt contract
+- failed receipt outcomes mean the current cluster planner performance envelope
+  is not within the documented benchmark budget
+
 ## Exit Criteria
 
 The current cluster claim remains evidence-backed only when:
@@ -304,5 +326,7 @@ The current cluster claim remains evidence-backed only when:
 - the coordinator failover drill is green before claiming fenced failover truth
 - the authorization and payout provenance drill is green before claiming
   stronger operator audit or payout/dispute posture
+- the benchmark receipt drill is green before claiming benchmark-backed
+  cluster performance truth
 - the release benchmark gate is green
 - roadmap and issue comments reference the exact tests and runbook paths above
