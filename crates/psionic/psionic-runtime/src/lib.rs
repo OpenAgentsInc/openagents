@@ -800,6 +800,168 @@ pub enum ClusterCommunicationClass {
     TensorCollectiveMesh,
 }
 
+/// High-level clustered execution lane that may be declared by a backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterExecutionLane {
+    /// Whole-request remote dispatch to one executor node.
+    RemoteWholeRequest,
+    /// Replica-routed serving to one warm lane.
+    ReplicaRouted,
+    /// Layer-sharded execution with cross-node activation or KV handoff.
+    LayerSharded,
+    /// Tensor-sharded execution with cross-node collectives.
+    TensorSharded,
+}
+
+impl ClusterExecutionLane {
+    /// Returns the communication class required by this clustered lane.
+    #[must_use]
+    pub const fn required_communication_class(self) -> ClusterCommunicationClass {
+        match self {
+            Self::RemoteWholeRequest => ClusterCommunicationClass::RemoteDispatch,
+            Self::ReplicaRouted => ClusterCommunicationClass::ReplicaRouting,
+            Self::LayerSharded => ClusterCommunicationClass::LayerShardHandoff,
+            Self::TensorSharded => ClusterCommunicationClass::TensorCollectiveMesh,
+        }
+    }
+}
+
+/// Runtime-owned declared clustered-lane capability contract for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterExecutionCapabilityProfile {
+    /// Runtime backend this profile applies to.
+    pub runtime_backend: String,
+    /// Declared clustered execution lanes supported by the backend today.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_lanes: Vec<ClusterExecutionLane>,
+    /// Declared communication classes supported by the backend today.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_communication_classes: Vec<ClusterCommunicationClass>,
+    /// Plain-language declaration or refusal detail for the current profile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterExecutionCapabilityProfile {
+    /// Creates a declared cluster capability profile for one runtime backend.
+    #[must_use]
+    pub fn new(runtime_backend: impl Into<String>) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            supported_lanes: Vec::new(),
+            supported_communication_classes: Vec::new(),
+            detail: None,
+        }
+    }
+
+    /// Replaces the supported clustered lanes and normalizes the profile.
+    #[must_use]
+    pub fn with_supported_lanes(mut self, mut supported_lanes: Vec<ClusterExecutionLane>) -> Self {
+        supported_lanes.sort_unstable();
+        supported_lanes.dedup();
+        self.supported_lanes = supported_lanes;
+        self.normalize_supported_communication_classes();
+        self
+    }
+
+    /// Replaces the supported communication classes and normalizes the profile.
+    #[must_use]
+    pub fn with_supported_communication_classes(
+        mut self,
+        mut supported_communication_classes: Vec<ClusterCommunicationClass>,
+    ) -> Self {
+        supported_communication_classes.sort_unstable();
+        supported_communication_classes.dedup();
+        self.supported_communication_classes = supported_communication_classes;
+        self.normalize_supported_communication_classes();
+        self
+    }
+
+    /// Attaches plain-language declaration or refusal detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// Returns whether the profile explicitly supports one clustered lane.
+    #[must_use]
+    pub fn supports_lane(&self, lane: ClusterExecutionLane) -> bool {
+        self.supported_lanes.contains(&lane)
+    }
+
+    /// Returns whether the profile explicitly supports one communication class.
+    #[must_use]
+    pub fn supports_communication_class(
+        &self,
+        communication_class: ClusterCommunicationClass,
+    ) -> bool {
+        self.supported_communication_classes
+            .contains(&communication_class)
+    }
+
+    /// Builds a communication-class eligibility record from the declared profile.
+    #[must_use]
+    pub fn communication_eligibility(
+        &self,
+        required_class: ClusterCommunicationClass,
+    ) -> ClusterCommunicationEligibility {
+        let mut eligibility =
+            ClusterCommunicationEligibility::new(self.runtime_backend.clone(), required_class)
+                .with_supported_classes(self.supported_communication_classes.clone());
+        if let Some(detail) = &self.detail {
+            eligibility = eligibility.with_detail(detail.clone());
+        }
+        eligibility
+    }
+
+    /// Returns a stable digest for the declared clustered capability profile.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_execution_capability_profile|");
+        hasher.update(self.runtime_backend.as_bytes());
+        for lane in &self.supported_lanes {
+            hasher.update(b"|lane|");
+            hasher.update(match lane {
+                ClusterExecutionLane::RemoteWholeRequest => b"remote_whole_request".as_slice(),
+                ClusterExecutionLane::ReplicaRouted => b"replica_routed".as_slice(),
+                ClusterExecutionLane::LayerSharded => b"layer_sharded".as_slice(),
+                ClusterExecutionLane::TensorSharded => b"tensor_sharded".as_slice(),
+            });
+        }
+        for communication_class in &self.supported_communication_classes {
+            hasher.update(b"|communication_class|");
+            hasher.update(match communication_class {
+                ClusterCommunicationClass::RemoteDispatch => b"remote_dispatch".as_slice(),
+                ClusterCommunicationClass::ReplicaRouting => b"replica_routing".as_slice(),
+                ClusterCommunicationClass::LayerShardHandoff => b"layer_shard_handoff".as_slice(),
+                ClusterCommunicationClass::TensorCollectiveMesh => {
+                    b"tensor_collective_mesh".as_slice()
+                }
+            });
+        }
+        if let Some(detail) = &self.detail {
+            hasher.update(b"|detail|");
+            hasher.update(detail.as_bytes());
+        }
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn normalize_supported_communication_classes(&mut self) {
+        let mut supported_communication_classes = self.supported_communication_classes.clone();
+        supported_communication_classes.extend(
+            self.supported_lanes
+                .iter()
+                .map(|lane| lane.required_communication_class()),
+        );
+        supported_communication_classes.sort_unstable();
+        supported_communication_classes.dedup();
+        self.supported_communication_classes = supported_communication_classes;
+    }
+}
+
 /// Explicit backend communication-class eligibility used by cluster planning and evidence.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterCommunicationEligibility {
@@ -851,6 +1013,15 @@ impl ClusterCommunicationEligibility {
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
         self
+    }
+
+    /// Builds a communication-class eligibility record from a declared capability profile.
+    #[must_use]
+    pub fn from_capability_profile(
+        capability_profile: &ClusterExecutionCapabilityProfile,
+        required_class: ClusterCommunicationClass,
+    ) -> Self {
+        capability_profile.communication_eligibility(required_class)
     }
 }
 
@@ -5798,26 +5969,27 @@ mod tests {
         CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterAdmissionFactKind,
         ClusterArtifactResidencyDisposition, ClusterCommandAuthorityScopeEvidence,
         ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence,
-        ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus,
-        ClusterEvidenceBundleVerificationError, ClusterExecutionContext,
-        ClusterExecutionDisposition, ClusterFallbackReason, ClusterFallbackStep,
-        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
-        ClusterSettlementProvenanceInput, ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK,
-        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
-        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
-        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
-        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
-        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
-        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        ClusterCommunicationClass, ClusterCommunicationEligibility, ClusterEvidenceBundlePayload,
+        ClusterEvidenceBundleStatus, ClusterEvidenceBundleVerificationError,
+        ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
+        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
+        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterSettlementProvenanceInput,
+        ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext,
+        DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
+        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
+        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
@@ -7310,6 +7482,100 @@ mod tests {
         );
         assert_eq!(delivered.cluster_execution, Some(cluster_execution));
         Ok(())
+    }
+
+    #[test]
+    fn cluster_execution_capability_profile_round_trips_with_stable_digest() {
+        let profile = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterExecutionLane::LayerSharded,
+                ClusterExecutionLane::TensorSharded,
+            ])
+            .with_detail("cluster-capable CUDA backend profile");
+        let encoded = match serde_json::to_string(&profile) {
+            Ok(value) => value,
+            Err(error) => panic!("cluster capability profile should encode: {error}"),
+        };
+        let encoded_again = match serde_json::to_string(&profile) {
+            Ok(value) => value,
+            Err(error) => panic!("cluster capability profile should encode repeatably: {error}"),
+        };
+        let decoded: ClusterExecutionCapabilityProfile = match serde_json::from_str(&encoded) {
+            Ok(value) => value,
+            Err(error) => panic!("cluster capability profile should decode: {error}"),
+        };
+        assert_eq!(encoded, encoded_again);
+        assert_eq!(decoded, profile);
+        assert_eq!(decoded.stable_digest(), profile.stable_digest());
+        assert!(profile.supports_lane(ClusterExecutionLane::LayerSharded));
+        assert!(profile.supports_communication_class(ClusterCommunicationClass::LayerShardHandoff));
+        assert!(
+            profile.supports_communication_class(ClusterCommunicationClass::TensorCollectiveMesh)
+        );
+    }
+
+    #[test]
+    fn cluster_execution_capability_profile_digest_changes_when_lane_support_changes() {
+        let replicated_only = ClusterExecutionCapabilityProfile::new("cpu")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+            ])
+            .with_detail("cpu supports dispatch and replica routing only");
+        let layer_sharded = ClusterExecutionCapabilityProfile::new("cpu")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterExecutionLane::LayerSharded,
+            ])
+            .with_detail("cpu profile changed");
+        assert_ne!(
+            replicated_only.stable_digest(),
+            layer_sharded.stable_digest()
+        );
+        assert!(!replicated_only.supports_lane(ClusterExecutionLane::LayerSharded));
+        assert!(layer_sharded.supports_lane(ClusterExecutionLane::LayerSharded));
+    }
+
+    #[test]
+    fn communication_eligibility_can_be_derived_from_capability_profile() {
+        let profile = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterExecutionLane::LayerSharded,
+            ])
+            .with_detail("declared CUDA profile");
+
+        let layer_eligibility = ClusterCommunicationEligibility::from_capability_profile(
+            &profile,
+            ClusterCommunicationClass::LayerShardHandoff,
+        );
+        let tensor_eligibility = ClusterCommunicationEligibility::from_capability_profile(
+            &profile,
+            ClusterCommunicationClass::TensorCollectiveMesh,
+        );
+
+        assert!(layer_eligibility.eligible);
+        assert_eq!(
+            layer_eligibility.supported_classes,
+            vec![
+                ClusterCommunicationClass::RemoteDispatch,
+                ClusterCommunicationClass::ReplicaRouting,
+                ClusterCommunicationClass::LayerShardHandoff,
+            ]
+        );
+        assert_eq!(
+            layer_eligibility.detail.as_deref(),
+            Some("declared CUDA profile")
+        );
+        assert!(!tensor_eligibility.eligible);
+        assert_eq!(
+            tensor_eligibility.required_class,
+            ClusterCommunicationClass::TensorCollectiveMesh
+        );
     }
 
     #[test]
