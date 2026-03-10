@@ -1,6 +1,6 @@
 # Apple FM API Coverage Matrix
 
-Status: `FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, and `FM-8` landed matrix, updated 2026-03-10 from the retained
+Status: `FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, `FM-8`, and `FM-9` landed matrix, updated 2026-03-10 from the retained
 Apple FM audit plus a direct scan of `~/code/python-apple-fm-sdk`, after
 moving the current bridge contract and reusable client into
 `psionic-apple-fm`, after landing typed system-model availability, use-case,
@@ -11,7 +11,9 @@ landing SSE session streaming with snapshot semantics, and after landing typed
 transcript export/import and `from_transcript`-style restore coverage, and
 after landing structured generation with schema-guided typed decode plus a real
 live-bridge receipt, and after landing tool calling with a reusable Rust tool
-trait, loopback callback transport, and a real multi-tool live receipt.
+trait, loopback callback transport, and a real multi-tool live receipt, and
+after landing typed Foundation Models error mapping plus live invalid-schema,
+tool-failure, and context-overflow receipts.
 
 This is the living coverage matrix for the Psionic Apple Foundation Models
 lane. It maps the exported Python SDK surface and its major behavioral families
@@ -45,7 +47,7 @@ Legend:
 | `generable` | Rust-native typed-schema derive path | landed | `FM-7` / `#3352` | Syntax differs from Python, but the typed-schema semantics are now covered. |
 | `Tool` | `psionic-apple-fm::AppleFmTool` + typed tool definitions | landed | `FM-8` / `#3353` | Rust now registers typed tool definitions and executes real Apple FM tool callbacks through the reusable client runtime. |
 | `ToolCallError` | `psionic-apple-fm::AppleFmToolCallError` | landed | `FM-8` / `#3353` | Explicit tool-call failures now carry typed tool name + underlying error detail. |
-| Foundation Models error family | Rust typed error hierarchy | planned | `FM-9` / `#3354` | Current retained lane collapses most failures into strings. |
+| Foundation Models error family | `psionic-apple-fm::{AppleFmErrorCode, AppleFmFoundationModelsError}` | landed | `FM-9` / `#3354` | Reusable Rust lane now exposes the Python-SDK-aligned error family and bridge metadata fields instead of collapsing remote failures into strings. |
 
 ## Bridge Contract Ownership
 
@@ -84,12 +86,12 @@ Legend:
 | Typed transcript export/import and restore semantics | landed | `FM-6` / `#3351` | The Rust lane now exports typed transcript snapshots, restores from typed transcript objects or raw transcript JSON, and preserves the rule that transcript tool history does not enable new tools by itself. |
 | Typed, structured-generation behavior | landed | `FM-7` / `#3352` | Structured generation now uses the Apple FM schema path, with nested/list coverage and a real ignored live-bridge receipt. |
 | Real tool-calling flow | landed | `FM-8` / `#3353` | Tool-enabled sessions now use a session-aware callback contract, with unit coverage and a real ignored multi-tool live receipt. |
-| Typed error mapping | planned | `FM-9` / `#3354` | Must replace generic string failures. |
+| Typed error mapping | landed | `FM-9` / `#3354` | Bridge clients and stream consumers now receive typed Foundation Models errors with failure reason, recovery suggestion, debug detail, refusal explanation, and tool metadata where available. |
 | Desktop/macOS Mission Control Apple FM truth | planned | `FM-10` / `#3355` | Mission Control is still GPT-OSS-first on `main`. |
 
 ## FM-1 Through FM-8 Landed Scope
 
-The following is explicitly landed by `FM-1` through `FM-8` and should remain the
+The following is explicitly landed by `FM-1` through `FM-9` and should remain the
 starting point for later issues:
 
 - `crates/psionic/psionic-apple-fm` exists as the reusable crate for the Apple
@@ -151,8 +153,15 @@ starting point for later issues:
 - tool coverage now includes direct invocation, typed registration, complex
   argument payloads, explicit failure mapping, session registration behavior,
   and an ignored real multi-tool live receipt on macOS
+- the reusable crate now exposes `AppleFmErrorCode` and
+  `AppleFmFoundationModelsError` so remote failures remain typed instead of
+  collapsing into generic request strings
+- the Swift bridge now serializes Foundation Models failure reason, recovery
+  suggestion, debug description, refusal explanation, and tool-call metadata
+  when those fields exist
+- ignored live receipts now exist for invalid generation schema, tool-call
+  failure, and context overflow through the retained Swift bridge
 
-What is intentionally **not** closed by `FM-1` through `FM-8`:
+What is intentionally **not** closed by `FM-1` through `FM-9`:
 
-- typed error taxonomy
 - desktop Mission Control cutover

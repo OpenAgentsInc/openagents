@@ -57,27 +57,51 @@ actor HTTPServer {
 
     private func handleConnection(_ connection: NWConnection) async {
         connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
-            [weak self] data, _, _, error in
-            guard let self else { return }
+        guard let data = await receiveRequestData(connection: connection) else {
+            connection.cancel()
+            return
+        }
+        let response = await self.processRequest(data)
+        switch response {
+        case .buffered(let data):
+            await self.sendResponse(connection: connection, response: data)
+        case .sse(let sessionID, let stream):
+            await self.sendSseResponse(
+                connection: connection,
+                sessionID: sessionID,
+                stream: stream
+            )
+        }
+    }
 
-            if let data, !data.isEmpty {
-                Task {
-                    let response = await self.processRequest(data)
-                    switch response {
-                    case .buffered(let data):
-                        await self.sendResponse(connection: connection, response: data)
-                    case .sse(let sessionID, let stream):
-                        await self.sendSseResponse(
-                            connection: connection,
-                            sessionID: sessionID,
-                            stream: stream
-                        )
-                    }
+    private func receiveRequestData(connection: NWConnection) async -> Data? {
+        var buffer = Data()
+        while true {
+            let received = await withCheckedContinuation {
+                (
+                    continuation: CheckedContinuation<(Data?, Bool, NWError?), Never>
+                ) in
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
+                    data,
+                    _,
+                    isComplete,
+                    error in
+                    continuation.resume(returning: (data, isComplete, error))
                 }
-            } else if let error {
+            }
+
+            if let error = received.2 {
                 print("Receive error: \(error)")
-                connection.cancel()
+                return nil
+            }
+            if let data = received.0, !data.isEmpty {
+                buffer.append(data)
+            }
+            if requestDataIsComplete(buffer) {
+                return buffer
+            }
+            if received.1 {
+                return buffer.isEmpty ? nil : buffer
             }
         }
     }
@@ -115,6 +139,36 @@ actor HTTPServer {
         }
 
         return ParsedRequest(method: method, path: path, body: body)
+    }
+
+    private func requestDataIsComplete(_ data: Data) -> Bool {
+        guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
+            return false
+        }
+        let bodyStart = headerEnd.upperBound
+        guard let headersString = String(
+            data: data[..<headerEnd.lowerBound],
+            encoding: .utf8
+        ) else {
+            return false
+        }
+        let contentLength = parseContentLength(headersString) ?? 0
+        return data.count >= bodyStart + contentLength
+    }
+
+    private func parseContentLength(_ headersString: String) -> Int? {
+        for line in headersString.components(separatedBy: "\r\n") {
+            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else {
+                continue
+            }
+            if parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                == "content-length"
+            {
+                return Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+        return nil
     }
 
     private func routeRequest(_ request: ParsedRequest) async -> RouteResponse {
@@ -274,14 +328,16 @@ actor HTTPServer {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Missing request body").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
             )
         }
 
         guard let bodyData = bodyString.data(using: .utf8) else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
             )
         }
 
@@ -294,13 +350,22 @@ actor HTTPServer {
         } catch let error as DecodingError {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
-                    .errorResponse
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -314,7 +379,12 @@ actor HTTPServer {
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -328,7 +398,12 @@ actor HTTPServer {
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -342,7 +417,12 @@ actor HTTPServer {
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -356,7 +436,12 @@ actor HTTPServer {
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -365,14 +450,16 @@ actor HTTPServer {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Missing request body").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
             )
         }
 
         guard let bodyData = bodyString.data(using: .utf8) else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
             )
         }
 
@@ -385,13 +472,22 @@ actor HTTPServer {
         } catch let error as DecodingError {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
-                    .errorResponse
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -400,14 +496,16 @@ actor HTTPServer {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Missing request body").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
             )
         }
 
         guard let bodyData = bodyString.data(using: .utf8) else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
             )
         }
 
@@ -426,13 +524,22 @@ actor HTTPServer {
         } catch let error as DecodingError {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
-                    .errorResponse
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -445,7 +552,8 @@ actor HTTPServer {
             return .buffered(
                 buildJSONResponse(
                     status: 400,
-                    body: FMError.invalidRequest("Missing request body").errorResponse
+                    body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                        .errorResponse
                 )
             )
         }
@@ -454,7 +562,8 @@ actor HTTPServer {
             return .buffered(
                 buildJSONResponse(
                     status: 400,
-                    body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                    body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                        .errorResponse
                 )
             )
         }
@@ -474,15 +583,24 @@ actor HTTPServer {
             return .buffered(
                 buildJSONResponse(
                     status: 400,
-                    body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
-                        .errorResponse
+                    body: FMError.invalidRequest(
+                        FMErrorPayload(
+                            message: "Invalid JSON: \(error.localizedDescription)",
+                            debugDescription: String(reflecting: error)
+                        )
+                    ).errorResponse
                 )
             )
         } catch {
             return .buffered(
                 buildJSONResponse(
                     status: 500,
-                    body: FMError.serverError(error.localizedDescription).errorResponse
+                    body: FMError.serverError(
+                        FMErrorPayload(
+                            message: error.localizedDescription,
+                            debugDescription: String(reflecting: error)
+                        )
+                    ).errorResponse
                 )
             )
         }
@@ -492,14 +610,16 @@ actor HTTPServer {
         guard let bodyString = body, !bodyString.isEmpty else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Missing request body").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
             )
         }
 
         guard let bodyData = bodyString.data(using: .utf8) else {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
             )
         }
 
@@ -512,13 +632,22 @@ actor HTTPServer {
         } catch let error as DecodingError {
             return buildJSONResponse(
                 status: 400,
-                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
-                    .errorResponse
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         } catch {
             return buildJSONResponse(
                 status: 500,
-                body: FMError.serverError(error.localizedDescription).errorResponse
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
             )
         }
     }
@@ -555,7 +684,11 @@ actor HTTPServer {
                 type: "error",
                 code: nil,
                 toolName: nil,
-                underlyingError: nil
+                underlyingError: nil,
+                failureReason: nil,
+                recoverySuggestion: nil,
+                debugDescription: nil,
+                refusalExplanation: nil
             )
         )
         return buildJSONResponse(status: status, body: error)
@@ -563,13 +696,25 @@ actor HTTPServer {
 
     private func statusCode(for error: FMError) -> Int {
         switch error {
-        case .modelUnavailable:
+        case .exceededContextWindowSize:
+            return 413
+        case .assetsUnavailable:
             return 503
+        case .guardrailViolation:
+            return 403
+        case .unsupportedGuide, .unsupportedLanguageOrLocale, .invalidGenerationSchema:
+            return 400
+        case .decodingFailure:
+            return 422
+        case .rateLimited:
+            return 429
         case .concurrentRequests:
             return 409
+        case .refusal:
+            return 403
         case .toolCallFailed:
             return 502
-        case .requestFailed, .serverError:
+        case .serverError:
             return 500
         case .invalidRequest:
             return 400
@@ -654,7 +799,14 @@ actor HTTPServer {
                 data: Data(encodeSseFrame(event: "error", data: payload).utf8)
             )
         } catch {
-            let payload = buildJSONPayload(FMError.serverError(error.localizedDescription).errorResponse)
+            let payload = buildJSONPayload(
+                FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
             _ = await sendData(
                 connection: connection,
                 data: Data(encodeSseFrame(event: "error", data: payload).utf8)

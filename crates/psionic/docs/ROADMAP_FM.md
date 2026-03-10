@@ -150,8 +150,8 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, and `FM-8` are now
-landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, `FM-8`, and `FM-9`
+are now landed on `main`.
 
 What shipped:
 
@@ -258,13 +258,24 @@ What shipped:
   registration behavior
 - a live ignored macOS receipt now proves a real Apple FM session can use
   multiple registered Rust tools through the Swift bridge
+- `psionic-apple-fm` now exposes a reusable typed Foundation Models error
+  family through `AppleFmErrorCode` and `AppleFmFoundationModelsError`, and
+  the bridge client/stream surface no longer collapses remote failures into
+  generic strings
+- Swift bridge failures now preserve typed Foundation Models families plus
+  failure reason, recovery suggestion, debug description, refusal explanation,
+  and tool-call metadata when Apple exposes them
+- live ignored macOS receipts now exist for invalid generation schema, tool
+  call failure, and context overflow through the retained Swift bridge
+- the Swift HTTP server now reads request bodies to full `Content-Length`
+  instead of assuming one receive chunk, which was required to make large-prompt
+  conformance receipts truthful
 
-What `FM-1` through `FM-8` did not close:
+What `FM-1` through `FM-9` did not close:
 
-- typed error taxonomy
 - desktop Mission Control cutover on macOS
-- raw token counts are now truthfully marked as estimated, but the broader
-  typed metrics/error taxonomy work still remains `FM-9`
+- raw token counts are now truthfully marked as estimated, but exact token
+  counts are still not available from the retained bridge
 - the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
   compatibility wrapper; the shipped streaming surface is the session-first
   Apple FM lane, which is the roadmap-authoritative interface
@@ -365,9 +376,7 @@ streaming truth.
 Relative to the Python SDK target, the retained repo is currently missing at
 least the following:
 
-- no typed Rust error taxonomy aligned to the Apple FM model contract
-- usage metrics are still explicitly estimated rather than exact, and the
-  broader typed evidence/error work still remains
+- usage metrics are still explicitly estimated rather than exact
 - the desktop still defaults local inference to Psionic GPT-OSS rather than
   Apple FM on macOS
 - Mission Control still gates `GO ONLINE`, button copy, log copy, and model
@@ -652,14 +661,13 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-8`, the next-item order is:
+After `FM-9`, the only remaining roadmap item is:
 
-1. `FM-9` typed errors and metrics truth
-2. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
-That order is intentional. Tools and structured generation should not be bolted
-onto the current minimal one-shot bridge. First build the reusable substrate and
-session semantics, then extend the bridge contract, then cut the desktop over.
+That order is intentional. The reusable Apple FM substrate now covers the
+public API surface through typed errors; the remaining work is the desktop-side
+cutover onto that shared runtime truth.
 
 ## Definition Of Done
 

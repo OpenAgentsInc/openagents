@@ -7,6 +7,7 @@
 
 pub mod client;
 pub mod contract;
+pub mod error;
 pub mod structured;
 pub mod tool;
 pub mod transcript;
@@ -21,7 +22,7 @@ pub use contract::{
     APPLE_FM_BRIDGE_STRUCTURED_SUFFIX, APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX, AppleFmChatChoice,
     AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessage,
     AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult,
-    AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
+    AppleFmErrorCode, AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
     AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelInfo,
     AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType, AppleFmSession,
     AppleFmSessionCreateRequest, AppleFmSessionCreateResponse, AppleFmSessionRespondRequest,
@@ -35,6 +36,7 @@ pub use contract::{
     AppleFmToolCallRequest, AppleFmToolCallResponse, AppleFmToolCallbackConfiguration,
     AppleFmToolDefinition, AppleFmUsageMeasurement, AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
 };
+pub use error::AppleFmFoundationModelsError;
 pub use structured::{
     AppleFmGeneratedContent, AppleFmGenerationId, AppleFmGenerationSchema, AppleFmStructuredType,
     AppleFmStructuredValueError,
