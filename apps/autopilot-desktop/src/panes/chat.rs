@@ -5,10 +5,10 @@ use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, t
 use crate::app_state::{
     AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact, AutopilotMessage,
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
-    AutopilotReviewArtifact, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
-    ChatTranscriptSelectionState, DirectMessageMessageProjection, DirectMessageRoomProjection,
-    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
-    ManagedChatMessageProjection, PaneKind, RenderState,
+    AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
+    ChatPaneInputs, ChatTranscriptSelectionState, DirectMessageMessageProjection,
+    DirectMessageRoomProjection, ManagedChatChannelProjection, ManagedChatDeliveryState,
+    ManagedChatGroupProjection, ManagedChatMessageProjection, PaneKind, RenderState,
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
@@ -30,6 +30,7 @@ use crate::pane_system::{
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
     chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
 };
+use wgpui::components::sections::TerminalStream;
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
 const CHAT_MARKDOWN_FONT_SIZE: f32 = 11.0;
@@ -40,6 +41,8 @@ const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
+const CHAT_TERMINAL_LINE_HEIGHT: f32 = 12.0;
+const CHAT_TERMINAL_MAX_VISIBLE_LINES: usize = 10;
 const CHAT_WORKSPACE_AVATAR_SIZE: f32 = 36.0;
 const CHAT_ATTACHMENT_CARD_GAP: f32 = 6.0;
 const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
@@ -1043,6 +1046,18 @@ fn compact_shell_label(value: &str) -> String {
     format!("{prefix}…{suffix}")
 }
 
+fn truncate_line(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    let truncated = trimmed
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    format!("{truncated}…")
+}
+
 fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -1925,6 +1940,127 @@ fn active_compaction_meta_line(artifact: &AutopilotCompactionArtifact) -> String
         parts.push("restored".to_string());
     }
     parts.join("  •  ")
+}
+
+fn active_terminal_meta_line(session: &AutopilotTerminalSession) -> String {
+    let mut parts = vec![format!("status:{}", session.status.label())];
+    if let Some(pid) = session.pid {
+        parts.push(format!("pid:{pid}"));
+    }
+    if !session.shell.trim().is_empty() {
+        parts.push(format!(
+            "shell:{}",
+            compact_display_token(session.shell.as_str(), 18)
+        ));
+    }
+    parts.push(format!("size:{}x{}", session.cols, session.rows));
+    if !session.workspace_root.trim().is_empty() {
+        parts.push(format!(
+            "ws:{}",
+            compact_display_token(session.workspace_root.as_str(), 24)
+        ));
+    }
+    if let Some(updated) = format_thread_timestamp(session.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    if let Some(exit_code) = session.exit_code {
+        parts.push(format!("exit:{exit_code}"));
+    }
+    parts.join("  •  ")
+}
+
+fn terminal_stream_color(stream: &TerminalStream) -> wgpui::Hsla {
+    match stream {
+        TerminalStream::Stdout => theme::text::PRIMARY,
+        TerminalStream::Stderr => theme::status::ERROR,
+    }
+}
+
+fn paint_active_terminal_session(
+    session: &AutopilotTerminalSession,
+    x: f32,
+    mut y: f32,
+    width: f32,
+    paint: &mut PaintContext,
+) -> f32 {
+    paint.scene.draw_text(paint.text.layout_mono(
+        "[thread terminal]",
+        Point::new(x, y),
+        10.0,
+        theme::accent::PRIMARY,
+    ));
+    y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        &active_terminal_meta_line(session),
+        Point::new(x + 6.0, y),
+        9.0,
+        theme::text::MUTED,
+    ));
+    y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+    let line_count = session.lines.len().min(CHAT_TERMINAL_MAX_VISIBLE_LINES);
+    let body_height = (line_count.max(1) as f32) * CHAT_TERMINAL_LINE_HEIGHT + 10.0;
+    let body_bounds = Bounds::new(x + 6.0, y, (width - 12.0).max(60.0), body_height);
+    paint.scene.draw_quad(
+        Quad::new(body_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(8.0),
+    );
+
+    let visible_lines = session
+        .lines
+        .iter()
+        .rev()
+        .take(CHAT_TERMINAL_MAX_VISIBLE_LINES)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
+
+    let mut line_y = body_bounds.origin.y + 6.0;
+    if visible_lines.is_empty() {
+        let placeholder = match session.status {
+            crate::app_state::AutopilotTerminalSessionStatus::Pending => {
+                "Terminal session is starting..."
+            }
+            crate::app_state::AutopilotTerminalSessionStatus::Running => "No terminal output yet.",
+            _ => "Terminal session has no buffered output.",
+        };
+        paint.scene.draw_text(paint.text.layout_mono(
+            placeholder,
+            Point::new(body_bounds.origin.x + 8.0, line_y),
+            9.0,
+            theme::text::MUTED,
+        ));
+    } else {
+        for line in &visible_lines {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &truncate_line(line.text.as_str(), 120),
+                Point::new(body_bounds.origin.x + 8.0, line_y),
+                9.0,
+                terminal_stream_color(&line.stream),
+            ));
+            line_y += CHAT_TERMINAL_LINE_HEIGHT;
+        }
+    }
+
+    if session.lines.len() > CHAT_TERMINAL_MAX_VISIBLE_LINES {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "... {} older terminal lines hidden",
+                session.lines.len() - CHAT_TERMINAL_MAX_VISIBLE_LINES
+            ),
+            Point::new(body_bounds.origin.x + 8.0, body_bounds.max_y() - 12.0),
+            9.0,
+            theme::text::MUTED,
+        ));
+    }
+
+    y = body_bounds.max_y() + 10.0;
+    y
 }
 
 fn format_thread_timestamp(raw: i64) -> Option<String> {
@@ -3386,6 +3522,15 @@ pub fn paint(
                 ));
                 y += CHAT_ACTIVITY_ROW_LINE_HEIGHT + 10.0;
             }
+            if let Some(terminal_session) = autopilot_chat.active_terminal_session() {
+                y = paint_active_terminal_session(
+                    terminal_session,
+                    transcript_scroll_clip.origin.x,
+                    y,
+                    transcript_scroll_clip.size.width,
+                    paint,
+                );
+            }
             if autopilot_chat.messages.is_empty() {
                 let empty_state = "Ask me to do anything...";
                 let empty_state_font_size = 18.0;
@@ -3533,9 +3678,9 @@ pub fn paint(
     }
     if browse_mode == ChatBrowseMode::Autopilot {
         let hint = if autopilot_chat.active_turn_id.is_some() {
-            "Use `/git ...`, `/pr prep`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+            "Use `/git ...`, `/pr prep`, `/term ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
         } else {
-            "Use `/git ...`, `/pr prep`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+            "Use `/git ...`, `/pr prep`, `/term ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
         };
         paint.scene.draw_text(paint.text.layout_mono(
             hint,

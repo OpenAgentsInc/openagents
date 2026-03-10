@@ -474,6 +474,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if crate::provider_admin::pump_runtime(state) {
         changed = true;
     }
+    if crate::chat_terminal::pump_runtime(state) {
+        changed = true;
+    }
     if crate::kernel_control::drain_kernel_projection_updates(state) {
         changed = true;
     }
@@ -2909,6 +2912,25 @@ fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
+    if (state.chat_inputs.composer.is_focused() || state.chat_inputs.thread_search.is_focused())
+        && is_chat_terminal_shortcut(logical_key, state.input_modifiers)
+    {
+        focus_chat_composer(state);
+        let prompt = if state
+            .autopilot_chat
+            .active_terminal_session()
+            .is_some_and(|session| session.status.is_active())
+        {
+            "/term restart"
+        } else {
+            "/term open"
+        };
+        state.chat_inputs.composer.set_value(prompt.to_string());
+        state
+            .autopilot_chat
+            .record_composer_draft(prompt.to_string());
+        return run_chat_submit_action(state);
+    }
     handle_focused_keyboard_submit(
         state,
         logical_key,
@@ -3305,7 +3327,7 @@ mod tests {
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
         cad_turn_approval_policy, format_provider_blockers_for_display,
-        goal_labor_linkage_from_binding, is_command_palette_shortcut,
+        goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
         is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
         provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
         should_open_command_palette, terminal_goal_labor_linkage,
@@ -3562,6 +3584,38 @@ mod tests {
 
         assert!(!is_toggle_fullscreen_shortcut(&key, alt_mods));
         assert!(!is_toggle_fullscreen_shortcut(&key, none_mods));
+    }
+
+    #[test]
+    fn chat_terminal_shortcut_matches_platform_binding() {
+        let key = WinitLogicalKey::Character("t".into());
+        let cmd_mods = Modifiers {
+            meta: true,
+            shift: true,
+            ..Modifiers::default()
+        };
+        let ctrl_mods = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..Modifiers::default()
+        };
+        let wrong_shift = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+
+        #[cfg(target_os = "macos")]
+        {
+            assert!(is_chat_terminal_shortcut(&key, cmd_mods));
+            assert!(!is_chat_terminal_shortcut(&key, ctrl_mods));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(is_chat_terminal_shortcut(&key, ctrl_mods));
+            assert!(!is_chat_terminal_shortcut(&key, cmd_mods));
+        }
+
+        assert!(!is_chat_terminal_shortcut(&key, wrong_shift));
     }
 
     #[test]

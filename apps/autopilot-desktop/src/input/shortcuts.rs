@@ -212,6 +212,29 @@ pub(super) fn is_toggle_fullscreen_shortcut(
     }
 }
 
+pub(super) fn is_chat_terminal_shortcut(
+    logical_key: &WinitLogicalKey,
+    modifiers: Modifiers,
+) -> bool {
+    let is_t = match logical_key {
+        WinitLogicalKey::Character(value) => value.eq_ignore_ascii_case("t"),
+        _ => false,
+    };
+    if !is_t || modifiers.alt || !modifiers.shift {
+        return false;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        modifiers.meta && !modifiers.ctrl
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        modifiers.ctrl && !modifiers.meta
+    }
+}
+
 pub(super) fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -> bool {
     let action_ids: Vec<String> = {
         let mut queue = state.command_palette_actions.borrow_mut();
