@@ -28,7 +28,8 @@
 > `313fbdc25`, after landing `PSI-205` / `#3314` in `4732fbc26`, after
 > opening `PSI-206` through `PSI-209` as `#3315` through `#3318` for the
 > command-authorization and payout-provenance follow-on queue, after landing
-> `PSI-206` / `#3315` in `e6888aaa0`, and after checking live
+> `PSI-206` / `#3315` in `e6888aaa0`, after landing `PSI-207` / `#3316` in
+> `7b7b681f7`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -132,7 +133,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is landed on `main`
   - the next follow-on queue is now open for command authorization and payout provenance
     - `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) is landed on `main`
-    - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is open
+    - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is landed on `main`
     - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is open
     - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is open
 - the current backend execution gates are still real and must remain visible
@@ -329,6 +330,13 @@ on:
     codes, and coordinator-override versus self/peer/member authorization
     decisions with stable digests and unit coverage for coordinator-only, self-
     scoped, peer-scoped, and membership-status-gated command submission
+- `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316)
+  - landed in `7b7b681f7`
+  - `IndexedClusterEvent`, `ClusterSnapshot`, and `ClusterState` now retain
+    command authorization provenance for memberships, links, telemetry,
+    artifact residency, and leadership facts; compaction, catchup, and
+    snapshot recovery preserve that truth; and unit coverage proves replay and
+    snapshot-install recovery keep provenance intact
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -582,7 +590,9 @@ Required outcome:
 ### Command authorization and payout provenance follow-on
 
 Tracked by landed `PSI-206` / [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315)
-through open `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318).
+through open `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318),
+with `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316)
+now also landed on `main`.
 
 Current truth:
 
@@ -592,8 +602,10 @@ Current truth:
 - `ClusterCommand` now carries typed authority scopes and is paired with an
   operator-managed authorization policy, stable command/policy digests,
   coordinator override, and machine-checkable refusal diagnostics on `main`
-- the remaining gap is retained ordered command provenance rather than bare
-  authorization outcome
+- authoritative ordered events, snapshots, and recovered cluster state now also
+  retain command-authorization provenance for the current facts they expose
+- the remaining gap is runtime/provider evidence and validation gates rather
+  than ordered-state provenance
 - clustered execution evidence already carries topology, residency, fallback,
   and coordinator authority truth, but not which authorized command path or
   admission posture led to the executed decision
@@ -712,7 +724,7 @@ clusters now that signed transport and coordinator authority truth exist on
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-206` | [#3315](https://github.com/OpenAgentsInc/openagents/issues/3315) | Closed | Add typed cluster command authorization policy and refusal diagnostics | `psionic-cluster`, ordered-state/tests | Landed in `e6888aaa0`: `ordered_state` now exposes typed command authority scopes, operator-managed authorization policy digests, explicit coordinator override, stable authorization facts, and machine-checkable refusal codes with coverage for coordinator-only, self-node, link-peer, and membership-status-gated command submission. |
-| `PSI-207` | [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) | Open | Preserve command provenance through authoritative cluster events | `psionic-cluster`, recovery/tests | Later payout or dispute surfaces need more than current state: they need ordered provenance for who submitted a command, under which authority scope, and under which authorization digest. This issue keeps that truth through append, replay, catchup, and snapshot flows. |
+| `PSI-207` | [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) | Closed | Preserve command provenance through authoritative cluster events | `psionic-cluster`, recovery/tests | Landed in `7b7b681f7`: `IndexedClusterEvent`, `ClusterSnapshot`, and `ClusterState` now retain command-authorization provenance for the current authoritative facts they expose, while compaction, catchup, and snapshot recovery preserve that provenance and the new replay/recovery tests prove it survives state rebuilds. |
 | `PSI-208` | [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) | Open | Extend cluster execution and settlement evidence with command provenance truth | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Cluster execution evidence is already topology-aware, but it still cannot name the admitted command path or authorization digest that led to the work. This issue threads bounded command/admission provenance into runtime/provider evidence and settlement-linkage inputs. |
 | `PSI-209` | [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) | Open | Add cluster authorization and payout-provenance validation gates | docs/tests/validation plus cluster crates | Stronger operator or payout-oriented claims are not supportable without validation drills. This issue adds refusal/provenance coverage and runbook gates so the new authorization contract is evidence-backed instead of code-only. |
 
@@ -727,7 +739,7 @@ The shortest honest path from today's `main` is:
 3. Treat D2 as landed on `main`, with the coordinator-authority follow-on queue
    closing in `4732fbc26`.
 4. Work the remaining D3 queue in order as the active operator-managed follow-
-   on queue: `#3316` -> `#3317` -> `#3318`.
+   on queue: `#3317` -> `#3318`.
 5. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
