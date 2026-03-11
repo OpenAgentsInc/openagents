@@ -60,9 +60,9 @@ If the bridge process is running but Apple Intelligence is off (or the system mo
 The desktop app looks for the **`foundation-bridge`** binary in this order:
 
 1. **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** — If set, use this path (must exist).
-2. **CWD-relative** (when run from repo root):  
-   `bin/foundation-bridge`,  
-   `swift/foundation-bridge/.build/release/foundation-bridge`,  
+2. **CWD-relative** (when run from repo root):
+   `bin/foundation-bridge`,
+   `swift/foundation-bridge/.build/release/foundation-bridge`,
    `swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge`.
 3. **Exe-relative repo root**: walk up from the current executable path until a directory contains `swift/foundation-bridge` or `bin/foundation-bridge`; then check `bin/foundation-bridge` and the same `.build/` paths under that root. This lets the app find the binary when run from `target/debug` or elsewhere under the repo.
 4. **Bundled with the app** (for shipped .app):
@@ -73,22 +73,22 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
 
 ## 5. Build and run (developers and CI)
 
-- **Build** (from repo root):  
-  `cd swift/foundation-bridge && ./build.sh`  
+- **Build** (from repo root):
+  `cd swift/foundation-bridge && ./build.sh`
   Produces **`bin/foundation-bridge`**. The bridge is written in **Swift**, so the build requires the **Swift compiler** (Xcode from the App Store, or **`xcode-select --install`** for Command Line Tools only—no full Xcode needed).
-- **Run**:  
-  `./bin/foundation-bridge`  
+- **Run**:
+  `./bin/foundation-bridge`
   Default port **11435**. Optional: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).
-- **Test**:  
-  `curl -s http://127.0.0.1:11435/health`  
+- **Test**:
+  `curl -s http://127.0.0.1:11435/health`
   You should get a JSON object with system model availability. Before working on autopilot or Mission Control, **test the bridge first** (build → run → curl health), then start the desktop app. See **AGENTS.md** and the main **README.md** “Agent Install Instructions” for the canonical “test bridge first” workflow.
 
 ## 6. Shipping the app (no build on user machines)
 
 To ship so **users never need to build the bridge or install Xcode**:
 
-1. **Build the bridge once** (on your machine or in CI):  
-   `cd swift/foundation-bridge && ./build.sh`  
+1. **Build the bridge once** (on your machine or in CI):
+   `cd swift/foundation-bridge && ./build.sh`
    → produces `bin/foundation-bridge`.
 2. **Include that binary in your app bundle** when you create the .app:
    - Put **`foundation-bridge`** in **`YourApp.app/Contents/MacOS/`** (next to your main executable), or in **`YourApp.app/Contents/Resources/`**. The app checks both.
@@ -104,7 +104,7 @@ If you do **not** bundle the binary:
 For the **system model** to be available (and thus for “Go Online” to unblock on the Apple FM lane):
 
 - **macOS 26+** on **Apple Silicon**.
-- **Apple Intelligence enabled**:  
+- **Apple Intelligence enabled**:
   **System Settings → Apple Intelligence** (in the sidebar) → turn on Apple Intelligence.
 
 If the bridge is **reachable** but the system model is **not available**, the framework typically returns an availability reason (e.g. Apple Intelligence disabled). The app surfaces this and should direct the user to enable Apple Intelligence at the path above.

@@ -435,9 +435,7 @@ impl AppleFmLocalBridge {
                 } else {
                     APPLE_FM_FIX_BUILD
                 };
-                snapshot.last_action = Some(
-                    "Apple FM bridge binary not found.".to_string(),
-                );
+                snapshot.last_action = Some("Apple FM bridge binary not found.".to_string());
                 snapshot.last_error = Some(fix_msg.to_string());
                 emit_snapshot_if(snapshot, emit);
                 format!("Apple FM bridge binary not found. {fix_msg}")
@@ -673,7 +671,8 @@ impl AppleFmBridgeState {
             Err(error) => {
                 self.snapshot.bridge_status = Some(self.bridge.status.label().to_string());
                 self.snapshot.last_error = Some(error.clone());
-                self.snapshot.last_action = Some("Apple FM bridge start failed. See error for steps.".to_string());
+                self.snapshot.last_action =
+                    Some("Apple FM bridge start failed. See error for steps.".to_string());
                 self.publish_snapshot(update_tx);
             }
         }

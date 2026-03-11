@@ -22,41 +22,40 @@ use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    active_job_scroll_viewport_bounds,
-    activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
-    activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
-    activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
-    activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
-    alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-    alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
-    credentials_add_custom_button_bounds, credentials_delete_button_bounds,
-    credentials_import_button_bounds, credentials_name_input_bounds,
-    credentials_reload_button_bounds, credentials_row_bounds, credentials_save_value_button_bounds,
-    credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
-    credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
-    credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
-    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
-    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-    job_history_prev_page_button_bounds, job_history_search_input_bounds,
-    job_history_status_button_bounds, job_history_time_button_bounds,
-    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
+    active_job_scroll_viewport_bounds, activity_feed_detail_viewport_bounds,
+    activity_feed_details_bounds, activity_feed_filter_button_bounds,
+    activity_feed_next_page_button_bounds, activity_feed_prev_page_button_bounds,
+    activity_feed_refresh_button_bounds, activity_feed_row_bounds, activity_feed_visible_row_count,
+    alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
+    alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+    alerts_recovery_visible_row_count, credentials_add_custom_button_bounds,
+    credentials_delete_button_bounds, credentials_import_button_bounds,
+    credentials_name_input_bounds, credentials_reload_button_bounds, credentials_row_bounds,
+    credentials_save_value_button_bounds, credentials_scope_codex_button_bounds,
+    credentials_scope_global_button_bounds, credentials_scope_skills_button_bounds,
+    credentials_scope_spark_button_bounds, credentials_toggle_enabled_button_bounds,
+    credentials_value_input_bounds, credentials_visible_row_count,
+    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+    job_history_search_input_bounds, job_history_status_button_bounds,
+    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_copy_seed_button_bounds, mission_control_layout_for_mode,
-    mission_control_load_funds_layout, mission_control_send_invoice_input_bounds,
-    mission_control_send_lightning_button_bounds,
-    mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
-    mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
-    mission_control_withdraw_invoice_input_bounds, network_requests_accept_button_bounds,
-    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
-    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
-    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-    network_requests_type_input_bounds, network_requests_visible_quote_count,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
-    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
-    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_load_funds_layout, mission_control_local_fm_test_button_bounds,
+    mission_control_local_model_button_bounds, mission_control_send_invoice_input_bounds,
+    mission_control_send_lightning_button_bounds, mission_control_wallet_refresh_button_bounds,
+    mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
+    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
+    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
+    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
+    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
+    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
+    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
+    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+    settings_provider_queue_input_bounds, settings_relay_input_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -1128,7 +1127,8 @@ fn paint_go_online_pane(
         lightning_state == SparkInvoiceState::Ready,
         paint,
     );
-    let send_invoice_bounds = mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled);
+    let send_invoice_bounds =
+        mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled);
     paint.scene.draw_text(paint.text.layout_mono(
         "LIGHTNING SEND",
         Point::new(
@@ -1141,7 +1141,9 @@ fn paint_go_online_pane(
     mission_control
         .send_invoice
         .set_max_width(send_invoice_bounds.size.width);
-    mission_control.send_invoice.paint(send_invoice_bounds, paint);
+    mission_control
+        .send_invoice
+        .paint(send_invoice_bounds, paint);
     paint_mission_control_command_button(
         mission_control_send_lightning_button_bounds(content_bounds, buy_mode_enabled),
         "LIGHTNING SEND",
@@ -4564,7 +4566,8 @@ fn paint_active_job_pane(
     } else {
         paint_disabled_button(abort_bounds, "Abort unsupported", paint);
     }
-    let viewport = active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
+    let viewport =
+        active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
     paint.scene.push_clip(viewport);
     let chunk_len = (((viewport.size.width - 8.0).max(48.0) / 6.2).floor() as usize).max(12);
     let lines = build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, chunk_len);
@@ -4592,17 +4595,27 @@ fn paint_active_job_pane(
     paint.scene.pop_clip();
 
     if max_offset > 0.0 {
-        let track = Bounds::new(content_bounds.max_x() - 8.0, viewport.origin.y, 4.0, viewport.size.height);
+        let track = Bounds::new(
+            content_bounds.max_x() - 8.0,
+            viewport.origin.y,
+            4.0,
+            viewport.size.height,
+        );
         let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
             .clamp(18.0, viewport.size.height);
         let thumb_y = viewport.origin.y
             + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+        paint
+            .scene
+            .draw_quad(Quad::new(track).with_background(theme::bg::APP.with_alpha(0.45)));
         paint.scene.draw_quad(
-            Quad::new(track).with_background(theme::bg::APP.with_alpha(0.45)),
-        );
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(track.origin.x, thumb_y, track.size.width, thumb_height))
-                .with_background(theme::accent::PRIMARY.with_alpha(0.75)),
+            Quad::new(Bounds::new(
+                track.origin.x,
+                thumb_y,
+                track.size.width,
+                thumb_height,
+            ))
+            .with_background(theme::accent::PRIMARY.with_alpha(0.75)),
         );
     }
 }
@@ -4695,9 +4708,18 @@ fn build_active_job_scroll_lines(
         ("Capability", job.capability.as_str()),
         ("Demand source", job.demand_source.label()),
         ("Stage", job.stage.label()),
-        ("Projection authority", earn_job_lifecycle_projection.authority.as_str()),
-        ("Skill scope", job.skill_scope_id.as_deref().unwrap_or("none")),
-        ("SKL manifest", job.skl_manifest_a.as_deref().unwrap_or("none")),
+        (
+            "Projection authority",
+            earn_job_lifecycle_projection.authority.as_str(),
+        ),
+        (
+            "Skill scope",
+            job.skill_scope_id.as_deref().unwrap_or("none"),
+        ),
+        (
+            "SKL manifest",
+            job.skl_manifest_a.as_deref().unwrap_or("none"),
+        ),
         (
             "SA tick request",
             job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
@@ -4710,12 +4732,18 @@ fn build_active_job_scroll_lines(
             "Trajectory session",
             job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
         ),
-        ("AC envelope", job.ac_envelope_event_id.as_deref().unwrap_or("none")),
+        (
+            "AC envelope",
+            job.ac_envelope_event_id.as_deref().unwrap_or("none"),
+        ),
         (
             "AC settlement",
             job.ac_settlement_event_id.as_deref().unwrap_or("none"),
         ),
-        ("AC default", job.ac_default_event_id.as_deref().unwrap_or("none")),
+        (
+            "AC default",
+            job.ac_default_event_id.as_deref().unwrap_or("none"),
+        ),
         ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
         ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
     ];
@@ -4746,7 +4774,11 @@ fn build_active_job_scroll_lines(
         .unwrap_or(stage_flow.len().saturating_sub(1));
     for (idx, stage) in stage_flow.iter().enumerate() {
         lines.push(ActiveJobRenderLine {
-            text: format!("[{}] {}", if idx <= current_idx { "x" } else { " " }, stage.label()),
+            text: format!(
+                "[{}] {}",
+                if idx <= current_idx { "x" } else { " " },
+                stage.label()
+            ),
             color: if idx <= current_idx {
                 theme::status::SUCCESS
             } else {
@@ -5202,7 +5234,6 @@ fn paint_mission_control_go_online_button(
         },
         paint,
     );
-
 }
 
 fn paint_mission_control_command_button(
