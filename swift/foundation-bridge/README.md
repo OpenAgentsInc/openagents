@@ -29,7 +29,7 @@ This compiles the binary to `../../bin/foundation-bridge`.
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 
-The bridge is intended to be supervised by the desktop app as a localhost sidecar for Apple Foundation Models inference only.
+The bridge is intended to be supervised by the desktop app as a localhost sidecar for Apple Foundation Models inference only. For full detail (architecture, discovery, shipping, user requirements, agent workflow), see **[crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](../../crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md)**.
 
 ## Shipping the app (no build on user machines)
 
