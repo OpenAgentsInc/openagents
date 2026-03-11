@@ -165,6 +165,9 @@ pub enum ProviderNip90LaneCommand {
         role: ProviderNip90PublishRole,
         event: Box<Event>,
     },
+    TrackProviderPublishRequestIds {
+        request_ids: Vec<String>,
+    },
     TrackBuyerRequestIds {
         request_ids: Vec<String>,
     },
@@ -295,6 +298,7 @@ struct ProviderNip90LaneState {
     compute_capability: ProviderNip90ComputeCapability,
     handler_publication_state: HandlerPublicationState,
     next_handler_publish_retry_at: Option<Instant>,
+    tracked_provider_publish_request_ids: Vec<String>,
     tracked_buyer_request_ids: Vec<String>,
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
@@ -444,6 +448,7 @@ fn run_lane_loop(
         compute_capability: ProviderNip90ComputeCapability::default(),
         handler_publication_state: HandlerPublicationState::None,
         next_handler_publish_retry_at: None,
+        tracked_provider_publish_request_ids: Vec::new(),
         tracked_buyer_request_ids: Vec::new(),
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
@@ -463,6 +468,7 @@ fn run_lane_loop(
                     | ProviderNip90LaneCommand::ConfigureComputeCapability { .. }
                     | ProviderNip90LaneCommand::ConfigureRelays { .. }
                     | ProviderNip90LaneCommand::SetOnline { .. }
+                    | ProviderNip90LaneCommand::TrackProviderPublishRequestIds { .. }
                     | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
                         handle_command(&runtime, &mut state, command);
                     }
@@ -714,6 +720,18 @@ fn handle_command(
             }
             refresh_relay_health_snapshot(runtime, state);
         }
+        ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids } => {
+            let normalized = normalize_request_ids(request_ids);
+            if normalized == state.tracked_provider_publish_request_ids {
+                return;
+            }
+            state.tracked_provider_publish_request_ids = normalized;
+            state.snapshot.last_action = Some(format!(
+                "Tracking provider publish continuity for {} request id(s)",
+                state.tracked_provider_publish_request_ids.len()
+            ));
+            refresh_relay_health_snapshot(runtime, state);
+        }
         ProviderNip90LaneCommand::TrackBuyerRequestIds { request_ids } => {
             let normalized = normalize_request_ids(request_ids);
             if normalized == state.tracked_buyer_request_ids {
@@ -751,10 +769,20 @@ fn handle_publish_event(
             .tracked_buyer_request_ids
             .iter()
             .any(|tracked_request_id| tracked_request_id == request_id.as_str());
+    let provider_publish_while_offline = !state.wants_online
+        && matches!(
+            role,
+            ProviderNip90PublishRole::Feedback | ProviderNip90PublishRole::Result
+        )
+        && state
+            .tracked_provider_publish_request_ids
+            .iter()
+            .any(|tracked_request_id| tracked_request_id == request_id.as_str());
 
     if !state.wants_online
         && role != ProviderNip90PublishRole::Request
         && !buyer_feedback_while_offline
+        && !provider_publish_while_offline
     {
         let message = format!(
             "Cannot publish {} while provider lane is offline",
@@ -3049,6 +3077,178 @@ mod tests {
             .expect("relay should receive published buyer feedback event");
         assert_eq!(published.id, "buyer-feedback-event-1");
         assert_eq!(published.kind, 7000);
+
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_publishes_provider_feedback_event_while_offline_for_tracked_active_job() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::TrackProviderPublishRequestIds {
+                request_ids: vec!["provider-request-offline-1".to_string()],
+            })
+            .expect("queue provider publish continuity tracking");
+
+        let preview_deadline = Instant::now() + Duration::from_secs(4);
+        let mut preview_ready = false;
+        while Instant::now() < preview_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == super::ProviderNip90LaneMode::Preview
+                    && snapshot.connected_relays > 0
+                {
+                    preview_ready = true;
+                }
+            }
+            if preview_ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(preview_ready, "preview transport should be active");
+
+        let event = Event {
+            id: "provider-feedback-event-1".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_132,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "processing".to_string()],
+                vec!["e".to_string(), "provider-request-offline-1".to_string()],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: "provider still draining accepted job".to_string(),
+            sig: "44".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: "provider-request-offline-1".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(event.clone()),
+            })
+            .expect("queue provider feedback publish command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == "provider-request-offline-1"
+                    && outcome.role == ProviderNip90PublishRole::Feedback
+                {
+                    assert_eq!(outcome.event_id, "provider-feedback-event-1");
+                    assert!(outcome.accepted_relays >= 1);
+                    assert_eq!(outcome.first_error, None);
+                    outcome_seen = true;
+                }
+            }
+            if outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(outcome_seen, "expected provider feedback publish outcome");
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive published provider feedback event");
+        assert_eq!(published.id, "provider-feedback-event-1");
+        assert_eq!(published.kind, 7000);
+
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_publishes_provider_result_event_while_offline_for_tracked_active_job() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::TrackProviderPublishRequestIds {
+                request_ids: vec!["provider-request-offline-2".to_string()],
+            })
+            .expect("queue provider publish continuity tracking");
+
+        let preview_deadline = Instant::now() + Duration::from_secs(4);
+        let mut preview_ready = false;
+        while Instant::now() < preview_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == super::ProviderNip90LaneMode::Preview
+                    && snapshot.connected_relays > 0
+                {
+                    preview_ready = true;
+                }
+            }
+            if preview_ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(preview_ready, "preview transport should be active");
+
+        let event = Event {
+            id: "provider-result-event-1".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_133,
+            kind: 6050,
+            tags: vec![
+                vec!["status".to_string(), "success".to_string()],
+                vec!["e".to_string(), "provider-request-offline-2".to_string()],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: "{\"result\":\"done\"}".to_string(),
+            sig: "55".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: "provider-request-offline-2".to_string(),
+                role: ProviderNip90PublishRole::Result,
+                event: Box::new(event.clone()),
+            })
+            .expect("queue provider result publish command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == "provider-request-offline-2"
+                    && outcome.role == ProviderNip90PublishRole::Result
+                {
+                    assert_eq!(outcome.event_id, "provider-result-event-1");
+                    assert!(outcome.accepted_relays >= 1);
+                    assert_eq!(outcome.first_error, None);
+                    outcome_seen = true;
+                }
+            }
+            if outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(outcome_seen, "expected provider result publish outcome");
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive published provider result event");
+        assert_eq!(published.id, "provider-result-event-1");
+        assert_eq!(published.kind, 6050);
 
         relay_task.abort();
     }

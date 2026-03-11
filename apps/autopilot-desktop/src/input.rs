@@ -2854,17 +2854,41 @@ pub(crate) fn apply_provider_mode_target(
         );
         state.sync_lifecycle.mark_idle(worker_id.as_str());
         let _ = state.spacetime_presence.register_offline();
+        state.provider_runtime.mode = ProviderMode::Offline;
+        state.provider_runtime.degraded_reason_code = None;
+        state.provider_runtime.mode_changed_at = std::time::Instant::now();
         if state.active_job.inflight_job_count() == 0 {
             state.provider_runtime.inventory_session_started_at_ms = None;
+            state.provider_runtime.defer_runtime_shutdown_until_idle = false;
+            let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
+            let _ = state.queue_local_inference_runtime_command(
+                LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+            );
+        } else {
+            state.provider_runtime.defer_runtime_shutdown_until_idle = true;
+            state.provider_runtime.last_result = Some(
+                "Go Offline requested; draining accepted provider job before runtime shutdown"
+                    .to_string(),
+            );
+            state.active_job.append_event(
+                "provider online intent changed to offline; draining active job before shutdown",
+            );
+            tracing::warn!(
+                target: "autopilot_desktop::provider",
+                "Provider online intent changed to offline while active job request_id={} is still in flight; draining existing job before runtime shutdown",
+                state
+                    .active_job
+                    .job
+                    .as_ref()
+                    .map(|job| job.request_id.as_str())
+                    .unwrap_or("missing")
+            );
         }
-        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
-        let _ = state.queue_local_inference_runtime_command(
-            LocalInferenceRuntimeCommand::UnloadConfiguredModel,
-        );
     }
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
 
     if wants_online {
+        state.provider_runtime.defer_runtime_shutdown_until_idle = false;
         let _ = ensure_mission_control_apple_fm_refresh(state);
         queue_spark_command(state, SparkWalletCommand::Refresh);
         let _ = state.sync_provider_nip90_lane_identity();
@@ -2901,9 +2925,16 @@ pub(crate) fn apply_provider_mode_target(
         online: wants_online,
     }) {
         Ok(command_seq) => {
-            state.provider_runtime.last_result =
-                Some(format!("Queued SetRunnerOnline command #{command_seq}"));
-            state.provider_runtime.last_authoritative_status = Some("pending".to_string());
+            if !wants_online && state.provider_runtime.defer_runtime_shutdown_until_idle {
+                state.provider_runtime.last_result = Some(format!(
+                    "Queued SetRunnerOnline command #{command_seq} // draining accepted provider job before shutdown"
+                ));
+                state.provider_runtime.last_authoritative_status = Some("draining".to_string());
+            } else {
+                state.provider_runtime.last_result =
+                    Some(format!("Queued SetRunnerOnline command #{command_seq}"));
+                state.provider_runtime.last_authoritative_status = Some("pending".to_string());
+            }
             state.provider_runtime.last_authoritative_event_id = None;
             state.provider_runtime.last_authoritative_error_class = None;
             if wants_online {

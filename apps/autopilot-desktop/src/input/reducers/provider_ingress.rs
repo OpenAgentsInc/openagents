@@ -34,7 +34,8 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
         })
         .collect();
     state.relay_connections.load_state = PaneLoadState::Ready;
-    state.relay_connections.last_error = state.provider_nip90_lane.last_error.clone();
+    state.relay_connections.last_error =
+        relay_connections_surface_error(state.provider_nip90_lane.last_error.as_deref());
     state.relay_connections.last_action = state.provider_nip90_lane.last_action.clone();
     state.relay_connections.selected_url = selected_url
         .filter(|selected| {
@@ -153,6 +154,15 @@ fn map_relay_status(status: ProviderNip90RelayStatus) -> RelayConnectionStatus {
     }
 }
 
+fn relay_connections_surface_error(error: Option<&str>) -> Option<String> {
+    let error = error?.trim();
+    if error.is_empty() || error.to_ascii_lowercase().contains("publish") {
+        None
+    } else {
+        Some(error.to_string())
+    }
+}
+
 pub(super) fn apply_ingressed_request(
     state: &mut RenderState,
     mut request: JobInboxNetworkRequest,
@@ -188,15 +198,25 @@ pub(super) fn apply_ingressed_request(
     ));
 
     if is_new {
-        tracing::info!(
-            target: "autopilot_desktop::provider",
-            "Provider ingress request_id={} capability={} price_sats={} ttl_seconds={} preview_only={}",
-            request.request_id,
-            request.capability,
-            request.price_sats,
-            request.ttl_seconds,
-            preview_only
-        );
+        if preview_only {
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Provider preview observed request_id={} capability={} price_sats={} ttl_seconds={}",
+                request.request_id,
+                request.capability,
+                request.price_sats,
+                request.ttl_seconds
+            );
+        } else {
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Provider ingress request_id={} capability={} price_sats={} ttl_seconds={} preview_only=false",
+                request.request_id,
+                request.capability,
+                request.price_sats,
+                request.ttl_seconds
+            );
+        }
     }
 
     if preview_only {
@@ -1083,7 +1103,8 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
 #[cfg(test)]
 mod tests {
     use super::{
-        decrypt_encrypted_request_payload, normalize_provider_keys, target_policy_reject_reason_for,
+        decrypt_encrypted_request_payload, normalize_provider_keys,
+        relay_connections_surface_error, target_policy_reject_reason_for,
     };
 
     fn fixture_identity() -> nostr::NostrIdentity {
@@ -1170,5 +1191,25 @@ mod tests {
         )
         .expect("payload should decrypt");
         assert_eq!(decrypted, "encrypted hello");
+    }
+
+    #[test]
+    fn relay_connections_surface_error_hides_publish_failures() {
+        assert_eq!(
+            relay_connections_surface_error(Some(
+                "Cannot publish NIP-90 result while provider lane is offline"
+            )),
+            None
+        );
+        assert_eq!(
+            relay_connections_surface_error(Some(
+                "Failed publishing NIP-90 feedback: relay refused write"
+            )),
+            None
+        );
+        assert_eq!(
+            relay_connections_surface_error(Some("relay recv failed on wss://relay: boom")),
+            Some("relay recv failed on wss://relay: boom".to_string())
+        );
     }
 }
