@@ -851,6 +851,26 @@ fn handle_publish_event(
         return false;
     };
 
+    state.snapshot.last_error = None;
+    state.snapshot.last_action = Some(format!(
+        "publishing {} event {} to {} relay(s)",
+        role.label(),
+        event_id,
+        state.snapshot.connected_relays
+    ));
+    let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
+        state.snapshot.clone(),
+    )));
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider lane publishing request_id={} role={} event_id={} connected_relays={} wants_online={}",
+        request_id,
+        role.label(),
+        event_id,
+        state.snapshot.connected_relays,
+        state.wants_online
+    );
+
     match runtime.block_on(pool.publish(&event)) {
         Ok(confirmations) => {
             let accepted_relays = confirmations.iter().filter(|entry| entry.accepted).count();
@@ -876,6 +896,16 @@ fn handle_publish_event(
                 accepted_relays,
                 rejected_relays
             ));
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Provider lane publish outcome request_id={} role={} event_id={} accepted_relays={} rejected_relays={} first_error={}",
+                request_id,
+                role.label(),
+                event_id,
+                accepted_relays,
+                rejected_relays,
+                first_error.as_deref().unwrap_or("none")
+            );
             let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
                 ProviderNip90PublishOutcome {
                     request_id,
@@ -895,6 +925,14 @@ fn handle_publish_event(
             state.snapshot.mode = ProviderNip90LaneMode::Degraded;
             state.snapshot.last_error = Some(message.clone());
             state.snapshot.last_action = Some(format!("publish {} failed", role.label()));
+            tracing::error!(
+                target: "autopilot_desktop::provider",
+                "Provider lane publish errored request_id={} role={} event_id={} error={}",
+                request_id,
+                role.label(),
+                event_id,
+                message
+            );
             let _ = update_tx.send(ProviderNip90LaneUpdate::PublishOutcome(
                 ProviderNip90PublishOutcome {
                     request_id,

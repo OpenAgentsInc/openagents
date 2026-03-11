@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
-use nostr::NostrIdentity;
+use nostr::{Event, NostrIdentity};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
@@ -7146,6 +7146,9 @@ pub struct ActiveJobState {
     pub execution_deadline_epoch_seconds: Option<u64>,
     pub result_publish_in_flight: bool,
     pub pending_result_publish_event_id: Option<String>,
+    pub pending_result_publish_event: Option<Event>,
+    pub result_publish_attempt_count: u32,
+    pub result_publish_last_queued_epoch_seconds: Option<u64>,
     pub payment_required_invoice_requested: bool,
     pub payment_required_feedback_in_flight: bool,
     pub payment_required_failed: bool,
@@ -7173,6 +7176,9 @@ impl Default for ActiveJobState {
             execution_deadline_epoch_seconds: None,
             result_publish_in_flight: false,
             pending_result_publish_event_id: None,
+            pending_result_publish_event: None,
+            result_publish_attempt_count: 0,
+            result_publish_last_queued_epoch_seconds: None,
             payment_required_invoice_requested: false,
             payment_required_feedback_in_flight: false,
             payment_required_failed: false,
@@ -7245,6 +7251,9 @@ impl ActiveJobState {
         self.execution_deadline_epoch_seconds = None;
         self.result_publish_in_flight = false;
         self.pending_result_publish_event_id = None;
+        self.pending_result_publish_event = None;
+        self.result_publish_attempt_count = 0;
+        self.result_publish_last_queued_epoch_seconds = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;
@@ -7377,6 +7386,9 @@ impl ActiveJobState {
         self.runtime_supports_abort = false;
         self.execution_turn_interrupt_command_seq = None;
         self.pending_result_publish_event_id = None;
+        self.pending_result_publish_event = None;
+        self.result_publish_attempt_count = 0;
+        self.result_publish_last_queued_epoch_seconds = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;

@@ -4846,6 +4846,42 @@ fn active_job_has_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
         && !pointer.starts_with("pay-req-")
 }
 
+fn active_job_result_publish_status(active_job: &ActiveJobState) -> String {
+    let Some(job) = active_job.job.as_ref() else {
+        return "n/a".to_string();
+    };
+    if job.sa_tick_result_event_id.is_some() {
+        return "confirmed on relays".to_string();
+    }
+    let age_suffix = active_job
+        .result_publish_last_queued_epoch_seconds
+        .map(|queued_at| {
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs());
+            format!(
+                " queued {}s ago",
+                now_epoch_seconds.saturating_sub(queued_at)
+            )
+        })
+        .unwrap_or_default();
+    if active_job.result_publish_in_flight {
+        return format!(
+            "awaiting relay confirmation attempt #{}{}",
+            active_job.result_publish_attempt_count.max(1),
+            age_suffix
+        );
+    }
+    if active_job.pending_result_publish_event_id.is_some() {
+        return format!(
+            "retry pending attempt #{}{}",
+            active_job.result_publish_attempt_count.max(1),
+            age_suffix
+        );
+    }
+    "not queued".to_string()
+}
+
 fn build_active_job_scroll_lines(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
@@ -4902,6 +4938,11 @@ fn build_active_job_scroll_lines(
         return lines;
     };
 
+    let result_publish_status = active_job_result_publish_status(active_job);
+    let pending_result_event_id = active_job
+        .pending_result_publish_event_id
+        .as_deref()
+        .unwrap_or("n/a");
     let metadata_rows = [
         ("Job ID", job.job_id.as_str()),
         ("Requester", job.requester.as_str()),
@@ -4946,6 +4987,8 @@ fn build_active_job_scroll_lines(
         ),
         ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
         ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
+        ("Result event", pending_result_event_id),
+        ("Result publish", result_publish_status.as_str()),
     ];
     for (label, value) in metadata_rows {
         push_active_job_wrapped_line(
