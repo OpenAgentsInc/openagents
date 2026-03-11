@@ -45,6 +45,7 @@ mod provider_admin;
 mod provider_nip90_lane;
 mod render;
 mod runtime_lanes;
+mod runtime_log;
 mod skill_autoload;
 mod skills_registry;
 mod spacetime_presence;

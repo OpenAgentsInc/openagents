@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::{Mutex, Once, OnceLock};
 
+use serde_json::{Map, Value, json};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
@@ -24,6 +25,7 @@ pub(crate) struct MirroredLogEntry {
 struct MirroredLogVisitor {
     message: Option<String>,
     fields: Vec<String>,
+    structured_fields: Map<String, Value>,
 }
 
 impl MirroredLogVisitor {
@@ -36,7 +38,25 @@ impl MirroredLogVisitor {
             self.message = Some(value.to_string());
         } else {
             self.fields.push(format!("{}={value}", field.name()));
+            self.structured_fields
+                .insert(field.name().to_string(), Value::String(value.to_string()));
         }
+    }
+
+    fn record_json_value(&mut self, field: &Field, value: Value) {
+        if field.name() == "message" {
+            self.message = value.as_str().map(str::to_string);
+            return;
+        }
+        let display = match &value {
+            Value::String(value) => value.clone(),
+            Value::Bool(value) => value.to_string(),
+            Value::Number(value) => value.to_string(),
+            _ => value.to_string(),
+        };
+        self.fields.push(format!("{}={display}", field.name()));
+        self.structured_fields
+            .insert(field.name().to_string(), value);
     }
 }
 
@@ -46,19 +66,19 @@ impl Visit for MirroredLogVisitor {
     }
 
     fn record_i64(&mut self, field: &Field, value: i64) {
-        self.record_value(field, value.to_string());
+        self.record_json_value(field, json!(value));
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        self.record_value(field, value.to_string());
+        self.record_json_value(field, json!(value));
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.record_value(field, value.to_string());
+        self.record_json_value(field, json!(value));
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.record_value(field, value.to_string());
+        self.record_json_value(field, json!(value));
     }
 
     fn record_error(&mut self, field: &Field, value: &(dyn std::error::Error + 'static)) {
@@ -66,7 +86,7 @@ impl Visit for MirroredLogVisitor {
     }
 
     fn record_f64(&mut self, field: &Field, value: f64) {
-        self.record_value(field, value.to_string());
+        self.record_json_value(field, json!(value));
     }
 }
 
@@ -115,6 +135,15 @@ where
             visitor.message.as_deref(),
             visitor.fields.as_slice(),
         );
+        if should_persist_to_session_log(*metadata.level(), metadata.target(), line.as_str()) {
+            crate::runtime_log::record_tracing_event(
+                metadata.level(),
+                metadata.target(),
+                visitor.message.as_deref(),
+                visitor.structured_fields,
+                line.as_str(),
+            );
+        }
         if !should_mirror_to_mission_control(*metadata.level(), metadata.target(), line.as_str()) {
             return;
         }
@@ -124,6 +153,7 @@ where
 
 pub fn init() {
     LOG_INIT.call_once(|| {
+        crate::runtime_log::init_default_session_logging();
         let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wgpu=warn,winit=warn"));
 
@@ -227,9 +257,45 @@ fn should_mirror_to_mission_control(level: Level, target: &str, line: &str) -> b
     false
 }
 
+fn should_persist_to_session_log(level: Level, target: &str, line: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() {
+        return false;
+    }
+
+    if target.starts_with("autopilot_desktop::provider")
+        || target.starts_with("autopilot_desktop::buyer")
+        || target.starts_with("autopilot_desktop::buy_mode")
+    {
+        return true;
+    }
+
+    let normalized = line.to_ascii_lowercase();
+    if target.starts_with("autopilot_desktop::input") {
+        return matches!(level, Level::WARN | Level::ERROR)
+            && (normalized.contains("ui error [network.requests]")
+                || normalized.contains("ui error [spark.wallet]"));
+    }
+
+    if target.starts_with("breez_sdk_spark::sdk") {
+        return normalized.contains("polling lightning send payment")
+            || normalized.contains("polling payment status =")
+            || normalized.contains("polling payment completed status =")
+            || normalized.contains("timeout waiting for payment");
+    }
+
+    if target.starts_with("autopilot_desktop::spark_wallet") {
+        return matches!(level, Level::WARN | Level::ERROR);
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{format_mirrored_log_line, should_mirror_to_mission_control};
+    use super::{
+        format_mirrored_log_line, should_mirror_to_mission_control, should_persist_to_session_log,
+    };
 
     #[test]
     fn mirrored_log_line_includes_message_and_fields() {
@@ -280,6 +346,25 @@ mod tests {
             tracing::Level::INFO,
             "breez_sdk_spark::sdk",
             "INFO breez_sdk_spark::sdk: Balance updated successfully 507"
+        ));
+    }
+
+    #[test]
+    fn session_log_filter_includes_provider_compute_flow() {
+        assert!(should_persist_to_session_log(
+            tracing::Level::INFO,
+            "autopilot_desktop::provider",
+            "INFO autopilot_desktop::provider: Provider accepting request_id=req-1 capability=text-generation"
+        ));
+        assert!(should_persist_to_session_log(
+            tracing::Level::INFO,
+            "autopilot_desktop::buyer",
+            "INFO autopilot_desktop::buyer: Queued NIP-90 request request_id=req-1"
+        ));
+        assert!(!should_persist_to_session_log(
+            tracing::Level::INFO,
+            "autopilot_desktop::settings",
+            "INFO autopilot_desktop::settings: theme updated"
         ));
     }
 }

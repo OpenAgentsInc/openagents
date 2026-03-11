@@ -1,696 +1,696 @@
 {
-  "final": {
-    "active_variant_id": "variant.baseline",
-    "analysis": {
-      "document_revision": 5,
-      "estimated_cost_usd": 183.8871448673385,
-      "mass_kg": 0.34811086390972296,
-      "material_id": "al-6061-t6",
-      "max_deflection_mm": 0.0004227572454630573,
-      "variant_id": "variant.baseline",
-      "volume_mm3": 128929.94959619368
+  "script_id": "cad-chat-build-e2e-phase2-failure",
+  "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-failure",
+  "steps": [
+    {
+      "index": 0,
+      "name": "tool-call-invalid-underactuated",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
+      "result": {
+        "status": "rejected_parse",
+        "error_code": "CAD-INTENT-INVALID-FIELD",
+        "error_message": "underactuated_mode requires single_servo_drive=true",
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-failure.1",
+          "status": "failed",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "failed",
+              "tone": "error"
+            },
+            {
+              "label": "tool",
+              "value": "failed:OA-CAD-INTENT-PARSE-FAILED",
+              "tone": "info"
+            },
+            {
+              "label": "failure_class",
+              "value": "intent_parse_validation",
+              "tone": "error"
+            },
+            {
+              "label": "retries",
+              "value": "0/1",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.failure.metric class=intent_parse_validation count=1",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.failure.context class=intent_parse_validation retries=0/1",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requ...",
+              "tone": "muted"
+            },
+            {
+              "label": "failure",
+              "value": "intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requires single_servo_drive=true",
+              "tone": "error"
+            },
+            {
+              "label": "hint",
+              "value": "retry with explicit intent_json matching CadIntent schema",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
     },
+    {
+      "index": 1,
+      "name": "tool-call-create-warning-hand",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
+      "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.2",
+        "intent": "CreateParallelJawGripperSpec",
+        "state_revision": 1,
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-failure.2",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a919dc1d5500 mesh=0dee04f2f28a807e duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a91...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 2,
+      "name": "tool-call-adjust-wiring-channel",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
+      "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.3",
+        "intent": "AdjustParameter",
+        "state_revision": 2,
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-failure.3",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mesh=d5afde6bdd0f396c duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mes...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 3,
+      "name": "tool-call-adjust-wiring-bend",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
+      "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.4",
+        "intent": "AdjustParameter",
+        "state_revision": 3,
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-failure.4",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mesh=5f922f00023ad3be duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mes...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 4,
+      "name": "tool-call-adjust-wiring-clearance",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
+      "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.5",
+        "intent": "AdjustParameter",
+        "state_revision": 4,
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-failure.5",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mesh=a6157530a01af1aa duration_ms=194",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mes...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 5,
+      "name": "dimension-edit-jaw-open",
+      "kind": "dimension_edit",
+      "duration_ms": 0,
+      "result": {
+        "status": "edited",
+        "dimension_index": 0,
+        "state_revision": 5,
+        "previous_value_mm": 40.0,
+        "updated_value_mm": 12.0,
+        "last_receipt": {
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:5:5",
+          "document_revision": 5,
+          "variant_id": "variant.baseline",
+          "rebuild_hash": "41b705a108a00f5f",
+          "mesh_hash": "06812750caa35e9e",
+          "duration_ms": 202,
+          "feature_count": 40,
+          "vertex_count": 1756,
+          "triangle_count": 2496,
+          "edge_count": 1900,
+          "cache_hits": 0,
+          "cache_misses": 40,
+          "cache_evictions": 40
+        },
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-baseline.41b705a108a00f5f",
+        "pending_rebuild_request_id": null
+      }
+    },
+    {
+      "index": 6,
+      "name": "assert-warning-escalation",
+      "kind": "assert_warning_escalation",
+      "duration_ms": 0,
+      "result": {
+        "status": "asserted",
+        "warning_count": 5,
+        "critical_count": 4
+      }
+    },
+    {
+      "index": 7,
+      "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
+      "result": {
+        "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.baseline",
+        "visible_variant_ids": [
+          "variant.baseline"
+        ],
+        "all_variants_visible": false,
+        "variant_materials": {
+          "variant.baseline": "al-6061-t6",
+          "variant.pinch": "al-6061-t6",
+          "variant.tripod": "al-6061-t6",
+          "variant.wide-thumb": "al-6061-t6"
+        }
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "status": "rejected_parse",
+      "error_code": "CAD-INTENT-INVALID-FIELD",
+      "error_message": "underactuated_mode requires single_servo_drive=true",
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.1",
+        "status": "failed",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "failed",
+            "tone": "error"
+          },
+          {
+            "label": "tool",
+            "value": "failed:OA-CAD-INTENT-PARSE-FAILED",
+            "tone": "info"
+          },
+          {
+            "label": "failure_class",
+            "value": "intent_parse_validation",
+            "tone": "error"
+          },
+          {
+            "label": "retries",
+            "value": "0/1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.failure.metric class=intent_parse_validation count=1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.failure.context class=intent_parse_validation retries=0/1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requ...",
+            "tone": "muted"
+          },
+          {
+            "label": "failure",
+            "value": "intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requires single_servo_drive=true",
+            "tone": "error"
+          },
+          {
+            "label": "hint",
+            "value": "retry with explicit intent_json matching CadIntent schema",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.2",
+      "intent": "CreateParallelJawGripperSpec",
+      "state_revision": 1,
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.2",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a919dc1d5500 mesh=0dee04f2f28a807e duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a91...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.3",
+      "intent": "AdjustParameter",
+      "state_revision": 2,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.3",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mesh=d5afde6bdd0f396c duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.4",
+      "intent": "AdjustParameter",
+      "state_revision": 3,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.4",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mesh=5f922f00023ad3be duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-failure.5",
+      "intent": "AdjustParameter",
+      "state_revision": 4,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-failure.5",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mesh=a6157530a01af1aa duration_ms=194",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4",
+            "tone": "muted"
+          }
+        ]
+      }
+    }
+  ],
+  "final": {
     "final_state_revision": 5,
+    "active_variant_id": "variant.baseline",
     "last_error": null,
     "receipts": [
       {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 1,
-        "duration_ms": 162,
-        "edge_count": 1900,
         "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:1:1",
-        "feature_count": 40,
-        "mesh_hash": "0dee04f2f28a807e",
+        "document_revision": 1,
+        "variant_id": "variant.baseline",
         "rebuild_hash": "caf6a919dc1d5500",
+        "mesh_hash": "0dee04f2f28a807e",
+        "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
         "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 0,
+        "edge_count": 1900,
         "cache_hits": 0,
         "cache_misses": 40,
-        "document_revision": 2,
-        "duration_ms": 162,
-        "edge_count": 1900,
+        "cache_evictions": 0
+      },
+      {
         "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:2:2",
-        "feature_count": 40,
-        "mesh_hash": "d5afde6bdd0f396c",
+        "document_revision": 2,
+        "variant_id": "variant.baseline",
         "rebuild_hash": "1a85ac443dbc29e8",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 3,
+        "mesh_hash": "d5afde6bdd0f396c",
         "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
         "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 0
+      },
+      {
         "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:3:3",
-        "feature_count": 40,
-        "mesh_hash": "5f922f00023ad3be",
+        "document_revision": 3,
+        "variant_id": "variant.baseline",
         "rebuild_hash": "1c6d4fcc4ef8bc17",
+        "mesh_hash": "5f922f00023ad3be",
+        "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
         "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 32,
+        "edge_count": 1900,
         "cache_hits": 0,
         "cache_misses": 40,
-        "document_revision": 4,
-        "duration_ms": 194,
-        "edge_count": 1900,
+        "cache_evictions": 0
+      },
+      {
         "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:4:4",
-        "feature_count": 40,
-        "mesh_hash": "a6157530a01af1aa",
-        "rebuild_hash": "019388b485666895",
-        "triangle_count": 2496,
+        "document_revision": 4,
         "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 40,
+        "rebuild_hash": "019388b485666895",
+        "mesh_hash": "a6157530a01af1aa",
+        "duration_ms": 194,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
         "cache_hits": 0,
         "cache_misses": 40,
-        "document_revision": 5,
-        "duration_ms": 202,
-        "edge_count": 1900,
+        "cache_evictions": 32
+      },
+      {
         "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:5:5",
-        "feature_count": 40,
-        "mesh_hash": "06812750caa35e9e",
-        "rebuild_hash": "41b705a108a00f5f",
-        "triangle_count": 2496,
+        "document_revision": 5,
         "variant_id": "variant.baseline",
-        "vertex_count": 1756
+        "rebuild_hash": "41b705a108a00f5f",
+        "mesh_hash": "06812750caa35e9e",
+        "duration_ms": 202,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 40
       }
     ],
-    "timing": {
-      "total_duration_ms": 0
-    },
     "warnings": {
+      "count": 5,
+      "critical_count": 4,
       "codes": [
         "CAD-WARN-WIRING-JOINT-INTERFERENCE",
         "CAD-WARN-HOUSING-JAW-INTERFERENCE",
         "CAD-WARN-SENSOR-MOUNT-OVERLAP",
         "CAD-WARN-TENDON-ROUTING-COLLISION",
         "CAD-WARN-HAND-SELF-INTERSECTION"
-      ],
-      "count": 5,
-      "critical_count": 4
+      ]
+    },
+    "analysis": {
+      "document_revision": 5,
+      "variant_id": "variant.baseline",
+      "material_id": "al-6061-t6",
+      "volume_mm3": 128929.94959619368,
+      "mass_kg": 0.34811086390972296,
+      "estimated_cost_usd": 183.8871448673385,
+      "max_deflection_mm": 0.0004227572454630573
+    },
+    "timing": {
+      "total_duration_ms": 0
     }
-  },
-  "script_id": "cad-chat-build-e2e-phase2-failure",
-  "seed": 0,
-  "steps": [
-    {
-      "duration_ms": 0,
-      "index": 0,
-      "kind": "cad_tool_call_intent",
-      "name": "tool-call-invalid-underactuated",
-      "result": {
-        "error_code": "CAD-INTENT-INVALID-FIELD",
-        "error_message": "underactuated_mode requires single_servo_drive=true",
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "error",
-              "value": "failed"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "failed:OA-CAD-INTENT-PARSE-FAILED"
-            },
-            {
-              "label": "failure_class",
-              "tone": "error",
-              "value": "intent_parse_validation"
-            },
-            {
-              "label": "retries",
-              "tone": "muted",
-              "value": "0/1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.failure.metric class=intent_parse_validation count=1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.failure.context class=intent_parse_validation retries=0/1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requ..."
-            },
-            {
-              "label": "failure",
-              "tone": "error",
-              "value": "intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requires single_servo_drive=true"
-            },
-            {
-              "label": "hint",
-              "tone": "muted",
-              "value": "retry with explicit intent_json matching CadIntent schema"
-            }
-          ],
-          "status": "failed",
-          "turn_id": "turn.cad-chat-e2e-phase2-failure.1"
-        },
-        "status": "rejected_parse"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 1,
-      "kind": "cad_tool_call_intent",
-      "name": "tool-call-create-warning-hand",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "CreateParallelJawGripperSpec",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a919dc1d5500 mesh=0dee04f2f28a807e duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a91..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-failure.2"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-        "state_revision": 1,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.2"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 2,
-      "kind": "cad_tool_call_intent",
-      "name": "tool-call-adjust-wiring-channel",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "AdjustParameter",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mesh=d5afde6bdd0f396c duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mes..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-failure.3"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
-        "state_revision": 2,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.3"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 3,
-      "kind": "cad_tool_call_intent",
-      "name": "tool-call-adjust-wiring-bend",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "AdjustParameter",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mesh=5f922f00023ad3be duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mes..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-failure.4"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
-        "state_revision": 3,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.4"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 4,
-      "kind": "cad_tool_call_intent",
-      "name": "tool-call-adjust-wiring-clearance",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "AdjustParameter",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mesh=a6157530a01af1aa duration_ms=194"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mes..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-failure.5"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
-        "state_revision": 4,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.5"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 5,
-      "kind": "dimension_edit",
-      "name": "dimension-edit-jaw-open",
-      "result": {
-        "dimension_index": 0,
-        "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-baseline.41b705a108a00f5f",
-        "last_receipt": {
-          "cache_evictions": 40,
-          "cache_hits": 0,
-          "cache_misses": 40,
-          "document_revision": 5,
-          "duration_ms": 202,
-          "edge_count": 1900,
-          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-failure:5:5",
-          "feature_count": 40,
-          "mesh_hash": "06812750caa35e9e",
-          "rebuild_hash": "41b705a108a00f5f",
-          "triangle_count": 2496,
-          "variant_id": "variant.baseline",
-          "vertex_count": 1756
-        },
-        "pending_rebuild_request_id": null,
-        "previous_value_mm": 40.0,
-        "state_revision": 5,
-        "status": "edited",
-        "updated_value_mm": 12.0
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 6,
-      "kind": "assert_warning_escalation",
-      "name": "assert-warning-escalation",
-      "result": {
-        "critical_count": 4,
-        "status": "asserted",
-        "warning_count": 5
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 7,
-      "kind": "capture_snapshot_truth",
-      "name": "capture-single-layout-truth",
-      "result": {
-        "active_variant_id": "variant.baseline",
-        "all_variants_visible": false,
-        "design_profile": "three_finger_thumb",
-        "status": "captured",
-        "variant_materials": {
-          "variant.baseline": "al-6061-t6",
-          "variant.pinch": "al-6061-t6",
-          "variant.tripod": "al-6061-t6",
-          "variant.wide-thumb": "al-6061-t6"
-        },
-        "viewport_layout": "single",
-        "visible_variant_ids": [
-          "variant.baseline"
-        ]
-      }
-    }
-  ],
-  "thread_id": "thread.cad-chat-e2e-phase2-failure",
-  "tool_calls": [
-    {
-      "error_code": "CAD-INTENT-INVALID-FIELD",
-      "error_message": "underactuated_mode requires single_servo_drive=true",
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "error",
-            "value": "failed"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "failed:OA-CAD-INTENT-PARSE-FAILED"
-          },
-          {
-            "label": "failure_class",
-            "tone": "error",
-            "value": "intent_parse_validation"
-          },
-          {
-            "label": "retries",
-            "tone": "muted",
-            "value": "0/1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.failure.metric class=intent_parse_validation count=1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.failure.context class=intent_parse_validation retries=0/1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.intent.parse_failed intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requ..."
-          },
-          {
-            "label": "failure",
-            "tone": "error",
-            "value": "intent parse failed CAD-INTENT-INVALID-FIELD: underactuated_mode requires single_servo_drive=true"
-          },
-          {
-            "label": "hint",
-            "tone": "muted",
-            "value": "retry with explicit intent_json matching CadIntent schema"
-          }
-        ],
-        "status": "failed",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.1"
-      },
-      "status": "rejected_parse"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "CreateParallelJawGripperSpec",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a919dc1d5500 mesh=0dee04f2f28a807e duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=caf6a91..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.2"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-      "state_revision": 1,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-failure.2"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mesh=d5afde6bdd0f396c duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1a85ac443dbc29e8 mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.3"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 2,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-failure.3"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mesh=5f922f00023ad3be duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=1c6d4fcc4ef8bc17 mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.4"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 3,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-failure.4"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mesh=a6157530a01af1aa duration_ms=194"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=019388b485666895 mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-failure.5"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 4,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-failure.5"
-    }
-  ]
+  }
 }
