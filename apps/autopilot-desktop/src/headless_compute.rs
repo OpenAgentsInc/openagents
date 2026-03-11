@@ -835,6 +835,9 @@ fn handle_buyer_response_event(
                 status,
                 event.event_id
             );
+            if status.eq_ignore_ascii_case("success") {
+                request.success_feedback_event_id = Some(event.event_id.clone());
+            }
             if status.eq_ignore_ascii_case("payment-required") {
                 request.payment_feedback_event_id = Some(event.event_id.clone());
                 let Some(bolt11) = event.bolt11.as_deref() else {
@@ -1473,6 +1476,7 @@ struct ActiveBuyerRequest {
     result_event_id: Option<String>,
     result_content: Option<String>,
     payment_feedback_event_id: Option<String>,
+    success_feedback_event_id: Option<String>,
     payment_request: Option<String>,
     payment_enqueued: bool,
     payment_pointer: Option<String>,
@@ -1494,7 +1498,10 @@ impl ActiveBuyerRequest {
     }
 
     fn is_terminal_success(&self) -> bool {
-        self.result_event_id.is_some() && self.payment_settled && self.failed_reason.is_none()
+        self.result_event_id.is_some()
+            && self.payment_settled
+            && self.success_feedback_event_id.is_some()
+            && self.failed_reason.is_none()
     }
 
     fn deadline_exceeded(&self, timeout_seconds: u64) -> bool {
@@ -1511,6 +1518,7 @@ impl Default for ActiveBuyerRequest {
             result_event_id: None,
             result_content: None,
             payment_feedback_event_id: None,
+            success_feedback_event_id: None,
             payment_request: None,
             payment_enqueued: false,
             payment_pointer: None,
@@ -1938,12 +1946,14 @@ mod tests {
     }
 
     #[test]
-    fn buyer_request_success_requires_result_and_payment() {
+    fn buyer_request_success_requires_result_payment_and_provider_success_feedback() {
         let mut request = ActiveBuyerRequest::new("req-123".to_string());
         assert!(!request.is_terminal_success());
         request.result_event_id = Some("result-123".to_string());
         assert!(!request.is_terminal_success());
         request.payment_settled = true;
+        assert!(!request.is_terminal_success());
+        request.success_feedback_event_id = Some("feedback-123".to_string());
         assert!(request.is_terminal_success());
     }
 
