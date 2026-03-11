@@ -8832,8 +8832,8 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
         &state.ollama_execution,
     ) {
         Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            let bridge_starting = state.provider_runtime.apple_fm.bridge_status.as_deref()
-                == Some("starting");
+            let bridge_starting =
+                state.provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting");
             if bridge_starting {
                 state
                     .mission_control
@@ -8847,18 +8847,17 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
                 run_apple_fm_workbench_action(state, AppleFmWorkbenchPaneAction::StartBridge)
             };
             if handled && state.apple_fm_workbench.last_error.is_none() {
-                state.mission_control.record_action(
-                    if state.provider_runtime.apple_fm.reachable {
+                state
+                    .mission_control
+                    .record_action(if state.provider_runtime.apple_fm.reachable {
                         "Queued Apple FM bridge refresh"
                     } else {
                         "Queued Apple FM bridge start"
-                    },
-                );
+                    });
             } else if !handled {
                 state.mission_control.last_action =
                     Some("Apple FM mission control action failed".to_string());
-                state.mission_control.last_error =
-                    state.apple_fm_workbench.last_error.clone();
+                state.mission_control.last_error = state.apple_fm_workbench.last_error.clone();
             }
             handled
         }
@@ -9025,6 +9024,52 @@ pub(super) fn run_mission_control_action(
                     true
                 }
             }
+        }
+        MissionControlPaneAction::RunBuyModeSmokeTest => {
+            if !state.mission_control_buy_mode_enabled() {
+                state
+                    .mission_control
+                    .record_error("Buy Mode is disabled for this session");
+                return true;
+            }
+            if state.network_requests.has_in_flight_request_by_type(
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
+            ) {
+                state
+                    .mission_control
+                    .record_error("Buy Mode already has an in-flight smoke test");
+                return true;
+            }
+
+            let payload = serde_json::json!({
+                "prompt": "Reply with the exact text BUY MODE OK.",
+                "mode": "mission_control.buy_mode.5050",
+                "source": "mission_control",
+            })
+            .to_string();
+            match submit_signed_network_request(
+                state,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload,
+                None,
+                None,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                Vec::new(),
+            ) {
+                Ok(request_id) => {
+                    state
+                        .mission_control
+                        .record_action(format!("Queued BUY 5050 TEST JOB {request_id}"));
+                }
+                Err(error) => {
+                    state.provider_runtime.last_error_detail = Some(error.clone());
+                    state
+                        .mission_control
+                        .record_error(format!("Buy Mode request failed: {error}"));
+                }
+            }
+            true
         }
         MissionControlPaneAction::SendWithdrawal => {
             let command = match build_pay_invoice_command(

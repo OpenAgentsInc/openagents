@@ -5,8 +5,8 @@ use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, 
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    mission_control_show_local_model_button, ActivityFeedFilter, DesktopPane, PaneDragMode,
-    PaneKind, PanePresentation, RenderState,
+    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
+    mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -330,6 +330,7 @@ pub enum EarningsScoreboardPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
     OpenLocalModelWorkbench,
+    RunBuyModeSmokeTest,
     SendWithdrawal,
     OpenDocumentation,
 }
@@ -1999,10 +2000,18 @@ pub struct MissionControlPaneLayout {
     pub wallet_panel: Bounds,
     pub actions_panel: Bounds,
     pub active_jobs_panel: Bounds,
+    pub buy_mode_panel: Bounds,
     pub log_stream: Bounds,
 }
 
 pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayout {
+    mission_control_layout_for_mode(content_bounds, false)
+}
+
+pub fn mission_control_layout_for_mode(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> MissionControlPaneLayout {
     let outer_pad = 16.0;
     let column_gap = 18.0;
     let panel_gap = 16.0;
@@ -2083,18 +2092,43 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
         actions_height,
     );
 
-    let active_jobs_height = (128.0 * scale).max(84.0_f32.min(body_height));
+    let active_jobs_height = if buy_mode_enabled {
+        (right_column.size.height * 0.24).clamp(84.0, 128.0)
+    } else {
+        (128.0 * scale).max(84.0_f32.min(body_height))
+    };
     let active_jobs_panel = Bounds::new(
         right_column.origin.x,
         right_column.origin.y,
         right_column.size.width,
         active_jobs_height,
     );
+    let buy_mode_panel = if buy_mode_enabled {
+        let buy_mode_height = (right_column.size.height * 0.22).clamp(108.0, 128.0);
+        Bounds::new(
+            right_column.origin.x,
+            active_jobs_panel.max_y() + panel_gap,
+            right_column.size.width,
+            buy_mode_height,
+        )
+    } else {
+        Bounds::new(
+            right_column.origin.x,
+            active_jobs_panel.max_y(),
+            right_column.size.width,
+            0.0,
+        )
+    };
+    let log_origin_y = if buy_mode_enabled {
+        buy_mode_panel.max_y() + panel_gap
+    } else {
+        active_jobs_panel.max_y() + panel_gap
+    };
     let log_stream = Bounds::new(
         right_column.origin.x,
-        active_jobs_panel.max_y() + panel_gap,
+        log_origin_y,
         right_column.size.width,
-        (right_column.size.height - active_jobs_height - panel_gap).max(0.0),
+        (right_column.max_y() - log_origin_y).max(0.0),
     );
 
     MissionControlPaneLayout {
@@ -2107,6 +2141,7 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
         wallet_panel,
         actions_panel,
         active_jobs_panel,
+        buy_mode_panel,
         log_stream,
     }
 }
@@ -2172,6 +2207,26 @@ pub fn mission_control_documentation_button_bounds(content_bounds: Bounds) -> Bo
 
 pub fn mission_control_log_stream_bounds(content_bounds: Bounds) -> Bounds {
     mission_control_layout(content_bounds).log_stream
+}
+
+pub fn mission_control_log_stream_bounds_for_mode(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    mission_control_layout_for_mode(content_bounds, buy_mode_enabled).log_stream
+}
+
+pub fn mission_control_buy_mode_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    let panel = mission_control_layout_for_mode(content_bounds, buy_mode_enabled).buy_mode_panel;
+    Bounds::new(
+        panel.origin.x + 14.0,
+        panel.max_y() - 30.0,
+        (panel.size.width - 28.0).max(0.0),
+        22.0,
+    )
 }
 
 pub fn provider_inventory_toggle_button_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
@@ -4395,6 +4450,15 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
+            } else if state.mission_control_buy_mode_enabled()
+                && !state.network_requests.has_in_flight_request_by_type(
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
+                )
+                && mission_control_buy_mode_button_bounds(content_bounds, true).contains(point)
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::RunBuyModeSmokeTest,
+                ))
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
@@ -5458,7 +5522,10 @@ pub fn dispatch_mission_control_log_scroll_event(
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
-    let log_bounds = mission_control_log_stream_bounds(content_bounds);
+    let log_bounds = mission_control_log_stream_bounds_for_mode(
+        content_bounds,
+        state.mission_control_buy_mode_enabled(),
+    );
     if !log_bounds.contains(cursor_position) {
         return false;
     }
@@ -5981,6 +6048,20 @@ mod tests {
         assert!(local_model.max_y() <= withdraw_input.origin.y);
         assert!(withdraw_input.max_y() <= withdraw_button.origin.y);
         assert!(withdraw_button.max_y() <= layout.actions_panel.max_y());
+    }
+
+    #[test]
+    fn mission_control_buy_mode_button_fits_inside_panel_when_enabled() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout_for_mode(content_bounds, true);
+        let button = super::mission_control_buy_mode_button_bounds(content_bounds, true);
+
+        assert!(layout.buy_mode_panel.size.height > 0.0);
+        assert!(layout.buy_mode_panel.contains(button.origin));
+        assert!(button.max_x() <= layout.buy_mode_panel.max_x());
+        assert!(button.max_y() <= layout.buy_mode_panel.max_y());
+        assert!(layout.active_jobs_panel.max_y() <= layout.buy_mode_panel.origin.y);
+        assert!(layout.buy_mode_panel.max_y() <= layout.log_stream.origin.y);
     }
 
     #[test]

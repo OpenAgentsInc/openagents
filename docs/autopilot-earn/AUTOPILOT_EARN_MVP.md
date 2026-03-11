@@ -138,6 +138,27 @@ Total: 50 sats
 - Future provider modes may be added later, but compute remains the default active lane for this MVP.
 - First sats milestones should be visibly celebrated. Initial milestone set: `10`, `25`, `50`, `100`.
 
+### 3.6 Buy Mode smoke test
+
+For internal verification and staged rollout testing, Mission Control should
+optionally expose a small `Buy Mode` block. This is not a second buyer product.
+It is a one-click smoke test for the real NIP-90 + Lightning path.
+
+Contract:
+
+- hidden unless `OPENAGENTS_ENABLE_BUY_MODE=1`
+- one in-flight outbound request at a time
+- publishes one fixed `kind: 5050` request with a tiny prompt template chosen
+  for cheap validation
+- fixed spend: `2 sats`
+- waits for feedback, result, invoice pay, and terminal settlement inline in
+  Mission Control
+- reuses the existing app-owned `NetworkRequestsState` instead of introducing a
+  second buyer-state model
+
+This path complements hosted starter demand. It does not replace the OpenAgents
+starter buyer loop that guarantees first provider earnings.
+
 ## 4) Scope Alignment To Current Repo
 
 This spec aligns to current MVP authority docs:
@@ -199,7 +220,24 @@ while true:
   sleep(3s)
 ```
 
-### 5.3 Lightning wallet lane
+### 5.3 Mission Control Buy Mode (desktop, feature-gated)
+
+Purpose: give operators and QA a way to originate a real paid request from the
+desktop itself and verify the buyer path without leaving Mission Control.
+
+Responsibilities:
+
+- build one fixed `kind: 5050` request with a tiny validation-friendly prompt
+- set spend to exactly `2 sats`
+- publish over the same configured relay set used by the desktop buyer lane
+- track `7000` feedback and `6050` result lifecycle inline
+- pay the provider invoice from the built-in Spark wallet
+- show terminal success only after the buyer payment reaches a terminal wallet
+  success state
+- stay manual and one-shot; no repeating loop, scheduler, or generic prompt
+  composer for `v0.1`
+
+### 5.4 Lightning wallet lane
 
 MVP settlement model:
 
@@ -259,6 +297,10 @@ Start with deterministic jobs first (hash/json/benchmark), then add inference.
 
 Default buyer policy for those launch jobs is `race`. `windowed` evaluation is roadmap work for later job classes.
 
+Mission Control `Buy Mode` is a separate smoke-test contract from the hosted
+starter-demand pricing matrix above: it should always publish one fixed
+`kind: 5050` request at `2 sats` for manual end-to-end verification.
+
 ## 8) Seed Demand + Stress Strategy
 
 Suggested test pool: `200,000 sats`.
@@ -298,8 +340,10 @@ Global Network Earnings Today: <btc>
 2. Wire status and counters from existing provider/wallet/job state.
 3. Ensure job lifecycle visible in one list: waiting -> running -> completed -> paid.
 4. Wire seed-demand buyer to continuously publish paid jobs.
-5. Enforce wallet-confirmed payout gate in displayed earnings.
-6. Add simple public stats aggregation endpoint.
+5. Wire feature-gated Mission Control `Buy Mode` to publish/pay one fixed
+   `kind: 5050` request at `2 sats`.
+6. Enforce wallet-confirmed payout gate in displayed earnings.
+7. Add simple public stats aggregation endpoint.
 
 ## 11) Out Of Scope (Hard No For MVP)
 
@@ -321,6 +365,9 @@ MVP is ready when all are true:
 4. Increment is backed by real wallet receive evidence.
 5. User can withdraw from the built-in Spark wallet by paying an external Lightning invoice.
 6. Stats page reflects live economic activity.
+7. With `OPENAGENTS_ENABLE_BUY_MODE=1`, Mission Control can publish one
+   `kind: 5050` / `2 sats` smoke-test request and show the terminal
+   buyer-side payment outcome inline.
 
 The user should be able to do that withdrawal while still online. Going offline is not a prerequisite for paying out from the built-in wallet.
 
@@ -584,6 +631,28 @@ Backroom review completed before this list. Relevant candidate restore sources i
 
 69. **Issue name:** `Launch Rehearsal and Production Signoff`  
     **Description:** Run staged rehearsal with fixed sats pool and publish signoff evidence before broad enablement.
+
+### Buy Mode Smoke-Test Additions
+
+70. **Issue name:** `Mission Control Buy Mode Inline Smoke Test`
+    **Description:** Add a feature-gated inline Mission Control block that
+    submits one fixed `kind: 5050` request at `2 sats`, renders the
+    buyer-side lifecycle from `NetworkRequestsState`, and never opens a second
+    buyer pane.
+    **GitHub issue:** [#3378](https://github.com/OpenAgentsInc/openagents/issues/3378)
+
+71. **Issue name:** `Desktop 5050 / 2-Sat Buyer Pipeline`
+    **Description:** Reuse the existing desktop network-request lane to publish
+    the buy-mode `5050` smoke-test request, correlate `7000` feedback and
+    `6050` result events, pay the provider invoice from Spark, and expose
+    terminal settlement reasons.
+    **GitHub issue:** [#3379](https://github.com/OpenAgentsInc/openagents/issues/3379)
+
+72. **Issue name:** `Buy Mode End-to-End Regression Coverage`
+    **Description:** Add automated coverage proving Mission Control buy mode can
+    publish the fixed `5050` request, receive a result, send the `2 sats`
+    payment, and render terminal success/failure deterministically.
+    **GitHub issue:** [#3380](https://github.com/OpenAgentsInc/openagents/issues/3380)
 
 ### Existing Issues To Reuse/Extend
 

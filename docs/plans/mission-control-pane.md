@@ -61,11 +61,43 @@ Bottom actions:
 
 - one-line summary of the active job, or `Go Online to Start Jobs.`
 
+`// BUY MODE` (feature-gated)
+
+- hidden unless `OPENAGENTS_ENABLE_BUY_MODE=1`
+- one-line summary of the latest outbound smoke-test request
+- status rows: `State`, `Kind`, `Budget`, `Result`, `Settlement`
+- action: `BUY 5050 TEST JOB`
+
 `// LOG STREAM`
 
 - scrolling terminal-style status stream
 - shows provider mode, preflight blockers, local-model readiness, UI actions,
-  provider results, and job lifecycle updates
+  provider results, buy-mode lifecycle updates, and job lifecycle updates
+
+## Buy Mode Contract
+
+Mission Control may expose a small inline `Buy Mode` block for internal and
+staging verification, but it must stay constrained enough that it does not
+become a second product surface.
+
+Contract:
+
+- gated behind `OPENAGENTS_ENABLE_BUY_MODE=1`
+- one outbound smoke-test at a time
+- publishes exactly one `kind: 5050` request per click
+- fixed spend: `2 sats`
+- uses a fixed tiny prompt template chosen for cheap validation of the result
+  path
+- buyer lifecycle renders inline from the same app-owned state used by the
+  existing `Network Requests` pane
+- terminal success requires both a provider result and a terminal buyer-wallet
+  payment success state
+- no general prompt composer, quote board, RFQ editor, or autonomous buy loop
+  in Mission Control for `v0.1`
+
+This is a smoke-test lane for the real NIP-90 + Lightning path. It does not
+replace hosted starter demand and it should not dilute the earn-first release
+copy.
 
 ## Local-Model Action Contract
 
@@ -178,6 +210,8 @@ Mission Control is app-owned. It renders from:
 - `LocalInferenceExecutionSnapshot` / `ProviderOllamaRuntimeState` for the
   NVIDIA GPT-OSS CUDA gate
 - `SparkPaneState` for wallet truth
+- `NetworkRequestsState` / `NetworkRequestsPaneInputs` for inline buy-mode
+  publish/result/payment lifecycle when enabled
 - `EarnJobLifecycleProjectionState`, `JobInboxState`, and `ActiveJobState` for
   job visibility
 
@@ -192,6 +226,7 @@ The current implementation lives in:
 - `apps/autopilot-desktop/src/pane_renderer.rs`
 - `apps/autopilot-desktop/src/pane_system.rs`
 - `apps/autopilot-desktop/src/pane_registry.rs`
+- `apps/autopilot-desktop/src/state/operations.rs`
 
 Related local-model runtime panes live in:
 
@@ -209,6 +244,10 @@ Mission Control is correct when all of the following are true:
   readiness
 - provider blockers and log lines come from the same backend/runtime state that
   provider mode uses
+- enabling `OPENAGENTS_ENABLE_BUY_MODE=1` adds one inline `kind: 5050` /
+  `2 sats` buyer smoke-test flow without opening another pane
+- buy-mode success/failure state comes from `NetworkRequestsState` and Spark
+  wallet truth rather than Mission Control-local inference
 - macOS does not expose a competing GPT-OSS local-model pane in the command
   palette
 - GPT-OSS-specific loading and troubleshooting are handled in the separate

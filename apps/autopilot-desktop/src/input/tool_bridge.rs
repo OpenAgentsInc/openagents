@@ -2018,6 +2018,11 @@ fn pane_action_to_hit_action(
         PaneKind::Calculator => unsupported(),
         PaneKind::GoOnline => match action {
             "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
+            "buy_mode_test_job" | "buy_test_job" | "submit_buy_mode_request" => {
+                Ok(PaneHitAction::MissionControl(
+                    crate::pane_system::MissionControlPaneAction::RunBuyModeSmokeTest,
+                ))
+            }
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
                 Ok(PaneHitAction::MissionControl(
                     crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
