@@ -5611,6 +5611,8 @@ mod tests {
     fn assert_or_write_report_fixture(path: &str, report: &Value, label: &str) {
         let actual_json =
             serde_json::to_string_pretty(report).expect("fixture report should serialize");
+        let normalized_actual = serde_json::from_str::<Value>(&actual_json)
+            .expect("fixture report should round-trip through JSON");
         if std::env::var("CAD_UPDATE_GOLDENS").as_deref() == Ok("1") {
             if let Some(parent) = std::path::Path::new(path).parent() {
                 fs::create_dir_all(parent).expect("fixture parent directory should exist");
@@ -5625,7 +5627,7 @@ mod tests {
         });
         let expected =
             serde_json::from_str::<Value>(&expected_json).expect("fixture should parse as JSON");
-        if expected != *report {
+        if expected != normalized_actual {
             panic!("{label} snapshot mismatch against {path}\nactual snapshot:\n{actual_json}");
         }
     }

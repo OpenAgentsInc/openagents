@@ -1,310 +1,226 @@
 {
-  "final": {
-    "active_variant_id": "variant.wide-jaw",
-    "analysis": {
-      "document_revision": 3,
-      "estimated_cost_usd": 112.81480475242597,
-      "mass_kg": 0.1684741034324506,
-      "material_id": "al-5052-h32",
-      "max_deflection_mm": 0.00021265895785965984,
-      "variant_id": "variant.wide-jaw",
-      "volume_mm3": 62863.47143001888
-    },
-    "final_state_revision": 3,
-    "last_error": null,
-    "receipts": [
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 9,
-        "document_revision": 1,
-        "duration_ms": 38,
-        "edge_count": 410,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:1:1",
-        "feature_count": 9,
-        "mesh_hash": "89d60b7d3a3bca88",
-        "rebuild_hash": "65b6efe3785691f2",
-        "triangle_count": 368,
-        "variant_id": "variant.baseline",
-        "vertex_count": 310
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 9,
-        "document_revision": 2,
-        "duration_ms": 38,
-        "edge_count": 410,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:2:2",
-        "feature_count": 9,
-        "mesh_hash": "6ea758ab8554ffad",
-        "rebuild_hash": "65b6efe3785691f2",
-        "triangle_count": 368,
-        "variant_id": "variant.baseline",
-        "vertex_count": 310
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 9,
-        "document_revision": 3,
-        "duration_ms": 38,
-        "edge_count": 410,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:3",
-        "feature_count": 9,
-        "mesh_hash": "175f5764f98f1aa9",
-        "rebuild_hash": "18b7d58063202fa4",
-        "triangle_count": 368,
-        "variant_id": "variant.wide-jaw",
-        "vertex_count": 310
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 9,
-        "cache_misses": 0,
-        "document_revision": 3,
-        "duration_ms": 33,
-        "edge_count": 410,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:4",
-        "feature_count": 9,
-        "mesh_hash": "175f5764f98f1aa9",
-        "rebuild_hash": "18b7d58063202fa4",
-        "triangle_count": 368,
-        "variant_id": "variant.wide-jaw",
-        "vertex_count": 310
-      }
-    ],
-    "timing": {
-      "total_duration_ms": 0
-    },
-    "warnings": {
-      "codes": [],
-      "count": 0,
-      "critical_count": 0
-    }
-  },
   "script_id": "cad-chat-build-e2e-phase2-underactuated",
   "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-underactuated",
   "steps": [
     {
-      "duration_ms": 0,
       "index": 0,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-create-underactuated",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "CreateParallelJawGripperSpec",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe3785691f2 mesh=89d60b7d3a3bca88 duration_ms=38"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-        "state_revision": 1,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 1,
       "kind": "cad_tool_call_intent",
-      "name": "tool-call-set-material-baseline",
+      "duration_ms": 0,
       "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1",
+        "intent": "CreateParallelJawGripperSpec",
+        "state_revision": 1,
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "rebuild_status": "committed",
         "has_mesh_payload": true,
-        "intent": "SetMaterial",
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6ea758ab8554ffad duration_ms=38"
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe3785691f2 mesh=89d60b7d3a3bca88 duration_ms=38",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6e..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
-        "state_revision": 2,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2"
+          ]
+        }
       }
     },
     {
+      "index": 1,
+      "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
       "duration_ms": 0,
-      "index": 2,
-      "kind": "cycle_variant",
-      "name": "cycle-to-wide-jaw",
       "result": {
-        "active_variant_id": "variant.wide-jaw",
-        "count": 1,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2",
+        "intent": "SetMaterial",
+        "state_revision": 2,
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-wide-jaw.18b7d58063202fa4",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6ea758ab8554ffad duration_ms=38",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6e...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 2,
+      "name": "cycle-to-wide-jaw",
+      "kind": "cycle_variant",
+      "duration_ms": 0,
+      "result": {
+        "status": "cycled",
+        "count": 1,
+        "state_revision": 3,
+        "active_variant_id": "variant.wide-jaw",
         "last_receipt": {
-          "cache_evictions": 0,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:3",
+          "document_revision": 3,
+          "variant_id": "variant.wide-jaw",
+          "rebuild_hash": "18b7d58063202fa4",
+          "mesh_hash": "175f5764f98f1aa9",
+          "duration_ms": 38,
+          "feature_count": 9,
+          "vertex_count": 310,
+          "triangle_count": 368,
+          "edge_count": 410,
           "cache_hits": 0,
           "cache_misses": 9,
-          "document_revision": 3,
-          "duration_ms": 38,
-          "edge_count": 410,
-          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:3",
-          "feature_count": 9,
-          "mesh_hash": "175f5764f98f1aa9",
-          "rebuild_hash": "18b7d58063202fa4",
-          "triangle_count": 368,
-          "variant_id": "variant.wide-jaw",
-          "vertex_count": 310
+          "cache_evictions": 0
         },
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-wide-jaw.18b7d58063202fa4",
         "pending_rebuild_request_id": null,
-        "state_revision": 3,
-        "status": "cycled",
         "warning_codes": []
       }
     },
     {
-      "duration_ms": 0,
       "index": 3,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-set-material-wide-jaw",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3",
         "intent": "SetMaterial",
+        "state_revision": 3,
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=175f5764f98f1aa9 duration_ms=33"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=175f5764f98f1aa9 duration_ms=33",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=17..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=17...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3"
+              "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
-        "state_revision": 3,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3"
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 4,
-      "kind": "capture_snapshot_truth",
       "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.wide-jaw",
-        "all_variants_visible": false,
-        "design_profile": "parallel_jaw_gripper_underactuated",
         "status": "captured",
+        "design_profile": "parallel_jaw_gripper_underactuated",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.wide-jaw",
+        "visible_variant_ids": [
+          "variant.wide-jaw"
+        ],
+        "all_variants_visible": false,
         "variant_materials": {
           "variant.baseline": "ti-6al-4v",
           "variant.long-reach": "al-6061-t6",
           "variant.stiff-finger": "al-6061-t6",
           "variant.wide-jaw": "al-5052-h32"
-        },
-        "viewport_layout": "single",
-        "visible_variant_ids": [
-          "variant.wide-jaw"
-        ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 5,
-      "kind": "toggle_viewport_layout",
       "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "duration_ms": 0,
       "result": {
-        "all_variants_visible": true,
         "status": "toggled",
         "viewport_layout": "quad",
         "visible_variant_ids": [
@@ -312,177 +228,261 @@
           "variant.wide-jaw",
           "variant.long-reach",
           "variant.stiff-finger"
-        ]
+        ],
+        "all_variants_visible": true
       }
     },
     {
-      "duration_ms": 0,
       "index": 6,
-      "kind": "capture_snapshot_truth",
       "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.wide-jaw",
-        "all_variants_visible": true,
-        "design_profile": "parallel_jaw_gripper_underactuated",
         "status": "captured",
-        "variant_materials": {
-          "variant.baseline": "ti-6al-4v",
-          "variant.long-reach": "al-6061-t6",
-          "variant.stiff-finger": "al-6061-t6",
-          "variant.wide-jaw": "al-5052-h32"
-        },
+        "design_profile": "parallel_jaw_gripper_underactuated",
         "viewport_layout": "quad",
+        "active_variant_id": "variant.wide-jaw",
         "visible_variant_ids": [
           "variant.baseline",
           "variant.wide-jaw",
           "variant.long-reach",
           "variant.stiff-finger"
+        ],
+        "all_variants_visible": true,
+        "variant_materials": {
+          "variant.baseline": "ti-6al-4v",
+          "variant.long-reach": "al-6061-t6",
+          "variant.stiff-finger": "al-6061-t6",
+          "variant.wide-jaw": "al-5052-h32"
+        }
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1",
+      "intent": "CreateParallelJawGripperSpec",
+      "state_revision": 1,
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe3785691f2 mesh=89d60b7d3a3bca88 duration_ms=38",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2",
+      "intent": "SetMaterial",
+      "state_revision": 2,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6ea758ab8554ffad duration_ms=38",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6e...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3",
+      "intent": "SetMaterial",
+      "state_revision": 3,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=175f5764f98f1aa9 duration_ms=33",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=17...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3",
+            "tone": "muted"
+          }
         ]
       }
     }
   ],
-  "thread_id": "thread.cad-chat-e2e-phase2-underactuated",
-  "tool_calls": [
-    {
-      "has_mesh_payload": true,
-      "intent": "CreateParallelJawGripperSpec",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe3785691f2 mesh=89d60b7d3a3bca88 duration_ms=38"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=65b6efe..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1"
+  "final": {
+    "final_state_revision": 3,
+    "active_variant_id": "variant.wide-jaw",
+    "last_error": null,
+    "receipts": [
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:1:1",
+        "document_revision": 1,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "65b6efe3785691f2",
+        "mesh_hash": "89d60b7d3a3bca88",
+        "duration_ms": 38,
+        "feature_count": 9,
+        "vertex_count": 310,
+        "triangle_count": 368,
+        "edge_count": 410,
+        "cache_hits": 0,
+        "cache_misses": 9,
+        "cache_evictions": 0
       },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-      "state_revision": 1,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.1"
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:2:2",
+        "document_revision": 2,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "65b6efe3785691f2",
+        "mesh_hash": "6ea758ab8554ffad",
+        "duration_ms": 38,
+        "feature_count": 9,
+        "vertex_count": 310,
+        "triangle_count": 368,
+        "edge_count": 410,
+        "cache_hits": 0,
+        "cache_misses": 9,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:3",
+        "document_revision": 3,
+        "variant_id": "variant.wide-jaw",
+        "rebuild_hash": "18b7d58063202fa4",
+        "mesh_hash": "175f5764f98f1aa9",
+        "duration_ms": 38,
+        "feature_count": 9,
+        "vertex_count": 310,
+        "triangle_count": 368,
+        "edge_count": 410,
+        "cache_hits": 0,
+        "cache_misses": 9,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-underactuated:3:4",
+        "document_revision": 3,
+        "variant_id": "variant.wide-jaw",
+        "rebuild_hash": "18b7d58063202fa4",
+        "mesh_hash": "175f5764f98f1aa9",
+        "duration_ms": 33,
+        "feature_count": 9,
+        "vertex_count": 310,
+        "triangle_count": 368,
+        "edge_count": 410,
+        "cache_hits": 9,
+        "cache_misses": 0,
+        "cache_evictions": 0
+      }
+    ],
+    "warnings": {
+      "count": 0,
+      "critical_count": 0,
+      "codes": []
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6ea758ab8554ffad duration_ms=38"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=65b6efe3785691f2 mesh=6e..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 2,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.2"
+    "analysis": {
+      "document_revision": 3,
+      "variant_id": "variant.wide-jaw",
+      "material_id": "al-5052-h32",
+      "volume_mm3": 62863.47143001888,
+      "mass_kg": 0.1684741034324506,
+      "estimated_cost_usd": 112.81480475242597,
+      "max_deflection_mm": 0.00021265895785965984
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=175f5764f98f1aa9 duration_ms=33"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=18b7d58063202fa4 mesh=17..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.wide-jaw rev=3"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.wide-jaw at revision 3"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 3,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-underactuated.3"
+    "timing": {
+      "total_duration_ms": 0
     }
-  ]
+  }
 }

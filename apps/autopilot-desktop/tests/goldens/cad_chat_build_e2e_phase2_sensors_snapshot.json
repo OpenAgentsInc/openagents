@@ -1,518 +1,387 @@
 {
-  "final": {
-    "active_variant_id": "variant.pinch",
-    "analysis": {
-      "document_revision": 6,
-      "estimated_cost_usd": 182.92562788865922,
-      "mass_kg": 0.38523209928838525,
-      "material_id": "al-5052-h32",
-      "max_deflection_mm": 0.00026180613649610165,
-      "variant_id": "variant.pinch",
-      "volume_mm3": 143743.3206299945
-    },
-    "final_state_revision": 6,
-    "last_error": null,
-    "receipts": [
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 1,
-        "duration_ms": 162,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:1:1",
-        "feature_count": 40,
-        "mesh_hash": "f4265eb6385ff739",
-        "rebuild_hash": "761afaec60ceb4a9",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 2,
-        "duration_ms": 162,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:2:2",
-        "feature_count": 40,
-        "mesh_hash": "b539f3961c3c3bf0",
-        "rebuild_hash": "761afaec60ceb4a9",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 3,
-        "duration_ms": 162,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:3:3",
-        "feature_count": 40,
-        "mesh_hash": "5991c31b845eb39b",
-        "rebuild_hash": "589e6cc7d9c326e8",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 32,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 4,
-        "duration_ms": 194,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:4:4",
-        "feature_count": 40,
-        "mesh_hash": "836754ebf5f4aa51",
-        "rebuild_hash": "e99a4a2b6478c243",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 40,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 5,
-        "duration_ms": 202,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:5:5",
-        "feature_count": 40,
-        "mesh_hash": "ee4c4370f37b3ad6",
-        "rebuild_hash": "063a6aa942f31b4c",
-        "triangle_count": 2496,
-        "variant_id": "variant.baseline",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 40,
-        "cache_hits": 0,
-        "cache_misses": 40,
-        "document_revision": 6,
-        "duration_ms": 202,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:6",
-        "feature_count": 40,
-        "mesh_hash": "025498d604f9b77d",
-        "rebuild_hash": "a166eae099cc42d5",
-        "triangle_count": 2496,
-        "variant_id": "variant.pinch",
-        "vertex_count": 1756
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 40,
-        "cache_misses": 0,
-        "document_revision": 6,
-        "duration_ms": 142,
-        "edge_count": 1900,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:7",
-        "feature_count": 40,
-        "mesh_hash": "025498d604f9b77d",
-        "rebuild_hash": "a166eae099cc42d5",
-        "triangle_count": 2496,
-        "variant_id": "variant.pinch",
-        "vertex_count": 1756
-      }
-    ],
-    "timing": {
-      "total_duration_ms": 0
-    },
-    "warnings": {
-      "codes": [
-        "CAD-WARN-TENDON-ROUTING-COLLISION"
-      ],
-      "count": 1,
-      "critical_count": 1
-    }
-  },
   "script_id": "cad-chat-build-e2e-phase2-sensors",
   "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-sensors",
   "steps": [
     {
-      "duration_ms": 0,
       "index": 0,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-create-sensors",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.1",
         "intent": "CreateParallelJawGripperSpec",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afaec60ceb4a9 mesh=f4265eb6385ff739 duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afae..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.1"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
         "state_revision": 1,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.1"
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.1",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afaec60ceb4a9 mesh=f4265eb6385ff739 duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afae...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+              "tone": "muted"
+            }
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 1,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.2",
         "intent": "SetMaterial",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b539f3961c3c3bf0 duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b5..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.2"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
         "state_revision": 2,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.2"
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.2",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b539f3961c3c3bf0 duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b5...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+              "tone": "muted"
+            }
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 2,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-adjust-force-sensor-pad",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.3",
         "intent": "AdjustParameter",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mesh=5991c31b845eb39b duration_ms=162"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mes..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.3"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
         "state_revision": 3,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.3"
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.3",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mesh=5991c31b845eb39b duration_ms=162",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mes...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3",
+              "tone": "muted"
+            }
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 3,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-adjust-proximity-port",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "AdjustParameter",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mesh=836754ebf5f4aa51 duration_ms=194"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mes..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.4"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
-        "state_revision": 4,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.4"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 4,
       "kind": "cad_tool_call_intent",
-      "name": "tool-call-adjust-control-board",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.4",
         "intent": "AdjustParameter",
+        "state_revision": 4,
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.4",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mesh=ee4c4370f37b3ad6 duration_ms=202"
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mesh=836754ebf5f4aa51 duration_ms=194",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mes..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mes...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=5"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 5"
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.5"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:adjustparameter",
-        "state_revision": 5,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.5"
+          ]
+        }
       }
     },
     {
+      "index": 4,
+      "name": "tool-call-adjust-control-board",
+      "kind": "cad_tool_call_intent",
       "duration_ms": 0,
-      "index": 5,
-      "kind": "cycle_variant",
-      "name": "cycle-to-pinch",
       "result": {
-        "active_variant_id": "variant.pinch",
-        "count": 1,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.5",
+        "intent": "AdjustParameter",
+        "state_revision": 5,
+        "rebuild_trigger": "ai-intent:adjustparameter",
+        "rebuild_status": "committed",
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-pinch.a166eae099cc42d5",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.5",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mesh=ee4c4370f37b3ad6 duration_ms=202",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mes...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=5",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 5",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 5,
+      "name": "cycle-to-pinch",
+      "kind": "cycle_variant",
+      "duration_ms": 0,
+      "result": {
+        "status": "cycled",
+        "count": 1,
+        "state_revision": 6,
+        "active_variant_id": "variant.pinch",
         "last_receipt": {
-          "cache_evictions": 40,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:6",
+          "document_revision": 6,
+          "variant_id": "variant.pinch",
+          "rebuild_hash": "a166eae099cc42d5",
+          "mesh_hash": "025498d604f9b77d",
+          "duration_ms": 202,
+          "feature_count": 40,
+          "vertex_count": 1756,
+          "triangle_count": 2496,
+          "edge_count": 1900,
           "cache_hits": 0,
           "cache_misses": 40,
-          "document_revision": 6,
-          "duration_ms": 202,
-          "edge_count": 1900,
-          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:6",
-          "feature_count": 40,
-          "mesh_hash": "025498d604f9b77d",
-          "rebuild_hash": "a166eae099cc42d5",
-          "triangle_count": 2496,
-          "variant_id": "variant.pinch",
-          "vertex_count": 1756
+          "cache_evictions": 40
         },
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-pinch.a166eae099cc42d5",
         "pending_rebuild_request_id": null,
-        "state_revision": 6,
-        "status": "cycled",
         "warning_codes": [
           "CAD-WARN-TENDON-ROUTING-COLLISION"
         ]
       }
     },
     {
-      "duration_ms": 0,
       "index": 6,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-set-material-pinch",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.6",
         "intent": "SetMaterial",
+        "state_revision": 6,
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-sensors.6",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=025498d604f9b77d duration_ms=142"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=025498d604f9b77d duration_ms=142",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=02..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=02...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=6"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=6",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 6"
+              "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 6",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-sensors.6"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
-        "state_revision": 6,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.6"
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 7,
-      "kind": "capture_snapshot_truth",
       "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.pinch",
-        "all_variants_visible": false,
-        "design_profile": "three_finger_thumb",
         "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.pinch",
+        "visible_variant_ids": [
+          "variant.pinch"
+        ],
+        "all_variants_visible": false,
         "variant_materials": {
           "variant.baseline": "steel-1018",
           "variant.pinch": "al-5052-h32",
           "variant.tripod": "al-6061-t6",
           "variant.wide-thumb": "al-6061-t6"
-        },
-        "viewport_layout": "single",
-        "visible_variant_ids": [
-          "variant.pinch"
-        ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 8,
-      "kind": "toggle_viewport_layout",
       "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "duration_ms": 0,
       "result": {
-        "all_variants_visible": true,
         "status": "toggled",
         "viewport_layout": "quad",
         "visible_variant_ids": [
@@ -520,318 +389,449 @@
           "variant.pinch",
           "variant.tripod",
           "variant.wide-thumb"
-        ]
+        ],
+        "all_variants_visible": true
       }
     },
     {
-      "duration_ms": 0,
       "index": 9,
-      "kind": "capture_snapshot_truth",
       "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.pinch",
-        "all_variants_visible": true,
-        "design_profile": "three_finger_thumb",
         "status": "captured",
-        "variant_materials": {
-          "variant.baseline": "steel-1018",
-          "variant.pinch": "al-5052-h32",
-          "variant.tripod": "al-6061-t6",
-          "variant.wide-thumb": "al-6061-t6"
-        },
+        "design_profile": "three_finger_thumb",
         "viewport_layout": "quad",
+        "active_variant_id": "variant.pinch",
         "visible_variant_ids": [
           "variant.baseline",
           "variant.pinch",
           "variant.tripod",
           "variant.wide-thumb"
+        ],
+        "all_variants_visible": true,
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.pinch": "al-5052-h32",
+          "variant.tripod": "al-6061-t6",
+          "variant.wide-thumb": "al-6061-t6"
+        }
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.1",
+      "intent": "CreateParallelJawGripperSpec",
+      "state_revision": 1,
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.1",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afaec60ceb4a9 mesh=f4265eb6385ff739 duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afae...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.2",
+      "intent": "SetMaterial",
+      "state_revision": 2,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.2",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b539f3961c3c3bf0 duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b5...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.3",
+      "intent": "AdjustParameter",
+      "state_revision": 3,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.3",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mesh=5991c31b845eb39b duration_ms=162",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.4",
+      "intent": "AdjustParameter",
+      "state_revision": 4,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.4",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mesh=836754ebf5f4aa51 duration_ms=194",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.5",
+      "intent": "AdjustParameter",
+      "state_revision": 5,
+      "rebuild_trigger": "ai-intent:adjustparameter",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.5",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mesh=ee4c4370f37b3ad6 duration_ms=202",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mes...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=5",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 5",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-sensors.6",
+      "intent": "SetMaterial",
+      "state_revision": 6,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-sensors.6",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=025498d604f9b77d duration_ms=142",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=02...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=6",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 6",
+            "tone": "muted"
+          }
         ]
       }
     }
   ],
-  "thread_id": "thread.cad-chat-e2e-phase2-sensors",
-  "tool_calls": [
-    {
-      "has_mesh_payload": true,
-      "intent": "CreateParallelJawGripperSpec",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afaec60ceb4a9 mesh=f4265eb6385ff739 duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=761afae..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.1"
+  "final": {
+    "final_state_revision": 6,
+    "active_variant_id": "variant.pinch",
+    "last_error": null,
+    "receipts": [
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:1:1",
+        "document_revision": 1,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "761afaec60ceb4a9",
+        "mesh_hash": "f4265eb6385ff739",
+        "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 0
       },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-      "state_revision": 1,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.1"
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:2:2",
+        "document_revision": 2,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "761afaec60ceb4a9",
+        "mesh_hash": "b539f3961c3c3bf0",
+        "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:3:3",
+        "document_revision": 3,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "589e6cc7d9c326e8",
+        "mesh_hash": "5991c31b845eb39b",
+        "duration_ms": 162,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:4:4",
+        "document_revision": 4,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "e99a4a2b6478c243",
+        "mesh_hash": "836754ebf5f4aa51",
+        "duration_ms": 194,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 32
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:5:5",
+        "document_revision": 5,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "063a6aa942f31b4c",
+        "mesh_hash": "ee4c4370f37b3ad6",
+        "duration_ms": 202,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 40
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:6",
+        "document_revision": 6,
+        "variant_id": "variant.pinch",
+        "rebuild_hash": "a166eae099cc42d5",
+        "mesh_hash": "025498d604f9b77d",
+        "duration_ms": 202,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 0,
+        "cache_misses": 40,
+        "cache_evictions": 40
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-sensors:6:7",
+        "document_revision": 6,
+        "variant_id": "variant.pinch",
+        "rebuild_hash": "a166eae099cc42d5",
+        "mesh_hash": "025498d604f9b77d",
+        "duration_ms": 142,
+        "feature_count": 40,
+        "vertex_count": 1756,
+        "triangle_count": 2496,
+        "edge_count": 1900,
+        "cache_hits": 40,
+        "cache_misses": 0,
+        "cache_evictions": 0
+      }
+    ],
+    "warnings": {
+      "count": 1,
+      "critical_count": 1,
+      "codes": [
+        "CAD-WARN-TENDON-ROUTING-COLLISION"
+      ]
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b539f3961c3c3bf0 duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=761afaec60ceb4a9 mesh=b5..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.2"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 2,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.2"
+    "analysis": {
+      "document_revision": 6,
+      "variant_id": "variant.pinch",
+      "material_id": "al-5052-h32",
+      "volume_mm3": 143743.3206299945,
+      "mass_kg": 0.38523209928838525,
+      "estimated_cost_usd": 182.92562788865922,
+      "max_deflection_mm": 0.00026180613649610165
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mesh=5991c31b845eb39b duration_ms=162"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=589e6cc7d9c326e8 mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=3"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 3"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.3"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 3,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.3"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mesh=836754ebf5f4aa51 duration_ms=194"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=e99a4a2b6478c243 mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=4"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 4"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.4"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 4,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.4"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "AdjustParameter",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mesh=ee4c4370f37b3ad6 duration_ms=202"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:adjustparameter result=ok hash=063a6aa942f31b4c mes..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=5"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 5"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.5"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:adjustparameter",
-      "state_revision": 5,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.5"
-    },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=025498d604f9b77d duration_ms=142"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=a166eae099cc42d5 mesh=02..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=6"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 6"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-sensors.6"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 6,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-sensors.6"
+    "timing": {
+      "total_duration_ms": 0
     }
-  ]
+  }
 }

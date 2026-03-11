@@ -1,314 +1,228 @@
 {
-  "final": {
-    "active_variant_id": "variant.pinch",
-    "analysis": {
-      "document_revision": 3,
-      "estimated_cost_usd": 115.8326813108863,
-      "mass_kg": 0.21674690711071812,
-      "material_id": "al-5052-h32",
-      "max_deflection_mm": 0.00025433346169090944,
-      "variant_id": "variant.pinch",
-      "volume_mm3": 80875.71160847691
-    },
-    "final_state_revision": 3,
-    "last_error": null,
-    "receipts": [
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 10,
-        "document_revision": 1,
-        "duration_ms": 42,
-        "edge_count": 388,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:1:1",
-        "feature_count": 10,
-        "mesh_hash": "ef85d0bb7502591c",
-        "rebuild_hash": "efdf2ffded0dd302",
-        "triangle_count": 312,
-        "variant_id": "variant.baseline",
-        "vertex_count": 284
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 10,
-        "document_revision": 2,
-        "duration_ms": 42,
-        "edge_count": 388,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:2:2",
-        "feature_count": 10,
-        "mesh_hash": "ccd82aee91721bc9",
-        "rebuild_hash": "efdf2ffded0dd302",
-        "triangle_count": 312,
-        "variant_id": "variant.baseline",
-        "vertex_count": 284
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 0,
-        "cache_misses": 10,
-        "document_revision": 3,
-        "duration_ms": 42,
-        "edge_count": 388,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:3",
-        "feature_count": 10,
-        "mesh_hash": "bd251842eb83cf4f",
-        "rebuild_hash": "9a14b463c1ffb1d7",
-        "triangle_count": 312,
-        "variant_id": "variant.pinch",
-        "vertex_count": 284
-      },
-      {
-        "cache_evictions": 0,
-        "cache_hits": 10,
-        "cache_misses": 0,
-        "document_revision": 3,
-        "duration_ms": 37,
-        "edge_count": 388,
-        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:4",
-        "feature_count": 10,
-        "mesh_hash": "bd251842eb83cf4f",
-        "rebuild_hash": "9a14b463c1ffb1d7",
-        "triangle_count": 312,
-        "variant_id": "variant.pinch",
-        "vertex_count": 284
-      }
-    ],
-    "timing": {
-      "total_duration_ms": 0
-    },
-    "warnings": {
-      "codes": [
-        "CAD-WARN-TENDON-ROUTING-COLLISION"
-      ],
-      "count": 1,
-      "critical_count": 1
-    }
-  },
   "script_id": "cad-chat-build-e2e-phase2-three-finger",
   "seed": 0,
+  "thread_id": "thread.cad-chat-e2e-phase2-three-finger",
   "steps": [
     {
-      "duration_ms": 0,
       "index": 0,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-create-three-finger",
-      "result": {
-        "has_mesh_payload": true,
-        "intent": "CreateParallelJawGripperSpec",
-        "pending_rebuild_request_id": null,
-        "progress": {
-          "rows": [
-            {
-              "label": "phase",
-              "tone": "success",
-              "value": "done"
-            },
-            {
-              "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
-            },
-            {
-              "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ffded0dd302 mesh=ef85d0bb7502591c duration_ms=42"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ff..."
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-            },
-            {
-              "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-            }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-        "state_revision": 1,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1"
-      }
-    },
-    {
-      "duration_ms": 0,
-      "index": 1,
       "kind": "cad_tool_call_intent",
-      "name": "tool-call-set-material-baseline",
+      "duration_ms": 0,
       "result": {
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1",
+        "intent": "CreateParallelJawGripperSpec",
+        "state_revision": 1,
+        "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+        "rebuild_status": "committed",
         "has_mesh_payload": true,
-        "intent": "SetMaterial",
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=ccd82aee91721bc9 duration_ms=42"
+              "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ffded0dd302 mesh=ef85d0bb7502591c duration_ms=42",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=cc..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ff...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
-        "state_revision": 2,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2"
+          ]
+        }
       }
     },
     {
+      "index": 1,
+      "name": "tool-call-set-material-baseline",
+      "kind": "cad_tool_call_intent",
       "duration_ms": 0,
-      "index": 2,
-      "kind": "cycle_variant",
-      "name": "cycle-to-pinch",
       "result": {
-        "active_variant_id": "variant.pinch",
-        "count": 1,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2",
+        "intent": "SetMaterial",
+        "state_revision": 2,
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
         "has_mesh_payload": true,
-        "last_good_mesh_id": "mesh.variant-pinch.9a14b463c1ffb1d7",
+        "pending_rebuild_request_id": null,
+        "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2",
+          "status": "done",
+          "rows": [
+            {
+              "label": "phase",
+              "value": "done",
+              "tone": "success"
+            },
+            {
+              "label": "tool",
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
+            },
+            {
+              "label": "rebuild",
+              "value": "trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=ccd82aee91721bc9 duration_ms=42",
+              "tone": "info"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=cc...",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+              "tone": "muted"
+            },
+            {
+              "label": "event",
+              "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+              "tone": "muted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "index": 2,
+      "name": "cycle-to-pinch",
+      "kind": "cycle_variant",
+      "duration_ms": 0,
+      "result": {
+        "status": "cycled",
+        "count": 1,
+        "state_revision": 3,
+        "active_variant_id": "variant.pinch",
         "last_receipt": {
-          "cache_evictions": 0,
+          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:3",
+          "document_revision": 3,
+          "variant_id": "variant.pinch",
+          "rebuild_hash": "9a14b463c1ffb1d7",
+          "mesh_hash": "bd251842eb83cf4f",
+          "duration_ms": 42,
+          "feature_count": 10,
+          "vertex_count": 284,
+          "triangle_count": 312,
+          "edge_count": 388,
           "cache_hits": 0,
           "cache_misses": 10,
-          "document_revision": 3,
-          "duration_ms": 42,
-          "edge_count": 388,
-          "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:3",
-          "feature_count": 10,
-          "mesh_hash": "bd251842eb83cf4f",
-          "rebuild_hash": "9a14b463c1ffb1d7",
-          "triangle_count": 312,
-          "variant_id": "variant.pinch",
-          "vertex_count": 284
+          "cache_evictions": 0
         },
+        "has_mesh_payload": true,
+        "last_good_mesh_id": "mesh.variant-pinch.9a14b463c1ffb1d7",
         "pending_rebuild_request_id": null,
-        "state_revision": 3,
-        "status": "cycled",
         "warning_codes": [
           "CAD-WARN-TENDON-ROUTING-COLLISION"
         ]
       }
     },
     {
-      "duration_ms": 0,
       "index": 3,
-      "kind": "cad_tool_call_intent",
       "name": "tool-call-set-material-pinch",
+      "kind": "cad_tool_call_intent",
+      "duration_ms": 0,
       "result": {
-        "has_mesh_payload": true,
+        "status": "completed",
+        "tool": "openagents.cad.intent",
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3",
         "intent": "SetMaterial",
+        "state_revision": 3,
+        "rebuild_trigger": "ai-intent:setmaterial",
+        "rebuild_status": "committed",
+        "has_mesh_payload": true,
         "pending_rebuild_request_id": null,
         "progress": {
+          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3",
+          "status": "done",
           "rows": [
             {
               "label": "phase",
-              "tone": "success",
-              "value": "done"
+              "value": "done",
+              "tone": "success"
             },
             {
               "label": "tool",
-              "tone": "info",
-              "value": "ok:OA-CAD-INTENT-OK"
+              "value": "ok:OA-CAD-INTENT-OK",
+              "tone": "info"
             },
             {
               "label": "rebuild",
-              "tone": "info",
-              "value": "trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd251842eb83cf4f duration_ms=37"
+              "value": "trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd251842eb83cf4f duration_ms=37",
+              "tone": "info"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd..."
+              "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd...",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=3"
+              "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=3",
+              "tone": "muted"
             },
             {
               "label": "event",
-              "tone": "muted",
-              "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 3"
+              "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 3",
+              "tone": "muted"
             }
-          ],
-          "status": "done",
-          "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3"
-        },
-        "rebuild_status": "committed",
-        "rebuild_trigger": "ai-intent:setmaterial",
-        "state_revision": 3,
-        "status": "completed",
-        "tool": "openagents.cad.intent",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3"
+          ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 4,
-      "kind": "capture_snapshot_truth",
       "name": "capture-single-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.pinch",
-        "all_variants_visible": false,
-        "design_profile": "three_finger_thumb",
         "status": "captured",
+        "design_profile": "three_finger_thumb",
+        "viewport_layout": "single",
+        "active_variant_id": "variant.pinch",
+        "visible_variant_ids": [
+          "variant.pinch"
+        ],
+        "all_variants_visible": false,
         "variant_materials": {
           "variant.baseline": "steel-1018",
           "variant.pinch": "al-5052-h32",
           "variant.tripod": "al-6061-t6",
           "variant.wide-thumb": "al-6061-t6"
-        },
-        "viewport_layout": "single",
-        "visible_variant_ids": [
-          "variant.pinch"
-        ]
+        }
       }
     },
     {
-      "duration_ms": 0,
       "index": 5,
-      "kind": "toggle_viewport_layout",
       "name": "toggle-to-quad-layout",
+      "kind": "toggle_viewport_layout",
+      "duration_ms": 0,
       "result": {
-        "all_variants_visible": true,
         "status": "toggled",
         "viewport_layout": "quad",
         "visible_variant_ids": [
@@ -316,177 +230,263 @@
           "variant.pinch",
           "variant.tripod",
           "variant.wide-thumb"
-        ]
+        ],
+        "all_variants_visible": true
       }
     },
     {
-      "duration_ms": 0,
       "index": 6,
-      "kind": "capture_snapshot_truth",
       "name": "capture-quad-layout-truth",
+      "kind": "capture_snapshot_truth",
+      "duration_ms": 0,
       "result": {
-        "active_variant_id": "variant.pinch",
-        "all_variants_visible": true,
-        "design_profile": "three_finger_thumb",
         "status": "captured",
-        "variant_materials": {
-          "variant.baseline": "steel-1018",
-          "variant.pinch": "al-5052-h32",
-          "variant.tripod": "al-6061-t6",
-          "variant.wide-thumb": "al-6061-t6"
-        },
+        "design_profile": "three_finger_thumb",
         "viewport_layout": "quad",
+        "active_variant_id": "variant.pinch",
         "visible_variant_ids": [
           "variant.baseline",
           "variant.pinch",
           "variant.tripod",
           "variant.wide-thumb"
+        ],
+        "all_variants_visible": true,
+        "variant_materials": {
+          "variant.baseline": "steel-1018",
+          "variant.pinch": "al-5052-h32",
+          "variant.tripod": "al-6061-t6",
+          "variant.wide-thumb": "al-6061-t6"
+        }
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1",
+      "intent": "CreateParallelJawGripperSpec",
+      "state_revision": 1,
+      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ffded0dd302 mesh=ef85d0bb7502591c duration_ms=42",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ff...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2",
+      "intent": "SetMaterial",
+      "state_revision": 2,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=ccd82aee91721bc9 duration_ms=42",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=cc...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2",
+            "tone": "muted"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "tool": "openagents.cad.intent",
+      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3",
+      "intent": "SetMaterial",
+      "state_revision": 3,
+      "rebuild_trigger": "ai-intent:setmaterial",
+      "rebuild_status": "committed",
+      "has_mesh_payload": true,
+      "pending_rebuild_request_id": null,
+      "progress": {
+        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3",
+        "status": "done",
+        "rows": [
+          {
+            "label": "phase",
+            "value": "done",
+            "tone": "success"
+          },
+          {
+            "label": "tool",
+            "value": "ok:OA-CAD-INTENT-OK",
+            "tone": "info"
+          },
+          {
+            "label": "rebuild",
+            "value": "trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd251842eb83cf4f duration_ms=37",
+            "tone": "info"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd...",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=3",
+            "tone": "muted"
+          },
+          {
+            "label": "event",
+            "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 3",
+            "tone": "muted"
+          }
         ]
       }
     }
   ],
-  "thread_id": "thread.cad-chat-e2e-phase2-three-finger",
-  "tool_calls": [
-    {
-      "has_mesh_payload": true,
-      "intent": "CreateParallelJawGripperSpec",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ffded0dd302 mesh=ef85d0bb7502591c duration_ms=42"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:createparalleljawgripperspec result=ok hash=efdf2ff..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=1"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 1"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1"
+  "final": {
+    "final_state_revision": 3,
+    "active_variant_id": "variant.pinch",
+    "last_error": null,
+    "receipts": [
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:1:1",
+        "document_revision": 1,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "efdf2ffded0dd302",
+        "mesh_hash": "ef85d0bb7502591c",
+        "duration_ms": 42,
+        "feature_count": 10,
+        "vertex_count": 284,
+        "triangle_count": 312,
+        "edge_count": 388,
+        "cache_hits": 0,
+        "cache_misses": 10,
+        "cache_evictions": 0
       },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:createparalleljawgripperspec",
-      "state_revision": 1,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.1"
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:2:2",
+        "document_revision": 2,
+        "variant_id": "variant.baseline",
+        "rebuild_hash": "efdf2ffded0dd302",
+        "mesh_hash": "ccd82aee91721bc9",
+        "duration_ms": 42,
+        "feature_count": 10,
+        "vertex_count": 284,
+        "triangle_count": 312,
+        "edge_count": 388,
+        "cache_hits": 0,
+        "cache_misses": 10,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:3",
+        "document_revision": 3,
+        "variant_id": "variant.pinch",
+        "rebuild_hash": "9a14b463c1ffb1d7",
+        "mesh_hash": "bd251842eb83cf4f",
+        "duration_ms": 42,
+        "feature_count": 10,
+        "vertex_count": 284,
+        "triangle_count": 312,
+        "edge_count": 388,
+        "cache_hits": 0,
+        "cache_misses": 10,
+        "cache_evictions": 0
+      },
+      {
+        "event_id": "cad.session.chat.thread-cad-chat-e2e-phase2-three-finger:3:4",
+        "document_revision": 3,
+        "variant_id": "variant.pinch",
+        "rebuild_hash": "9a14b463c1ffb1d7",
+        "mesh_hash": "bd251842eb83cf4f",
+        "duration_ms": 37,
+        "feature_count": 10,
+        "vertex_count": 284,
+        "triangle_count": 312,
+        "edge_count": 388,
+        "cache_hits": 10,
+        "cache_misses": 0,
+        "cache_evictions": 0
+      }
+    ],
+    "warnings": {
+      "count": 1,
+      "critical_count": 1,
+      "codes": [
+        "CAD-WARN-TENDON-ROUTING-COLLISION"
+      ]
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=ccd82aee91721bc9 duration_ms=42"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=efdf2ffded0dd302 mesh=cc..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.baseline rev=2"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.baseline at revision 2"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 2,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.2"
+    "analysis": {
+      "document_revision": 3,
+      "variant_id": "variant.pinch",
+      "material_id": "al-5052-h32",
+      "volume_mm3": 80875.71160847691,
+      "mass_kg": 0.21674690711071812,
+      "estimated_cost_usd": 115.8326813108863,
+      "max_deflection_mm": 0.00025433346169090944
     },
-    {
-      "has_mesh_payload": true,
-      "intent": "SetMaterial",
-      "pending_rebuild_request_id": null,
-      "progress": {
-        "rows": [
-          {
-            "label": "phase",
-            "tone": "success",
-            "value": "done"
-          },
-          {
-            "label": "tool",
-            "tone": "info",
-            "value": "ok:OA-CAD-INTENT-OK"
-          },
-          {
-            "label": "rebuild",
-            "tone": "info",
-            "value": "trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd251842eb83cf4f duration_ms=37"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.rebuild.result trigger=ai-intent:setmaterial result=ok hash=9a14b463c1ffb1d7 mesh=bd..."
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.summarizing.after_rebuild rebuild committed variant=variant.pinch rev=3"
-          },
-          {
-            "label": "event",
-            "tone": "muted",
-            "value": "cad.build.done CAD rebuild committed for variant.pinch at revision 3"
-          }
-        ],
-        "status": "done",
-        "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3"
-      },
-      "rebuild_status": "committed",
-      "rebuild_trigger": "ai-intent:setmaterial",
-      "state_revision": 3,
-      "status": "completed",
-      "tool": "openagents.cad.intent",
-      "turn_id": "turn.cad-chat-e2e-phase2-three-finger.3"
+    "timing": {
+      "total_duration_ms": 0
     }
-  ]
+  }
 }
