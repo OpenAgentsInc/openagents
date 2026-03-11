@@ -1032,7 +1032,7 @@ fn paint_mission_control_section_panel(
 
     if !title.is_empty() {
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("// {title}"),
+            &format!("\\ {title}"),
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
             12.0,
             Hsla::from_hex(0xD8DFF0),
