@@ -558,6 +558,26 @@ Acceptance:
 
 ### CX-12. Personal Remote Companion V1 ([#3369](https://github.com/OpenAgentsInc/openagents/issues/3369))
 
+Status:
+
+- shipped on `main`
+- desktop now owns an opt-in authenticated Codex remote companion listener in
+  `apps/autopilot-desktop`, with safe bind validation for loopback, RFC1918
+  LAN, Tailnet-style CGNAT, and IPv6 ULA targets
+- `/remote`, `/remote enable [ip:port]`, `/remote disable`, and
+  `/remote rotate-token` now manage the listener from the main chat surface,
+  while Codex Labs shows the live base URL, pairing URL, and remote token
+  preview
+- the served remote UI now projects desktop-owned thread, transcript,
+  approval/tool-prompt, readiness/session, plan, diff, wallet, and provider
+  truth over authenticated snapshot/action endpoints instead of creating a
+  second browser-side state authority
+
+Next:
+
+- `CX-13` extends the remote snapshot with workspace/git context and terminal
+  visibility for away-from-desk supervision
+
 Scope:
 
 - remote access is disabled by default

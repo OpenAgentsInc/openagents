@@ -9,6 +9,7 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 3. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
 4. [`CAD_PHASE2_DEMO_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md)
 5. [`EXEC.md`](/Users/christopherdavid/code/openagents/docs/codex/EXEC.md)
+6. [`REMOTE.md`](/Users/christopherdavid/code/openagents/docs/codex/REMOTE.md)
 
 ## Documents
 
@@ -30,6 +31,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 - [`EXEC.md`](/Users/christopherdavid/code/openagents/docs/codex/EXEC.md)
   - app-owned non-interactive Codex execution contract for scripts and local
     automation.
+- [`REMOTE.md`](/Users/christopherdavid/code/openagents/docs/codex/REMOTE.md)
+  - local-first remote companion setup, safety model, and operator commands.
 
 ### Plans / Historical Backlog
 

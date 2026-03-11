@@ -162,6 +162,14 @@ enum ChatRequestComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatRemoteComposerIntent {
+    Summary,
+    Enable { bind_addr: Option<String> },
+    Disable,
+    RotateToken,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -267,6 +275,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
     match parse_chat_request_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_chat_request_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_remote_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_remote_action(state, prompt, intent);
         }
         Ok(None) => {}
         Err(error) => {
@@ -3695,6 +3713,36 @@ fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerI
     }
 }
 
+fn parse_chat_remote_intent(prompt: &str) -> Result<Option<ChatRemoteComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    if command != "/remote" {
+        return Ok(None);
+    }
+    match words.get(1).map(String::as_str) {
+        None | Some("status") | Some("show") if words.len() <= 2 => {
+            Ok(Some(ChatRemoteComposerIntent::Summary))
+        }
+        Some("enable") if words.len() <= 3 => Ok(Some(ChatRemoteComposerIntent::Enable {
+            bind_addr: words.get(2).cloned(),
+        })),
+        Some("disable") if words.len() == 2 => Ok(Some(ChatRemoteComposerIntent::Disable)),
+        Some("rotate-token") | Some("rotate") if words.len() == 2 => {
+            Ok(Some(ChatRemoteComposerIntent::RotateToken))
+        }
+        _ => Err(
+            "Remote commands: `/remote`, `/remote enable [ip:port]`, `/remote disable`, `/remote rotate-token`"
+                .to_string(),
+        ),
+    }
+}
+
 fn resolve_discovered_skill_index(
     state: &crate::app_state::RenderState,
     query: Option<&str>,
@@ -4546,6 +4594,68 @@ fn run_chat_request_action(
                 "No pending auth refresh requests".to_string()
             };
             append_chat_command_result(state, prompt, response, is_error)
+        }
+    }
+}
+
+fn run_chat_remote_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatRemoteComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatRemoteComposerIntent::Summary => append_chat_command_result(
+            state,
+            prompt,
+            crate::codex_remote::remote_status_lines(state).join("\n"),
+            false,
+        ),
+        ChatRemoteComposerIntent::Enable { bind_addr } => {
+            match crate::codex_remote::enable_remote_runtime(state, bind_addr.as_deref()) {
+                Ok(mut message) => {
+                    if let Some(pairing_url) = state.codex_remote.pairing_url.as_deref() {
+                        let clipboard_note = match copy_to_clipboard(pairing_url) {
+                            Ok(()) => "Pairing URL copied to clipboard.",
+                            Err(error) => {
+                                state.codex_remote.last_error =
+                                    Some(format!("Failed to copy pairing URL: {error}"));
+                                "Pairing URL copy failed."
+                            }
+                        };
+                        message.push(' ');
+                        message.push_str(clipboard_note);
+                    }
+                    append_chat_command_result(state, prompt, message, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatRemoteComposerIntent::Disable => {
+            let message = crate::codex_remote::disable_remote_runtime(state);
+            append_chat_command_result(state, prompt, message, false)
+        }
+        ChatRemoteComposerIntent::RotateToken => {
+            match crate::codex_remote::rotate_remote_runtime_token(state) {
+                Ok(mut message) => {
+                    if let Some(pairing_url) = state.codex_remote.pairing_url.as_deref() {
+                        let clipboard_note = match copy_to_clipboard(pairing_url) {
+                            Ok(()) => "Pairing URL copied to clipboard.",
+                            Err(error) => {
+                                state.codex_remote.last_error =
+                                    Some(format!("Failed to copy pairing URL: {error}"));
+                                "Pairing URL copy failed."
+                            }
+                        };
+                        message.push(' ');
+                        message.push_str(clipboard_note);
+                    }
+                    append_chat_command_result(state, prompt, message, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
         }
     }
 }
@@ -12317,6 +12427,7 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 mod tests {
     use super::{
         ChatAppsComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
+        ChatRemoteComposerIntent,
         ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
         ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
         DirectMessageComposerIntent, ManagedChatComposerIntent,
@@ -12328,7 +12439,8 @@ mod tests {
         extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
         git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
         loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_apps_intent,
-        parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_request_intent,
+        parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_remote_intent,
+        parse_chat_request_intent,
         parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
         parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
@@ -13253,6 +13365,16 @@ mod tests {
             parse_chat_request_intent("/auth respond").unwrap(),
             Some(ChatRequestComposerIntent::AuthRefreshRespond)
         ));
+        assert_eq!(
+            parse_chat_remote_intent("/remote enable 127.0.0.1:4848").unwrap(),
+            Some(ChatRemoteComposerIntent::Enable {
+                bind_addr: Some("127.0.0.1:4848".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_remote_intent("/remote rotate-token").unwrap(),
+            Some(ChatRemoteComposerIntent::RotateToken)
+        );
     }
 
     #[test]

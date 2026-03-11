@@ -94,6 +94,7 @@ impl PaneRenderer {
         codex_mcp: &CodexMcpPaneState,
         codex_apps: &CodexAppsPaneState,
         codex_labs: &CodexLabsPaneState,
+        codex_remote: &crate::app_state::CodexRemoteState,
         codex_diagnostics: &CodexDiagnosticsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
@@ -204,7 +205,7 @@ impl PaneRenderer {
                     codex_pane::paint_apps_pane(content_bounds, codex_apps, paint);
                 }
                 PaneKind::CodexLabs => {
-                    codex_pane::paint_labs_pane(content_bounds, codex_labs, paint);
+                    codex_pane::paint_labs_pane(content_bounds, codex_labs, codex_remote, paint);
                 }
                 PaneKind::CodexDiagnostics => {
                     codex_pane::paint_diagnostics_pane(content_bounds, codex_diagnostics, paint);
