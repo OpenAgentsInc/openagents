@@ -11,6 +11,7 @@ pub enum TerminalStream {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalLine {
+    pub key: Option<String>,
     pub stream: TerminalStream,
     pub text: String,
 }
@@ -18,9 +19,15 @@ pub struct TerminalLine {
 impl TerminalLine {
     pub fn new(stream: TerminalStream, text: impl Into<String>) -> Self {
         Self {
+            key: None,
             stream,
             text: text.into(),
         }
+    }
+
+    pub fn with_key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
     }
 }
 
@@ -68,7 +75,16 @@ impl TerminalPane {
     }
 
     pub fn push_line(&mut self, line: TerminalLine) {
-        self.lines.push(line);
+        if let Some(key) = line.key.as_deref()
+            && let Some(existing) = self
+                .lines
+                .iter_mut()
+                .find(|existing| existing.key.as_deref() == Some(key))
+        {
+            *existing = line;
+        } else {
+            self.lines.push(line);
+        }
         if self.lines.len() > self.max_lines {
             let drop = self.lines.len() - self.max_lines;
             self.lines.drain(0..drop);
@@ -76,6 +92,11 @@ impl TerminalPane {
         if self.auto_scroll {
             self.scroll_to_bottom();
         }
+    }
+
+    pub fn recent_lines(&self, limit: usize) -> &[TerminalLine] {
+        let start = self.lines.len().saturating_sub(limit);
+        &self.lines[start..]
     }
 
     pub fn clear(&mut self) {
@@ -520,5 +541,35 @@ mod tests {
         );
 
         assert_eq!(TerminalPane::line_color(&line), theme::status::ERROR);
+    }
+
+    #[test]
+    fn keyed_terminal_lines_replace_in_place() {
+        let mut pane = TerminalPane::new();
+        pane.push_line(TerminalLine::new(TerminalStream::Stdout, "first"));
+        pane.push_line(
+            TerminalLine::new(TerminalStream::Stdout, "streaming")
+                .with_key("mission-control.stream"),
+        );
+        pane.push_line(
+            TerminalLine::new(TerminalStream::Stdout, "streaming updated")
+                .with_key("mission-control.stream"),
+        );
+
+        assert_eq!(pane.recent_lines(4).len(), 2);
+        assert_eq!(pane.recent_lines(4)[1].text, "streaming updated");
+    }
+
+    #[test]
+    fn recent_lines_returns_tail_slice() {
+        let mut pane = TerminalPane::new();
+        pane.push_line(TerminalLine::new(TerminalStream::Stdout, "one"));
+        pane.push_line(TerminalLine::new(TerminalStream::Stdout, "two"));
+        pane.push_line(TerminalLine::new(TerminalStream::Stdout, "three"));
+
+        let lines = pane.recent_lines(2);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "two");
+        assert_eq!(lines[1].text, "three");
     }
 }

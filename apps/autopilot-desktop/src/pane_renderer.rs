@@ -41,19 +41,19 @@ use crate::pane_system::{
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_layout_for_mode, mission_control_load_funds_layout,
-    mission_control_local_model_button_bounds, mission_control_wallet_refresh_button_bounds,
-    mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
-    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
-    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
-    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
-    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
-    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
-    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-    settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
+    mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
+    mission_control_withdraw_invoice_input_bounds, network_requests_accept_button_bounds,
+    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
+    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+    network_requests_type_input_bounds, network_requests_visible_quote_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
+    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -1006,6 +1006,31 @@ fn paint_go_online_pane(
             );
         }
     }
+    if mission_control_local_fm_test_button_visible(desktop_shell_mode, local_inference_runtime) {
+        let test_bounds = mission_control_local_fm_test_button_bounds(content_bounds);
+        let test_enabled = mission_control_local_fm_test_enabled(
+            mission_control,
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
+        paint_mission_control_command_button(
+            test_bounds,
+            &mission_control_local_fm_test_button_label(
+                mission_control,
+                provider_runtime,
+                local_inference_runtime,
+                desktop_shell_mode,
+            ),
+            if test_enabled {
+                mission_control_cyan_color()
+            } else {
+                mission_control_muted_color()
+            },
+            test_enabled,
+            paint,
+        );
+    }
     let withdraw_input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
     paint.scene.draw_text(paint.text.layout_mono(
         "LIGHTNING WITHDRAW",
@@ -1065,9 +1090,7 @@ fn paint_go_online_pane(
         SparkInvoiceState::Expired => {
             "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
         }
-        SparkInvoiceState::Empty => {
-            "Generate a Lightning invoice to fund this wallet.".to_string()
-        }
+        SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
     };
     let bitcoin_target_text = spark_wallet
         .bitcoin_address
@@ -1124,8 +1147,10 @@ fn paint_go_online_pane(
         bitcoin_target_ready,
         paint,
     );
-    let load_funds_value_chunk_len = mission_control_value_chunk_len(load_funds_layout.details_column);
-    let load_funds_body_chunk_len = mission_control_body_chunk_len(load_funds_layout.details_column);
+    let load_funds_value_chunk_len =
+        mission_control_value_chunk_len(load_funds_layout.details_column);
+    let load_funds_body_chunk_len =
+        mission_control_body_chunk_len(load_funds_layout.details_column);
     let mut load_funds_y = load_funds_layout.details_column.origin.y;
     load_funds_y = paint_wrapped_label_line_mission_control_label(
         paint,
@@ -1162,7 +1187,11 @@ fn paint_go_online_pane(
         load_funds_layout.details_column.origin.x,
         load_funds_y,
         "Bitcoin",
-        if bitcoin_target_ready { "READY" } else { "EMPTY" },
+        if bitcoin_target_ready {
+            "READY"
+        } else {
+            "EMPTY"
+        },
         load_funds_value_chunk_len,
         load_funds_layout.details_column.size.width,
         true,
@@ -1349,8 +1378,7 @@ fn paint_mission_control_buy_mode_panel(
         network_requests,
         spark_wallet,
         now,
-    )
-    else {
+    ) else {
         return;
     };
     let clip = mission_control_section_clip_bounds(panel_bounds);
@@ -1452,14 +1480,17 @@ fn mission_control_buy_mode_panel_state(
     let settle = mission_control_buy_mode_settlement_label(request, spark_wallet);
     Some(MissionControlBuyModePanelState {
         summary: request
-            .map(|request| format!("{} // result {} // settle {}", request.request_id, result, settle))
+            .map(|request| {
+                format!(
+                    "{} // result {} // settle {}",
+                    request.request_id, result, settle
+                )
+            })
             .or_else(|| {
                 blocked_while_idle.then(|| {
                     format!(
                         "Buy Mode blocked // {}",
-                        block_reason
-                            .as_deref()
-                            .unwrap_or("wallet funding required")
+                        block_reason.as_deref().unwrap_or("wallet funding required")
                     )
                 })
             })
@@ -1490,7 +1521,9 @@ fn mission_control_buy_mode_panel_state(
                     "idle".to_string()
                 }
             }),
-        price: format_mission_control_amount(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS),
+        price: format_mission_control_amount(
+            crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+        ),
         button_label: if mission_control.buy_mode_loop_enabled {
             "STOP BUY MODE".to_string()
         } else {
@@ -1782,6 +1815,49 @@ fn mission_control_local_action_enabled(
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => true,
         None => false,
     }
+}
+
+fn mission_control_local_fm_test_button_visible(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> bool {
+    mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime)
+        == Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
+}
+
+fn mission_control_local_fm_test_button_label(
+    mission_control: &MissionControlPaneState,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+) -> String {
+    if mission_control.local_fm_summary_is_pending() {
+        String::from("STREAMING LOCAL FM")
+    } else if mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime)
+        != Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
+    {
+        String::from("LOCAL FM UNAVAILABLE")
+    } else if provider_runtime.apple_fm.is_ready() {
+        String::from("TEST LOCAL FM")
+    } else {
+        String::from("LOCAL FM NOT READY")
+    }
+}
+
+fn mission_control_local_fm_test_enabled(
+    mission_control: &MissionControlPaneState,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> bool {
+    !mission_control.local_fm_summary_is_pending()
+        && mission_control_local_runtime_is_ready(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        )
+        && mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime)
+            == Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
 }
 
 fn mission_control_short_model_label(model: &str) -> String {
@@ -5677,8 +5753,9 @@ mod tests {
     use super::{
         create_invoice_view_state, mission_control_body_chunk_len,
         mission_control_buy_mode_panel_state, mission_control_buy_mode_settlement_label,
-        mission_control_go_online_hint, mission_control_local_model_button_label,
-        mission_control_lightning_receive_state_label, mission_control_value_chunk_len,
+        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
+        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
+        mission_control_local_model_button_label, mission_control_value_chunk_len,
         mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
         payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
@@ -5899,6 +5976,68 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_local_fm_test_button_tracks_ready_and_streaming_states() {
+        if !crate::app_state::mission_control_uses_apple_fm() {
+            return;
+        }
+        let mut provider = ProviderRuntimeState::default();
+        let local = LocalInferenceExecutionSnapshot::default();
+        let mut mission_control = fixture_mission_control();
+
+        assert_eq!(
+            mission_control_local_fm_test_button_label(
+                &mission_control,
+                &provider,
+                &local,
+                crate::desktop_shell::DesktopShellMode::Production,
+            ),
+            "LOCAL FM NOT READY"
+        );
+        assert!(!mission_control_local_fm_test_enabled(
+            &mission_control,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+
+        provider.apple_fm.reachable = true;
+        provider.apple_fm.model_available = true;
+        provider.apple_fm.ready_model = Some("apple-foundation-model".to_string());
+        assert_eq!(
+            mission_control_local_fm_test_button_label(
+                &mission_control,
+                &provider,
+                &local,
+                crate::desktop_shell::DesktopShellMode::Production,
+            ),
+            "TEST LOCAL FM"
+        );
+        assert!(mission_control_local_fm_test_enabled(
+            &mission_control,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+
+        mission_control.local_fm_summary_pending_request_id = Some("mission-control-fm-1".into());
+        assert_eq!(
+            mission_control_local_fm_test_button_label(
+                &mission_control,
+                &provider,
+                &local,
+                crate::desktop_shell::DesktopShellMode::Production,
+            ),
+            "STREAMING LOCAL FM"
+        );
+        assert!(!mission_control_local_fm_test_enabled(
+            &mission_control,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+    }
+
+    #[test]
     fn mission_control_buy_mode_panel_state_respects_feature_gate() {
         let requests = NetworkRequestsState::default();
         let wallet = SparkPaneState::default();
@@ -5910,8 +6049,9 @@ mod tests {
             None
         );
 
-        let panel = mission_control_buy_mode_panel_state(true, &mission_control, &requests, &wallet, now)
-            .expect("enabled buy mode should expose panel state");
+        let panel =
+            mission_control_buy_mode_panel_state(true, &mission_control, &requests, &wallet, now)
+                .expect("enabled buy mode should expose panel state");
         assert!(panel.summary.contains("Buy Mode blocked"));
         assert_eq!(panel.mode, "off");
         assert_eq!(panel.next, "off");
@@ -5940,8 +6080,9 @@ mod tests {
 
         let mut armed = fixture_mission_control();
         armed.toggle_buy_mode_loop(now);
-        let armed_panel = mission_control_buy_mode_panel_state(true, &armed, &requests, &wallet, now)
-            .expect("armed buy mode should expose panel state");
+        let armed_panel =
+            mission_control_buy_mode_panel_state(true, &armed, &requests, &wallet, now)
+                .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
         assert_eq!(armed_panel.next, "now");
         assert_eq!(armed_panel.button_label, "STOP BUY MODE");

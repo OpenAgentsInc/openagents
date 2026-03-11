@@ -338,6 +338,7 @@ pub enum MissionControlPaneAction {
     GenerateBitcoinReceiveAddress,
     CopyBitcoinReceiveAddress,
     OpenLocalModelWorkbench,
+    RunLocalFmSummaryTest,
     ToggleBuyModeLoop,
     SendWithdrawal,
     OpenDocumentation,
@@ -1515,8 +1516,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     state.mission_control_buy_mode_enabled(),
                 )
                 .contains(point)
-                    || mission_control_withdraw_invoice_input_bounds(content_bounds)
-                        .contains(point)
+                    || mission_control_withdraw_invoice_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
                 }
@@ -2153,12 +2153,14 @@ pub fn mission_control_layout_for_mode(
             0.0,
         )
     };
-    let top_gaps = if buy_mode_enabled { panel_gap * 3.0 } else { panel_gap * 2.0 };
-    let remaining_after_top = (right_column.size.height
-        - active_jobs_height
-        - buy_mode_panel.size.height
-        - top_gaps)
-        .max(0.0);
+    let top_gaps = if buy_mode_enabled {
+        panel_gap * 3.0
+    } else {
+        panel_gap * 2.0
+    };
+    let remaining_after_top =
+        (right_column.size.height - active_jobs_height - buy_mode_panel.size.height - top_gaps)
+            .max(0.0);
     let min_log_stream_height: f32 = if buy_mode_enabled { 88.0 } else { 108.0 };
     let preferred_load_funds_height: f32 = if buy_mode_enabled { 150.0 } else { 178.0 };
     let min_load_funds_height: f32 = 124.0;
@@ -2216,15 +2218,23 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    mission_control_actions_row_bounds(content_bounds, 0)
+}
+
+pub fn mission_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bounds {
+    mission_control_actions_row_bounds(content_bounds, 1)
+}
+
+fn mission_control_actions_row_bounds(content_bounds: Bounds, row: usize) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
     let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
-    let available_height = (panel.size.height - gap * 2.0).max(0.0);
-    let height = (available_height / 3.0).min(30.0);
-    let total_height = height * 3.0 + gap * 2.0;
+    let available_height = (panel.size.height - gap * 3.0).max(0.0);
+    let height = (available_height / 4.0).min(28.0);
+    let total_height = height * 4.0 + gap * 3.0;
     let top = panel.origin.y + ((panel.size.height - total_height).max(0.0) * 0.5);
     Bounds::new(
         panel.origin.x + 14.0,
-        top,
+        top + row.min(3) as f32 * (height + gap),
         (panel.size.width - 28.0).max(0.0),
         height,
     )
@@ -2242,27 +2252,11 @@ pub fn mission_control_wallet_refresh_button_bounds(content_bounds: Bounds) -> B
 }
 
 pub fn mission_control_withdraw_invoice_input_bounds(content_bounds: Bounds) -> Bounds {
-    let local_model = mission_control_local_model_button_bounds(content_bounds);
-    let panel = mission_control_layout(content_bounds).actions_panel;
-    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
-    Bounds::new(
-        local_model.origin.x,
-        local_model.max_y() + gap,
-        local_model.size.width,
-        local_model.size.height,
-    )
+    mission_control_actions_row_bounds(content_bounds, 2)
 }
 
 pub fn mission_control_withdraw_button_bounds(content_bounds: Bounds) -> Bounds {
-    let input = mission_control_withdraw_invoice_input_bounds(content_bounds);
-    let panel = mission_control_layout(content_bounds).actions_panel;
-    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
-    Bounds::new(
-        input.origin.x,
-        input.max_y() + gap,
-        input.size.width,
-        input.size.height,
-    )
+    mission_control_actions_row_bounds(content_bounds, 3)
 }
 
 pub fn mission_control_load_funds_layout(
@@ -2275,7 +2269,11 @@ pub fn mission_control_load_funds_layout(
     let inner_width = (panel.size.width - 28.0).max(0.0);
     let inner_height = (panel.size.height - 46.0).max(0.0);
     let controls_width = (inner_width * 0.34).clamp(210.0, 280.0).min(inner_width);
-    let details_gap = if inner_width > controls_width { 14.0 } else { 0.0 };
+    let details_gap = if inner_width > controls_width {
+        14.0
+    } else {
+        0.0
+    };
     let controls_column = Bounds::new(inner_x, inner_y, controls_width, inner_height);
     let details_column = Bounds::new(
         controls_column.max_x() + details_gap,
@@ -2285,9 +2283,9 @@ pub fn mission_control_load_funds_layout(
     );
     let control_gap = 6.0;
     let control_top_inset = 14.0;
-    let control_height =
-        ((controls_column.size.height - control_top_inset - control_gap * 2.0) / 3.0)
-            .clamp(20.0, 28.0);
+    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 2.0)
+        / 3.0)
+        .clamp(20.0, 28.0);
     let amount_input = Bounds::new(
         controls_column.origin.x,
         controls_column.origin.y + control_top_inset,
@@ -4696,6 +4694,19 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
                 ))
+            } else if crate::app_state::mission_control_local_runtime_lane(
+                state.desktop_shell_mode,
+                &state.ollama_execution,
+            ) == Some(
+                crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels,
+            ) && mission_control_local_fm_test_button_bounds(content_bounds)
+                .contains(point)
+                && state.provider_runtime.apple_fm.is_ready()
+                && !state.mission_control.local_fm_summary_is_pending()
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::RunLocalFmSummaryTest,
+                ))
             } else if mission_control_withdraw_button_bounds(content_bounds).contains(point)
                 && !state
                     .mission_control
@@ -6183,8 +6194,8 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
-        mission_control_local_model_button_bounds, mission_control_wallet_refresh_button_bounds,
-        mission_control_withdraw_button_bounds,
+        mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
+        mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
         mission_control_withdraw_invoice_input_bounds, network_requests_budget_input_bounds,
         network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
         network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
@@ -6281,14 +6292,16 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_withdraw_controls_fit_below_local_model_action() {
+    fn mission_control_withdraw_controls_fit_below_local_fm_controls() {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let layout = super::mission_control_layout(content_bounds);
         let local_model = mission_control_local_model_button_bounds(content_bounds);
+        let local_fm_test = mission_control_local_fm_test_button_bounds(content_bounds);
         let withdraw_input = mission_control_withdraw_invoice_input_bounds(content_bounds);
         let withdraw_button = mission_control_withdraw_button_bounds(content_bounds);
 
-        assert!(local_model.max_y() <= withdraw_input.origin.y);
+        assert!(local_model.max_y() <= local_fm_test.origin.y);
+        assert!(local_fm_test.max_y() <= withdraw_input.origin.y);
         assert!(withdraw_input.max_y() <= withdraw_button.origin.y);
         assert!(withdraw_button.max_y() <= layout.actions_panel.max_y());
     }
@@ -6312,7 +6325,11 @@ mod tests {
 
         assert!(layout.active_jobs_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(layout.load_funds_panel.contains(load_funds.amount_input.origin));
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.amount_input.origin)
+        );
         assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(load_funds.details_column.max_x() <= layout.load_funds_panel.max_x());
@@ -6327,7 +6344,11 @@ mod tests {
 
         assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(layout.load_funds_panel.contains(load_funds.amount_input.origin));
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.amount_input.origin)
+        );
         assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);

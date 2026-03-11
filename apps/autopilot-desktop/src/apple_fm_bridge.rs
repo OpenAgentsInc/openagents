@@ -215,12 +215,56 @@ pub enum AppleFmWorkbenchUpdate {
 }
 
 #[derive(Clone, Debug)]
+pub struct AppleFmMissionControlSummaryCommand {
+    pub request_id: String,
+    pub instructions: String,
+    pub prompt: String,
+    pub requested_model: Option<String>,
+    pub options: Option<AppleFmGenerationOptions>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmMissionControlSummaryStarted {
+    pub request_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmMissionControlSummaryDelta {
+    pub request_id: String,
+    pub delta: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmMissionControlSummaryCompleted {
+    pub request_id: String,
+    pub summary: String,
+    pub model: Option<String>,
+    pub response_text: String,
+    pub usage_json: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmMissionControlSummaryFailed {
+    pub request_id: String,
+    pub error: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AppleFmMissionControlSummaryUpdate {
+    Started(AppleFmMissionControlSummaryStarted),
+    Delta(AppleFmMissionControlSummaryDelta),
+    Completed(AppleFmMissionControlSummaryCompleted),
+    Failed(AppleFmMissionControlSummaryFailed),
+}
+
+#[derive(Clone, Debug)]
 pub enum AppleFmBridgeCommand {
     Refresh,
     EnsureBridgeRunning,
     StopBridge,
     Generate(AppleFmGenerateJob),
     Workbench(AppleFmWorkbenchCommand),
+    MissionControlSummary(AppleFmMissionControlSummaryCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -251,6 +295,7 @@ pub enum AppleFmBridgeUpdate {
     Completed(AppleFmExecutionCompleted),
     Failed(AppleFmExecutionFailed),
     Workbench(Box<AppleFmWorkbenchUpdate>),
+    MissionControlSummary(Box<AppleFmMissionControlSummaryUpdate>),
 }
 
 pub struct AppleFmBridgeWorker {
@@ -722,6 +767,181 @@ impl AppleFmBridgeState {
         }
     }
 
+    fn handle_mission_control_summary(
+        &mut self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        command: AppleFmMissionControlSummaryCommand,
+    ) {
+        let Some(client) = self.client.clone() else {
+            self.publish_mission_control_summary_update(
+                update_tx,
+                AppleFmMissionControlSummaryUpdate::Failed(AppleFmMissionControlSummaryFailed {
+                    request_id: command.request_id,
+                    error: self
+                        .client_error
+                        .clone()
+                        .unwrap_or_else(|| "Apple FM HTTP client unavailable".to_string()),
+                }),
+            );
+            return;
+        };
+
+        if self.config.auto_start {
+            let _ = self
+                .bridge
+                .ensure_running(&self.config, &client, &mut self.snapshot);
+        }
+
+        self.publish_mission_control_summary_update(
+            update_tx,
+            AppleFmMissionControlSummaryUpdate::Started(AppleFmMissionControlSummaryStarted {
+                request_id: command.request_id.clone(),
+            }),
+        );
+
+        match self.execute_mission_control_summary(&client, update_tx, &command) {
+            Ok(completed) => {
+                self.snapshot.last_error = None;
+                self.snapshot.last_request_id = Some(completed.request_id.clone());
+                self.snapshot.last_action =
+                    Some("Apple FM Mission Control summary completed".to_string());
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                self.publish_mission_control_summary_update(
+                    update_tx,
+                    AppleFmMissionControlSummaryUpdate::Completed(completed),
+                );
+            }
+            Err(error) => {
+                self.snapshot.last_error = Some(error.clone());
+                self.snapshot.last_request_id = Some(command.request_id.clone());
+                self.snapshot.last_action =
+                    Some("Apple FM Mission Control summary failed".to_string());
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                self.publish_mission_control_summary_update(
+                    update_tx,
+                    AppleFmMissionControlSummaryUpdate::Failed(
+                        AppleFmMissionControlSummaryFailed {
+                            request_id: command.request_id,
+                            error,
+                        },
+                    ),
+                );
+            }
+        }
+    }
+
+    fn execute_mission_control_summary(
+        &mut self,
+        client: &AppleFmBridgeClient,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        command: &AppleFmMissionControlSummaryCommand,
+    ) -> Result<AppleFmMissionControlSummaryCompleted, String> {
+        let session = client
+            .create_session(&AppleFmSessionCreateRequest {
+                instructions: Some(command.instructions.clone()),
+                model: requested_system_model(command.requested_model.as_deref()),
+                tools: Vec::new(),
+                tool_callback: None,
+                transcript_json: None,
+                transcript: None,
+            })
+            .map_err(|error| error.to_string())?;
+        let session_id = session.id.clone();
+        let request_id = command.request_id.clone();
+        let async_client = AppleFmAsyncBridgeClient::new(self.config.base_url.clone())
+            .map_err(|error| error.to_string())?;
+        let runtime = TokioRuntimeBuilder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| format!("build Apple FM stream runtime: {error}"))?;
+        let request = AppleFmSessionRespondRequest {
+            prompt: command.prompt.clone(),
+            options: command.options.clone(),
+        };
+        let mut stream = match runtime
+            .block_on(async_client.stream_session_response(session_id.as_str(), &request))
+        {
+            Ok(stream) => stream,
+            Err(error) => {
+                let _ = client.delete_session(session_id.as_str());
+                return Err(error.to_string());
+            }
+        };
+        let mut output = String::new();
+        let mut model = Some(session.model.id.clone());
+        let mut usage_json = None::<String>;
+        let mut last_chars = 0usize;
+        let stream_result = runtime.block_on(async {
+            while let Some(event) = stream.next().await {
+                match event {
+                    Ok(event) => {
+                        model = Some(event.model.clone());
+                        let chars = event.output.chars().count();
+                        let delta = if chars >= last_chars {
+                            event.output.chars().skip(last_chars).collect::<String>()
+                        } else {
+                            event.output.clone()
+                        };
+                        last_chars = chars;
+                        output = event.output.clone();
+                        if let Some(usage) = event.usage.as_ref() {
+                            usage_json = Some(pretty_json(usage));
+                        }
+                        if !delta.is_empty() {
+                            self.publish_mission_control_summary_update(
+                                update_tx,
+                                AppleFmMissionControlSummaryUpdate::Delta(
+                                    AppleFmMissionControlSummaryDelta {
+                                        request_id: request_id.clone(),
+                                        delta,
+                                    },
+                                ),
+                            );
+                        } else if event.kind == AppleFmTextStreamEventKind::Completed
+                            && output.is_empty()
+                        {
+                            self.publish_mission_control_summary_update(
+                                update_tx,
+                                AppleFmMissionControlSummaryUpdate::Delta(
+                                    AppleFmMissionControlSummaryDelta {
+                                        request_id: request_id.clone(),
+                                        delta: "[no summary output]".to_string(),
+                                    },
+                                ),
+                            );
+                        }
+                    }
+                    Err(error) => return Err::<(), String>(error.to_string()),
+                }
+            }
+            Ok::<(), String>(())
+        });
+        let delete_result = client.delete_session(session_id.as_str());
+        if let Err(error) = stream_result {
+            let _ = delete_result;
+            return Err(error);
+        }
+        if let Err(error) = delete_result {
+            tracing::warn!(
+                "Apple FM Mission Control summary session cleanup failed session_id={} error={}",
+                session_id,
+                error
+            );
+        }
+        Ok(AppleFmMissionControlSummaryCompleted {
+            request_id: command.request_id.clone(),
+            summary: format!(
+                "streamed Mission Control summary via {}",
+                model.as_deref().unwrap_or("apple_foundation_models")
+            ),
+            model,
+            response_text: output,
+            usage_json,
+        })
+    }
+
     fn execute_workbench_command(
         &mut self,
         client: &AppleFmBridgeClient,
@@ -1136,6 +1356,14 @@ impl AppleFmBridgeState {
     ) {
         let _ = update_tx.send(AppleFmBridgeUpdate::Workbench(Box::new(update)));
     }
+
+    fn publish_mission_control_summary_update(
+        &self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        update: AppleFmMissionControlSummaryUpdate,
+    ) {
+        let _ = update_tx.send(AppleFmBridgeUpdate::MissionControlSummary(Box::new(update)));
+    }
 }
 
 fn run_apple_fm_loop(
@@ -1165,6 +1393,9 @@ fn run_apple_fm_loop(
             Ok(AppleFmBridgeCommand::Generate(job)) => state.handle_generate(&update_tx, job),
             Ok(AppleFmBridgeCommand::Workbench(command)) => {
                 state.handle_workbench(&update_tx, command)
+            }
+            Ok(AppleFmBridgeCommand::MissionControlSummary(command)) => {
+                state.handle_mission_control_summary(&update_tx, command)
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
@@ -1422,11 +1653,12 @@ fn find_bridge_binary() -> Option<PathBuf> {
 mod tests {
     use super::{
         AppleFmBridgeCommand, AppleFmBridgeConfig, AppleFmBridgeUpdate, AppleFmBridgeWorker,
+        AppleFmMissionControlSummaryCommand, AppleFmMissionControlSummaryUpdate,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
         AppleFmWorkbenchCommand, AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
         AppleFmWorkbenchUpdate,
     };
-    use psionic_apple_fm::AppleFmSamplingMode;
+    use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::Arc;
@@ -1852,6 +2084,47 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         panic!("timed out waiting for workbench completion {request_id}");
     }
 
+    fn wait_for_mission_control_summary_completion(
+        worker: &mut AppleFmBridgeWorker,
+        request_id: &str,
+    ) -> (super::AppleFmMissionControlSummaryCompleted, Vec<String>) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut deltas = Vec::new();
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let AppleFmBridgeUpdate::MissionControlSummary(update) = update {
+                    match *update {
+                        AppleFmMissionControlSummaryUpdate::Started(_) => {}
+                        AppleFmMissionControlSummaryUpdate::Delta(delta)
+                            if delta.request_id == request_id =>
+                        {
+                            deltas.push(delta.delta);
+                        }
+                        AppleFmMissionControlSummaryUpdate::Completed(completed)
+                            if completed.request_id == request_id =>
+                        {
+                            return (completed, deltas);
+                        }
+                        AppleFmMissionControlSummaryUpdate::Failed(failed)
+                            if failed.request_id == request_id =>
+                        {
+                            panic!(
+                                "expected mission control summary completion, got failure: {}",
+                                failed.error
+                            );
+                        }
+                        AppleFmMissionControlSummaryUpdate::Delta(_)
+                        | AppleFmMissionControlSummaryUpdate::Completed(_)
+                        | AppleFmMissionControlSummaryUpdate::Failed(_) => {}
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        panic!("timed out waiting for mission control summary completion {request_id}");
+    }
+
     #[test]
     fn worker_refresh_and_generate_succeed_against_healthy_bridge() {
         let (base_url, saw_chat_completion, server_handle) = spawn_mock_bridge();
@@ -1895,7 +2168,8 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     }
                     AppleFmBridgeUpdate::Started(_)
                     | AppleFmBridgeUpdate::Failed(_)
-                    | AppleFmBridgeUpdate::Workbench(_) => {}
+                    | AppleFmBridgeUpdate::Workbench(_)
+                    | AppleFmBridgeUpdate::MissionControlSummary(_) => {}
                 }
             }
             if completed.is_some() {
@@ -1913,6 +2187,39 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         assert_eq!(completed.provenance.backend, "apple_foundation_models");
         assert_eq!(completed.provenance.base_url, base_url);
         assert!(saw_chat_completion.load(Ordering::SeqCst));
+
+        server_handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn worker_mission_control_summary_streams_ephemeral_session_output() {
+        let (base_url, _saw_chat_completion, server_handle) = spawn_mock_bridge();
+        let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {
+            base_url,
+            auto_start: false,
+        });
+
+        let request_id = "mission-control-summary-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::MissionControlSummary(
+                AppleFmMissionControlSummaryCommand {
+                    request_id: request_id.clone(),
+                    instructions: "Summarize the control state".to_string(),
+                    prompt: "Latest logs go here".to_string(),
+                    requested_model: Some("apple-foundation-model".to_string()),
+                    options: Some(
+                        AppleFmGenerationOptions::new(None, Some(0.2), Some(96))
+                            .expect("summary options"),
+                    ),
+                },
+            ))
+            .expect("queue mission control summary command");
+
+        let (completed, deltas) =
+            wait_for_mission_control_summary_completion(&mut worker, request_id.as_str());
+        assert_eq!(completed.response_text, "hello world");
+        assert!(!deltas.is_empty());
+        assert_eq!(deltas.concat(), "hello world");
 
         server_handle.join().expect("mock bridge thread");
     }
