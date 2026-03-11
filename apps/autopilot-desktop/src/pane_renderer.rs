@@ -2092,12 +2092,7 @@ fn mission_control_go_online_hint(
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if provider_runtime.apple_fm.is_ready() {
                 String::new()
-            } else if let Some(message) = provider_runtime
-                .apple_fm
-                .availability_message
-                .as_deref()
-                .or(provider_runtime.apple_fm.last_error.as_deref())
-            {
+            } else if let Some(message) = provider_runtime.apple_fm.availability_error_message() {
                 format!("Mission Control needs Apple Foundation Models: {message}")
             } else if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
                 String::from(
@@ -5845,9 +5840,8 @@ fn mission_control_blocker_detail(
         ProviderBlocker::AppleFoundationModelsUnavailable
         | ProviderBlocker::AppleFoundationModelsModelUnavailable => provider_runtime
             .apple_fm
-            .last_error
+            .availability_error_message()
             .as_deref()
-            .or(provider_runtime.apple_fm.availability_message.as_deref())
             .map(str::trim)
             .filter(|entry| !entry.is_empty())
             .map(ToString::to_string)
@@ -6188,6 +6182,30 @@ mod tests {
             &provider,
             &local,
         ));
+    }
+
+    #[test]
+    fn mission_control_go_online_hint_ignores_positive_apple_fm_health_message() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.apple_fm.reachable = true;
+        provider.apple_fm.model_available = true;
+        provider.apple_fm.availability_message = Some("Foundation Models is available".to_string());
+
+        let local = LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "metal".to_string(),
+            ..LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "Refresh Apple FM health before you go online."
+        );
     }
 
     #[test]

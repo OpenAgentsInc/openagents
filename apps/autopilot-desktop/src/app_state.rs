@@ -1197,9 +1197,8 @@ fn build_mission_control_log_lines(
                     )
                 } else if let Some(message) = provider_runtime
                     .apple_fm
-                    .availability_message
+                    .availability_error_message()
                     .as_deref()
-                    .or(provider_runtime.apple_fm.last_error.as_deref())
                 {
                     (
                         TerminalStream::Stderr,
@@ -14080,6 +14079,46 @@ mod tests {
             );
         }
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
+    }
+
+    #[test]
+    fn mission_control_log_lines_ignore_positive_apple_fm_health_message() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.apple_fm.reachable = true;
+        provider.apple_fm.model_available = true;
+        provider.apple_fm.availability_message = Some("Foundation Models is available".to_string());
+
+        let local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("bridge reachable but not ready yet"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
     }
 
     #[test]
