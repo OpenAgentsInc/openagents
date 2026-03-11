@@ -301,6 +301,9 @@ impl Component for TerminalPane {
             };
             let max_scroll = (self.content_height - content_height).max(0.0);
             self.scroll_offset = (self.scroll_offset - dy).clamp(0.0, max_scroll);
+            // User scrolled: stick to bottom only when at bottom, so scroll-up is preserved
+            let at_bottom = max_scroll <= 0.0 || self.scroll_offset >= max_scroll - 0.5;
+            self.auto_scroll = at_bottom;
             return EventResult::Handled;
         }
         EventResult::Ignored
