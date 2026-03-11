@@ -15,7 +15,7 @@ use winit::window::Window;
 use crate::app_state::{
     PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
-use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
+use crate::apple_fm_bridge::{AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
@@ -388,7 +388,6 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         state.sync_chat_identities();
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
-        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
         open_startup_panes(&mut state);
         Ok(state)

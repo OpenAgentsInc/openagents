@@ -2020,7 +2020,7 @@ fn pane_action_to_hit_action(
             "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
             "buy_mode_test_job" | "buy_test_job" | "submit_buy_mode_request" => {
                 Ok(PaneHitAction::MissionControl(
-                    crate::pane_system::MissionControlPaneAction::RunBuyModeSmokeTest,
+                    crate::pane_system::MissionControlPaneAction::ToggleBuyModeLoop,
                 ))
             }
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {

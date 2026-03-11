@@ -142,11 +142,13 @@ Total: 50 sats
 
 For internal verification and staged rollout testing, Mission Control should
 optionally expose a small `Buy Mode` block. This is not a second buyer product.
-It is a one-click smoke test for the real NIP-90 + Lightning path.
+It is an inline Mission Control mode for the real NIP-90 + Lightning path.
 
 Contract:
 
-- hidden unless `OPENAGENTS_ENABLE_BUY_MODE=1`
+- visible in Mission Control by default
+- primary action is a start/stop toggle, not a one-shot fire button
+- while armed, it auto-dispatches on a fixed `12s` cadence
 - one in-flight outbound request at a time
 - publishes one fixed `kind: 5050` request with a tiny prompt template chosen
   for cheap validation
@@ -365,9 +367,9 @@ MVP is ready when all are true:
 4. Increment is backed by real wallet receive evidence.
 5. User can withdraw from the built-in Spark wallet by paying an external Lightning invoice.
 6. Stats page reflects live economic activity.
-7. With `OPENAGENTS_ENABLE_BUY_MODE=1`, Mission Control can publish one
-   `kind: 5050` / `2 sats` smoke-test request and show the terminal
-   buyer-side payment outcome inline.
+7. Mission Control Buy Mode can be toggled on, auto-publish `kind: 5050` /
+   `2 sats` smoke-test requests on cadence, and show the terminal buyer-side
+   payment outcome inline.
 
 The user should be able to do that withdrawal while still online. Going offline is not a prerequisite for paying out from the built-in wallet.
 

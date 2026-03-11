@@ -49,7 +49,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - `v0.1` production default is fullscreen Mission Control with no pane workspace chrome, hotbar, or command-palette dependency.
   - Mission Control is Apple FM-only in the production path: it shows Apple FM readiness, starts or refreshes the bridge inline, and keeps `GO ONLINE` disabled until Apple FM, wallet, and provider readiness are honest.
   - Mission Control now includes the inline Lightning withdraw entry point, so the first paid-job loop no longer requires opening the separate wallet pay-invoice pane.
-  - When `OPENAGENTS_ENABLE_BUY_MODE=1`, Mission Control also exposes an inline `Buy Mode` smoke-test block that publishes one fixed `kind: 5050` request at `2 sats`, then renders publish/result/payment state inline without opening a second buyer pane.
+  - Mission Control now exposes an inline `Buy Mode` control by default: a start/stop buyer loop that auto-dispatches one fixed `kind: 5050` request at `2 sats` every `12s` while armed, keeping at most one in-flight request and rendering publish/result/payment state inline without opening a second buyer pane.
   - Dev mode still retains separate workbench/debug panes, including the NVIDIA `GPT-OSS Workbench` path on supported non-macOS hosts.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
@@ -83,7 +83,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Buyer-side request composer for network submission.
   - Inputs: request type, payload, budget sats, timeout seconds (validated before submit).
   - MVP OpenAgents-posted public jobs should default to `race` resolution mode; future `windowed` mode can be added later for quality-sensitive jobs.
-  - Mission Control `Buy Mode` is the constrained inline variant of this buyer lane for `v0.1` smoke testing: one in-flight request, fixed `kind: 5050`, fixed `2 sats`, and no generic request authoring UI.
+  - Mission Control `Buy Mode` is the constrained inline variant of this buyer lane for `v0.1` smoke testing: start/stop loop, one in-flight request, fixed `kind: 5050`, fixed `2 sats`, fixed `12s` cadence, and no generic request authoring UI.
   - Output: submitted request rows with request id and response stream linkage.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Starter Jobs`

@@ -606,6 +606,9 @@ pub struct MissionControlPaneState {
     pub log_stream: TerminalPane,
     pub load_funds_amount_sats: TextInput,
     pub withdraw_invoice: TextInput,
+    pub buy_mode_loop_enabled: bool,
+    pub buy_mode_next_dispatch_at: Option<Instant>,
+    pub buy_mode_last_dispatch_at: Option<Instant>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
@@ -636,6 +639,9 @@ impl Default for MissionControlPaneState {
                 .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
                 .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
+            buy_mode_loop_enabled: false,
+            buy_mode_next_dispatch_at: None,
+            buy_mode_last_dispatch_at: None,
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_content: Vec::new(),
@@ -644,6 +650,49 @@ impl Default for MissionControlPaneState {
 }
 
 impl MissionControlPaneState {
+    pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
+        self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
+        if self.buy_mode_loop_enabled {
+            self.buy_mode_next_dispatch_at = Some(now);
+        } else {
+            self.buy_mode_next_dispatch_at = None;
+        }
+        self.buy_mode_loop_enabled
+    }
+
+    pub fn buy_mode_dispatch_due(&self, now: Instant) -> bool {
+        self.buy_mode_loop_enabled
+            && self
+                .buy_mode_next_dispatch_at
+                .map(|next_due_at| now >= next_due_at)
+                .unwrap_or(true)
+    }
+
+    pub fn schedule_next_buy_mode_dispatch(&mut self, now: Instant) {
+        self.buy_mode_last_dispatch_at = Some(now);
+        self.buy_mode_next_dispatch_at = Some(
+            now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)),
+        );
+    }
+
+    pub fn schedule_buy_mode_retry(&mut self, now: Instant) {
+        self.buy_mode_next_dispatch_at = Some(
+            now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)),
+        );
+    }
+
+    pub fn buy_mode_next_dispatch_countdown_seconds(&self, now: Instant) -> Option<u64> {
+        let next_due_at = self.buy_mode_next_dispatch_at?;
+        if now >= next_due_at {
+            return Some(0);
+        }
+        let wait = next_due_at.saturating_duration_since(now);
+        Some(
+            wait.as_secs()
+                .saturating_add(u64::from(wait.subsec_nanos() > 0)),
+        )
+    }
+
     pub fn record_action(&mut self, action: impl Into<String>) {
         self.last_action = Some(action.into());
         self.last_error = None;
@@ -724,7 +773,11 @@ fn build_mission_control_log_lines(
 
     let mode_line = match provider_runtime.mode {
         crate::state::provider_runtime::ProviderMode::Offline => {
-            "Provider offline. Click GO ONLINE to accept jobs.".to_string()
+            if mission_control_sell_compute_supported(desktop_shell_mode, local_inference_runtime) {
+                "Provider offline. Click GO ONLINE to accept jobs.".to_string()
+            } else {
+                "Provider offline. Platform not supported for selling compute.".to_string()
+            }
         }
         crate::state::provider_runtime::ProviderMode::Connecting => {
             "Provider connecting to relays and preparing runtime.".to_string()
@@ -970,7 +1023,37 @@ pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_TYPE: &str = "mission_control.
 pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_KIND: u16 =
     nostr::nip90::KIND_JOB_TEXT_GENERATION;
 pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
+pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS: u64 = 12;
 pub(crate) const MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
+
+pub(crate) fn mission_control_buy_mode_available_balance_sats(
+    spark_wallet: &crate::spark_wallet::SparkPaneState,
+) -> Option<u64> {
+    spark_wallet
+        .balance
+        .as_ref()
+        .map(openagents_spark::Balance::total_sats)
+}
+
+pub(crate) fn mission_control_buy_mode_start_block_reason(
+    spark_wallet: &crate::spark_wallet::SparkPaneState,
+) -> Option<String> {
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        return Some(format!("Buy Mode requires a healthy Spark wallet ({error})"));
+    }
+
+    match mission_control_buy_mode_available_balance_sats(spark_wallet) {
+        Some(balance_sats) if balance_sats >= MISSION_CONTROL_BUY_MODE_BUDGET_SATS => None,
+        Some(balance_sats) => Some(format!(
+            "Buy Mode requires at least {} sats in Spark wallet (balance: {} sats)",
+            MISSION_CONTROL_BUY_MODE_BUDGET_SATS, balance_sats
+        )),
+        None => Some(format!(
+            "Buy Mode requires at least {} sats in Spark wallet (balance unavailable)",
+            MISSION_CONTROL_BUY_MODE_BUDGET_SATS
+        )),
+    }
+}
 
 pub(crate) const fn mission_control_uses_apple_fm() -> bool {
     cfg!(target_os = "macos")
@@ -984,6 +1067,30 @@ pub(crate) fn mission_control_supports_cuda_gpt_oss(
             .backend_label
             .trim()
             .eq_ignore_ascii_case("cuda")
+}
+
+fn mission_control_sell_compute_supported_for_platform(
+    apple_fm_supported: bool,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    apple_fm_supported
+        || (desktop_shell_mode.is_dev()
+            && local_inference_runtime
+                .backend_label
+                .trim()
+                .eq_ignore_ascii_case("cuda"))
+}
+
+pub(crate) fn mission_control_sell_compute_supported(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    mission_control_sell_compute_supported_for_platform(
+        mission_control_uses_apple_fm(),
+        desktop_shell_mode,
+        local_inference_runtime,
+    )
 }
 
 pub(crate) fn mission_control_local_runtime_lane(
@@ -8018,6 +8125,11 @@ impl RenderState {
         self.buy_mode_enabled
     }
 
+    pub fn mission_control_buy_mode_toggle_enabled(&self) -> bool {
+        self.mission_control.buy_mode_loop_enabled
+            || mission_control_buy_mode_start_block_reason(&self.spark_wallet).is_none()
+    }
+
     fn allocate_runtime_command_seq(&mut self) -> u64 {
         let seq = self.next_runtime_command_seq;
         self.next_runtime_command_seq = self.next_runtime_command_seq.saturating_add(1);
@@ -13127,6 +13239,113 @@ mod tests {
                 .any(|line| line.text.contains("Apple Foundation Models unavailable"))
         );
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
+    }
+
+    #[test]
+    fn mission_control_sell_compute_supported_requires_supported_platform_or_dev_cuda_lane() {
+        let cuda_local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+        let metal_local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "metal".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert!(super::mission_control_sell_compute_supported_for_platform(
+            true,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &metal_local,
+        ));
+        assert!(!super::mission_control_sell_compute_supported_for_platform(
+            false,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &cuda_local,
+        ));
+        assert!(super::mission_control_sell_compute_supported_for_platform(
+            false,
+            crate::desktop_shell::DesktopShellMode::Dev,
+            &cuda_local,
+        ));
+        assert!(!super::mission_control_sell_compute_supported_for_platform(
+            false,
+            crate::desktop_shell::DesktopShellMode::Dev,
+            &metal_local,
+        ));
+    }
+
+    #[test]
+    fn mission_control_buy_mode_loop_toggle_and_schedule_are_deterministic() {
+        let mut mission_control = super::MissionControlPaneState::default();
+        let now = std::time::Instant::now();
+
+        assert!(!mission_control.buy_mode_loop_enabled);
+        assert!(!mission_control.buy_mode_dispatch_due(now));
+
+        assert!(mission_control.toggle_buy_mode_loop(now));
+        assert!(mission_control.buy_mode_dispatch_due(now));
+        assert_eq!(
+            mission_control.buy_mode_next_dispatch_countdown_seconds(now),
+            Some(0)
+        );
+
+        mission_control.schedule_next_buy_mode_dispatch(now);
+        assert_eq!(
+            mission_control.buy_mode_next_dispatch_countdown_seconds(now),
+            Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS)
+        );
+        assert!(
+            !mission_control.buy_mode_dispatch_due(
+                now + std::time::Duration::from_secs(
+                    super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.saturating_sub(1)
+                )
+            )
+        );
+
+        assert!(!mission_control.toggle_buy_mode_loop(now));
+        assert!(!mission_control.buy_mode_loop_enabled);
+        assert_eq!(mission_control.buy_mode_next_dispatch_at, None);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_start_block_reason_requires_wallet_balance() {
+        let wallet = SparkPaneState::default();
+        assert_eq!(
+            super::mission_control_buy_mode_start_block_reason(&wallet),
+            Some(format!(
+                "Buy Mode requires at least {} sats in Spark wallet (balance unavailable)",
+                super::MISSION_CONTROL_BUY_MODE_BUDGET_SATS
+            ))
+        );
+
+        let mut empty_balance = SparkPaneState::default();
+        empty_balance.balance = Some(openagents_spark::Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        assert_eq!(
+            super::mission_control_buy_mode_start_block_reason(&empty_balance),
+            Some(format!(
+                "Buy Mode requires at least {} sats in Spark wallet (balance: 0 sats)",
+                super::MISSION_CONTROL_BUY_MODE_BUDGET_SATS
+            ))
+        );
+
+        let mut funded = SparkPaneState::default();
+        funded.balance = Some(openagents_spark::Balance {
+            spark_sats: super::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        assert_eq!(
+            super::mission_control_buy_mode_start_block_reason(&funded),
+            None
+        );
     }
 
     #[test]
