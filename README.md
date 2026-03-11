@@ -163,7 +163,9 @@ Planning and diagrams:
 If you are using a terminal coding agent, you can paste this prompt:
 
 ```text
-Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available. From the repo root, run `cargo install --path .`, then start the desktop app with `cargo autopilot`. Note that `cargo autopilot` is a Cargo alias defined in `.cargo/config.toml`; if the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
+Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available.
+
+Before starting the desktop app, test the Apple FM bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead. See AGENTS.md for the full "test bridge first" rule and swift/foundation-bridge/README.md for bridge details.
 ```
 
 ## Run Locally
@@ -178,3 +180,11 @@ cargo autopilot
 ```
 
 `cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
+
+### Apple FM bridge (macOS, for Go Online)
+
+On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models** via a small Swift HTTP bridge. You need the bridge built and (for the system model to be ready) **Apple Intelligence** enabled: System Settings → Apple Intelligence → turn on.
+
+- **Build the bridge once** (from repo root): `cd swift/foundation-bridge && ./build.sh`. This produces `bin/foundation-bridge`. Building requires the Swift compiler (Xcode from the App Store, or `xcode-select --install` for Command Line Tools only).
+- **Test the bridge**: run `./bin/foundation-bridge`, then `curl -s http://127.0.0.1:11435/health` — you should get a JSON response. The desktop app can also start the bridge automatically when you open Mission Control.
+- **Shipping the app** so users don’t build on their machine: build the bridge once, then include `bin/foundation-bridge` in your app bundle (e.g. `YourApp.app/Contents/MacOS/foundation-bridge` or `Contents/Resources/foundation-bridge`). See [swift/foundation-bridge/README.md](swift/foundation-bridge/README.md) for full instructions.

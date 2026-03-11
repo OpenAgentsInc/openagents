@@ -33,6 +33,23 @@ const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
 const ENV_APPLE_FM_BASE_URL: &str = "OPENAGENTS_APPLE_FM_BASE_URL";
 const ENV_APPLE_FM_BRIDGE_BIN: &str = "OPENAGENTS_APPLE_FM_BRIDGE_BIN";
 
+/// Shown when the bridge binary is missing or build failed. Concrete steps and why.
+const APPLE_FM_FIX_BUILD: &str = "Build the bridge: open Terminal, go to the repo folder, run: cd swift/foundation-bridge && ./build.sh. The bridge is written in Swift, so that command needs the Swift compiler. If the build fails, install it: Xcode from the App Store (free), or run xcode-select --install to install only the Command Line Tools (Swift compiler without the full Xcode app). Then restart the app.";
+
+/// Shown when the system model is unavailable. Exact menu path.
+const APPLE_FM_FIX_APPLE_INTELLIGENCE: &str = "Enable Apple Intelligence: open System Settings → Apple Intelligence (in the sidebar) → turn on Apple Intelligence. Requires macOS 26+ and Apple Silicon.";
+
+/// Shown when the binary is missing but we appear to be running from a shipped .app (so user should not build).
+const APPLE_FM_FIX_SHIPPED_MISSING: &str = "Apple FM bridge binary is missing from this app. The app was not packaged with the bridge. Reinstall from a build that includes it, or ask the vendor for a complete build.";
+
+/// True when the current executable path looks like we're inside a macOS .app bundle (shipped app).
+fn running_from_app_bundle() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .map_or(false, |path| path.contains(".app/Contents/"))
+}
+
 #[derive(Clone, Debug)]
 pub struct AppleFmBridgeConfig {
     pub base_url: String,
@@ -413,14 +430,17 @@ impl AppleFmLocalBridge {
             });
 
             let binary = binary.ok_or_else(|| {
+                let fix_msg = if running_from_app_bundle() {
+                    APPLE_FM_FIX_SHIPPED_MISSING
+                } else {
+                    APPLE_FM_FIX_BUILD
+                };
                 snapshot.last_action = Some(
-                    "Apple FM bridge binary not found and auto-build failed.".to_string(),
+                    "Apple FM bridge binary not found.".to_string(),
                 );
-                snapshot.last_error = Some(
-                    "Need Xcode/Swift to build; see swift/foundation-bridge/README.md.".to_string(),
-                );
+                snapshot.last_error = Some(fix_msg.to_string());
                 emit_snapshot_if(snapshot, emit);
-                "Apple FM bridge binary not found and auto-build failed (need Xcode/Swift; see swift/foundation-bridge/README.md).".to_string()
+                format!("Apple FM bridge binary not found. {fix_msg}")
             })?;
 
             snapshot.last_action =
@@ -653,10 +673,7 @@ impl AppleFmBridgeState {
             Err(error) => {
                 self.snapshot.bridge_status = Some(self.bridge.status.label().to_string());
                 self.snapshot.last_error = Some(error.clone());
-                self.snapshot.last_action = Some(format!(
-                    "Apple FM bridge start failed: {}. (Check Xcode/Swift if you just cloned; enable Apple Intelligence in System Settings.)",
-                    error
-                ));
+                self.snapshot.last_action = Some("Apple FM bridge start failed. See error for steps.".to_string());
                 self.publish_snapshot(update_tx);
             }
         }
@@ -1750,7 +1767,7 @@ fn try_build_bridge(snapshot: &mut AppleFmBridgeSnapshot) -> bool {
     snapshot.last_action = Some(if ok {
         "Apple FM bridge build finished successfully.".to_string()
     } else {
-        "Apple FM bridge build failed (check Xcode/Swift installed).".to_string()
+        format!("Apple FM bridge build failed. {APPLE_FM_FIX_BUILD}")
     });
     ok
 }
@@ -1793,11 +1810,23 @@ fn find_bridge_binary() -> Option<PathBuf> {
         }
     }
 
-    // Bundled next to executable (e.g. packaged .app).
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|dir| dir.join("foundation-bridge")))
-        .filter(|candidate: &PathBuf| candidate.exists())
+    // Bundled with the app: next to executable (e.g. MyApp.app/Contents/MacOS/foundation-bridge)
+    // or in Resources (e.g. MyApp.app/Contents/Resources/foundation-bridge).
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(macos_dir) = exe.parent() {
+            let next_to_exe = macos_dir.join("foundation-bridge");
+            if next_to_exe.exists() {
+                return Some(next_to_exe);
+            }
+            if let Some(contents_dir) = macos_dir.parent() {
+                let in_resources = contents_dir.join("Resources").join("foundation-bridge");
+                if in_resources.exists() {
+                    return Some(in_resources);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
