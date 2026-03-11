@@ -12358,13 +12358,13 @@ pub(super) fn run_create_invoice_action(
         state.spark_wallet.last_error = None;
         let notice = match state.spark_wallet.last_invoice.as_deref() {
             Some(invoice) if !invoice.trim().is_empty() => match copy_to_clipboard(invoice) {
-                Ok(()) => "Copied invoice to clipboard".to_string(),
-                Err(error) => format!("Failed to copy invoice: {error}"),
+                Ok(()) => "Copied Lightning invoice to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Lightning invoice: {error}"),
             },
-            _ => "No invoice generated yet. Create one first.".to_string(),
+            _ => "No Lightning invoice generated yet. Create one first.".to_string(),
         };
 
-        if notice.starts_with("Failed") || notice.starts_with("No invoice generated") {
+        if notice.starts_with("Failed") || notice.starts_with("No Lightning invoice generated") {
             state.spark_wallet.last_error = Some(notice);
         } else {
             state.spark_wallet.last_action = Some(notice);
@@ -12402,9 +12402,9 @@ pub(super) fn build_spark_command_for_action(
         SparkPaneAction::CopySparkAddress => {
             Err("Spark copy action is handled directly in UI".to_string())
         }
-        SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateInvoice {
+        SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
-            description: Some("OpenAgents Spark receive".to_string()),
+            description: Some("OpenAgents Lightning receive".to_string()),
             expiry_seconds: Some(3600),
         }),
         SparkPaneAction::SendPayment => {
@@ -12454,13 +12454,13 @@ pub(super) fn build_create_invoice_command(
     expiry_seconds: &str,
 ) -> Result<SparkWalletCommand, String> {
     match action {
-        CreateInvoicePaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateInvoice {
+        CreateInvoicePaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(amount_sats, "Invoice amount")?,
             description: normalize_optional_text(description),
-            expiry_seconds: parse_optional_positive_amount_str(expiry_seconds, "Expiry seconds")?,
+            expiry_seconds: parse_optional_positive_u32_str(expiry_seconds, "Expiry seconds")?,
         }),
         CreateInvoicePaneAction::CopyInvoice => {
-            Err("Copy invoice action is handled directly in UI".to_string())
+            Err("Copy Lightning invoice action is handled directly in UI".to_string())
         }
     }
 }
@@ -12538,6 +12538,18 @@ pub(super) fn parse_optional_positive_amount_str(
         return Ok(None);
     }
     parse_positive_amount_str(trimmed, label).map(Some)
+}
+
+pub(super) fn parse_optional_positive_u32_str(
+    raw: &str,
+    label: &str,
+) -> Result<Option<u32>, String> {
+    let Some(value) = parse_optional_positive_amount_str(raw, label)? else {
+        return Ok(None);
+    };
+    u32::try_from(value)
+        .map(Some)
+        .map_err(|_| format!("{label} must fit within a 32-bit unsigned integer"))
 }
 
 pub(super) fn queue_spark_command(

@@ -395,20 +395,20 @@ impl SparkPaneState {
 
         let invoice = match run_with_timeout(
             runtime,
-            "Create Spark bolt11 invoice",
+            "Create Lightning bolt11 invoice",
             SPARK_ACTION_TIMEOUT,
             wallet.create_bolt11_invoice(amount_sats, description, expiry_seconds),
         ) {
             Ok(value) => value,
             Err(error) => {
-                self.last_error = Some(format!("Failed to create bolt11 invoice: {error}"));
+                self.last_error = Some(format!("Failed to create Lightning invoice: {error}"));
                 return None;
             }
         };
 
         self.last_invoice = Some(invoice.clone());
         self.last_action = Some(format!(
-            "Created bolt11 invoice for {}",
+            "Created Lightning invoice for {}",
             format_sats_amount(amount_sats)
         ));
         self.refresh_balance_and_payments(runtime);

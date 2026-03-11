@@ -360,9 +360,11 @@ pub struct SparkPaneInputs {
 impl Default for SparkPaneInputs {
     fn default() -> Self {
         Self {
-            invoice_amount: TextInput::new().value("1000").placeholder("Invoice sats"),
+            invoice_amount: TextInput::new()
+                .value("1000")
+                .placeholder("Lightning invoice sats"),
             send_request: TextInput::new()
-                .placeholder("Spark payment request or invoice")
+                .placeholder("Lightning invoice / payment request")
                 .mono(true),
             send_amount: TextInput::new().placeholder("Send sats (optional)"),
         }
@@ -394,7 +396,9 @@ pub struct CreateInvoicePaneInputs {
 impl Default for CreateInvoicePaneInputs {
     fn default() -> Self {
         Self {
-            amount_sats: TextInput::new().value("1000").placeholder("Invoice sats"),
+            amount_sats: TextInput::new()
+                .value("1000")
+                .placeholder("Lightning invoice sats"),
             description: TextInput::new().placeholder("Description (optional)"),
             expiry_seconds: TextInput::new().value("3600").placeholder("Expiry seconds"),
         }
