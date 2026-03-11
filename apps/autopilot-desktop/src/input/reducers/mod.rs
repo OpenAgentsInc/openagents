@@ -83,6 +83,13 @@ pub(super) fn apply_active_job_publish_outcome(
     jobs::apply_active_job_publish_outcome(state, outcome)
 }
 
+pub(super) fn active_job_matches_publish_outcome(
+    active_job: &crate::app_state::ActiveJobState,
+    outcome: &crate::provider_nip90_lane::ProviderNip90PublishOutcome,
+) -> bool {
+    jobs::active_job_matches_publish_outcome(active_job, outcome)
+}
+
 pub(super) fn transition_active_job_to_paid(
     state: &mut RenderState,
     source: &str,

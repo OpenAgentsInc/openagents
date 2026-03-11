@@ -1017,9 +1017,9 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
         outcome.rejected_relays
     ));
 
-    if let Some(job) = state.active_job.job.as_mut()
-        && job.request_id == outcome.request_id
-    {
+    let active_job_matches_publish =
+        super::active_job_matches_publish_outcome(&state.active_job, &outcome);
+    if active_job_matches_publish && let Some(job) = state.active_job.job.as_mut() {
         if publish_succeeded {
             match outcome.role {
                 ProviderNip90PublishRole::Capability => {}

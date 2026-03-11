@@ -11660,6 +11660,7 @@ fn fail_hosted_starter_active_job_for_lease_loss(
         .active_job
         .mark_failed("hosted starter lease lost", "Hosted starter lease lost")?;
     state.active_job.result_publish_in_flight = false;
+    state.active_job.pending_result_publish_event_id = None;
     state.active_job.execution_turn_completed = false;
     state.active_job.execution_thread_start_command_seq = None;
     state.active_job.execution_turn_start_command_seq = None;

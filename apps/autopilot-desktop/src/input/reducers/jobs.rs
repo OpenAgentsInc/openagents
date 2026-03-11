@@ -478,10 +478,7 @@ pub(super) fn apply_active_job_publish_outcome(
     state: &mut RenderState,
     outcome: &ProviderNip90PublishOutcome,
 ) {
-    let Some(job) = state.active_job.job.as_ref() else {
-        return;
-    };
-    if job.request_id != outcome.request_id {
+    if !active_job_matches_publish_outcome(&state.active_job, outcome) {
         return;
     }
 
@@ -489,6 +486,7 @@ pub(super) fn apply_active_job_publish_outcome(
         ProviderNip90PublishRole::Capability => {}
         ProviderNip90PublishRole::Result => {
             state.active_job.result_publish_in_flight = false;
+            state.active_job.pending_result_publish_event_id = None;
             if outcome.accepted_relays == 0 {
                 let message = format!(
                     "result publish failed; waiting retry ({})",
@@ -510,6 +508,11 @@ pub(super) fn apply_active_job_publish_outcome(
                         .unwrap_or("all relays rejected publish")
                 );
                 return;
+            }
+            if let Some(job) = state.active_job.job.as_mut()
+                && job.sa_tick_result_event_id.is_none()
+            {
+                job.sa_tick_result_event_id = Some(outcome.event_id.clone());
             }
             tracing::info!(
                 target: "autopilot_desktop::provider",
@@ -1368,6 +1371,31 @@ fn active_job_matches_apple_request(state: &RenderState, request_id: &str) -> bo
     active_job_matches_ollama_request(state, request_id)
 }
 
+pub(super) fn active_job_matches_publish_outcome(
+    active_job: &crate::app_state::ActiveJobState,
+    outcome: &ProviderNip90PublishOutcome,
+) -> bool {
+    let Some(job) = active_job.job.as_ref() else {
+        return false;
+    };
+    if job.request_id == outcome.request_id {
+        return true;
+    }
+
+    match outcome.role {
+        ProviderNip90PublishRole::Result => {
+            active_job.result_publish_in_flight
+                && active_job.pending_result_publish_event_id.as_deref()
+                    == Some(outcome.event_id.as_str())
+        }
+        ProviderNip90PublishRole::Feedback => {
+            active_job.payment_required_feedback_in_flight
+                && job.invoice_id.as_deref() == Some(outcome.event_id.as_str())
+        }
+        ProviderNip90PublishRole::Capability | ProviderNip90PublishRole::Request => false,
+    }
+}
+
 fn store_execution_output(state: &mut RenderState, output: &str) {
     let trimmed = output.trim();
     if trimmed.is_empty() {
@@ -1573,6 +1601,7 @@ fn turn_completed_failed(status: Option<&str>, error_message: Option<&str>) -> b
 fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
     let result_event_id = queue_nip90_result_publish_for_active_job(state)?;
     state.active_job.result_publish_in_flight = true;
+    state.active_job.pending_result_publish_event_id = Some(result_event_id.clone());
     let message = format!("queued canonical NIP-90 result publish {}", result_event_id);
     state.active_job.append_event(message.clone());
     state.active_job.last_action = Some(message);
@@ -1759,6 +1788,7 @@ pub(super) fn transition_active_job_to_paid(
     state.active_job.payment_required_feedback_in_flight = false;
     state.active_job.payment_required_failed = false;
     state.active_job.pending_bolt11 = None;
+    state.active_job.pending_result_publish_event_id = None;
 
     sync_provider_runtime_queue_depth(state);
     state.provider_runtime.last_error_detail = None;
@@ -1822,6 +1852,7 @@ fn fail_active_job_execution(
     }
 
     state.active_job.result_publish_in_flight = false;
+    state.active_job.pending_result_publish_event_id = None;
     state.active_job.execution_turn_completed = false;
     state.active_job.execution_backend_request_id = None;
     state.active_job.execution_thread_start_command_seq = None;
@@ -2492,11 +2523,12 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderExecutionBackend, active_job_timeout_reason, apple_fm_request_accept_block_reason,
-        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
-        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
-        turn_completed_failed, visible_result_content_for_job_kind,
+        ProviderExecutionBackend, active_job_matches_publish_outcome, active_job_timeout_reason,
+        apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
+        build_nip90_feedback_event, next_auto_accept_request_id_for,
+        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
+        provider_execution_backend_for_kind, turn_completed_failed,
+        visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
@@ -2600,6 +2632,22 @@ mod tests {
         job.stage = crate::app_state::JobLifecycleStage::Delivered;
         job.invoice_id = None;
         job.payment_id = None;
+        active_job
+    }
+
+    fn fixture_running_active_job(request_id: &str) -> ActiveJobState {
+        let request = fixture_request(
+            request_id,
+            JobInboxValidation::Valid,
+            JobInboxDecision::Accepted {
+                reason: "valid + priced".to_string(),
+            },
+        );
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("active job should exist");
+        job.stage = crate::app_state::JobLifecycleStage::Running;
+        active_job.result_publish_in_flight = true;
         active_job
     }
 
@@ -2869,6 +2917,49 @@ mod tests {
             provider_runtime.last_authoritative_error_class,
             Some(EarnFailureClass::Payment)
         );
+    }
+
+    #[test]
+    fn publish_outcome_matches_pending_result_event_when_request_id_drifts() {
+        let mut active_job = fixture_running_active_job("req-result-drift");
+        active_job.pending_result_publish_event_id = Some("result-event-001".to_string());
+
+        assert!(active_job_matches_publish_outcome(
+            &active_job,
+            &ProviderNip90PublishOutcome {
+                request_id: "req-other".to_string(),
+                role: ProviderNip90PublishRole::Result,
+                event_id: "result-event-001".to_string(),
+                accepted_relays: 1,
+                rejected_relays: 0,
+                first_error: None,
+                parsed_event_shape: None,
+                raw_event_json: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn publish_outcome_matches_pending_feedback_event_when_request_id_drifts() {
+        let mut active_job = fixture_delivered_active_job("req-feedback-drift");
+        active_job.payment_required_feedback_in_flight = true;
+        if let Some(job) = active_job.job.as_mut() {
+            job.invoice_id = Some("feedback-event-001".to_string());
+        }
+
+        assert!(active_job_matches_publish_outcome(
+            &active_job,
+            &ProviderNip90PublishOutcome {
+                request_id: "req-other".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event_id: "feedback-event-001".to_string(),
+                accepted_relays: 1,
+                rejected_relays: 0,
+                first_error: None,
+                parsed_event_shape: None,
+                raw_event_json: None,
+            },
+        ));
     }
 }
 
