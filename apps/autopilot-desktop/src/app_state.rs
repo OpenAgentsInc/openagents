@@ -784,6 +784,9 @@ fn build_mission_control_log_lines(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let unsupported_sell_platform_offline = provider_runtime.mode
+        == crate::state::provider_runtime::ProviderMode::Offline
+        && !mission_control_sell_compute_supported(desktop_shell_mode, local_inference_runtime);
     type LogEntry = (u64, TerminalStream, String);
     let mut entries: Vec<LogEntry> = Vec::new();
     let mut seen = HashSet::<String>::new();
@@ -900,7 +903,19 @@ fn build_mission_control_log_lines(
         push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None);
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
+        if unsupported_sell_platform_offline
+            && result.starts_with("Relay preview active")
+        {
+            push_entry(
+                TerminalStream::Stdout,
+                result.replacen("Relay preview", "Buyer relays", 1),
+                None,
+            );
+        } else if !unsupported_sell_platform_offline
+            || !result.starts_with("Relay preview")
+        {
+            push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
+        }
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
         push_entry(
@@ -939,30 +954,34 @@ fn build_mission_control_log_lines(
         );
     }
 
-    if job_inbox.requests.is_empty() {
-        push_entry(
-            TerminalStream::Stdout,
-            if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
-                "Relay preview idle. Observed market activity will appear here before you go online."
-                    .to_string()
-            } else {
-                "Watching relays for matching jobs.".to_string()
-            },
-            None,
-        );
-    } else {
-        let request_count = job_inbox.requests.len();
-        push_entry(
-            TerminalStream::Stdout,
-            if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
-                format!("Relay preview: {request_count} observed jobs while offline.")
-            } else {
-                format!("Relay intake: {request_count} observed jobs available.")
-            },
-            None,
-        );
+    if !unsupported_sell_platform_offline {
+        if job_inbox.requests.is_empty() {
+            push_entry(
+                TerminalStream::Stdout,
+                if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
+                    "Relay preview idle. Observed market activity will appear here before you go online."
+                        .to_string()
+                } else {
+                    "Watching relays for matching jobs.".to_string()
+                },
+                None,
+            );
+        } else {
+            let request_count = job_inbox.requests.len();
+            push_entry(
+                TerminalStream::Stdout,
+                if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
+                    format!("Relay preview: {request_count} observed jobs while offline.")
+                } else {
+                    format!("Relay intake: {request_count} observed jobs available.")
+                },
+                None,
+            );
+        }
     }
-    if let Some(action) = job_inbox.last_action.as_deref() {
+    if !unsupported_sell_platform_offline
+        && let Some(action) = job_inbox.last_action.as_deref()
+    {
         push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
     }
 
