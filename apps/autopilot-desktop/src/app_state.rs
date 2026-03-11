@@ -672,15 +672,13 @@ impl MissionControlPaneState {
 
     pub fn schedule_next_buy_mode_dispatch(&mut self, now: Instant) {
         self.buy_mode_last_dispatch_at = Some(now);
-        self.buy_mode_next_dispatch_at = Some(
-            now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)),
-        );
+        self.buy_mode_next_dispatch_at =
+            Some(now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)));
     }
 
     pub fn schedule_buy_mode_retry(&mut self, now: Instant) {
-        self.buy_mode_next_dispatch_at = Some(
-            now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)),
-        );
+        self.buy_mode_next_dispatch_at =
+            Some(now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)));
     }
 
     pub fn buy_mode_next_dispatch_countdown_seconds(&self, now: Instant) -> Option<u64> {
@@ -820,28 +818,26 @@ fn build_mission_control_log_lines(
     };
     push_entry(TerminalStream::Stdout, mode_line, None);
 
-    if provider_blockers.is_empty() {
-        push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None);
-    } else {
-        for blocker in provider_blockers.iter().take(3) {
-            push_entry(
-                TerminalStream::Stderr,
-                format!(
-                    "Preflight blocker [{}]: {}",
-                    blocker.code(),
-                    blocker.detail()
-                ),
-                None,
-            );
+    if !unsupported_sell_platform_offline {
+        if provider_blockers.is_empty() {
+            push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None);
+        } else {
+            for blocker in provider_blockers.iter().take(3) {
+                push_entry(
+                    TerminalStream::Stderr,
+                    format!(
+                        "Preflight blocker [{}]: {}",
+                        blocker.code(),
+                        blocker.detail()
+                    ),
+                    None,
+                );
+            }
         }
     }
 
     let (model_status_stream, model_status) = if unsupported_sell_platform_offline {
-        (
-            TerminalStream::Stdout,
-            "Buy Mode uses buyer relays only on this platform. Sell compute stays disabled."
-                .to_string(),
-        )
+        (TerminalStream::Stdout, String::new())
     } else {
         match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
             Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
@@ -921,7 +917,7 @@ fn build_mission_control_log_lines(
                 || result.starts_with("Buyer response relay tracking"))
         {
             push_entry(TerminalStream::Stdout, result.to_string(), None);
-        } else if !unsupported_sell_platform_offline || !result.starts_with("Relay preview") {
+        } else if !unsupported_sell_platform_offline {
             push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
         }
     }
@@ -987,9 +983,7 @@ fn build_mission_control_log_lines(
             );
         }
     }
-    if !unsupported_sell_platform_offline
-        && let Some(action) = job_inbox.last_action.as_deref()
-    {
+    if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
         push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
     }
 
@@ -1100,7 +1094,9 @@ pub(crate) fn mission_control_buy_mode_start_block_reason(
     spark_wallet: &crate::spark_wallet::SparkPaneState,
 ) -> Option<String> {
     if let Some(error) = spark_wallet.last_error.as_deref() {
-        return Some(format!("Buy Mode requires a healthy Spark wallet ({error})"));
+        return Some(format!(
+            "Buy Mode requires a healthy Spark wallet ({error})"
+        ));
     }
 
     match mission_control_buy_mode_available_balance_sats(spark_wallet) {
@@ -1158,9 +1154,23 @@ pub(crate) fn mission_control_local_runtime_lane(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> Option<MissionControlLocalRuntimeLane> {
-    if !desktop_shell_mode.is_dev() || mission_control_uses_apple_fm() {
+    mission_control_local_runtime_lane_for_platform(
+        mission_control_uses_apple_fm(),
+        desktop_shell_mode,
+        local_inference_runtime,
+    )
+}
+
+fn mission_control_local_runtime_lane_for_platform(
+    apple_fm_supported: bool,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> Option<MissionControlLocalRuntimeLane> {
+    if apple_fm_supported {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
-    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
+    } else if desktop_shell_mode.is_dev()
+        && mission_control_supports_cuda_gpt_oss(local_inference_runtime)
+    {
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss)
     } else {
         None
@@ -8451,6 +8461,10 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
+        if !mission_control_sell_compute_supported(self.desktop_shell_mode, &self.ollama_execution)
+        {
+            return blockers;
+        }
         match mission_control_local_runtime_lane(self.desktop_shell_mode, &self.ollama_execution) {
             Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                 if !self.provider_runtime.apple_fm.reachable {
@@ -8466,9 +8480,7 @@ impl RenderState {
                     blockers.push(ProviderBlocker::OllamaModelUnavailable);
                 }
             }
-            None => {
-                blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
-            }
+            None => {}
         }
         blockers
     }
@@ -8489,12 +8501,12 @@ mod tests {
         JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
         NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
-        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
     use wgpui::components::sections::TerminalStream;
@@ -13309,7 +13321,7 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_production_lane_stays_apple_fm_only() {
+    fn mission_control_supported_production_lane_stays_apple_fm_only() {
         let local = super::LocalInferenceExecutionSnapshot {
             reachable: true,
             ready_model: Some("gpt-oss-20b".to_string()),
@@ -13318,11 +13330,82 @@ mod tests {
         };
 
         assert_eq!(
-            super::mission_control_local_runtime_lane(
+            super::mission_control_local_runtime_lane_for_platform(
+                true,
                 crate::desktop_shell::DesktopShellMode::Production,
                 &local
             ),
             Some(super::MissionControlLocalRuntimeLane::AppleFoundationModels)
+        );
+    }
+
+    #[test]
+    fn mission_control_unsupported_production_lane_hides_local_model_controls() {
+        let local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            super::mission_control_local_runtime_lane_for_platform(
+                false,
+                crate::desktop_shell::DesktopShellMode::Production,
+                &local
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn unsupported_sell_platform_log_lines_hide_runtime_noise() {
+        if super::mission_control_uses_apple_fm() {
+            return;
+        }
+
+        let mut provider = ProviderRuntimeState::default();
+        provider.last_result =
+            Some("apple foundation models capability pending: Apple FM unavailable".to_string());
+
+        let local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+            &[ProviderBlocker::AppleFoundationModelsUnavailable],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text == "Provider offline. Platform not supported for selling compute."
+        }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Start Apple FM"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("capability pending"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Preflight blocker"))
         );
     }
 
@@ -13353,11 +13436,22 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
-        );
+        if super::mission_control_uses_apple_fm() {
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+            );
+        } else {
+            assert!(lines.iter().any(|line| {
+                line.text == "Provider offline. Platform not supported for selling compute."
+            }));
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| { line.text.contains("Apple Foundation Models unavailable") })
+            );
+        }
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }
 
@@ -13464,13 +13558,11 @@ mod tests {
             mission_control.buy_mode_next_dispatch_countdown_seconds(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS)
         );
-        assert!(
-            !mission_control.buy_mode_dispatch_due(
-                now + std::time::Duration::from_secs(
-                    super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.saturating_sub(1)
-                )
+        assert!(!mission_control.buy_mode_dispatch_due(
+            now + std::time::Duration::from_secs(
+                super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.saturating_sub(1)
             )
-        );
+        ));
 
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);

@@ -739,7 +739,17 @@ fn handle_publish_event(
     let parsed_event_shape = Some(format_generic_event_shape(&event));
     let raw_event_json = serde_json::to_string_pretty(&event).ok();
 
-    if !state.wants_online && role != ProviderNip90PublishRole::Request {
+    let buyer_feedback_while_offline = !state.wants_online
+        && role == ProviderNip90PublishRole::Feedback
+        && state
+            .tracked_buyer_request_ids
+            .iter()
+            .any(|tracked_request_id| tracked_request_id == request_id.as_str());
+
+    if !state.wants_online
+        && role != ProviderNip90PublishRole::Request
+        && !buyer_feedback_while_offline
+    {
         let message = format!(
             "Cannot publish {} while provider lane is offline",
             role.protocol_label()
@@ -2861,6 +2871,106 @@ mod tests {
             .expect("relay should receive published request event");
         assert_eq!(published.id, "buyer-request-event-1");
         assert_eq!(published.kind, 5050);
+
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_publishes_buyer_feedback_event_while_provider_lane_is_offline() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::TrackBuyerRequestIds {
+                request_ids: vec!["buyer-request-offline-1".to_string()],
+            })
+            .expect("queue buyer request tracking");
+
+        let preview_deadline = Instant::now() + Duration::from_secs(4);
+        let mut preview_ready = false;
+        while Instant::now() < preview_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == super::ProviderNip90LaneMode::Preview
+                    && snapshot.connected_relays > 0
+                    && snapshot
+                        .last_action
+                        .as_deref()
+                        .is_some_and(|action| action.starts_with("Buyer response relay tracking"))
+                {
+                    preview_ready = true;
+                }
+            }
+            if preview_ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            preview_ready,
+            "buyer response relay tracking should be active"
+        );
+
+        let event = Event {
+            id: "buyer-feedback-event-1".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_122,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "processing".to_string()],
+                vec!["e".to_string(), "buyer-request-offline-1".to_string()],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: "duplicate provider result ignored".to_string(),
+            sig: "44".repeat(64),
+        };
+        worker
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: "buyer-request-offline-1".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(event.clone()),
+            })
+            .expect("queue buyer feedback publish command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == "buyer-request-offline-1"
+                    && outcome.role == ProviderNip90PublishRole::Feedback
+                {
+                    assert_eq!(outcome.event_id, "buyer-feedback-event-1");
+                    assert!(
+                        outcome.accepted_relays >= 1,
+                        "expected at least one accepted relay, got {}",
+                        outcome.accepted_relays
+                    );
+                    assert_eq!(outcome.first_error, None);
+                    outcome_seen = true;
+                }
+            }
+            if outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            outcome_seen,
+            "expected buyer feedback publish outcome update"
+        );
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive published buyer feedback event");
+        assert_eq!(published.id, "buyer-feedback-event-1");
+        assert_eq!(published.kind, 7000);
 
         relay_task.abort();
     }
