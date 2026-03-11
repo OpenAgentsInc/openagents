@@ -929,7 +929,7 @@ fn build_mission_control_log_lines(
                 } else if provider_runtime.apple_fm.reachable {
                     (
                         TerminalStream::Stdout,
-                        "Apple Foundation Models bridge reachable but not ready yet.".to_string(),
+                        "Apple Foundation Models bridge reachable but not ready yet. Enable Apple Intelligence: System Settings → Apple Intelligence (sidebar) → turn on Apple Intelligence.".to_string(),
                     )
                 } else {
                     (
