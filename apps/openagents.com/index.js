@@ -3,6 +3,7 @@ const HTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <title>OpenAgents</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <style>
     @font-face {
       font-family: 'Berkeley Mono';

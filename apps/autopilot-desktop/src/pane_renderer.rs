@@ -17,9 +17,7 @@ use crate::app_state::{
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
-use crate::bitcoin_display::{
-    BitcoinAmountDisplayMode, format_mission_control_amount, format_sats_amount,
-};
+use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -40,8 +38,7 @@ use crate::pane_system::{
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, mission_control_amount_toggle_button_bounds,
-    mission_control_layout, mission_control_local_model_button_bounds,
+    job_inbox_visible_row_count, mission_control_layout, mission_control_local_model_button_bounds,
     mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
@@ -565,68 +562,126 @@ fn paint_go_online_pane(
     let layout = mission_control_layout(content_bounds);
     let now = std::time::Instant::now();
     let status_label = provider_runtime.mode.label().to_ascii_uppercase();
-    let status_color = match provider_runtime.mode {
-        crate::app_state::ProviderMode::Offline => theme::status::WARNING,
-        crate::app_state::ProviderMode::Connecting => theme::accent::PRIMARY,
-        crate::app_state::ProviderMode::Online => theme::status::SUCCESS,
-        crate::app_state::ProviderMode::Degraded => theme::status::ERROR,
+    let status_color = mission_control_mode_color(provider_runtime.mode);
+    let wallet_status = match spark_wallet.network_status_label() {
+        "connected" => "CONNECTED",
+        "disconnected" => "DISCONNECTED",
+        _ => "UNKNOWN",
     };
+    let preflight_value = if provider_blockers.is_empty() {
+        "CLEAR".to_string()
+    } else {
+        format!("{} BLOCKER(S)", provider_blockers.len())
+    };
+    let rail_gap = 10.0;
+    let rail_width = ((layout.status_row.size.width - rail_gap * 3.0) / 4.0).max(0.0);
+    let alert_message = mission_control_alert_message(
+        mission_control,
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        provider_blockers,
+        spark_wallet,
+    );
 
-    let status_y = layout.status_row.origin.y + 4.0;
-    let status_font_size = 12.0;
-    let status_right = layout.status_row.max_x() - 12.0;
-    let status_gap = 8.0;
-    let status_value_width = paint
-        .text
-        .layout_mono(&status_label, Point::ZERO, status_font_size, status_color)
-        .bounds()
-        .size
-        .width;
-    let status_label_width = paint
-        .text
-        .layout_mono("STATUS:", Point::ZERO, status_font_size, theme::text::MUTED)
-        .bounds()
-        .size
-        .width;
-    let status_value_x = status_right - status_value_width;
-    let status_label_x =
-        (status_value_x - status_gap - status_label_width).max(layout.status_row.origin.x);
-    paint.scene.draw_text(paint.text.layout_mono(
-        "STATUS:",
-        Point::new(status_label_x, status_y),
-        status_font_size,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
+    paint
+        .scene
+        .draw_quad(Quad::new(content_bounds).with_background(mission_control_background_color()));
+    paint_mission_control_status_cell(
+        Bounds::new(
+            layout.status_row.origin.x,
+            layout.status_row.origin.y,
+            rail_width,
+            layout.status_row.size.height,
+        ),
+        "MODE",
         &status_label,
-        Point::new(status_value_x, status_y),
-        status_font_size,
         status_color,
-    ));
+        paint,
+    );
+    paint_mission_control_status_cell(
+        Bounds::new(
+            layout.status_row.origin.x + rail_width + rail_gap,
+            layout.status_row.origin.y,
+            rail_width,
+            layout.status_row.size.height,
+        ),
+        "BACKEND",
+        &mission_control_backend_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ),
+        mission_control_cyan_color(),
+        paint,
+    );
+    paint_mission_control_status_cell(
+        Bounds::new(
+            layout.status_row.origin.x + (rail_width + rail_gap) * 2.0,
+            layout.status_row.origin.y,
+            rail_width,
+            layout.status_row.size.height,
+        ),
+        "WALLET",
+        wallet_status,
+        if wallet_status == "CONNECTED" {
+            mission_control_green_color()
+        } else {
+            mission_control_amber_color()
+        },
+        paint,
+    );
+    paint_mission_control_status_cell(
+        Bounds::new(
+            layout.status_row.origin.x + (rail_width + rail_gap) * 3.0,
+            layout.status_row.origin.y,
+            layout.status_row.size.width - rail_width * 3.0 - rail_gap * 3.0,
+            layout.status_row.size.height,
+        ),
+        "PREFLIGHT",
+        &preflight_value,
+        if provider_blockers.is_empty() {
+            mission_control_green_color()
+        } else {
+            mission_control_orange_color()
+        },
+        paint,
+    );
+    paint_mission_control_alert_band(
+        layout.alert_band,
+        alert_message.0.as_str(),
+        alert_message.1,
+        paint,
+    );
 
     paint_mission_control_section_panel(
         layout.sell_panel,
         "SELL COMPUTE",
-        theme::accent::PRIMARY,
+        mission_control_orange_color(),
         paint,
     );
     paint_mission_control_section_panel(
         layout.earnings_panel,
         "EARNINGS",
-        theme::status::SUCCESS,
+        mission_control_green_color(),
         paint,
     );
     paint_mission_control_section_panel(
         layout.wallet_panel,
         "WALLET",
-        theme::accent::PRIMARY,
+        mission_control_cyan_color(),
         paint,
     );
-    paint_mission_control_section_panel(layout.actions_panel, "", theme::border::DEFAULT, paint);
+    paint_mission_control_section_panel(
+        layout.actions_panel,
+        "CONTROL",
+        mission_control_orange_color(),
+        paint,
+    );
     paint_mission_control_section_panel(
         layout.active_jobs_panel,
         "ACTIVE JOBS",
-        theme::accent::PRIMARY,
+        status_color,
         paint,
     );
 
@@ -646,21 +701,29 @@ fn paint_go_online_pane(
     } else {
         "GO OFFLINE"
     };
-    paint_mission_control_go_online_button(toggle_bounds, toggle_label, go_online_enabled, paint);
+    paint_mission_control_go_online_button(
+        toggle_bounds,
+        toggle_label,
+        go_online_enabled,
+        status_color,
+        paint,
+    );
 
     let sell_clip = mission_control_section_clip_bounds(layout.sell_panel);
     let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
     paint.scene.push_clip(sell_clip);
-    let mut sell_y = toggle_bounds.max_y() + 19.0;
-    sell_y = paint_wrapped_label_line(
+    let mut sell_y = toggle_bounds.max_y() + 24.0;
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Mode",
         provider_runtime.mode.label(),
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
-    sell_y = paint_wrapped_label_line(
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
@@ -671,8 +734,10 @@ fn paint_go_online_pane(
             local_inference_runtime,
         ),
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
-    sell_y = paint_wrapped_label_line(
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
@@ -683,8 +748,10 @@ fn paint_go_online_pane(
             local_inference_runtime,
         ),
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
-    sell_y = paint_wrapped_label_line(
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
@@ -695,123 +762,110 @@ fn paint_go_online_pane(
             local_inference_runtime,
         ),
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
-    sell_y = paint_wrapped_label_line(
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Control",
         provider_runtime.control_authority_label(backend_kernel_authority),
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
-    let preflight_value = if provider_blockers.is_empty() {
-        "clear".to_string()
-    } else {
-        format!("{} blocker(s)", provider_blockers.len())
-    };
-    sell_y = paint_wrapped_label_line(
+    sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Preflight",
         &preflight_value,
         sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
     );
     if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
-        sell_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line_mission_control_label(
             paint,
             layout.sell_panel.origin.x + 12.0,
             sell_y,
             "Uptime",
-            &provider_runtime.uptime_seconds(now).to_string(),
+            &format!("{}s", provider_runtime.uptime_seconds(now)),
             sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
         );
     }
     if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
-        sell_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line_mission_control_label(
             paint,
             layout.sell_panel.origin.x + 12.0,
             sell_y,
             "Runner",
             sa_lane.mode.label(),
             sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
         );
     }
     if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
-        sell_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line_mission_control_label(
             paint,
             layout.sell_panel.origin.x + 12.0,
             sell_y,
             "SKL Trust",
             skl_lane.trust_tier.label(),
             sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
         );
     }
     if ac_lane.credit_available {
-        sell_y = paint_wrapped_label_line(
+        let _ = paint_wrapped_label_line_mission_control_label(
             paint,
             layout.sell_panel.origin.x + 12.0,
             sell_y,
             "Credit",
-            "available",
+            "AVAILABLE",
             sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
         );
-    }
-    let load_hint = mission_control_go_online_hint(
-        desktop_shell_mode,
-        provider_runtime,
-        local_inference_runtime,
-    );
-    if !load_hint.is_empty() {
-        for (index, line) in split_text_for_display(&load_hint, sell_value_chunk_len)
-            .into_iter()
-            .enumerate()
-        {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(
-                    layout.sell_panel.origin.x + 12.0,
-                    sell_y + index as f32 * 14.0,
-                ),
-                10.0,
-                theme::text::MUTED,
-            ));
-        }
     }
     paint.scene.pop_clip();
 
-    let toggle_display_bounds = mission_control_amount_toggle_button_bounds(content_bounds);
-    paint_mission_control_amount_toggle(
-        toggle_display_bounds,
-        mission_control.amount_display_mode,
-        paint,
-    );
     let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
     paint.scene.push_clip(earnings_clip);
-    let mut earnings_y = layout.earnings_panel.origin.y + 53.0;
-    earnings_y = paint_wrapped_label_line_mission_control_label(
+    paint.scene.draw_text(paint.text.layout_mono(
+        "BIP-177 SATS",
+        Point::new(
+            layout.earnings_panel.max_x() - 110.0,
+            layout.earnings_panel.origin.y + 12.0,
+        ),
+        10.0,
+        mission_control_muted_color(),
+    ));
+    let mut earnings_y = layout.earnings_panel.origin.y + 48.0;
+    earnings_y = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "Today",
-        &format_mission_control_amount(
-            earnings_scoreboard.sats_today,
-            mission_control.amount_display_mode,
-        ),
-        mission_control_value_chunk_len(layout.earnings_panel),
+        &format_mission_control_amount(earnings_scoreboard.sats_today),
+        mission_control_green_color(),
+        18.0,
         layout.earnings_panel.size.width - 24.0,
         true,
     );
-    earnings_y = paint_wrapped_label_line_mission_control_label(
+    earnings_y = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "This Month",
-        &format_mission_control_amount(
-            earnings_scoreboard.sats_this_month,
-            mission_control.amount_display_mode,
-        ),
-        mission_control_value_chunk_len(layout.earnings_panel),
+        &format_mission_control_amount(earnings_scoreboard.sats_this_month),
+        mission_control_text_color(),
+        14.0,
         layout.earnings_panel.size.width - 24.0,
         true,
     );
@@ -820,12 +874,9 @@ fn paint_go_online_pane(
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "All Time",
-        &format_mission_control_amount(
-            earnings_scoreboard.lifetime_sats,
-            mission_control.amount_display_mode,
-        ),
-        Hsla::from_hex(0x6FD7D2),
-        14.0,
+        &format_mission_control_amount(earnings_scoreboard.lifetime_sats),
+        mission_control_cyan_color(),
+        16.0,
         layout.earnings_panel.size.width - 24.0,
         false,
     );
@@ -834,10 +885,9 @@ fn paint_go_online_pane(
             layout.earnings_panel.origin.x + 12.0,
             earnings_y + 6.0,
             layout.earnings_panel.size.width - 24.0,
-            48.0,
+            54.0,
         ),
         earnings_scoreboard.lifetime_sats,
-        mission_control.amount_display_mode,
         paint,
     );
     paint.scene.pop_clip();
@@ -847,24 +897,28 @@ fn paint_go_online_pane(
     let wallet_balance = spark_wallet
         .balance
         .as_ref()
-        .map(|balance| {
-            format_mission_control_amount(balance.total_sats(), mission_control.amount_display_mode)
-        })
-        .unwrap_or_else(|| "loading".to_string());
-    let wallet_status = match spark_wallet.network_status_label() {
-        "connected" => "Connected",
-        "disconnected" => "Disconnected",
-        _ => "Unknown",
-    };
+        .map(|balance| format_mission_control_amount(balance.total_sats()))
+        .unwrap_or_else(|| "LOADING".to_string());
     let wallet_address = spark_wallet
         .spark_address
         .as_deref()
         .or(spark_wallet.bitcoin_address.as_deref())
         .map(mask_secret)
-        .unwrap_or_else(|| "not generated".to_string());
+        .unwrap_or_else(|| "NOT GENERATED".to_string());
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let mut wallet_y = layout.wallet_panel.origin.y + 41.0;
-    wallet_y = paint_wrapped_label_line_mission_control_label(
+    let mut wallet_y = layout.wallet_panel.origin.y + 42.0;
+    wallet_y = paint_mission_control_amount_line(
+        paint,
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
+        "Balance",
+        &wallet_balance,
+        mission_control_green_color(),
+        17.0,
+        layout.wallet_panel.size.width - 24.0,
+        true,
+    );
+    let _ = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
@@ -874,7 +928,7 @@ fn paint_go_online_pane(
         layout.wallet_panel.size.width - 24.0,
         true,
     );
-    wallet_y = paint_wrapped_label_line_mission_control_label(
+    let _ = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
@@ -883,16 +937,6 @@ fn paint_go_online_pane(
         wallet_value_chunk_len,
         layout.wallet_panel.size.width - 24.0,
         false,
-    );
-    let _ = paint_wrapped_label_line_mission_control_label(
-        paint,
-        layout.wallet_panel.origin.x + 12.0,
-        wallet_y,
-        "Balance",
-        &wallet_balance,
-        wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
-        true,
     );
     paint.scene.pop_clip();
 
@@ -907,11 +951,32 @@ fn paint_go_online_pane(
         provider_runtime,
         local_inference_runtime,
     ) {
-        paint_secondary_button(download_bounds, &download_label, paint);
+        paint_mission_control_command_button(
+            download_bounds,
+            &download_label,
+            mission_control_orange_color(),
+            true,
+            paint,
+        );
     } else {
-        paint_disabled_button(download_bounds, &download_label, paint);
+        paint_mission_control_command_button(
+            download_bounds,
+            &download_label,
+            mission_control_muted_color(),
+            false,
+            paint,
+        );
     }
     let withdraw_input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
+    paint.scene.draw_text(paint.text.layout_mono(
+        "LIGHTNING WITHDRAW",
+        Point::new(
+            withdraw_input_bounds.origin.x,
+            withdraw_input_bounds.origin.y - 12.0,
+        ),
+        10.0,
+        mission_control_muted_color(),
+    ));
     mission_control
         .withdraw_invoice
         .set_max_width(withdraw_input_bounds.size.width);
@@ -926,68 +991,104 @@ fn paint_go_online_pane(
         .trim()
         .is_empty()
     {
-        paint_disabled_button(withdraw_bounds, "WITHDRAW", paint);
+        paint_mission_control_command_button(
+            withdraw_bounds,
+            "WITHDRAW",
+            mission_control_muted_color(),
+            false,
+            paint,
+        );
     } else {
-        paint_action_button(withdraw_bounds, "WITHDRAW", paint);
+        paint_mission_control_command_button(
+            withdraw_bounds,
+            "WITHDRAW",
+            mission_control_green_color(),
+            true,
+            paint,
+        );
     }
 
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
-    let active_summary = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-        "Go Online to Start Jobs.".to_string()
+    let active_state = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+        ("STANDBY", mission_control_orange_color())
     } else if let Some(job) = active_job.job.as_ref() {
-        format!(
-            "{} [{}] {}",
-            job.capability,
-            job.stage.label(),
-            format_mission_control_amount(
-                job.quoted_price_sats,
-                mission_control.amount_display_mode
-            )
-        )
+        match job.stage {
+            JobLifecycleStage::Failed => ("FAULT", mission_control_red_color()),
+            _ => ("ACTIVE", mission_control_green_color()),
+        }
     } else {
-        "Watching relays for matching jobs.".to_string()
+        ("SCANNING", mission_control_cyan_color())
     };
-    for (index, line) in split_text_for_display(
-        &active_summary,
-        mission_control_body_chunk_len(layout.active_jobs_panel),
-    )
-    .into_iter()
-    .enumerate()
-    {
-        paint.scene.draw_text(paint.text.layout(
-            &line,
-            Point::new(
-                layout.active_jobs_panel.origin.x + 12.0,
-                layout.active_jobs_panel.origin.y + 43.0 + index as f32 * 16.0,
-            ),
-            11.0,
-            if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-                theme::text::MUTED
-            } else {
-                theme::text::PRIMARY
-            },
-        ));
+    let scanner_bounds = Bounds::new(
+        layout.active_jobs_panel.max_x() - 84.0,
+        layout.active_jobs_panel.origin.y + 18.0,
+        56.0,
+        layout.active_jobs_panel.size.height - 36.0,
+    );
+    let scanner_segment_height = ((scanner_bounds.size.height - 18.0) / 4.0).max(8.0);
+    for index in 0..4 {
+        let segment_bounds = Bounds::new(
+            scanner_bounds.origin.x,
+            scanner_bounds.origin.y + index as f32 * (scanner_segment_height + 6.0),
+            scanner_bounds.size.width,
+            scanner_segment_height,
+        );
+        let alpha = 0.16 + index as f32 * 0.08;
+        paint.scene.draw_quad(
+            Quad::new(segment_bounds)
+                .with_background(active_state.1.with_alpha(alpha))
+                .with_border(active_state.1.with_alpha(alpha + 0.08), 1.0),
+        );
     }
-    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
+    paint.scene.draw_text(paint.text.layout_mono(
+        active_state.0,
+        Point::new(
+            layout.active_jobs_panel.origin.x + 12.0,
+            layout.active_jobs_panel.origin.y + 30.0,
+        ),
+        22.0,
+        active_state.1,
+    ));
+    let active_summary_lines = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+        vec![
+            "GO ONLINE TO ACCEPT PAID JOBS.".to_string(),
+            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
+        ]
+    } else if let Some(job) = active_job.job.as_ref() {
+        vec![
+            format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
+            format!("STAGE // {}", job.stage.label().to_ascii_uppercase()),
+            format!(
+                "PAYOUT // {}",
+                format_mission_control_amount(job.quoted_price_sats)
+            ),
+            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
+        ]
+    } else {
+        vec![
+            "WATCHING RELAYS FOR MATCHES.".to_string(),
+            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
+        ]
+    };
+    for (index, line) in active_summary_lines.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("Observed requests: {}", job_inbox.requests.len()),
+            line,
             Point::new(
                 layout.active_jobs_panel.origin.x + 12.0,
-                layout.active_jobs_panel.max_y() - 18.0,
+                layout.active_jobs_panel.origin.y + 60.0 + index as f32 * 17.0,
             ),
             10.0,
-            theme::text::MUTED,
+            if index == 2 && active_job.job.is_some() {
+                mission_control_green_color()
+            } else {
+                mission_control_text_color()
+            },
         ));
     }
     paint.scene.pop_clip();
 
-    paint_mission_control_section_panel(
-        layout.log_stream,
-        "LOG STREAM",
-        theme::border::DEFAULT,
-        paint,
-    );
+    paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", alert_message.1, paint);
     let log_body_bounds = Bounds::new(
         layout.log_stream.origin.x,
         layout.log_stream.origin.y + 24.0,
@@ -1001,7 +1102,7 @@ fn paint_go_online_pane(
 fn paint_mission_control_section_panel(
     bounds: Bounds,
     title: &str,
-    _accent: Hsla,
+    accent: Hsla,
     paint: &mut PaintContext,
 ) {
     let width = bounds.size.width.max(0.0);
@@ -1010,33 +1111,204 @@ fn paint_mission_control_section_panel(
         return;
     }
 
-    let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-<defs>
-<linearGradient id="sectionBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-<stop offset="0%" stop-color="#21242C"/>
-<stop offset="100%" stop-color="#6FD7D2" stop-opacity="0.25"/>
-</linearGradient>
-</defs>
-<rect x="0.5" y="0.5" width="{rw}" height="{rh}" rx="10" ry="10" fill="#1A1E27" fill-opacity="0.70" stroke="url(#sectionBorderGrad)" stroke-width="1"/>
-</svg>"##,
-        w = width,
-        h = height,
-        rw = (width - 1.0).max(0.0),
-        rh = (height - 1.0).max(0.0),
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(mission_control_panel_color())
+            .with_border(mission_control_panel_border_color(), 1.0),
     );
-    paint.scene.draw_svg(SvgQuad::new(
-        bounds,
-        std::sync::Arc::<[u8]>::from(svg.into_bytes()),
-    ));
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            4.0,
+            bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.85)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 4.0,
+            bounds.origin.y,
+            (bounds.size.width - 4.0).max(0.0),
+            18.0,
+        ))
+        .with_background(accent.with_alpha(0.12)),
+    );
 
     if !title.is_empty() {
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("\\ {title}"),
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
             12.0,
-            Hsla::from_hex(0xD8DFF0),
+            accent,
         ));
+    }
+}
+
+fn paint_mission_control_status_cell(
+    bounds: Bounds,
+    label: &str,
+    value: &str,
+    value_color: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(mission_control_panel_color())
+            .with_border(mission_control_panel_border_color(), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            2.0,
+        ))
+        .with_background(value_color.with_alpha(0.85)),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 9.0),
+        9.0,
+        mission_control_muted_color(),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        value,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 21.0),
+        12.0,
+        value_color,
+    ));
+}
+
+fn paint_mission_control_alert_band(
+    bounds: Bounds,
+    text: &str,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(accent.with_alpha(0.10))
+            .with_border(accent.with_alpha(0.72), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            10.0,
+            bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.85)),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        text,
+        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 16.0),
+        11.0,
+        mission_control_text_color(),
+    ));
+}
+
+fn mission_control_alert_message(
+    mission_control: &MissionControlPaneState,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    provider_blockers: &[ProviderBlocker],
+    spark_wallet: &SparkPaneState,
+) -> (String, Hsla) {
+    if let Some(error) = mission_control.last_error.as_deref().map(str::trim)
+        && !error.is_empty()
+    {
+        return (
+            format!("ALERT // {}", error.to_ascii_uppercase()),
+            mission_control_red_color(),
+        );
+    }
+
+    if let Some(blocker) = provider_blockers.first().copied() {
+        return (
+            format!(
+                "PREFLIGHT // {}",
+                mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
+                    .to_ascii_uppercase()
+            ),
+            mission_control_orange_color(),
+        );
+    }
+
+    let load_hint = mission_control_go_online_hint(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    if !load_hint.trim().is_empty() {
+        return (
+            format!("READY PATH // {}", load_hint.to_ascii_uppercase()),
+            mission_control_amber_color(),
+        );
+    }
+
+    if let Some(action) = mission_control.last_action.as_deref().map(str::trim)
+        && !action.is_empty()
+    {
+        return (
+            format!("MISSION // {}", action.to_ascii_uppercase()),
+            mission_control_cyan_color(),
+        );
+    }
+
+    (
+        "MISSION // APPLE FM EARN LOOP ARMED".to_string(),
+        mission_control_green_color(),
+    )
+}
+
+fn mission_control_background_color() -> Hsla {
+    Hsla::from_hex(0x060606)
+}
+
+fn mission_control_panel_color() -> Hsla {
+    Hsla::from_hex(0x101010)
+}
+
+fn mission_control_panel_border_color() -> Hsla {
+    Hsla::from_hex(0x3D3327)
+}
+
+fn mission_control_text_color() -> Hsla {
+    Hsla::from_hex(0xE8E3D7)
+}
+
+fn mission_control_muted_color() -> Hsla {
+    Hsla::from_hex(0x7F776D)
+}
+
+fn mission_control_orange_color() -> Hsla {
+    Hsla::from_hex(0xFF6A00)
+}
+
+fn mission_control_amber_color() -> Hsla {
+    Hsla::from_hex(0xFFB300)
+}
+
+fn mission_control_green_color() -> Hsla {
+    Hsla::from_hex(0x7DFF4A)
+}
+
+fn mission_control_cyan_color() -> Hsla {
+    Hsla::from_hex(0x46D9D3)
+}
+
+fn mission_control_red_color() -> Hsla {
+    Hsla::from_hex(0xD71414)
+}
+
+fn mission_control_mode_color(mode: crate::app_state::ProviderMode) -> Hsla {
+    match mode {
+        crate::app_state::ProviderMode::Offline => mission_control_orange_color(),
+        crate::app_state::ProviderMode::Connecting => mission_control_cyan_color(),
+        crate::app_state::ProviderMode::Online => mission_control_green_color(),
+        crate::app_state::ProviderMode::Degraded => mission_control_red_color(),
     }
 }
 
@@ -1064,7 +1336,7 @@ fn paint_mission_control_amount_line(
         &format!("{label}:"),
         Point::new(x, y),
         12.0,
-        Hsla::from_hex(0x8A909E),
+        mission_control_muted_color(),
     ));
     let value_x = x + mission_control_value_x_offset(label);
     let value_right = x + row_width.max(0.0);
@@ -1268,12 +1540,7 @@ fn mission_control_go_online_hint(
     }
 }
 
-fn paint_first_sats_progress(
-    bounds: Bounds,
-    lifetime_sats: u64,
-    amount_display_mode: BitcoinAmountDisplayMode,
-    paint: &mut PaintContext,
-) {
+fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
     const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
     let next_target = FIRST_SATS_MILESTONES
         .into_iter()
@@ -1281,16 +1548,13 @@ fn paint_first_sats_progress(
     let progress_label = match next_target {
         Some(target) => format!(
             "Next milestone: {} / {} ({} to go)",
-            format_mission_control_amount(lifetime_sats, amount_display_mode),
-            format_mission_control_amount(target, amount_display_mode),
-            format_mission_control_amount(
-                target.saturating_sub(lifetime_sats),
-                amount_display_mode
-            )
+            format_mission_control_amount(lifetime_sats),
+            format_mission_control_amount(target),
+            format_mission_control_amount(target.saturating_sub(lifetime_sats))
         ),
         None => format!(
             "{} earned. First ladder cleared.",
-            format_mission_control_amount(lifetime_sats, amount_display_mode)
+            format_mission_control_amount(lifetime_sats)
         ),
     };
     let progress_ratio = next_target.map_or(1.0, |target| {
@@ -1305,38 +1569,59 @@ fn paint_first_sats_progress(
         "First earnings progression",
         Point::new(bounds.origin.x, bounds.origin.y),
         11.0,
-        theme::text::MUTED,
+        mission_control_muted_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         &progress_label,
         Point::new(bounds.origin.x, bounds.origin.y + 16.0),
         10.0,
-        theme::text::PRIMARY,
+        mission_control_text_color(),
     ));
 
-    let track_bounds = Bounds::new(
-        bounds.origin.x,
-        bounds.origin.y + 30.0,
-        bounds.size.width,
-        10.0,
-    );
-    let fill_bounds = Bounds::new(
-        track_bounds.origin.x,
-        track_bounds.origin.y,
-        track_bounds.size.width * progress_ratio,
-        track_bounds.size.height,
-    );
-    paint.scene.draw_quad(
-        Quad::new(track_bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(5.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(fill_bounds)
-            .with_background(theme::status::SUCCESS.with_alpha(0.72))
-            .with_corner_radius(5.0),
-    );
+    let bar_y = bounds.origin.y + 32.0;
+    let gap = 6.0;
+    let segment_width = ((bounds.size.width - gap * 3.0) / 4.0).max(0.0);
+    for (index, target) in FIRST_SATS_MILESTONES.iter().enumerate() {
+        let segment_bounds = Bounds::new(
+            bounds.origin.x + index as f32 * (segment_width + gap),
+            bar_y,
+            segment_width,
+            10.0,
+        );
+        let segment_color = if lifetime_sats >= *target {
+            mission_control_green_color()
+        } else if next_target == Some(*target) {
+            mission_control_amber_color()
+        } else {
+            mission_control_panel_border_color()
+        };
+        paint.scene.draw_quad(
+            Quad::new(segment_bounds)
+                .with_background(segment_color.with_alpha(if lifetime_sats >= *target {
+                    0.72
+                } else {
+                    0.18
+                }))
+                .with_border(segment_color, 1.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &target.to_string(),
+            Point::new(segment_bounds.origin.x, segment_bounds.max_y() + 10.0),
+            9.0,
+            mission_control_muted_color(),
+        ));
+    }
+    if progress_ratio > 0.0 {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bar_y + 3.0,
+                bounds.size.width * progress_ratio,
+                4.0,
+            ))
+            .with_background(mission_control_amber_color().with_alpha(0.85)),
+        );
+    }
 }
 
 fn paint_provider_status_pane(
@@ -4404,164 +4689,141 @@ fn paint_mission_control_go_online_button(
     bounds: Bounds,
     label: &str,
     enabled: bool,
+    accent: Hsla,
     paint: &mut PaintContext,
 ) {
     let base_layer = paint.scene.layer();
     let button_layer = base_layer.saturating_add(1);
     paint.scene.set_layer(button_layer);
 
-    let glow = if enabled {
-        Hsla::from_hex(0x0891B2)
+    let border = if enabled {
+        if label == "GO ONLINE" {
+            mission_control_orange_color()
+        } else {
+            mission_control_green_color()
+        }
     } else {
-        Hsla::from_hex(0x4B5563)
+        mission_control_panel_border_color()
     };
-    let mut glow_outer_spread = 6.0;
-    let mut glow_inner_spread = 3.0;
+    let mut pulse_alpha = 0.22;
     if enabled && label == "GO ONLINE" {
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f32())
             .unwrap_or(0.0);
         let pulse = ((now_secs * 2.4).sin() * 0.5) + 0.5;
-        glow_outer_spread = 6.0 + pulse * 2.0;
-        glow_inner_spread = 3.0 + pulse * 1.0;
+        pulse_alpha = 0.18 + pulse * 0.18;
     }
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x - glow_outer_spread,
-            bounds.origin.y - glow_outer_spread,
-            bounds.size.width + glow_outer_spread * 2.0,
-            bounds.size.height + glow_outer_spread * 2.0,
+            bounds.origin.x - 3.0,
+            bounds.origin.y - 3.0,
+            bounds.size.width + 6.0,
+            bounds.size.height + 6.0,
         ))
-        .with_border(glow.with_alpha(0.16), 1.0)
-        .with_corner_radius(10.0 + glow_outer_spread),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x - glow_inner_spread,
-            bounds.origin.y - glow_inner_spread,
-            bounds.size.width + glow_inner_spread * 2.0,
-            bounds.size.height + glow_inner_spread * 2.0,
-        ))
-        .with_border(glow.with_alpha(0.30), 1.0)
-        .with_corner_radius(10.0 + glow_inner_spread),
+        .with_border(border.with_alpha(pulse_alpha), 1.0),
     );
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(if enabled {
-                Hsla::from_hex(0x0A5F78)
+                mission_control_panel_color()
             } else {
-                theme::bg::SURFACE.with_alpha(0.88)
+                mission_control_panel_color()
             })
-            .with_border(
-                if enabled {
-                    Hsla::from_hex(0x0891B2)
-                } else {
-                    theme::border::DEFAULT
-                },
-                1.0,
-            )
-            .with_corner_radius(10.0),
+            .with_border(border, 1.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x + 1.0,
-            bounds.origin.y + 1.0,
-            (bounds.size.width - 2.0).max(0.0),
-            (bounds.size.height * 0.5 - 1.0).max(0.0),
+            bounds.origin.x,
+            bounds.origin.y,
+            10.0,
+            bounds.size.height,
         ))
-        .with_background(if enabled {
-            Hsla::from_hex(0x0891B2)
-        } else {
-            theme::bg::APP.with_alpha(0.22)
-        })
-        .with_corner_radius(9.0),
+        .with_background(border.with_alpha(if enabled { 0.9 } else { 0.35 })),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 10.0,
+            bounds.origin.y,
+            (bounds.size.width - 10.0).max(0.0),
+            18.0,
+        ))
+        .with_background(border.with_alpha(0.12)),
     );
     paint_button_label_mono(
-        bounds,
+        Bounds::new(
+            bounds.origin.x + 12.0,
+            bounds.origin.y + 8.0,
+            (bounds.size.width - 24.0).max(0.0),
+            32.0,
+        ),
         label,
-        24.0,
+        22.0,
         if enabled {
-            Hsla::from_hex(0xFFFFFF)
+            mission_control_text_color()
         } else {
-            theme::text::MUTED
+            mission_control_muted_color()
         },
         paint,
     );
+    paint.scene.draw_text(paint.text.layout_mono(
+        if label == "GO ONLINE" {
+            "COMPUTE MARKET ARM"
+        } else {
+            "COMPUTE MARKET LIVE"
+        },
+        Point::new(bounds.origin.x + 22.0, bounds.max_y() - 12.0),
+        9.0,
+        accent.with_alpha(if enabled { 0.88 } else { 0.5 }),
+    ));
 
     paint.scene.set_layer(base_layer);
 }
 
-fn paint_mission_control_amount_toggle(
+fn paint_mission_control_command_button(
     bounds: Bounds,
-    mode: BitcoinAmountDisplayMode,
+    label: &str,
+    accent: Hsla,
+    enabled: bool,
     paint: &mut PaintContext,
 ) {
-    let integer_active = matches!(mode, BitcoinAmountDisplayMode::Integer);
-    let outer = bounds;
-    let segment_width = (outer.size.width / 2.0).max(0.0);
-    let active_segment = if integer_active {
-        Bounds::new(
-            outer.origin.x + 1.0,
-            outer.origin.y + 1.0,
-            (segment_width - 2.0).max(0.0),
-            (outer.size.height - 2.0).max(0.0),
-        )
+    let border = if enabled {
+        accent
     } else {
-        Bounds::new(
-            outer.origin.x + segment_width + 1.0,
-            outer.origin.y + 1.0,
-            (segment_width - 2.0).max(0.0),
-            (outer.size.height - 2.0).max(0.0),
-        )
+        mission_control_panel_border_color()
     };
-
     paint.scene.draw_quad(
-        Quad::new(outer)
-            .with_background(Hsla::from_hex(0x121419))
-            .with_border(Hsla::from_hex(0x8A909E), 1.0)
-            .with_corner_radius(10.0),
+        Quad::new(bounds)
+            .with_background(mission_control_panel_color())
+            .with_border(border, 1.0),
     );
     paint.scene.draw_quad(
-        Quad::new(active_segment)
-            .with_background(Hsla::from_hex(0x0891B2))
-            .with_corner_radius(9.0),
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            8.0,
+            bounds.size.height,
+        ))
+        .with_background(border.with_alpha(if enabled { 0.85 } else { 0.28 })),
     );
-
-    let left_label = "INTEGER";
-    let right_label = "LEGACY";
-    let left_color = if integer_active {
-        Hsla::from_hex(0xFFFFFF)
-    } else {
-        Hsla::from_hex(0x8A909E)
-    };
-    let right_color = if integer_active {
-        Hsla::from_hex(0x8A909E)
-    } else {
-        Hsla::from_hex(0xFFFFFF)
-    };
-    paint_button_label_mono(
-        Bounds::new(
-            outer.origin.x,
-            outer.origin.y,
-            segment_width,
-            outer.size.height,
-        ),
-        left_label,
-        10.0,
-        left_color,
-        paint,
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 8.0,
+            bounds.origin.y,
+            (bounds.size.width - 8.0).max(0.0),
+            12.0,
+        ))
+        .with_background(border.with_alpha(0.10)),
     );
     paint_button_label_mono(
-        Bounds::new(
-            outer.origin.x + segment_width,
-            outer.origin.y,
-            segment_width,
-            outer.size.height,
-        ),
-        right_label,
-        10.0,
-        right_color,
+        bounds,
+        label,
+        12.0,
+        if enabled {
+            mission_control_text_color()
+        } else {
+            mission_control_muted_color()
+        },
         paint,
     );
 }
@@ -4758,14 +5020,14 @@ fn paint_wrapped_label_line_mission_control_label(
         &format!("{label}:"),
         Point::new(x, y),
         12.0,
-        Hsla::from_hex(0x8A909E),
+        mission_control_muted_color(),
     ));
 
     let mut line_y = y;
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
         let value_width = paint
             .text
-            .layout_mono(&chunk, Point::ZERO, 12.0, theme::text::PRIMARY)
+            .layout_mono(&chunk, Point::ZERO, 12.0, mission_control_text_color())
             .bounds()
             .size
             .width;
@@ -4774,7 +5036,7 @@ fn paint_wrapped_label_line_mission_control_label(
             &chunk,
             Point::new(target_x, line_y),
             12.0,
-            theme::text::PRIMARY,
+            mission_control_text_color(),
         ));
         line_y += 18.0;
     }
@@ -4795,7 +5057,7 @@ fn paint_mission_control_row_divider(
     let divider_y = row_bottom + 10.0;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
-            .with_background(Hsla::from_hex(0x0E0E0F)),
+            .with_background(mission_control_panel_border_color().with_alpha(0.72)),
     );
     divider_y + 1.0 + 10.0
 }

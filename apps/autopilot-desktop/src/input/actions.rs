@@ -8904,10 +8904,6 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
-        MissionControlPaneAction::ToggleAmountDisplay => {
-            state.mission_control.toggle_amount_display_mode();
-            true
-        }
         MissionControlPaneAction::OpenLocalModelWorkbench => {
             match crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,
@@ -9007,7 +9003,10 @@ pub(super) fn run_mission_control_action(
                 state
                     .mission_control
                     .record_action("Queued Lightning withdrawal");
-                state.mission_control.withdraw_invoice.set_value(String::new());
+                state
+                    .mission_control
+                    .withdraw_invoice
+                    .set_value(String::new());
             }
             true
         }

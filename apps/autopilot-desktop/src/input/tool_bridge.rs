@@ -2018,9 +2018,6 @@ fn pane_action_to_hit_action(
         PaneKind::Calculator => unsupported(),
         PaneKind::GoOnline => match action {
             "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
-            "toggle_amount_display" | "toggle_amounts" => Ok(PaneHitAction::MissionControl(
-                crate::pane_system::MissionControlPaneAction::ToggleAmountDisplay,
-            )),
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
                 Ok(PaneHitAction::MissionControl(
                     crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
@@ -6089,9 +6086,9 @@ mod tests {
             PaneHitAction::ChatSend
         );
         assert_eq!(
-            pane_action_to_hit_action(PaneKind::GoOnline, "toggle_amount_display", None)
-                .expect("mission control amount toggle"),
-            PaneHitAction::MissionControl(MissionControlPaneAction::ToggleAmountDisplay)
+            pane_action_to_hit_action(PaneKind::GoOnline, "open_local_model", None)
+                .expect("mission control local model"),
+            PaneHitAction::MissionControl(MissionControlPaneAction::OpenLocalModelWorkbench)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::Settings, "save", None).expect("settings save"),
