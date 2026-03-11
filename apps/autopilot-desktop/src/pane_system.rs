@@ -255,6 +255,7 @@ pub enum JobInboxPaneAction {
 pub enum ActiveJobPaneAction {
     AdvanceStage,
     AbortJob,
+    CopyAll,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3857,7 +3858,10 @@ pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
 }
 
 pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.clamp(144.0, 196.0);
+    let available_width = (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0);
+    let width = ((available_width - JOB_INBOX_BUTTON_GAP * 2.0) / 3.0)
+        .max(0.0)
+        .min(196.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
@@ -3876,11 +3880,21 @@ pub fn active_job_abort_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn active_job_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+    let abort = active_job_abort_button_bounds(content_bounds);
+    Bounds::new(
+        abort.max_x() + JOB_INBOX_BUTTON_GAP,
+        abort.origin.y,
+        abort.size.width,
+        abort.size.height,
+    )
+}
+
 pub fn active_job_scroll_viewport_bounds(
     content_bounds: Bounds,
     runtime_supports_abort: bool,
 ) -> Bounds {
-    let buttons = active_job_abort_button_bounds(content_bounds);
+    let buttons = active_job_copy_button_bounds(content_bounds);
     let top = buttons.max_y() + if runtime_supports_abort { 12.0 } else { 24.0 };
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -5703,6 +5717,9 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::ActiveJob => {
+            if active_job_copy_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ActiveJob(ActiveJobPaneAction::CopyAll));
+            }
             if state.active_job.runtime_supports_abort
                 && active_job_abort_button_bounds(content_bounds).contains(point)
             {
@@ -6631,19 +6648,20 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
 mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
-        active_job_scroll_viewport_bounds, activity_feed_detail_viewport_bounds,
-        activity_feed_details_bounds, activity_feed_filter_button_bounds,
-        activity_feed_next_page_button_bounds, activity_feed_prev_page_button_bounds,
-        activity_feed_refresh_button_bounds, activity_feed_row_bounds,
-        agent_profile_abort_goal_button_bounds, agent_profile_create_goal_button_bounds,
-        agent_profile_publish_profile_button_bounds, agent_profile_publish_state_button_bounds,
-        agent_profile_receipt_button_bounds, agent_profile_start_goal_button_bounds,
-        agent_profile_update_goals_button_bounds, agent_schedule_apply_button_bounds,
-        agent_schedule_inspect_button_bounds, agent_schedule_manual_tick_button_bounds,
-        agent_schedule_toggle_os_scheduler_button_bounds, alerts_recovery_ack_button_bounds,
-        alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-        alerts_recovery_row_bounds, apple_fm_workbench_create_session_button_bounds,
-        apple_fm_workbench_event_log_bounds, apple_fm_workbench_inspect_session_button_bounds,
+        active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
+        activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
+        activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
+        activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
+        activity_feed_row_bounds, agent_profile_abort_goal_button_bounds,
+        agent_profile_create_goal_button_bounds, agent_profile_publish_profile_button_bounds,
+        agent_profile_publish_state_button_bounds, agent_profile_receipt_button_bounds,
+        agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
+        agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
+        agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
+        alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
+        alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+        apple_fm_workbench_create_session_button_bounds, apple_fm_workbench_event_log_bounds,
+        apple_fm_workbench_inspect_session_button_bounds,
         apple_fm_workbench_instructions_input_bounds, apple_fm_workbench_layout,
         apple_fm_workbench_model_input_bounds, apple_fm_workbench_options_details_bounds,
         apple_fm_workbench_output_bounds, apple_fm_workbench_prompt_input_bounds,
@@ -7342,18 +7360,21 @@ mod tests {
         let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
         let advance = active_job_advance_button_bounds(content);
         let abort = active_job_abort_button_bounds(content);
+        let copy = active_job_copy_button_bounds(content);
 
         assert!(advance.max_x() < abort.min_x());
+        assert!(abort.max_x() < copy.min_x());
         assert!((advance.origin.y - abort.origin.y).abs() <= f32::EPSILON);
+        assert!((abort.origin.y - copy.origin.y).abs() <= f32::EPSILON);
     }
 
     #[test]
     fn active_job_scroll_viewport_stays_below_controls() {
         let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
-        let abort = active_job_abort_button_bounds(content);
+        let copy = active_job_copy_button_bounds(content);
         let viewport = active_job_scroll_viewport_bounds(content, false);
 
-        assert!(abort.max_y() <= viewport.origin.y);
+        assert!(copy.max_y() <= viewport.origin.y);
         assert!(content.contains(viewport.origin));
         assert!(viewport.max_x() <= content.max_x());
         assert!(viewport.max_y() <= content.max_y());
