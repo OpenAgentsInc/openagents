@@ -3,6 +3,10 @@
 Mission Control remains the single earn-first shell in
 `apps/autopilot-desktop`. The pane kind stays `PaneKind::GoOnline`.
 
+For the `v0.1` release cut, the production path is the fullscreen one-screen
+shell described in `docs/v01.md`. Separate workbench/debug panes remain
+available only for dev-mode internal use.
+
 ## Product Rule
 
 Mission Control is FM-first.
@@ -49,7 +53,7 @@ Mission Control remains a two-column dashboard.
 Bottom actions:
 
 - local-model action
-- `DOCUMENTATION`
+- inline Lightning withdraw input + action
 
 ### Right Column
 
@@ -68,14 +72,21 @@ Bottom actions:
 The local-model action is sourced from the same runtime truth that gates
 provider mode.
 
-On macOS:
+On the `v0.1` production path:
 
 - `START APPLE FM` when the bridge is offline
-- `REFRESH APPLE FM` when the bridge is reachable but not ready
+- `REFRESH APPLE FM` when the bridge is reachable
 - `STARTING APPLE FM` while bridge start is already in flight
-- `OPEN APPLE FM` when the bridge and system model are ready
 
-On the non-macOS NVIDIA CUDA path:
+This action stays inline in Mission Control for the release cut. It should not
+require opening a second pane to start or refresh Apple FM.
+
+In dev mode on macOS:
+
+- `OPEN APPLE FM` may still open the separate Apple FM workbench when the
+  bridge and system model are ready
+
+In dev mode on the non-macOS NVIDIA CUDA path:
 
 - `OPEN GPT-OSS WORKBENCH`
 
@@ -121,8 +132,8 @@ details in Mission Control. Those belong in `GPT-OSS Workbench`.
 
 To keep the local-model story clean:
 
-- `Mission Control` and `Apple FM Workbench` are the user-facing Apple FM
-  surfaces on macOS
+- `Mission Control` is the release-facing Apple FM surface on macOS
+- `Apple FM Workbench` remains available for dev-mode debugging and validation
 - the `GPT-OSS Workbench` pane is hidden on macOS
 - non-macOS builds keep that pane enabled, but it is presented as
   `GPT-OSS Workbench`
