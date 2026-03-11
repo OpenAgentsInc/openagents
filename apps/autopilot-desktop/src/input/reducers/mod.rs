@@ -192,6 +192,10 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
         }
     }
+    // One-shot auto-select: fires once when projection first gains content.
+    if state.autopilot_chat.maybe_auto_select_default_nip28_channel() {
+        changed = true;
+    }
 
     changed
 }

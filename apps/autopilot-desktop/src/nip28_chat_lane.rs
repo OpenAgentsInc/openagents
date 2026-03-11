@@ -91,7 +91,7 @@ fn ensure_connected(
             return;
         }
 
-        runtime.block_on(existing_pool.disconnect_all());
+        let _ = runtime.block_on(existing_pool.disconnect_all());
         *pool = None;
     }
 

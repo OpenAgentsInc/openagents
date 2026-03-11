@@ -3820,6 +3820,19 @@ impl AutopilotChatState {
             && !self.managed_chat_projection.snapshot.channels.is_empty()
     }
 
+    /// Auto-selects the first managed chat workspace when no workspace is selected yet.
+    /// No-op if the user has already selected a workspace or if there is no content.
+    /// Returns true when a selection was made.
+    pub fn maybe_auto_select_default_nip28_channel(&mut self) -> bool {
+        if self.selected_workspace != ChatWorkspaceSelection::Autopilot {
+            return false;
+        }
+        if !self.has_managed_chat_browseable_content() {
+            return false;
+        }
+        self.select_chat_workspace_by_index(0)
+    }
+
     pub fn has_direct_message_browseable_content(&self) -> bool {
         !self.direct_message_projection.snapshot.rooms.is_empty()
     }
