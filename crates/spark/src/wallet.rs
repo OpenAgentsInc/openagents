@@ -43,7 +43,7 @@ impl Default for WalletConfig {
             .join("spark");
 
         Self {
-            network: Network::Regtest,
+            network: Network::Mainnet,
             api_key: None,
             storage_dir,
         }
@@ -324,7 +324,7 @@ fn payment_direction_label(payment_type: PaymentType) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Balance, Network, PaymentType, SdkNetwork, payment_direction_label};
+    use super::{Balance, Network, PaymentType, SdkNetwork, WalletConfig, payment_direction_label};
     use crate::SparkError;
 
     #[test]
@@ -359,6 +359,11 @@ mod tests {
             result,
             Err(SparkError::UnsupportedNetwork(Network::Signet))
         ));
+    }
+
+    #[test]
+    fn wallet_config_defaults_to_mainnet() {
+        assert_eq!(WalletConfig::default().network, Network::Mainnet);
     }
 
     #[test]
