@@ -6036,14 +6036,19 @@ mod tests {
             resolve_pane_kind_for_runtime("calc"),
             Some(PaneKind::Calculator)
         );
-        assert_eq!(
-            resolve_pane_kind_for_runtime("pane.local_inference"),
-            Some(PaneKind::LocalInference)
-        );
-        assert_eq!(
-            resolve_pane_kind_for_runtime("gptoss"),
-            Some(PaneKind::LocalInference)
-        );
+        if cfg!(target_os = "macos") {
+            assert_eq!(resolve_pane_kind_for_runtime("pane.local_inference"), None);
+            assert_eq!(resolve_pane_kind_for_runtime("gptoss"), None);
+        } else {
+            assert_eq!(
+                resolve_pane_kind_for_runtime("pane.local_inference"),
+                Some(PaneKind::LocalInference)
+            );
+            assert_eq!(
+                resolve_pane_kind_for_runtime("gptoss"),
+                Some(PaneKind::LocalInference)
+            );
+        }
         assert_eq!(
             resolve_pane_kind_for_runtime("pane.apple_fm_workbench"),
             Some(PaneKind::AppleFmWorkbench)

@@ -54,6 +54,7 @@ pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
 
 pub fn pane_kind_enabled(kind: PaneKind) -> bool {
     match kind {
+        PaneKind::LocalInference => !cfg!(target_os = "macos"),
         PaneKind::ProjectOps => crate::project_ops::project_ops_enabled_from_env(),
         _ => true,
     }
@@ -804,6 +805,23 @@ mod tests {
             !enabled_pane_specs().any(|spec| spec.kind == PaneKind::ProjectOps),
             "disabled project ops pane should not appear in enabled pane iteration"
         );
+    }
+
+    #[test]
+    fn local_inference_visibility_matches_platform_contract() {
+        if cfg!(target_os = "macos") {
+            assert!(
+                !pane_kind_enabled(PaneKind::LocalInference),
+                "macOS should use Apple FM instead of exposing the GPT-OSS local inference pane"
+            );
+            assert!(pane_spec_by_command_id("pane.local_inference").is_none());
+        } else {
+            assert!(
+                pane_kind_enabled(PaneKind::LocalInference),
+                "non-macOS builds should keep the GPT-OSS local inference pane enabled"
+            );
+            assert!(pane_spec_by_command_id("pane.local_inference").is_some());
+        }
     }
 
     #[test]

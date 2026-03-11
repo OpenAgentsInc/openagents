@@ -150,8 +150,8 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, `FM-8`, and `FM-9`
-are now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, `FM-8`, `FM-9`, and
+`FM-10` are now landed on `main`.
 
 What shipped:
 
@@ -270,41 +270,46 @@ What shipped:
 - the Swift HTTP server now reads request bodies to full `Content-Length`
   instead of assuming one receive chunk, which was required to make large-prompt
   conformance receipts truthful
+- `apps/autopilot-desktop` now ships a dedicated Apple FM workbench pane wired
+  through the reusable `psionic-apple-fm` surface and the app-owned Swift-bridge
+  worker
+- macOS Mission Control now sources its CTA, `Model`, `Backend`, `Load`,
+  blockers, and log lines from Apple FM runtime truth instead of universal
+  GPT-OSS copy
+- the Mission Control `GO ONLINE` gate is now backend-aware: Apple FM on macOS,
+  GPT-OSS CUDA only where that remains the truthful runtime path
+- the Mission Control action button now opens or starts Apple FM on macOS
+  instead of pretending a GGUF load path is always primary
+- the macOS pane registry and command palette no longer expose the GPT-OSS
+  `Local Inference` pane, which removes the split-brain Apple-FM-vs-GPT-OSS
+  local-model story from the user-facing Mac shell
+- `docs/plans/mission-control-pane.md` now documents the backend-aware Mission
+  Control contract instead of codifying `LOAD GPT-OSS 20B` as the universal
+  gate
 
-What `FM-1` through `FM-9` did not close:
+Remaining caveats after `FM-10`:
 
-- desktop Mission Control cutover on macOS
-- raw token counts are now truthfully marked as estimated, but exact token
-  counts are still not available from the retained bridge
+- raw token counts are truthfully marked as estimated; exact token counts are
+  still not available from the retained bridge
 - the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
-  compatibility wrapper; the shipped streaming surface is the session-first
-  Apple FM lane, which is the roadmap-authoritative interface
+  compatibility wrapper; the roadmap-authoritative Apple FM interface remains
+  the session-first surface
 
 ## Mission Control Reality On Main
 
-Mission Control is now an explicit part of this roadmap, because the current
-Mac earn-first shell is still coded around GPT-OSS model loading rather than
-Apple FM readiness.
+Mission Control is now part of the shipped Apple FM lane rather than an open
+roadmap gap.
 
 Current Mission Control truth on `main`:
 
-- the main pane copy, CTA label, and hints still say `GPT-OSS 20B`
-- the `LOAD` action records and renders `Queued GPT-OSS 20B load`
-- the log stream emits lines such as `Local GPT-OSS 20B is loading`
-- the pane fallback model label is still `GPT-OSS 20B`
-- the current Mission Control plan document explicitly requires GPT-OSS 20B to
-  be loaded before `GO ONLINE`
-
-This matters because the product rule is now different:
-
-- on macOS, Mission Control should present Apple FM as the local model truth
-- on macOS, the earn gate should reflect Apple FM readiness and its blockers,
+- on macOS, the pane presents Apple FM as the local-model truth
+- on macOS, the local-model action is `START`, `REFRESH`, `STARTING`, or
+  `OPEN APPLE FM` depending on bridge readiness
+- on macOS, `GO ONLINE` is gated by Apple FM readiness and Apple FM blockers,
   not GGUF artifact presence
-- the GPT-OSS-specific Mission Control contract should remain only for the
-  non-Mac paths that still actually depend on it
-
-So Mission Control is not a side note under desktop polish. It is part of the
-Mac Apple FM cutover definition of done.
+- on non-macOS GPT-OSS paths, Mission Control still surfaces truthful GPT-OSS
+  CUDA load copy where that is the real runtime path
+- the Mission Control plan document now matches that backend-aware contract
 
 ## Coverage Target From `python-apple-fm-sdk`
 
@@ -661,13 +666,10 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-9`, the only remaining roadmap item is:
+The roadmap queue is now complete on `main`.
 
-1. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
-
-That order is intentional. The reusable Apple FM substrate now covers the
-public API surface through typed errors; the remaining work is the desktop-side
-cutover onto that shared runtime truth.
+Follow-on Apple FM work should be tracked as new issues rather than reopening
+the original roadmap sequence unless the shipped contract regresses.
 
 ## Definition Of Done
 
@@ -685,12 +687,13 @@ when all of the following are true:
 - transcript and session restore semantics are real, not reconstructed prompt
   hacks
 - tool calling is real, session-aware, and transcripted
-- on macOS, Apple FM is the default app local-model lane when available
+- on macOS, Apple FM is the default user-facing local-model lane when
+  available
 - on macOS, Mission Control no longer tells the user to load GPT-OSS 20B and
   instead reflects Apple FM truth throughout its sell-compute lane and log
   stream
-- the provider lane and user-facing local-inference lane use the same Apple FM
-  runtime truth
+- the provider lane and user-facing macOS local-model surfaces use the same
+  Apple FM runtime truth
 - usage and token counts are explicit about whether they are exact, derived, or
   estimated
 - conformance tests exist for every major Python SDK feature family:
@@ -706,8 +709,8 @@ when all of the following are true:
 
 ## Product Rule For MVP
 
-Until this roadmap is complete enough to support honest desktop cutover, the
-product rule remains:
+This roadmap is now complete enough for honest desktop cutover. The MVP product
+rule is:
 
 - macOS local on-device story should converge on Apple Foundation Models
 - NVIDIA local high-performance story remains Psionic GPT-OSS CUDA
