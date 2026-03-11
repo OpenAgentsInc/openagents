@@ -2,7 +2,7 @@ use wgpui::PaintContext;
 
 use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodexRemoteState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -56,6 +56,62 @@ pub fn paint_account_pane(
         &format!("State: {}", pane_state.load_state.label()),
         pane_state.last_action.as_deref(),
         pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Readiness",
+        &pane_state.readiness_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Installed",
+        if pane_state.install_available {
+            "yes"
+        } else {
+            "no"
+        },
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Invocation",
+        pane_state.install_command.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Version",
+        pane_state.install_version.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Config",
+        &pane_state.config_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Requirements",
+        &pane_state.config_requirements_summary,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Constraints",
+        pane_state
+            .config_constraint_summary
+            .as_deref()
+            .unwrap_or("none"),
     );
     y = paint_label_line(
         paint,
@@ -223,12 +279,47 @@ pub fn paint_config_pane(
         "Detected external configs",
         &pane_state.detected_external_configs.to_string(),
     );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Summary",
+        &pane_state.summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Requirements summary",
+        &pane_state.requirements_summary,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Constraints",
+        pane_state.constraint_summary.as_deref().unwrap_or("none"),
+    );
     y = paint_multiline_phrase(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Config",
         &pane_state.config_json,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Origins",
+        &pane_state.origins_json,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Layers",
+        &pane_state.layers_json,
     );
     let _ = paint_multiline_phrase(
         paint,
@@ -420,6 +511,7 @@ pub fn paint_apps_pane(
 pub fn paint_labs_pane(
     content_bounds: wgpui::Bounds,
     pane_state: &CodexLabsPaneState,
+    remote_state: &CodexRemoteState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "codex", paint);
@@ -547,12 +639,58 @@ pub fn paint_labs_pane(
         "Fuzzy status",
         &pane_state.fuzzy_last_status,
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Windows setup",
         pane_state.windows_last_status.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote enabled",
+        if remote_state.enabled { "true" } else { "false" },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote bind",
+        remote_state.listen_addr.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote URL",
+        remote_state.base_url.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote pairing",
+        remote_state.pairing_url.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote token",
+        remote_state.auth_token_preview.as_deref().unwrap_or("n/a"),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote status",
+        remote_state
+            .last_error
+            .as_deref()
+            .or(remote_state.last_action.as_deref())
+            .unwrap_or("n/a"),
     );
 }
 

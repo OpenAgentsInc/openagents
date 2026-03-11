@@ -19,10 +19,13 @@ pub struct CodexSkillSummary {
 pub struct CodexThreadListEntry {
     pub thread_id: String,
     pub thread_name: Option<String>,
+    pub preview: String,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,6 +38,24 @@ pub enum CodexThreadTranscriptRole {
 pub struct CodexThreadTranscriptMessage {
     pub role: CodexThreadTranscriptRole,
     pub content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadPlanArtifact {
+    pub turn_id: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadReviewArtifact {
+    pub turn_id: String,
+    pub review: String,
+    pub completed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadCompactionArtifact {
+    pub turn_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

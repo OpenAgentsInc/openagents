@@ -54,6 +54,7 @@ pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
 
 pub fn pane_kind_enabled(kind: PaneKind) -> bool {
     match kind {
+        PaneKind::LocalInference => !cfg!(target_os = "macos"),
         PaneKind::ProjectOps => crate::project_ops::project_ops_enabled_from_env(),
         _ => true,
     }
@@ -88,7 +89,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 40] = [
+const PANE_SPECS: [PaneSpec; 41] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -271,15 +272,30 @@ const PANE_SPECS: [PaneSpec; 40] = [
     },
     PaneSpec {
         kind: PaneKind::LocalInference,
-        title: "Local Inference",
+        title: "GPT-OSS Workbench",
         default_width: 960.0,
         default_height: 560.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.local_inference",
-            label: "Local Inference",
+            label: "GPT-OSS Workbench",
             description: "Open the GPT-OSS local inference workbench and runtime controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::AppleFmWorkbench,
+        title: "Apple FM Workbench",
+        default_width: 1180.0,
+        default_height: 760.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.apple_fm_workbench",
+            label: "Apple FM Workbench",
+            description: "Open the Apple Foundation Models API workbench and bridge controls",
             keybinding: None,
         }),
         hotbar: None,
@@ -789,6 +805,23 @@ mod tests {
             !enabled_pane_specs().any(|spec| spec.kind == PaneKind::ProjectOps),
             "disabled project ops pane should not appear in enabled pane iteration"
         );
+    }
+
+    #[test]
+    fn local_inference_visibility_matches_platform_contract() {
+        if cfg!(target_os = "macos") {
+            assert!(
+                !pane_kind_enabled(PaneKind::LocalInference),
+                "macOS should use Apple FM instead of exposing the GPT-OSS local inference pane"
+            );
+            assert!(pane_spec_by_command_id("pane.local_inference").is_none());
+        } else {
+            assert!(
+                pane_kind_enabled(PaneKind::LocalInference),
+                "non-macOS builds should keep the GPT-OSS local inference pane enabled"
+            );
+            assert!(pane_spec_by_command_id("pane.local_inference").is_some());
+        }
     }
 
     #[test]

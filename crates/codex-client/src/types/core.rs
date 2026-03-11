@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +40,7 @@ pub struct InitializeCapabilities {
     pub opt_out_notification_methods: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum AskForApproval {
     #[serde(rename = "untrusted")]
@@ -55,7 +55,7 @@ pub enum AskForApproval {
     Never,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxMode {
     ReadOnly,
@@ -110,6 +110,44 @@ pub enum ReasoningSummary {
     Concise,
     Detailed,
     None,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Personality {
+    None,
+    Friendly,
+    Pragmatic,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ServiceTier {
+    Fast,
+    Flex,
+}
+
+#[allow(clippy::option_option)]
+pub(crate) fn deserialize_double_option<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<Option<T>>::deserialize(deserializer)
+}
+
+#[allow(clippy::option_option)]
+pub(crate) fn serialize_double_option<S, T>(
+    value: &Option<Option<T>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Serialize,
+{
+    value.serialize(serializer)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

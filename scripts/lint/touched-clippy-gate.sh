@@ -106,9 +106,7 @@ fi
 clippy_command=(
     cargo
     clippy
-    --lib
-    --bins
-    --examples
+    --all-targets
     --no-deps
     --message-format=json
 )

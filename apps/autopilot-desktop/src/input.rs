@@ -5,7 +5,7 @@ use codex_client::{
     DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExperimentalFeatureListParams,
     ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
     FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
-    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
+    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams,
     ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams, MergeStrategy,
     ModelListParams, ReviewDelivery, ReviewStartParams, ReviewTarget, ThreadArchiveParams,
     ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
@@ -58,6 +58,7 @@ use crate::pane_system::{
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     clamp_all_panes_to_window, dispatch_activity_feed_detail_scroll_event,
+    dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
@@ -101,6 +102,85 @@ use shortcuts::*;
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
+}
+
+pub(crate) fn remote_select_codex_thread(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    let Some(index) = state
+        .autopilot_chat
+        .threads
+        .iter()
+        .position(|candidate| candidate == thread_id)
+    else {
+        return Err(format!("Unknown Codex thread `{thread_id}`"));
+    };
+    actions::sync_chat_composer_draft(state);
+    let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
+        return Err(format!("Failed to select thread `{thread_id}`"));
+    };
+    actions::restore_chat_composer_draft(state);
+    let experimental_api = state.codex_lane_config.experimental_api;
+    let resume_path = if experimental_api { target.path.clone() } else { None };
+    state
+        .autopilot_chat
+        .restore_session_preferences_from_thread(&target.thread_id);
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadResume(
+        ThreadResumeParams {
+            thread_id: target.thread_id.clone(),
+            model: state.autopilot_chat.selected_model_override(),
+            model_provider: None,
+            service_tier: actions::chat_session_service_tier(state),
+            cwd: target.cwd.or_else(|| actions::current_chat_session_cwd(state)),
+            approval_policy: actions::chat_session_approval_policy(state),
+            sandbox: actions::chat_session_thread_sandbox_mode(state),
+            personality: actions::chat_session_personality(state),
+            path: resume_path.map(std::path::PathBuf::from),
+        },
+    ))?;
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadRead(
+        codex_client::ThreadReadParams {
+            thread_id: target.thread_id,
+            include_turns: true,
+        },
+    ))?;
+    state.autopilot_chat.last_error = None;
+    Ok(())
+}
+
+pub(crate) fn remote_submit_codex_prompt(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    state.chat_inputs.composer.set_value(prompt.clone());
+    state.autopilot_chat.record_composer_draft(prompt);
+    let _ = actions::run_chat_submit_action_with_trigger(
+        state,
+        crate::labor_orchestrator::CodexRunTrigger::PersonalAgent,
+    );
+    if let Some(error) = state.autopilot_chat.last_error.clone() {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn remote_interrupt_codex_turn(
+    state: &mut crate::app_state::RenderState,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    let _ = actions::run_chat_interrupt_turn_action(state);
+    if let Some(error) = state.autopilot_chat.last_error.clone() {
+        Err(error)
+    } else {
+        Ok(())
+    }
 }
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
@@ -472,6 +552,12 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if crate::provider_admin::pump_runtime(state) {
+        changed = true;
+    }
+    if crate::codex_remote::pump_runtime(state) {
+        changed = true;
+    }
+    if crate::chat_terminal::pump_runtime(state) {
         changed = true;
     }
     if crate::kernel_control::drain_kernel_projection_updates(state) {
@@ -915,6 +1001,7 @@ fn run_autonomous_goal_loop(state: &mut crate::app_state::RenderState) -> bool {
     let prompt = goal_loop_prompt_for_goal(&goal);
     let pending_before = state.autopilot_chat.pending_turn_metadata.len();
     state.chat_inputs.composer.set_value(prompt);
+    sync_chat_composer_draft(state);
     let _ = run_chat_submit_action_with_trigger(
         state,
         crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
@@ -2063,6 +2150,9 @@ fn dispatch_mouse_scroll(
         } else {
             handled |= dispatch_mission_control_log_scroll_event(state, point, event);
             if !handled {
+                handled |= dispatch_apple_fm_workbench_log_scroll_event(state, point, event);
+            }
+            if !handled {
                 handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
             }
             if !handled {
@@ -2353,6 +2443,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
     handled |= dispatch_local_inference_input_event(state, event);
+    handled |= dispatch_apple_fm_workbench_input_event(state, event);
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
@@ -2559,7 +2650,17 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
         PaneHitAction::ChatNewThread => run_chat_new_thread_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatCycleReasoningEffort => run_chat_cycle_reasoning_effort_action(state),
+        PaneHitAction::ChatCycleServiceTier => run_chat_cycle_service_tier_action(state),
+        PaneHitAction::ChatCyclePersonality => run_chat_cycle_personality_action(state),
+        PaneHitAction::ChatCycleCollaborationMode => {
+            run_chat_cycle_collaboration_mode_action(state)
+        }
+        PaneHitAction::ChatCycleApprovalMode => run_chat_cycle_approval_mode_action(state),
+        PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
+        PaneHitAction::ChatImplementPlan => run_chat_implement_plan_action(state),
+        PaneHitAction::ChatReviewThread => run_chat_review_action(state),
         PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
         PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
         PaneHitAction::ChatCycleSourceFilter => run_chat_cycle_source_filter_action(state),
@@ -2568,6 +2669,9 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatArchiveThread => run_chat_archive_thread_action(state),
         PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
         PaneHitAction::ChatRenameThread => run_chat_rename_thread_action(state),
+        PaneHitAction::ChatReloadThread => run_chat_reload_thread_action(state),
+        PaneHitAction::ChatOpenWorkspaceInEditor => run_chat_open_workspace_in_editor_action(state),
+        PaneHitAction::ChatCopyLastOutput => run_chat_copy_last_output_action(state),
         PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
         PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
         PaneHitAction::ChatUnsubscribeThread => run_chat_unsubscribe_thread_action(state),
@@ -2618,6 +2722,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
+        PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
         PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),
@@ -2895,14 +3000,36 @@ fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
+    if (state.chat_inputs.composer.is_focused() || state.chat_inputs.thread_search.is_focused())
+        && is_chat_terminal_shortcut(logical_key, state.input_modifiers)
+    {
+        focus_chat_composer(state);
+        let prompt = if state
+            .autopilot_chat
+            .active_terminal_session()
+            .is_some_and(|session| session.status.is_active())
+        {
+            "/term restart"
+        } else {
+            "/term open"
+        };
+        state.chat_inputs.composer.set_value(prompt.to_string());
+        state
+            .autopilot_chat
+            .record_composer_draft(prompt.to_string());
+        return run_chat_submit_action(state);
+    }
     handle_focused_keyboard_submit(
         state,
         logical_key,
-        |s| s.chat_inputs.composer.is_focused(),
+        |s| s.chat_inputs.composer.is_focused() || s.chat_inputs.thread_search.is_focused(),
         dispatch_chat_input_event,
         |s| {
             if s.chat_inputs.composer.is_focused() {
                 return run_chat_submit_action(s);
+            }
+            if s.chat_inputs.thread_search.is_focused() {
+                return run_chat_refresh_threads_action(s);
             }
             false
         },
@@ -3282,16 +3409,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
+        ParsedChatTurnPrompt, TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
         build_create_invoice_command, build_goal_attempt_audit_receipts,
         build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
         cad_turn_approval_policy, format_provider_blockers_for_display,
-        goal_labor_linkage_from_binding, is_command_palette_shortcut,
-        is_toggle_fullscreen_shortcut, parse_positive_amount_str, provider_blocker_detail,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
-        terminal_goal_labor_linkage, validate_lightning_payment_request,
+        goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
+        is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
+        provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
+        should_open_command_palette, terminal_goal_labor_linkage,
+        validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
@@ -3314,6 +3442,12 @@ mod tests {
     use std::path::PathBuf;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
+
+    fn parsed_prompt(text: &str) -> ParsedChatTurnPrompt {
+        let (parsed, error) = parse_chat_turn_prompt(text.to_string(), None);
+        assert!(error.is_none(), "unexpected parse error: {error:?}");
+        parsed
+    }
 
     #[test]
     fn parse_positive_amount_str_validates_inputs() {
@@ -3541,6 +3675,38 @@ mod tests {
     }
 
     #[test]
+    fn chat_terminal_shortcut_matches_platform_binding() {
+        let key = WinitLogicalKey::Character("t".into());
+        let cmd_mods = Modifiers {
+            meta: true,
+            shift: true,
+            ..Modifiers::default()
+        };
+        let ctrl_mods = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..Modifiers::default()
+        };
+        let wrong_shift = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+
+        #[cfg(target_os = "macos")]
+        {
+            assert!(is_chat_terminal_shortcut(&key, cmd_mods));
+            assert!(!is_chat_terminal_shortcut(&key, ctrl_mods));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(is_chat_terminal_shortcut(&key, ctrl_mods));
+            assert!(!is_chat_terminal_shortcut(&key, cmd_mods));
+        }
+
+        assert!(!is_chat_terminal_shortcut(&key, wrong_shift));
+    }
+
+    #[test]
     fn validate_lightning_payment_request_rejects_non_invoice_text() {
         let error = validate_lightning_payment_request("not-an-invoice")
             .expect_err("non-invoice requests should fail");
@@ -3586,7 +3752,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_attaches_enabled_skill() {
         let (input, last_error) = assemble_chat_turn_input(
-            "build mezo integration".to_string(),
+            parsed_prompt("build mezo integration"),
             vec![TurnSkillAttachment {
                 name: "mezo".to_string(),
                 path: "/repo/skills/mezo/SKILL.md".to_string(),
@@ -3611,7 +3777,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_rejects_disabled_skill_attachment() {
         let (input, last_error) = assemble_chat_turn_input(
-            "build mezo integration".to_string(),
+            parsed_prompt("build mezo integration"),
             vec![TurnSkillAttachment {
                 name: "mezo".to_string(),
                 path: "/repo/skills/mezo/SKILL.md".to_string(),
@@ -3634,7 +3800,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_orders_and_dedupes_skills_deterministically() {
         let (input, last_error) = assemble_chat_turn_input(
-            "run automation".to_string(),
+            parsed_prompt("run automation"),
             vec![
                 TurnSkillAttachment {
                     name: "pane-control".to_string(),
@@ -3672,7 +3838,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_prefers_user_selected_over_goal_auto_selected_duplicate() {
         let (input, last_error) = assemble_chat_turn_input(
-            "run automation".to_string(),
+            parsed_prompt("run automation"),
             vec![
                 TurnSkillAttachment {
                     name: "blink".to_string(),
@@ -3701,7 +3867,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_orders_goal_auto_selected_before_policy_required() {
         let (input, last_error) = assemble_chat_turn_input(
-            "run automation".to_string(),
+            parsed_prompt("run automation"),
             vec![
                 TurnSkillAttachment {
                     name: "pane-control".to_string(),
@@ -3727,6 +3893,75 @@ mod tests {
         assert!(matches!(
             &input[2],
             UserInput::Skill { name, .. } if name == "pane-control"
+        ));
+    }
+
+    #[test]
+    fn parse_chat_turn_prompt_extracts_mentions_and_images() {
+        let cwd = tempfile::tempdir().expect("temp dir");
+        let image_path = cwd.path().join("diagram.png");
+        let source_path = cwd.path().join("src").join("main.rs");
+        std::fs::create_dir_all(source_path.parent().expect("src parent")).expect("src dir");
+        std::fs::write(&image_path, b"png").expect("image fixture");
+        std::fs::write(&source_path, "fn main() {}").expect("source fixture");
+
+        let (parsed, last_error) = parse_chat_turn_prompt(
+            "/mention src/main.rs | Main File\n/image ./diagram.png\nExplain this.".to_string(),
+            cwd.path().to_str(),
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(parsed.prompt_text, "Explain this.");
+        assert_eq!(parsed.mention_attachments.len(), 1);
+        assert_eq!(parsed.mention_attachments[0].name, "Main File");
+        assert!(parsed.mention_attachments[0].path.ends_with("src/main.rs"));
+        assert_eq!(parsed.image_attachments.len(), 1);
+        assert!(matches!(
+            &parsed.image_attachments[0],
+            super::TurnImageAttachment::Local { path } if path.ends_with("diagram.png")
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_includes_mentions_images_and_skills() {
+        let cwd = tempfile::tempdir().expect("temp dir");
+        let image_path = cwd.path().join("diagram.png");
+        std::fs::write(&image_path, b"png").expect("image fixture");
+        let (parsed, last_error) = parse_chat_turn_prompt(
+            format!(
+                "/mention app://repo | Repo\n/image {}\nReview the attachment.",
+                image_path.display()
+            ),
+            cwd.path().to_str(),
+        );
+        assert!(last_error.is_none());
+
+        let (input, last_error) = assemble_chat_turn_input(
+            parsed,
+            vec![TurnSkillAttachment {
+                name: "blink".to_string(),
+                path: "/repo/skills/blink/SKILL.md".to_string(),
+                enabled: true,
+                source: TurnSkillSource::UserSelected,
+            }],
+        );
+
+        assert!(last_error.is_none());
+        assert!(matches!(
+            &input[0],
+            UserInput::Text { text, .. } if text == "Review the attachment."
+        ));
+        assert!(matches!(
+            &input[1],
+            UserInput::Mention { name, path } if name == "Repo" && path == "app://repo"
+        ));
+        assert!(matches!(
+            &input[2],
+            UserInput::LocalImage { path } if path.ends_with("diagram.png")
+        ));
+        assert!(matches!(
+            &input[3],
+            UserInput::Skill { name, .. } if name == "blink"
         ));
     }
 
@@ -3762,6 +3997,10 @@ mod tests {
                 exclude_slash_tmp: false,
             }),
             model: Some("gpt-5".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         });
         let initial_labor = goal_labor_linkage_from_binding(
             plan.labor_binding
@@ -3903,6 +4142,10 @@ mod tests {
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             model: Some("gpt-5".to_string()),
+            service_tier: None,
+            effort: None,
+            personality: None,
+            collaboration_mode: None,
         });
         let initial_labor = goal_labor_linkage_from_binding(
             plan.labor_binding
@@ -4133,7 +4376,7 @@ mod tests {
     #[test]
     fn assemble_chat_turn_input_keeps_policy_skill_even_if_disabled() {
         let (input, last_error) = assemble_chat_turn_input(
-            "draft cad design".to_string(),
+            parsed_prompt("draft cad design"),
             vec![TurnSkillAttachment {
                 name: "autopilot-cad-builder".to_string(),
                 path: "/managed/skills/autopilot-cad-builder/SKILL.md".to_string(),

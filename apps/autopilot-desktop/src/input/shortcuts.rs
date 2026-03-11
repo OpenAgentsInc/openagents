@@ -48,6 +48,23 @@ pub(super) fn local_inference_inputs_focused(state: &crate::app_state::RenderSta
         || state.local_inference_inputs.top_p.is_focused()
 }
 
+pub(super) fn apple_fm_workbench_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.apple_fm_workbench_inputs.instructions.is_focused()
+        || state.apple_fm_workbench_inputs.prompt.is_focused()
+        || state.apple_fm_workbench_inputs.model.is_focused()
+        || state.apple_fm_workbench_inputs.session_id.is_focused()
+        || state.apple_fm_workbench_inputs.max_tokens.is_focused()
+        || state.apple_fm_workbench_inputs.temperature.is_focused()
+        || state.apple_fm_workbench_inputs.top.is_focused()
+        || state
+            .apple_fm_workbench_inputs
+            .probability_threshold
+            .is_focused()
+        || state.apple_fm_workbench_inputs.seed.is_focused()
+        || state.apple_fm_workbench_inputs.schema_json.is_focused()
+        || state.apple_fm_workbench_inputs.transcript_json.is_focused()
+}
+
 pub(super) fn credentials_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.credentials_inputs.variable_name.is_focused()
         || state.credentials_inputs.variable_value.is_focused()
@@ -55,12 +72,14 @@ pub(super) fn credentials_inputs_focused(state: &crate::app_state::RenderState) 
 
 pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
     state.chat_inputs.composer.is_focused()
+        || state.chat_inputs.thread_search.is_focused()
         || state.calculator_inputs.expression.is_focused()
         || spark_inputs_focused(state)
         || pay_invoice_inputs_focused(state)
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
         || local_inference_inputs_focused(state)
+        || apple_fm_workbench_inputs_focused(state)
         || settings_inputs_focused(state)
         || credentials_inputs_focused(state)
         || state.relay_connections_inputs.relay_url.is_focused()
@@ -91,16 +110,29 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.local_inference_inputs.temperature.blur();
     state.local_inference_inputs.top_k.blur();
     state.local_inference_inputs.top_p.blur();
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
     state.credentials_inputs.variable_name.blur();
     state.credentials_inputs.variable_value.blur();
     state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.thread_search.blur();
 }
 
 pub(super) fn focus_chat_composer(state: &mut crate::app_state::RenderState) {
     blur_non_chat_text_inputs(state);
+    state.chat_inputs.thread_search.blur();
     state.chat_inputs.composer.focus();
 }
 
@@ -195,6 +227,29 @@ pub(super) fn is_toggle_fullscreen_shortcut(
         _ => false,
     };
     if !is_f || modifiers.alt {
+        return false;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        modifiers.meta && !modifiers.ctrl
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        modifiers.ctrl && !modifiers.meta
+    }
+}
+
+pub(super) fn is_chat_terminal_shortcut(
+    logical_key: &WinitLogicalKey,
+    modifiers: Modifiers,
+) -> bool {
+    let is_t = match logical_key {
+        WinitLogicalKey::Character(value) => value.eq_ignore_ascii_case("t"),
+        _ => false,
+    };
+    if !is_t || modifiers.alt || !modifiers.shift {
         return false;
     }
 

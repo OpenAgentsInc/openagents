@@ -229,6 +229,7 @@ fn fail_active_cad_build_session(
 }
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSnapshot) {
+    let previous_lifecycle = state.codex_lane.lifecycle;
     state
         .autopilot_chat
         .set_connection_status(snapshot.lifecycle.label().to_string());
@@ -252,10 +253,19 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
         "lane snapshot lifecycle={}",
         snapshot.lifecycle.label()
     ));
+    state.codex_account.install_available = snapshot.install_probe.available;
+    state.codex_account.install_command = snapshot.install_probe.invocation.clone();
+    state.codex_account.install_version = snapshot.install_probe.version.clone();
     state.codex_lane = snapshot;
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    refresh_codex_readiness_summary(state);
+    if previous_lifecycle != CodexLaneLifecycle::Ready
+        && state.codex_lane.lifecycle == CodexLaneLifecycle::Ready
+    {
+        queue_codex_readiness_refresh(state, true, "lane ready");
+    }
 }
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLaneCommandResponse) {
@@ -317,6 +327,24 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .clone()
                     .unwrap_or_else(|| "turn/start rejected".to_string()),
             );
+            if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+                super::super::actions::restore_last_submission_draft(state, &thread_id);
+            }
+        } else if response.command == CodexLaneCommandKind::TurnSteer {
+            let message = response
+                .error
+                .clone()
+                .unwrap_or_else(|| "turn/steer rejected".to_string());
+            if let Some((thread_id, prompt)) = state
+                .autopilot_chat
+                .take_pending_steer_submission(response.command_seq)
+            {
+                if state.autopilot_chat.is_active_thread(&thread_id) {
+                    state.chat_inputs.composer.set_value(prompt.clone());
+                    state.autopilot_chat.record_composer_draft(prompt);
+                }
+            }
+            state.autopilot_chat.last_error = Some(message);
         } else if response.command == CodexLaneCommandKind::ThreadResume {
             let message = response
                 .error
@@ -351,6 +379,15 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 .error
                 .clone()
                 .or_else(|| Some("codex skills/list failed".to_string()));
+        } else if matches!(
+            response.command,
+            CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport
+        ) {
+            state.skill_registry.load_state = PaneLoadState::Error;
+            state.skill_registry.last_error = response
+                .error
+                .clone()
+                .or_else(|| Some(format!("{} failed", response.command.label())));
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
         tracing::info!(
@@ -360,7 +397,31 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         );
         state.autopilot_chat.last_error = None;
         state.codex_diagnostics.last_error = None;
+    } else if response.command == CodexLaneCommandKind::TurnSteer {
+        tracing::info!(
+            "codex turn/steer accepted seq={} active_thread={:?}",
+            response.command_seq,
+            state.autopilot_chat.active_thread_id
+        );
+        if let Some((thread_id, prompt)) = state
+            .autopilot_chat
+            .take_pending_steer_submission(response.command_seq)
+            && state.autopilot_chat.is_active_thread(&thread_id)
+        {
+            state.autopilot_chat.submit_steer_prompt(prompt.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("turn steer accepted");
+        }
+        state.autopilot_chat.last_error = None;
+        state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
+        state.skill_registry.last_error = None;
+        state.codex_diagnostics.last_error = None;
+    } else if matches!(
+        response.command,
+        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport
+    ) {
         state.skill_registry.last_error = None;
         state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsConfigWrite {
@@ -450,6 +511,19 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .or_else(|| Some("app/list failed".to_string()));
             }
         }
+        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_error = None;
+                state.skill_registry.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.skill_registry.load_state = PaneLoadState::Error;
+                state.skill_registry.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
+            }
+        }
         CodexLaneCommandKind::ReviewStart
         | CodexLaneCommandKind::CommandExec
         | CodexLaneCommandKind::CollaborationModeList
@@ -483,7 +557,65 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         response.command.label(),
         response.status.label()
     ));
+    let refresh_readiness = matches!(
+        response.command,
+        CodexLaneCommandKind::AccountRead
+            | CodexLaneCommandKind::AccountLoginStart
+            | CodexLaneCommandKind::AccountLoginCancel
+            | CodexLaneCommandKind::AccountLogout
+            | CodexLaneCommandKind::AccountRateLimitsRead
+            | CodexLaneCommandKind::ConfigRead
+            | CodexLaneCommandKind::ConfigRequirementsRead
+            | CodexLaneCommandKind::ConfigValueWrite
+            | CodexLaneCommandKind::ConfigBatchWrite
+    );
     state.record_codex_command_response(response);
+    if refresh_readiness {
+        refresh_codex_readiness_summary(state);
+    }
+}
+
+pub(super) fn queue_codex_readiness_refresh(
+    state: &mut RenderState,
+    refresh_token: bool,
+    reason: &str,
+) {
+    state.codex_account.load_state = PaneLoadState::Loading;
+    state.codex_account.last_error = None;
+    state.codex_account.last_action = Some(format!("Queued Codex readiness refresh ({reason})"));
+    state.codex_config.load_state = PaneLoadState::Loading;
+    state.codex_config.last_error = None;
+    state.codex_config.last_action = Some(format!("Queued config truth refresh ({reason})"));
+
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let commands = [
+        CodexLaneCommand::AccountRead(codex_client::GetAccountParams { refresh_token }),
+        CodexLaneCommand::AccountRateLimitsRead,
+        CodexLaneCommand::ConfigRead(codex_client::ConfigReadParams {
+            include_layers: true,
+            cwd,
+        }),
+        CodexLaneCommand::ConfigRequirementsRead,
+        CodexLaneCommand::CollaborationModeList(
+            codex_client::CollaborationModeListParams::default(),
+        ),
+    ];
+    let mut errors = Vec::new();
+    for command in commands {
+        if let Err(error) = state.queue_codex_command(command) {
+            errors.push(error);
+        }
+    }
+    if !errors.is_empty() {
+        let message = errors.join(" | ");
+        state.codex_account.load_state = PaneLoadState::Error;
+        state.codex_account.last_error = Some(message.clone());
+        state.codex_config.load_state = PaneLoadState::Error;
+        state.codex_config.last_error = Some(message);
+    }
+    refresh_codex_readiness_summary(state);
 }
 
 fn queue_skills_list_refresh(state: &mut RenderState) {
@@ -549,13 +681,16 @@ fn queue_apps_list_refresh(state: &mut RenderState, force_refetch: bool) {
 }
 
 fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
-    let cwd = std::env::current_dir().ok();
+    let cwd = super::super::actions::current_chat_session_cwd(state);
     let command = CodexLaneCommand::ThreadStart(ThreadStartParams {
         model: state.autopilot_chat.selected_model_override(),
         model_provider: None,
-        cwd: cwd.and_then(|value| value.into_os_string().into_string().ok()),
-        approval_policy: Some(codex_client::AskForApproval::Never),
-        sandbox: Some(codex_client::SandboxMode::DangerFullAccess),
+        service_tier: super::super::actions::chat_session_service_tier(state),
+        cwd,
+        approval_policy: super::super::actions::chat_session_approval_policy(state),
+        sandbox: super::super::actions::chat_session_thread_sandbox_mode(state),
+        personality: super::super::actions::chat_session_personality(state),
+        ephemeral: None,
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {
@@ -563,6 +698,27 @@ fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
         return false;
     }
     true
+}
+
+fn queue_thread_history_refresh(state: &mut RenderState) {
+    let cwd = super::super::actions::current_chat_session_cwd(state).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|value| value.into_os_string().into_string().ok())
+    });
+    let params = state.autopilot_chat.build_thread_list_params(cwd);
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadList(params)) {
+        state.autopilot_chat.last_error = Some(error);
+        return;
+    }
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadLoadedList(
+        codex_client::ThreadLoadedListParams {
+            cursor: None,
+            limit: Some(200),
+        },
+    )) {
+        state.autopilot_chat.last_error = Some(error);
+    }
 }
 
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
@@ -631,20 +787,27 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.codex_account.load_state = PaneLoadState::Ready;
                 state.codex_account.account_summary = summary;
                 state.codex_account.requires_openai_auth = requires_openai_auth;
+                if state.codex_account.account_summary == "logged out" {
+                    state.codex_account.auth_mode = None;
+                    state.codex_account.rate_limits_summary = None;
+                }
                 state.codex_account.last_action = Some("Loaded account state".to_string());
                 state.codex_account.last_error = None;
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::AccountRateLimitsLoaded { summary } => {
                 state.codex_account.load_state = PaneLoadState::Ready;
                 state.codex_account.rate_limits_summary = Some(summary);
                 state.codex_account.last_action = Some("Loaded account rate limits".to_string());
                 state.codex_account.last_error = None;
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::AccountUpdated { auth_mode } => {
                 state.codex_account.load_state = PaneLoadState::Ready;
                 state.codex_account.auth_mode = auth_mode;
                 state.codex_account.last_action = Some("Received account/updated".to_string());
                 state.codex_account.last_error = None;
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::AccountLoginStarted { login_id, auth_url } => {
                 state.codex_account.load_state = PaneLoadState::Ready;
@@ -653,6 +816,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.codex_account.last_action =
                     Some("Login started; complete auth in browser".to_string());
                 state.codex_account.last_error = None;
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::AccountLoginCompleted {
                 login_id,
@@ -672,18 +836,32 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.codex_account.last_error = if success { None } else { error };
                 state.codex_account.pending_login_id = None;
                 state.codex_account.pending_login_url = None;
+                refresh_codex_readiness_summary(state);
+                if success {
+                    queue_codex_readiness_refresh(state, true, "login completed");
+                }
             }
-            CodexLaneNotification::ConfigLoaded { config } => {
+            CodexLaneNotification::ConfigLoaded {
+                config,
+                origins,
+                layers,
+            } => {
                 state.codex_config.load_state = PaneLoadState::Ready;
                 state.codex_config.config_json = config;
+                state.codex_config.origins_json = origins;
+                state.codex_config.layers_json = layers;
                 state.codex_config.last_action = Some("Loaded config/read".to_string());
                 state.codex_config.last_error = None;
+                refresh_codex_config_truth(state);
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::ConfigRequirementsLoaded { requirements } => {
                 state.codex_config.load_state = PaneLoadState::Ready;
                 state.codex_config.requirements_json = requirements;
                 state.codex_config.last_action = Some("Loaded config requirements".to_string());
                 state.codex_config.last_error = None;
+                refresh_codex_config_truth(state);
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::ConfigWriteApplied { status, version } => {
                 state.codex_config.load_state = PaneLoadState::Ready;
@@ -692,6 +870,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     status, version
                 ));
                 state.codex_config.last_error = None;
+                queue_codex_readiness_refresh(state, false, "config write applied");
             }
             CodexLaneNotification::ExternalAgentConfigDetected { count } => {
                 state.codex_config.load_state = PaneLoadState::Ready;
@@ -699,12 +878,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.codex_config.last_action =
                     Some(format!("Detected {} external agent configs", count));
                 state.codex_config.last_error = None;
+                refresh_codex_readiness_summary(state);
             }
             CodexLaneNotification::ExternalAgentConfigImported => {
                 state.codex_config.load_state = PaneLoadState::Ready;
                 state.codex_config.last_action =
                     Some("External agent config import completed".to_string());
                 state.codex_config.last_error = None;
+                queue_codex_readiness_refresh(state, false, "external config import");
             }
             CodexLaneNotification::McpServerStatusListLoaded {
                 entries,
@@ -816,15 +997,25 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 thread_id,
                 turn_id,
                 review_thread_id,
+                delivery,
+                target,
             } => {
                 state.codex_labs.load_state = PaneLoadState::Ready;
                 state.codex_labs.review_last_thread_id = Some(review_thread_id.clone());
                 state.codex_labs.review_last_turn_id = Some(turn_id.clone());
                 state.codex_labs.last_action = Some(format!(
-                    "Review started for thread={} turn={} reviewThread={}",
-                    thread_id, turn_id, review_thread_id
+                    "Review started for thread={} turn={} reviewThread={} delivery={} target={}",
+                    thread_id, turn_id, review_thread_id, delivery, target
                 ));
                 state.codex_labs.last_error = None;
+                state.autopilot_chat.begin_review_artifact(
+                    &thread_id,
+                    turn_id,
+                    review_thread_id,
+                    delivery,
+                    target,
+                    super::super::actions::current_epoch_millis(),
+                );
             }
             CodexLaneNotification::CommandExecCompleted {
                 exit_code,
@@ -953,13 +1144,30 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     Some("fuzzyFileSearch/sessionStop completed".to_string());
                 state.codex_labs.last_error = None;
             }
-            CodexLaneNotification::SkillsRemoteListLoaded { .. } => {
-                state.codex_diagnostics.last_action =
-                    Some("Ignored skills/remote/list notification (pane removed)".to_string());
+            CodexLaneNotification::SkillsRemoteListLoaded { entries } => {
+                state.skill_registry.remote_skills = entries
+                    .into_iter()
+                    .map(|entry| crate::app_state::SkillRegistryRemoteSkill {
+                        id: entry.id,
+                        name: entry.name,
+                        description: entry.description,
+                    })
+                    .collect();
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_action = Some(format!(
+                    "Loaded {} remote skills",
+                    state.skill_registry.remote_skills.len()
+                ));
+                state.skill_registry.last_error = None;
             }
-            CodexLaneNotification::SkillsRemoteExported { .. } => {
-                state.codex_diagnostics.last_action =
-                    Some("Ignored skills/remote/export notification (pane removed)".to_string());
+            CodexLaneNotification::SkillsRemoteExported { id, path } => {
+                state.skill_registry.last_remote_export_id = Some(id.clone());
+                state.skill_registry.last_remote_export_path = Some(path.clone());
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_action =
+                    Some(format!("Exported remote skill {} to {}", id, path));
+                state.skill_registry.last_error = None;
+                queue_skills_list_refresh(state);
             }
             CodexLaneNotification::SkillsListLoaded { entries } => {
                 state.skill_registry.source = "codex".to_string();
@@ -1011,10 +1219,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         .map(|entry| crate::app_state::AutopilotThreadListEntry {
                             thread_id: entry.thread_id,
                             thread_name: entry.thread_name,
+                            preview: entry.preview,
                             status: entry.status,
                             loaded: entry.loaded,
                             cwd: entry.cwd,
                             path: entry.path,
+                            created_at: entry.created_at,
+                            updated_at: entry.updated_at,
                         })
                         .collect(),
                 );
@@ -1025,8 +1236,71 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             CodexLaneNotification::ThreadReadLoaded {
                 thread_id,
                 messages,
+                latest_plan,
+                latest_review,
+                latest_compaction,
             } => {
                 state.autopilot_chat.remember_thread(thread_id.clone());
+                if let Some(latest_plan) = latest_plan {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    state.autopilot_chat.restore_plan_artifact_from_text(
+                        &thread_id,
+                        latest_plan.turn_id,
+                        &latest_plan.text,
+                        updated_at_epoch_ms,
+                    );
+                } else {
+                    state.autopilot_chat.clear_plan_artifact(&thread_id);
+                }
+                if let Some(latest_review) = latest_review {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    if latest_review.completed {
+                        state.autopilot_chat.restore_review_artifact_from_text(
+                            &thread_id,
+                            latest_review.turn_id,
+                            &latest_review.review,
+                            updated_at_epoch_ms,
+                        );
+                    } else {
+                        state.autopilot_chat.begin_review_artifact(
+                            &thread_id,
+                            latest_review.turn_id,
+                            thread_id.clone(),
+                            "inline",
+                            latest_review.review,
+                            updated_at_epoch_ms,
+                        );
+                    }
+                }
+                if let Some(latest_compaction) = latest_compaction {
+                    let updated_at_epoch_ms = state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(&thread_id)
+                        .and_then(|metadata| metadata.updated_at)
+                        .filter(|value| *value > 0)
+                        .map(|value| value as u64)
+                        .unwrap_or_else(super::super::actions::current_epoch_millis);
+                    state.autopilot_chat.restore_compaction_artifact(
+                        &thread_id,
+                        latest_compaction.turn_id,
+                        updated_at_epoch_ms,
+                    );
+                }
                 if state.autopilot_chat.is_active_thread(&thread_id) {
                     let transcript = messages
                         .into_iter()
@@ -1042,6 +1316,9 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                             (role, message.content)
                         })
                         .collect::<Vec<_>>();
+                    state
+                        .autopilot_chat
+                        .cache_thread_transcript(&thread_id, transcript.clone());
                     if state.autopilot_chat.has_pending_messages() {
                         tracing::info!(
                             "codex thread/read skipped id={} messages={} reason=pending-turn",
@@ -1061,6 +1338,24 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state
                         .autopilot_chat
                         .set_active_thread_transcript(&thread_id, transcript);
+                } else {
+                    let transcript = messages
+                        .into_iter()
+                        .map(|message| {
+                            let role = match message.role {
+                                CodexThreadTranscriptRole::User => {
+                                    crate::app_state::AutopilotRole::User
+                                }
+                                CodexThreadTranscriptRole::Codex => {
+                                    crate::app_state::AutopilotRole::Codex
+                                }
+                            };
+                            (role, message.content)
+                        })
+                        .collect::<Vec<_>>();
+                    state
+                        .autopilot_chat
+                        .cache_thread_transcript(&thread_id, transcript);
                 }
             }
             CodexLaneNotification::ThreadSelected { thread_id } => {
@@ -1076,6 +1371,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     );
                 } else {
                     state.autopilot_chat.ensure_thread(thread_id.clone());
+                    state
+                        .autopilot_chat
+                        .restore_session_preferences_from_thread(&thread_id);
+                    super::super::actions::restore_chat_composer_draft(state);
+                    queue_thread_history_refresh(state);
                     let metadata = state
                         .autopilot_chat
                         .thread_metadata
@@ -1089,11 +1389,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadResume(
                         codex_client::ThreadResumeParams {
                             thread_id: thread_id.clone(),
-                            model: None,
+                            model: state.autopilot_chat.selected_model_override(),
                             model_provider: None,
-                            cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
-                            approval_policy: Some(codex_client::AskForApproval::Never),
-                            sandbox: Some(codex_client::SandboxMode::DangerFullAccess),
+                            service_tier: super::super::actions::chat_session_service_tier(state),
+                            cwd: metadata
+                                .as_ref()
+                                .and_then(|value| value.cwd.clone())
+                                .or_else(|| super::super::actions::current_chat_session_cwd(state)),
+                            approval_policy: super::super::actions::chat_session_approval_policy(
+                                state,
+                            ),
+                            sandbox: super::super::actions::chat_session_thread_sandbox_mode(state),
+                            personality: super::super::actions::chat_session_personality(state),
                             path: resume_path.map(std::path::PathBuf::from),
                         },
                     )) {
@@ -1112,14 +1419,58 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     }
                 }
             }
-            CodexLaneNotification::ThreadStarted { thread_id } => {
+            CodexLaneNotification::ThreadStarted {
+                thread_id,
+                model,
+                cwd,
+                approval_policy,
+                sandbox_mode,
+                service_tier,
+                reasoning_effort,
+            } => {
+                let adopt_detached_draft = state.autopilot_chat.active_thread_id.is_none();
                 state.autopilot_chat.ensure_thread(thread_id.clone());
+                if adopt_detached_draft {
+                    state
+                        .autopilot_chat
+                        .adopt_detached_composer_draft(&thread_id);
+                }
                 state
                     .autopilot_chat
                     .set_active_thread_transcript(&thread_id, Vec::new());
+                state.autopilot_chat.apply_thread_session_configuration(
+                    &thread_id,
+                    model,
+                    cwd,
+                    approval_policy,
+                    sandbox_mode,
+                    service_tier,
+                    reasoning_effort,
+                );
                 state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
                 state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
                 state.autopilot_chat.last_error = None;
+                super::super::actions::restore_chat_composer_draft(state);
+                queue_thread_history_refresh(state);
+            }
+            CodexLaneNotification::ThreadSessionConfigured {
+                thread_id,
+                model,
+                cwd,
+                approval_policy,
+                sandbox_mode,
+                service_tier,
+                reasoning_effort,
+            } => {
+                state.autopilot_chat.apply_thread_session_configuration(
+                    &thread_id,
+                    model,
+                    cwd,
+                    approval_policy,
+                    sandbox_mode,
+                    service_tier,
+                    reasoning_effort,
+                );
             }
             CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
                 let thread_id = resolve_thread_id(state, thread_id);
@@ -1176,16 +1527,21 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .set_thread_status(&thread_id, Some("archived".to_string()));
                 if state.autopilot_chat.thread_filter_archived == Some(false) {
                     state.autopilot_chat.remove_thread(&thread_id);
+                    super::super::actions::restore_chat_composer_draft(state);
                 }
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadUnarchived { thread_id } => {
                 state
                     .autopilot_chat
                     .set_thread_status(&thread_id, Some("idle".to_string()));
                 state.autopilot_chat.remember_thread(thread_id);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadClosed { thread_id } => {
                 state.autopilot_chat.remove_thread(&thread_id);
+                super::super::actions::restore_chat_composer_draft(state);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadNameUpdated {
                 thread_id,
@@ -1194,6 +1550,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state
                     .autopilot_chat
                     .set_thread_name(&thread_id, thread_name);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
                 let thread_id = resolve_thread_id(state, thread_id);
@@ -1510,33 +1867,69 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 }
             }
             CodexLaneNotification::TurnDiffUpdated {
-                thread_id, diff, ..
+                thread_id,
+                turn_id,
+                diff,
             } => {
                 let thread_id = resolve_thread_id(state, thread_id);
                 state.autopilot_chat.remember_thread(thread_id.clone());
-                if state.autopilot_chat.is_active_thread(&thread_id) {
-                    state.autopilot_chat.set_turn_diff(Some(diff));
+                state.autopilot_chat.set_diff_artifact(
+                    &thread_id,
+                    turn_id,
+                    diff,
+                    super::super::actions::current_epoch_millis(),
+                );
+            }
+            CodexLaneNotification::ReviewProgressUpdated {
+                thread_id,
+                turn_id,
+                review,
+                completed,
+            } => {
+                let thread_id = resolve_thread_id(state, thread_id);
+                state.autopilot_chat.remember_thread(thread_id.clone());
+                if completed {
+                    state.autopilot_chat.complete_review_artifact(
+                        &thread_id,
+                        turn_id,
+                        &review,
+                        super::super::actions::current_epoch_millis(),
+                        false,
+                    );
                 }
+            }
+            CodexLaneNotification::ThreadCompacted { thread_id, turn_id } => {
+                let thread_id = resolve_thread_id(state, thread_id);
+                state.autopilot_chat.remember_thread(thread_id.clone());
+                state.autopilot_chat.set_compaction_artifact(
+                    &thread_id,
+                    turn_id,
+                    super::super::actions::current_epoch_millis(),
+                    false,
+                );
             }
             CodexLaneNotification::TurnPlanUpdated {
                 thread_id,
+                turn_id,
                 explanation,
                 plan,
-                ..
             } => {
                 let thread_id = resolve_thread_id(state, thread_id);
                 state.autopilot_chat.remember_thread(thread_id.clone());
-                if state.autopilot_chat.is_active_thread(&thread_id) {
-                    state.autopilot_chat.set_turn_plan(
-                        explanation,
-                        plan.into_iter()
-                            .map(|step| crate::app_state::AutopilotTurnPlanStep {
-                                step: step.step,
-                                status: step.status,
-                            })
-                            .collect(),
-                    );
-                }
+                let updated_at_epoch_ms = super::super::actions::current_epoch_millis();
+                state.autopilot_chat.set_plan_artifact(
+                    &thread_id,
+                    turn_id,
+                    explanation,
+                    plan.into_iter()
+                        .map(|step| crate::app_state::AutopilotTurnPlanStep {
+                            step: step.step,
+                            status: step.status,
+                        })
+                        .collect(),
+                    updated_at_epoch_ms,
+                    false,
+                );
             }
             CodexLaneNotification::ThreadTokenUsageUpdated {
                 thread_id,
@@ -1974,6 +2367,302 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct CodexConfigTruth {
+    summary: String,
+    requirements_summary: String,
+    constraint_summary: Option<String>,
+}
+
+fn refresh_codex_config_truth(state: &mut RenderState) {
+    let truth = derive_codex_config_truth(
+        &state.codex_config.config_json,
+        &state.codex_config.requirements_json,
+        &state.codex_config.layers_json,
+    );
+    state.codex_config.summary = truth.summary;
+    state.codex_config.requirements_summary = truth.requirements_summary;
+    state.codex_config.constraint_summary = truth.constraint_summary;
+}
+
+fn refresh_codex_readiness_summary(state: &mut RenderState) {
+    state.codex_account.config_summary = state.codex_config.summary.clone();
+    state.codex_account.config_requirements_summary =
+        state.codex_config.requirements_summary.clone();
+    state.codex_account.config_constraint_summary = state.codex_config.constraint_summary.clone();
+    state.codex_account.readiness_summary = derive_codex_readiness_summary(
+        &state.codex_account,
+        &state.codex_config,
+        &state.codex_lane,
+    );
+}
+
+fn derive_codex_readiness_summary(
+    account: &crate::app_state::CodexAccountPaneState,
+    config: &crate::app_state::CodexConfigPaneState,
+    lane: &CodexLaneSnapshot,
+) -> String {
+    if !account.install_available {
+        return lane
+            .install_probe
+            .error
+            .as_deref()
+            .map(|error| format!("blocked: {error}"))
+            .unwrap_or_else(|| "blocked: codex executable not found".to_string());
+    }
+
+    match lane.lifecycle {
+        CodexLaneLifecycle::Starting => return "starting: launching Codex lane".to_string(),
+        CodexLaneLifecycle::Error => {
+            return format!(
+                "blocked: {}",
+                lane.last_error
+                    .as_deref()
+                    .unwrap_or("Codex lane reported an error")
+            );
+        }
+        CodexLaneLifecycle::Disconnected => {
+            return format!(
+                "blocked: {}",
+                lane.last_error
+                    .as_deref()
+                    .unwrap_or("Codex lane disconnected")
+            );
+        }
+        CodexLaneLifecycle::Stopped => return "stopped".to_string(),
+        CodexLaneLifecycle::Ready => {}
+    }
+
+    if account.pending_login_id.is_some() {
+        return "auth pending: complete ChatGPT login in browser".to_string();
+    }
+    if account.load_state == PaneLoadState::Loading || config.load_state == PaneLoadState::Loading {
+        return "probing account and config truth".to_string();
+    }
+    if account.load_state == PaneLoadState::Error {
+        return format!(
+            "degraded: {}",
+            account
+                .last_error
+                .as_deref()
+                .unwrap_or("account/read failed")
+        );
+    }
+    if config.load_state == PaneLoadState::Error {
+        return format!(
+            "degraded: {}",
+            config.last_error.as_deref().unwrap_or("config/read failed")
+        );
+    }
+    if account.requires_openai_auth
+        && matches!(account.account_summary.as_str(), "none" | "unknown")
+    {
+        return "auth required: sign in before starting work".to_string();
+    }
+    if let Some(constraint) = account.config_constraint_summary.as_deref() {
+        return format!("ready with managed constraints: {constraint}");
+    }
+    "ready".to_string()
+}
+
+fn derive_codex_config_truth(
+    config_json: &str,
+    requirements_json: &str,
+    layers_json: &str,
+) -> CodexConfigTruth {
+    let config = serde_json::from_str::<serde_json::Value>(config_json).unwrap_or_default();
+    let requirements =
+        serde_json::from_str::<serde_json::Value>(requirements_json).unwrap_or_default();
+    let layers = serde_json::from_str::<serde_json::Value>(layers_json).unwrap_or_default();
+
+    let effective_approval = json_string_field(&config, "approvalPolicy");
+    let effective_sandbox = json_string_field(&config, "sandboxMode");
+    let writable_roots = config
+        .get("sandboxWorkspaceWrite")
+        .and_then(|value| value.get("writableRoots"))
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len);
+    let summary = {
+        let mut parts = vec![
+            format!(
+                "approval={}",
+                effective_approval.as_deref().unwrap_or("n/a")
+            ),
+            format!("sandbox={}", effective_sandbox.as_deref().unwrap_or("n/a")),
+        ];
+        if writable_roots > 0 {
+            parts.push(format!("writable_roots={writable_roots}"));
+        }
+        parts.join(" ")
+    };
+
+    let allowed_approvals = json_string_array_field(&requirements, "allowedApprovalPolicies");
+    let allowed_sandboxes = json_string_array_field(&requirements, "allowedSandboxModes");
+    let allowed_web_search = json_string_array_field(&requirements, "allowedWebSearchModes");
+    let feature_count = requirements
+        .get("featureRequirements")
+        .and_then(serde_json::Value::as_object)
+        .map_or(0, |value| value.len());
+    let residency = json_string_field(&requirements, "enforceResidency");
+    let requirements_summary = {
+        let mut parts = Vec::new();
+        if !allowed_approvals.is_empty() {
+            parts.push(format!("approval={}", allowed_approvals.join(",")));
+        }
+        if !allowed_sandboxes.is_empty() {
+            parts.push(format!("sandbox={}", allowed_sandboxes.join(",")));
+        }
+        if !allowed_web_search.is_empty() {
+            parts.push(format!("web={}", allowed_web_search.join(",")));
+        }
+        if let Some(value) = residency.as_deref() {
+            parts.push(format!("residency={value}"));
+        }
+        if feature_count > 0 {
+            parts.push(format!("features={feature_count}"));
+        }
+        if let Some(network) = requirements.get("network") {
+            let enabled = network
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .map(|value| if value { "enabled" } else { "disabled" })
+                .unwrap_or("managed");
+            let allowed_domains = network
+                .get("allowedDomains")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len);
+            let denied_domains = network
+                .get("deniedDomains")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len);
+            parts.push(format!(
+                "network={enabled} allow_domains={allowed_domains} deny_domains={denied_domains}"
+            ));
+        }
+        if parts.is_empty() {
+            "none".to_string()
+        } else {
+            parts.join(" ")
+        }
+    };
+
+    let selected_approval = first_layer_config_value(&layers, "approvalPolicy");
+    let selected_sandbox = first_layer_config_value(&layers, "sandboxMode");
+    let mut constraints = Vec::new();
+    if let Some(message) = constraint_message(
+        "approval",
+        selected_approval.as_ref(),
+        effective_approval.as_deref(),
+        &allowed_approvals,
+    ) {
+        constraints.push(message);
+    }
+    if let Some(message) = constraint_message(
+        "sandbox",
+        selected_sandbox.as_ref(),
+        effective_sandbox.as_deref(),
+        &allowed_sandboxes,
+    ) {
+        constraints.push(message);
+    }
+
+    CodexConfigTruth {
+        summary,
+        requirements_summary,
+        constraint_summary: (!constraints.is_empty()).then(|| constraints.join(" | ")),
+    }
+}
+
+fn json_string_field(value: &serde_json::Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn json_string_array_field(value: &serde_json::Value, field: &str) -> Vec<String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn first_layer_config_value(layers: &serde_json::Value, field: &str) -> Option<(String, String)> {
+    layers.as_array().and_then(|entries| {
+        entries.iter().find_map(|layer| {
+            let value = layer
+                .get("config")
+                .and_then(|config| config.get(field))
+                .and_then(serde_json::Value::as_str)?;
+            let source = layer
+                .get("name")
+                .map(config_layer_source_label)
+                .unwrap_or_else(|| "unknown".to_string());
+            Some((value.to_string(), source))
+        })
+    })
+}
+
+fn config_layer_source_label(value: &serde_json::Value) -> String {
+    if let Some(value) = value.as_str() {
+        return value.to_string();
+    }
+    let Some(object) = value.as_object() else {
+        return "unknown".to_string();
+    };
+    let Some((kind, details)) = object.iter().next() else {
+        return "unknown".to_string();
+    };
+    if let Some(file) = details.get("file").and_then(serde_json::Value::as_str) {
+        return std::path::Path::new(file)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| format!("{kind}:{value}"))
+            .unwrap_or_else(|| format!("{kind}:{file}"));
+    }
+    kind.to_string()
+}
+
+fn constraint_message(
+    field: &str,
+    selected: Option<&(String, String)>,
+    effective: Option<&str>,
+    allowed: &[String],
+) -> Option<String> {
+    if let Some(effective) = effective
+        && !allowed.is_empty()
+        && !allowed.iter().any(|value| value == effective)
+    {
+        return Some(format!(
+            "effective {field}={effective} is outside requirements ({})",
+            allowed.join(",")
+        ));
+    }
+    let Some((selected_value, source)) = selected else {
+        return None;
+    };
+    let Some(effective) = effective else {
+        return None;
+    };
+    if selected_value == effective || allowed.is_empty() {
+        return None;
+    }
+    if allowed.iter().any(|value| value == selected_value) {
+        return None;
+    }
+    Some(format!(
+        "selected {field}={selected_value} from {source} is disallowed by requirements ({}); effective {field}={effective}",
+        allowed.join(",")
+    ))
+}
+
 fn resolve_thread_id(state: &RenderState, thread_id: String) -> String {
     if thread_id.trim().is_empty() || thread_id == "unknown-thread" {
         if let Some(active_thread_id) = state.autopilot_chat.active_thread_id.clone() {
@@ -2155,6 +2844,9 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         CodexLaneNotification::ThreadReadLoaded { .. } => "thread/read".to_string(),
         CodexLaneNotification::ThreadSelected { .. } => "thread/selected".to_string(),
         CodexLaneNotification::ThreadStarted { .. } => "thread/started".to_string(),
+        CodexLaneNotification::ThreadSessionConfigured { .. } => {
+            "thread/sessionConfigured".to_string()
+        }
         CodexLaneNotification::ThreadStatusChanged { .. } => "thread/status/changed".to_string(),
         CodexLaneNotification::ThreadArchived { .. } => "thread/archived".to_string(),
         CodexLaneNotification::ThreadUnarchived { .. } => "thread/unarchived".to_string(),
@@ -2172,7 +2864,9 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         }
         CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
         CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),
+        CodexLaneNotification::ReviewProgressUpdated { .. } => "item/review/progress".to_string(),
         CodexLaneNotification::TurnPlanUpdated { .. } => "turn/plan/updated".to_string(),
+        CodexLaneNotification::ThreadCompacted { .. } => "thread/compacted".to_string(),
         CodexLaneNotification::ThreadTokenUsageUpdated { .. } => {
             "thread/tokenUsage/updated".to_string()
         }
@@ -2198,9 +2892,16 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{cad_failure_class_from_tool_response, cad_failure_hint_from_tool_response};
-    use crate::app_state::CadBuildFailureClass;
+    use super::{
+        cad_failure_class_from_tool_response, cad_failure_hint_from_tool_response,
+        derive_codex_config_truth, derive_codex_readiness_summary,
+    };
+    use crate::app_state::{
+        CadBuildFailureClass, CodexAccountPaneState, CodexConfigPaneState, PaneLoadState,
+    };
+    use crate::codex_lane::{CodexLaneLifecycle, CodexLaneSnapshot};
     use crate::input::tool_bridge::ToolBridgeResultEnvelope;
+    use codex_client::CodexInstallationProbe;
     use serde_json::json;
 
     #[test]
@@ -2234,6 +2935,75 @@ mod tests {
         assert_eq!(
             cad_failure_class_from_tool_response(&fallback),
             CadBuildFailureClass::IntentParseValidation
+        );
+    }
+
+    #[test]
+    fn codex_config_truth_reports_disallowed_selection_from_layers() {
+        let truth = derive_codex_config_truth(
+            &json!({
+                "approvalPolicy": "on-request",
+                "sandboxMode": "read-only"
+            })
+            .to_string(),
+            &json!({
+                "allowedApprovalPolicies": ["on-request"],
+                "allowedSandboxModes": ["read-only"]
+            })
+            .to_string(),
+            &json!([
+                {
+                    "name": {"user": {"file": "/tmp/config.toml"}},
+                    "version": "user-v1",
+                    "config": {
+                        "approvalPolicy": "never",
+                        "sandboxMode": "danger-full-access"
+                    }
+                }
+            ])
+            .to_string(),
+        );
+
+        assert_eq!(truth.summary, "approval=on-request sandbox=read-only");
+        assert_eq!(
+            truth.requirements_summary,
+            "approval=on-request sandbox=read-only"
+        );
+        let constraint = truth
+            .constraint_summary
+            .as_deref()
+            .unwrap_or("missing constraint summary");
+        assert!(constraint.contains("selected approval=never"));
+        assert!(constraint.contains("selected sandbox=danger-full-access"));
+        assert!(constraint.contains("effective sandbox=read-only"));
+    }
+
+    #[test]
+    fn readiness_summary_blocks_when_install_missing_and_requires_auth() {
+        let mut account = CodexAccountPaneState::default();
+        account.load_state = PaneLoadState::Ready;
+        account.install_available = false;
+        account.requires_openai_auth = true;
+        account.account_summary = "none".to_string();
+
+        let config = CodexConfigPaneState::default();
+        let lane = CodexLaneSnapshot {
+            lifecycle: CodexLaneLifecycle::Error,
+            active_thread_id: None,
+            last_error: Some("Codex lane startup failed: codex executable not found".to_string()),
+            last_status: Some("Codex lane unavailable".to_string()),
+            install_probe: CodexInstallationProbe {
+                available: false,
+                invocation: None,
+                resolved_program: None,
+                version: None,
+                error: Some("codex executable not found".to_string()),
+            },
+        };
+
+        assert_eq!(
+            derive_codex_readiness_summary(&account, &config, &lane),
+            "blocked: codex executable not found".to_string()
         );
     }
 }

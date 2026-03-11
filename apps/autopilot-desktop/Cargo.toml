@@ -19,11 +19,16 @@ path = "src/bin/codex_live_harness.rs"
 name = "spark-wallet-cli"
 path = "src/bin/spark_wallet_cli.rs"
 
+[[bin]]
+name = "autopilot-codex-exec"
+path = "src/bin/autopilot_codex_exec.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+axum = "0.8"
 autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 codex-client = { path = "../../crates/codex-client" }
 psionic-apple-fm = { path = "../../crates/psionic/psionic-apple-fm" }
@@ -50,9 +55,11 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 hex = { workspace = true }
 base64 = "0.22"
 bitcoin = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+getrandom = "0.3"
+futures-util = "0.3"
 
 [dev-dependencies]
-futures-util = "0.3"
 tempfile = "3"
 tokio-tungstenite = "0.24"
 

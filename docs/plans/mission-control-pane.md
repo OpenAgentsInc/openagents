@@ -1,273 +1,173 @@
 # Mission Control Pane
 
-Documentation of the Mission Control UI based on the current design. This describes layout, sections, copy, and behavior visible in the screenshot.
+Mission Control remains the single earn-first shell in
+`apps/autopilot-desktop`. The pane kind stays `PaneKind::GoOnline`.
 
----
+## Product Rule
 
-## Balance & amount display (BIP 177)
+Mission Control is FM-first.
 
-All Bitcoin amounts in Mission Control follow **BIP 177**: the protocol uses whole integers on-chain; the decimal is a display convention only. By default we show the **integer view** so amounts are simpler and match how Bitcoin actually works.
+- `macOS = Apple Foundation Models via the Swift bridge`
+- `non-macOS NVIDIA path = Psionic GPT-OSS CUDA`
+- native Metal GPT-OSS is not the macOS MVP local-model lane
 
-| Convention | Description |
-|------------|-------------|
-| **Default** | Integer view: **₿** (e.g. ₿ 2698437). One unit = one on-chain integer (legacy: 1 sat). No decimal. |
-| **Legacy** | Decimal view: **BTC** (e.g. 0.02698437 BTC). 1 BTC = 100 000 000 integer units. |
-| **Toggle** | One-click in-app toggle: Integer (₿) vs Legacy (BTC). Internally everything remains integers; only the label and formatting change. |
+The key separation is now explicit:
 
-- Use the **₿** symbol and whole numbers for the primary display (wallet balance, earnings, job bounties).
-- Provide a **Legacy (BTC)** option for users who prefer the decimal view; no consensus or backend change required.
-- Keeps wallet and payout state explicit and truthful; no change to underlying data.
+- Mission Control owns provider readiness, wallet truth, job flow, and the
+  Apple FM local-model story on macOS
+- GPT-OSS-specific loading, prompt testing, and runtime troubleshooting live in
+  the separate `GPT-OSS Workbench` pane, not in the main Mission Control shell
 
----
+Mission Control may still gate `GO ONLINE` on the active runtime being ready,
+but it should not behave like the primary GPT-OSS control panel anymore.
 
-## High-Level Overview
+## Layout
 
-Mission Control is a dark-themed dashboard with neon green/teal accents. It is used to sell compute, view earnings, manage wallet state, and monitor status via a log stream. The example state shown is **OFFLINE**.
+Mission Control remains a two-column dashboard.
 
-As of the current MVP desktop contract, Mission Control is also the explicit local-model gate for provider mode. The pane must show the status of the canonical GPT-OSS 20B GGUF, let the user load that model from the host machine, and keep `GO ONLINE` disabled until the model is actually resident in the local Psionic runtime.
+### Left Column
 
----
+`// SELL COMPUTE`
 
-## Header Bar
+- primary CTA: `GO ONLINE`
+- status rows: `Mode`, `Model`, `Backend`, `Load`, `Control`, `Preflight`
+- contextual hint below the state rows when the active local lane is blocked
 
-| Element | Details |
-|--------|---------|
-| **Title** | "MISSION CONTROL" — top-left, monospace, neon green/teal |
-| **Status** | "STATUS: OFFLINE" — top-right; "OFFLINE" in yellow-orange |
-| **Close** | 'X' icon on the far right (dismiss/close) |
+`// EARNINGS`
 
----
+- `Today`
+- `This Month`
+- `All Time`
+- BIP 177 integer display by default, with the existing legacy BTC toggle
 
-## Left Column
+`// WALLET`
 
-### // SELL COMPUTE
+- `Status`
+- `Address`
+- `Balance`
 
-- **Primary CTA:** "GO ONLINE" button
-  - Glowing neon green/teal border and text
-  - Used to start selling compute
-  - Disabled until GPT-OSS 20B is loaded into the local Psionic runtime
-- **Status rows:** show `Mode`, `Model`, `Backend`, `Load`, `Control`, and `Preflight`
-- **Load hint:** when the model is missing, not yet loaded, or still loading, the pane shows a short explanation directly under the SELL COMPUTE block instead of making the user guess why `GO ONLINE` is disabled
+Bottom actions:
 
-### // EARNINGS
+- local-model action
+- `DOCUMENTATION`
 
-Cryptocurrency earnings (BIP 177 integer view by default):
+### Right Column
 
-| Period      | Value (₿)   | Legacy (BTC) equivalent |
-|-------------|-------------|---------------------------|
-| Today       | ₿ 6 284     | 0.00006284 BTC           |
-| This Month  | ₿ 56 439    | 0.00056439 BTC           |
-| All Time    | ₿ 236 579   | 0.00236579 BTC           |
+`// ACTIVE JOBS`
 
-- "All Time" is emphasized (brighter neon green/teal).
-- One-click toggle available: Integer (₿) vs Legacy (BTC).
+- one-line summary of the active job, or `Go Online to Start Jobs.`
 
-### // WALLET
+`// LOG STREAM`
 
-| Field    | Example value (default) | Legacy view      |
-|----------|-------------------------|------------------|
-| Status   | Connected               | —                |
-| Address  | 2836******9aj2          | —                |
-| Balance  | ₿ 2 698 437             | 0.02698437 BTC   |
+- scrolling terminal-style status stream
+- shows provider mode, preflight blockers, local-model readiness, UI actions,
+  provider results, and job lifecycle updates
 
-- **Default:** Balance in BIP 177 integer form (₿), whole numbers, no decimal.
-- One-click toggle: Integer (₿) vs Legacy (BTC).
-- Address is partially masked for privacy.
+## Local-Model Action Contract
 
-### Bottom Actions (Left Column)
+The local-model action is sourced from the same runtime truth that gates
+provider mode.
 
-- **LOAD GPT-OSS 20B** — load the configured local GGUF into the app-owned Psionic runtime. When the model is already resident, the button renders as a disabled `GPT-OSS 20B READY` state. When the GGUF is missing, the pane keeps the action visible but the status copy and log stream must make the missing-artifact path explicit.
-- **DOCUMENTATION** — link to help/manuals for Mission Control.
+On macOS:
 
----
+- `START APPLE FM` when the bridge is offline
+- `REFRESH APPLE FM` when the bridge is reachable but not ready
+- `STARTING APPLE FM` while bridge start is already in flight
+- `OPEN APPLE FM` when the bridge and system model are ready
 
-## Right Column
+On the non-macOS NVIDIA CUDA path:
 
-### // ACTIVE JOBS
+- `OPEN GPT-OSS WORKBENCH`
 
-- Section for currently running jobs.
-- When offline: message **"Go Online to Start Jobs."**
-- Reinforces that no jobs run until status is online.
+That button only opens the separate GPT-OSS pane. It does not warm, load,
+unload, or debug GPT-OSS directly from Mission Control.
 
-### // LOG STREAM
+If neither supported lane is available, the action is disabled and Mission
+Control says so plainly.
 
-A single pane on the right (roughly two-thirds of the right column) used only for a **log stream**.
+## GO ONLINE Gate
 
-- **Purpose:** Display dynamic status output: log lines, status updates, notifications. No table, no job list—just a scrolling stream of text.
-- **Layout:** Large rectangular area with a clear border; most of the space is for the stream. Content flows from top (e.g. latest at bottom or top, per product choice).
-- **Example content when idle:** e.g. "No local model found." or similar status line.
-- **Required model lines:** the stream should include truthful GPT-OSS model lines such as:
-  - `Local GPT-OSS 20B missing at ...`
-  - `Local GPT-OSS 20B is loading.`
-  - `Local GPT-OSS 20B ready on Psionic cuda.`
-- **Style:** Same dark theme and monospace as the rest of Mission Control; readable, minimal chrome so the log is the focus.
+`GO ONLINE` only unlocks when the active local backend is ready:
 
----
+- on macOS: Apple FM bridge reachable, model available, and ready
+- on the NVIDIA GPT-OSS CUDA path: the configured model is actually resident
 
-## Visual Styling
+Mission Control must not gate macOS provider mode on GGUF artifact presence.
+On NVIDIA hosts, Mission Control may reflect whether the local model is ready,
+but the actual GPT-OSS load/troubleshooting workflow belongs in the separate
+workbench.
 
-| Aspect | Description |
-|--------|-------------|
-| **Background** | Dark gray/black |
-| **Accents** | Neon green/teal; yellow-orange for "OFFLINE" |
-| **Font** | Monospace, technical/code-editor feel |
-| **Layout** | Two main columns; left = controls/summary, right = larger log-stream pane; rounded panels/cards |
-| **Buttons** | Clear borders and labels; "GO ONLINE" has a glow |
+## Log Stream Copy
 
----
+The log stream must reflect backend truth without turning Mission Control into a
+second GPT-OSS debugging pane.
 
-## Summary of Copy and Labels
+Examples on macOS:
 
-- **Title:** MISSION CONTROL
-- **Status label:** STATUS: OFFLINE
-- **Section labels:** // SELL COMPUTE, // EARNINGS, // WALLET, // ACTIVE JOBS, // LOG STREAM
-- **CTAs:** GO ONLINE, LOAD GPT-OSS 20B, DOCUMENTATION
-- **Empty state:** Go Online to Start Jobs.
-- **Right pane:** LOG STREAM — single pane for log/status stream only (no job table).
-- **Amount display:** BIP 177 integer (₿) by default; one-click toggle to Legacy (BTC).
-- **Provider gate:** `GO ONLINE` stays disabled until Mission Control shows GPT-OSS 20B as `loaded`.
+- `Apple Foundation Models ready via Swift bridge (...)`
+- `Apple Foundation Models unavailable: ...`
+- `Apple Foundation Models bridge reachable but not ready yet.`
+- `Apple Foundation Models bridge is not running.`
 
----
+Examples on the non-macOS NVIDIA path:
 
----
+- `NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane.`
+- `Open the separate GPT-OSS workbench to load and validate the NVIDIA local model.`
 
-## Audit: Panes in WGPUI and Autopilot-Desktop
+Do not stream GPT-OSS artifact-path, warm/load-progress, or prompt-playground
+details in Mission Control. Those belong in `GPT-OSS Workbench`.
 
-### WGPUI (crates/wgpui) — reusable pane and section components
+## Pane Visibility Contract
 
-| Location | Component | Purpose |
-|----------|-----------|---------|
-| **HUD** (`components/hud/`) | `PaneFrame` | Titled pane chrome: title, optional close (X), `content_bounds` below title bar. Active vs default border; glow when active. |
-| **HUD** | `ResizablePane` | Wrapper with optional edge/corner resize handles; min/max size; `on_resize` callback; optional background/border. |
-| **Sections** (`components/sections/`) | `TerminalPane` | Scrollable log: `TerminalLine` (stream: Stdout/Stderr, text), `push_line()`, `clear()`, `auto_scroll`, max_lines, line_height. Mono font, clip, scrollbar. |
-| **Sections** | `MetricsPane` | Structured metrics (APM, queue, usage, last PR). Not used for Mission Control. |
-| **Sections** | `CodePane`, `ThreadView`, `ThreadHeader`, `MessageEditor`, `TrajectoryView` | Chat/code/thread UI. Not used for Mission Control. |
+To keep the local-model story clean:
 
-**Primitives (used inside panes):** `Button`, `Text`, `TextInput`, `ScrollView`, `Tabs`, `Modal`, `Div`, `Dropdown`, `VirtualList` (see `crates/wgpui/src/components/mod.rs`).
+- `Mission Control` and `Apple FM Workbench` are the user-facing Apple FM
+  surfaces on macOS
+- the `GPT-OSS Workbench` pane is hidden on macOS
+- non-macOS builds keep that pane enabled, but it is presented as
+  `GPT-OSS Workbench`
 
-**App ownership:** `docs/OWNERSHIP.md` — pane orchestration and product behavior live in `apps/autopilot-desktop`; wgpui provides product-agnostic UI only.
+## Data Sources
 
-### Autopilot-Desktop — pane kinds and Mission Control mapping
+Mission Control is app-owned. It renders from:
 
-- **Pane registry** (`pane_registry.rs`): Each pane has a `PaneSpec` (kind, title, default size, singleton, startup, command). Mission Control is **`PaneKind::GoOnline`**: title "Mission Control", id `pane.mission_control`, startup pane, singleton.
-- **Pane chrome:** Every floating pane uses a shared `PaneFrame` per pane (in `DesktopPane.frame`); `pane_system.rs` paints `pane.frame.paint(pane.bounds, paint)` then content via `PaneRenderer` with `content_bounds = pane_content_bounds(pane.bounds)`.
-- **Content dispatch:** `pane_renderer.rs` switches on `pane.kind`; `PaneKind::GoOnline` → `paint_go_online_pane(content_bounds, provider_runtime, …)`.
-- **Current GoOnline layout:** Custom paint only. Three cards: left = "Provider Rig", right = "Wallet + First Earnings", bottom = "Job Flow". No wgpui `TerminalPane` or `Button` used yet; all quads and text via `paint.scene` / `paint.text`.
+- `ProviderRuntimeState` for provider mode, active backend, and blockers
+- `AppleFmBridgeSnapshot` / `ProviderAppleFmRuntimeState` for Apple FM truth
+- `LocalInferenceExecutionSnapshot` / `ProviderOllamaRuntimeState` for the
+  NVIDIA GPT-OSS CUDA gate
+- `SparkPaneState` for wallet truth
+- `EarnJobLifecycleProjectionState`, `JobInboxState`, and `ActiveJobState` for
+  job visibility
 
-**Other relevant panes (for reference):** ProviderStatus, EarningsScoreboard, JobInbox, ActiveJob, JobHistory, SparkWallet, LocalInference, Settings, Credentials, etc. (40+ `PaneKind` variants in `app_state.rs`).
+There should not be a second inferred status path for Mission Control copy.
 
----
+## Implementation Grounding
 
-## Relationship to current Mission Control pane — change in place
+The current implementation lives in:
 
-**Decision: change the existing Mission Control pane in place.** Do not add a new pane or a second “Mission Control” surface. The same `PaneKind::GoOnline` pane stays the single earn-first shell; we refactor its content layout and replace the Job Flow card with a log stream.
+- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-desktop/src/pane_renderer.rs`
+- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-desktop/src/pane_registry.rs`
 
-**Current implementation (as shipped):**
+Related local-model runtime panes live in:
 
-- **Chrome:** Title “Mission Control”, subtitle “Earn-first shell for provider state, wallet truth, and job flow.” Buttons/tabs: “Go Online”, “Mission Control”.
-- **Layout:** Three cards in one view:
-  - **Left card — “Provider Rig”:** Lane, Backend, Control, Projection, Settlement, Mode, Local inference, Apple FM, Serving model, Preflight clear (or blocker list).
-  - **Right card — “Wallet + First Earnings”:** Wallet (β0 / amount), Wallet status, Today, Lifetime, Jobs today, First earnings progression (milestone + progress bar).
-  - **Bottom card — “Job Flow”:** Active job line (“No active job yet”), then rows of job previews (e.g. OPEN, amount, nip90 kind, id, preview/accept).
-- **Data:** Same sources (provider_runtime, spark_wallet, earnings_scoreboard, job_inbox, active_job). Amounts already shown in integer style (e.g. β0) in some builds.
+- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
+- `apps/autopilot-desktop/src/panes/apple_fm_workbench.rs`
+- `apps/autopilot-desktop/src/panes/local_inference.rs`
+- `crates/psionic/psionic-apple-fm`
 
-**Target design (from this doc):**
+## Definition Of Done
 
-- **Chrome:** “MISSION CONTROL” title, STATUS: OFFLINE (or online) in header, close (X). Optional subtitle; “Go Online” as the primary CTA in content, not a tab.
-- **Layout:** Two columns, not three cards:
-  - **Left column:** // SELL COMPUTE (GO ONLINE button + model rows), // EARNINGS (Today / This Month / All Time in ₿), // WALLET (status, masked address, balance in ₿), LOAD GPT-OSS 20B, DOCUMENTATION.
-  - **Right column:** // ACTIVE JOBS (one-line summary or “Go Online to Start Jobs.”), then **// LOG STREAM** — a single scrolling log pane (e.g. TerminalPane), replacing the Job Flow card’s job rows. Status lines like “No local model found.” or provider/job events go here.
+Mission Control is correct when all of the following are true:
 
-**What to reuse vs replace:**
-
-| Current | Target | Action |
-|--------|--------|--------|
-| Provider Rig card | Left column “provider” state | Move or condense into left column or a compact block (e.g. mode + preflight); keep same data. |
-| Wallet + First Earnings card | // EARNINGS + // WALLET in left column | Reuse data; restate as section labels and BIP 177 ₿; keep first-earnings milestone. |
-| Job Flow card (active job + job rows) | ACTIVE JOBS one-liner + LOG STREAM | Replace job list with log stream pane; keep “Active job: …” summary line only. |
-| Go Online as tab/button | GO ONLINE as primary CTA in left column | Single prominent button in // SELL COMPUTE. |
-| Single pane (GoOnline) | Same | No new pane; same `paint_go_online_pane` entry point, refactored layout. |
-
-So the plan is a **refactor of the existing Mission Control pane**: same pane kind, same data, new two-column layout and a dedicated log stream instead of the current Job Flow card.
-
----
-
-## Backend and data flow — Nostr, relays, real jobs
-
-**Confirmed:** The Mission Control pane is already backed by real backend functionality. Jobs are not mock-only.
-
-1. **Nostr NIP-90 and relays**
-   - Job requests are NIP-90 events (kind 5000–5999) on Nostr. The app uses `ProviderNip90LaneWorker` (`provider_nip90_lane.rs`), which connects to the configured relays (e.g. from settings), subscribes with `autopilot-provider-nip90-ingress` and filters for job request kinds, and receives events from the relay pool.
-   - Each received `Event` is converted to `JobInboxNetworkRequest` via `event_to_inbox_request(event)` (NIP-90 parsing, capability, price_sats, etc.).
-
-2. **Ingress into app state**
-   - The worker emits `ProviderNip90LaneUpdate::IngressedRequest(request)`. The input reducer (`input/reducers/mod.rs`) calls `provider_ingress::apply_ingressed_request(state, request)`, which upserts into `state.job_inbox.requests` and updates `job_inbox.last_action` (e.g. "Observed preview" when offline, "Ingested live" when online).
-
-3. **What Mission Control shows**
-   - The current Mission Control pane (GoOnline) paints from the same `job_inbox` and `active_job`: the "Job Flow" card uses `job_inbox.requests` (e.g. `recent_requests = job_inbox.requests.iter().rev().take(5)`). So **the jobs listed are real jobs from relays** (or from starter demand — see below), not a separate mock list.
-
-4. **Preview vs online**
-   - When the provider is **offline**, the lane can still be in Preview/Connecting: it stays subscribed to relays and ingresses events, but they are shown as "preview" (not claimable). When the user clicks **Go Online**, the provider goes online and new/updated jobs become claimable; the same `job_inbox` continues to be fed from the same relay ingress.
-
-5. **Starter demand (optional)**
-   - Jobs can also come from **StarterDemand** (local simulator via `OPENAGENTS_ENABLE_LOCAL_STARTER_DEMAND_SIMULATOR` or hosted starter demand on the OpenAgents Nexus relay). Those are also upserted into `job_inbox` and appear in the same list.
-
-**Conclusion:** Backend functionality for Nostr and relays is in place; Mission Control already displays real jobs from relays (and optional starter demand). The planned refactor (log stream instead of job list in the right column) does **not** change where jobs come from or how they are ingested; it only changes how we present the right-hand area (log stream vs job rows). The "Active job" summary and any job-related log lines we feed into the new log stream will still reflect the same `active_job` and `job_inbox` state.
-
----
-
-## Implementation plan: Mission Control pane (grounded in existing components)
-
-Goal: Refactor the existing Mission Control pane (`paint_go_online_pane`) to the design above: left column = SELL COMPUTE / EARNINGS / WALLET / actions; right column = ACTIVE JOBS summary + LOG STREAM (wgpui TerminalPane). Replace the current three-card “Job Flow” area with the log stream; keep using existing components and pane system.
-
-### 1. Pane and chrome (unchanged)
-
-- **Pane:** Keep using `PaneKind::GoOnline` and existing `PaneSpec` (Mission Control, singleton, startup). No new `PaneKind`.
-- **Chrome:** Keep using `PaneFrame` for title + close; title can be set to "MISSION CONTROL", status (e.g. OFFLINE) in header or first content row.
-
-### 2. Layout within `paint_go_online_pane`
-
-- **Left column** (~1/3 width): // SELL COMPUTE (GO ONLINE button), // EARNINGS (Today / This Month / All Time in ₿), // WALLET (status, address, balance in ₿), DOWNLOAD GPT-1234, DOCUMENTATION. Use wgpui `Button` for actions; label/value lines with existing paint helpers; BIP 177 integer view by default.
-  - `GO ONLINE` must render disabled until the current `LocalInferenceRuntimeSnapshot` reports `ready_model`.
-  - The SELL COMPUTE section must surface the current GPT-OSS rows directly from the app-owned local-runtime seam: configured model, backend label, load status, and any missing-artifact or loading hint.
-- **Right column** (remainder): // ACTIVE JOBS summary line or "Go Online to Start Jobs."; **// LOG STREAM** — single pane using **wgpui `TerminalPane`**.
-
-### 3. Log stream with `TerminalPane`
-
-- **Component:** `wgpui::components::sections::{TerminalPane, TerminalLine, TerminalStream}` — scrollable mono log, `push_line()`, `clear()`, `auto_scroll`, max_lines.
-- **State:** Add mission control log buffer in app state (e.g. `Vec<TerminalLine>` or state holding a `TerminalPane`). Feed lines from provider status ("No local model found.", blockers, mode changes), download progress, job lifecycle.
-- **Model truth:** the log stream must reflect the same app-owned GPT-OSS state used by the button gate, not a second inferred status path.
-- **Rendering:** In `paint_go_online_pane`, compute `log_stream_bounds` (right column, below ACTIVE JOBS); call `terminal_pane.paint(log_stream_bounds, paint)` (or equivalent from state).
-- **Events:** In `pane_system.rs`, when hit is inside log stream bounds, route scroll/mouse to TerminalPane so scroll works.
-
-### 4. BIP 177 and copy
-
-- Amounts: integer (₿) strings via existing formatting; optional legacy BTC toggle in state. No backend change.
-- Copy: section labels and CTAs from "Summary of Copy and Labels" in this doc.
-
-### 5. Files to touch (summary)
-
-| Area | Change |
-|------|--------|
-| `app_state.rs` | Add mission control log state (TerminalLine buffer or TerminalPane). Optional BIP 177 legacy toggle. |
-| `pane_renderer.rs` | Refactor `paint_go_online_pane`: two-column layout; left = GO ONLINE + GPT-OSS model rows + earnings + wallet + actions; right = active job + TerminalPane log stream. Replace current three-card Job Flow with right-column log. |
-| `pane_system.rs` | Hit-test and event routing for log stream bounds; forward scroll/events to TerminalPane. |
-| `pane_registry.rs` | No change. |
-| `crates/wgpui` | No change; use existing PaneFrame, Button, TerminalPane, TerminalLine, TerminalStream. |
-
-### 6. Validation
-
-- Mission Control opens as startup pane; header "MISSION CONTROL" and status.
-- Left: GO ONLINE, earnings (₿), wallet (₿), download/docs.
-- Left: GO ONLINE is disabled until GPT-OSS 20B is loaded; SELL COMPUTE shows model/backend/load truth.
-- Right: active job summary + scrolling log (e.g. "No local model found." when idle).
-- Wallet and payout state explicit and truthful; sync/replay unchanged per MVP.
-
----
-
-## Implementation Notes (for MVP)
-
-- Align with `docs/MVP.md` and `docs/OWNERSHIP.md`.
-- Wallet and payout state must be explicit and truthful in UI and behavior.
-- Sync and state continuity should remain deterministic and replay-safe.
-- **Balance display:** Implement BIP 177 integer view (₿) as default; legacy BTC view is a UI toggle only (one field/label change). No consensus or backend change; same on-chain integers throughout.
+- macOS Mission Control speaks Apple FM truth instead of GPT-OSS-specific copy
+- the local-model action and `GO ONLINE` gate are honest about backend
+  readiness
+- provider blockers and log lines come from the same backend/runtime state that
+  provider mode uses
+- macOS does not expose a competing GPT-OSS local-model pane in the command
+  palette
+- GPT-OSS-specific loading and troubleshooting are handled in the separate
+  `GPT-OSS Workbench` pane rather than in Mission Control

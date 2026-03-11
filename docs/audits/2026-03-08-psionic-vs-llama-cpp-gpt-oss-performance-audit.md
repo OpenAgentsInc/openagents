@@ -1345,9 +1345,9 @@ Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.24 tok/s`
-  - `6.47 tok/s`
-  - `10.50 tok/s`
+  - `2.24-2.30 tok/s`
+  - `6.43-6.64 tok/s`
+  - `10.41-10.75 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1411,6 +1411,47 @@ What the newest kept checkpoint proved:
   expanded-slot layer set
   (`10, 12, 18, 21, 22, 23, 25, 26, 28, 29, 31, 32, 33, 34, 35`), which
   nudged the exact-contract floor to `2.24 / 6.47 / 10.50 tok/s`
+- the newest kept follow-up after that is a narrower hot-layer bump on top of
+  the profiled layout:
+  layers `23, 25, 28, 29` now keep `7` cache slots, the earlier expanded set
+  stays at `6`, and the remaining hybrid layers stay at `5`
+- on the exact contract that moved the latest kept checkpoint to
+  `2.26 / 6.43 / 10.55 tok/s`
+- the newest kept follow-up after that narrows the expanded set and spends the
+  saved slot budget back onto the proven hot layers:
+  layers `23, 25, 28, 29` now keep `8` cache slots, layers
+  `10, 18, 21, 22, 26, 31, 33` keep `6`, and the remaining hybrid layers stay
+  at `5`
+- on the exact contract that nudged the latest kept checkpoint to
+  `2.26 / 6.51 / 10.57 tok/s`
+- that `10.57 tok/s` hit did not hold up as the reproducible floor: after the
+  later dead-end branches were reverted, fresh reruns on the same pushed code
+  kept clustering in the `10.48-10.50 tok/s` class, so the truthful current
+  reproducible checkpoint should still be treated as about
+  `2.25 / 6.45-6.50 / 10.50 tok/s`
+- more 120B follow-ups are now ruled out too:
+  an exact-prompt hybrid selected4 template-restore branch came back at about
+  `2.25 / 6.40 / 10.48 tok/s`, several more memory-neutral prompt-hit-driven
+  slot redistributions stayed in the `10.31-10.50 tok/s` band, a
+  previous-request protected-expert eviction policy landed around
+  `2.26 / 6.40 / 10.42 tok/s`, and simply shrinking the benchmark context to
+  `512` was effectively flat at about `2.25 / 6.48 / 10.48 tok/s`
+- the newest kept follow-up after that came from the per-layer cache telemetry,
+  not from another abstract slot heuristic:
+  one prompt-cache-hit trace showed the last hybrid MoE layer still had no
+  layer cache at all. It reported about `10.34 GB` of staged bytes with zero
+  cache hits or misses, which means it was falling through the no-cache path
+  and restaging every selected expert on every decode step
+- the kept fix rebalanced a small amount of slot budget away from low-yield
+  layers `14, 15, 19, 20, 32`, leaving them at `4` slots, while preserving the
+  existing hot and expanded layers and restoring a real `5`-slot cache on layer
+  `35`
+- that checkpoint moved the exact 120B contract to about
+  `2.30 / 6.64 / 10.75 tok/s`
+- the debug rerun on that kept branch confirmed the structural fix:
+  layer `35` dropped to about `2.03 GB` of staged bytes and now shows real
+  cache reuse (`43` hits / `153` misses) instead of the earlier uncached
+  `10.34 GB` no-cache behavior
 
 What the remaining gap now points to:
 
@@ -1425,6 +1466,59 @@ What the remaining gap now points to:
   keep the hybrid hidden state resident on CUDA across the host-backed
   selected4 lane and now reduce or restructure the remaining selected-expert
   staging that still forces heavy per-token PCIe traffic
+- new debug-enabled prompt-cache-hit evidence on that kept branch makes the
+  remaining gap sharper:
+  `step_wall_ns` was about `8.76 s` for `49` generated tokens, while the
+  timed kernel buckets only covered about `0.86 s` total
+  (`router_ns ~117 ms`, `attention_ns ~118 ms`,
+  `attention_output_projection_ns ~69 ms`,
+  `expert_projection_ns ~476 ms`, `logits_projection_ns ~50 ms`).
+  That means the surviving 120B wall time is still dominated by work outside
+  the timed kernels, and the selected4 cache-fill path remains the most
+  credible culprit.
+- newly ruled out after that timing check:
+  an LFU/LRU mixed selected4 eviction policy regressed prompt-cache-hit to
+  about `10.32 tok/s`, a reprofiled sixth-slot layer set built from the newest
+  per-layer staged-byte trace regressed to about `10.41 tok/s`, a
+  memory-neutral hot/mid/cold `7/6/4` slot rebalance regressed to about
+  `10.35 tok/s`, and a pinned-host async region-copy rewrite of the decode-lane
+  selected4 cache-fill path cratered the cold and warm lanes while leaving
+  prompt-cache-hit essentially flat at about `10.30 tok/s`.
+- two more nearby 120B cache-shape ideas are now ruled out too:
+  a more concentrated memory-neutral `8/6/5` hot-layer slot skew still stayed
+  below the kept branch at about `10.44 tok/s`, and disabling selected4 layer
+  caches entirely on the historically low-hit 120B layers cratered the exact
+  contract to about `1.64 tok/s` cold, `4.68 tok/s` warm-non-hit, and
+  `7.43 tok/s` prompt-cache-hit.
+- a follow-up `nsys` capture on the restored kept branch sharpened the same
+  conclusion:
+  the exact cold / warm-non-hit / prompt-cache-hit trace recorded `190,411`
+  host-to-device copies totaling about `333 GB`, with `cudaMemcpy` itself
+  consuming about `25.09 s` of CUDA API time and `cudaStreamSynchronize`
+  another `4.70 s`. The dominant copy size was `4,406,400` bytes, repeated
+  `71,678` times. That is the surviving selected-expert staging traffic in the
+  hybrid host-backed MoE lane, not the dense CUDA kernels.
+- three more 120B follow-ups are now ruled out after that capture:
+  a decode-lane async host-region selected4 cache-fill rewrite still lost on
+  the real benchmark at about `1.65 / 5.53 / 10.46 tok/s`, a direct
+  top-miss-based sixth-slot reallocation regressed to about
+  `1.65 / 5.51 / 10.39 tok/s`, and a narrower ratio-guided sixth-slot swap
+  regressed to about `2.23 / 6.41 / 10.45 tok/s`. A more aggressive
+  `0/5/6/7` cache layout failed on the very first cold request and was
+  reverted immediately.
+- updated conclusion:
+  `#3345` should stay focused on cutting or restructuring selected-expert
+  staging itself. The new evidence argues against retrying small cache-geometry
+  tweaks or scratch-copy rewrites blindly; those are now ruled-out branches on
+  this host.
+- updated concrete next step:
+  the tail-layer restore proves there was still real cache-allocation waste to
+  recover, but it does not change the main missing substrate. The next
+  credible engineering move is still the same narrow `#3360` target:
+  eliminate one of the large selected4 staging legs, starting with the full
+  host-backed down-expert tensor, so the existing ids-driven grouped expert
+  down path can run without repacking those selected down weights every step
+  before tackling the larger gate/up packed-kernel gap.
 
 Relevant `llama.cpp` references for that next step:
 

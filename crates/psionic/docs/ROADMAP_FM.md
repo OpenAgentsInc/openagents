@@ -116,16 +116,13 @@ What the retained tree has today:
 
 What the retained tree does not have today:
 
-- a reusable Psionic Apple FM crate or Rust SDK surface
-- session handles or transcript restore semantics
-- streaming
-- structured generation
-- tools
 - typed error mapping
-- truthful generation options coverage
 - Apple FM as the default Mac local inference lane
 - a Mission Control pane that speaks Apple FM truth on macOS instead of
   hard-coded GPT-OSS 20B load semantics
+- desktop chat/workbench cutover onto the same Apple FM runtime truth the
+  provider path already consumes
+- exact or richer typed usage truth beyond today's explicitly estimated counts
 
 The Python SDK makes the gap unmistakable: Apple FM is not just "one endpoint
 that returns a string." It is a full sessioned API with streaming, transcript
@@ -153,7 +150,8 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1` is now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, `FM-7`, `FM-8`, `FM-9`, and
+`FM-10` are now landed on `main`.
 
 What shipped:
 
@@ -169,40 +167,154 @@ What shipped:
 - `crates/psionic/docs/FM_API_COVERAGE_MATRIX.md` exists as the living
   conformance matrix mapping the exported Python SDK surface and behavior
   families to the Rust/Psionic roadmap
+- `psionic-apple-fm` now exposes typed `SystemLanguageModel`-equivalent Rust
+  model/configuration state via `AppleFmSystemLanguageModel`,
+  `AppleFmSystemLanguageModelUseCase`,
+  `AppleFmSystemLanguageModelGuardrails`, and
+  `AppleFmSystemLanguageModelUnavailableReason`
+- bridge `/health` and `/v1/models` responses now carry typed Apple FM
+  availability/use-case/guardrail truth, and the reusable client reconstructs
+  that truth as `AppleFmSystemLanguageModelAvailability`
+- `apps/autopilot-desktop` Apple FM runtime state now carries typed system-model
+  readiness/configuration fields instead of collapsing everything into a single
+  availability string
+- the bridge now owns explicit Apple FM session IDs, per-session model/instruction
+  binding, reset/get/delete/respond endpoints, and transcript-backed restore from
+  raw transcript JSON
+- the reusable Rust client now owns session lifecycle APIs instead of relying on
+  one hidden shared Swift `LanguageModelSession`
+- the old one-shot `/v1/chat/completions` path no longer depends on a hidden
+  long-lived shared session; it now uses an ephemeral session per request
+- `psionic-apple-fm` now exposes first-class Rust `AppleFmGenerationOptions`,
+  `AppleFmSamplingMode`, and `AppleFmSamplingModeType` with Python-SDK-matching
+  validation for temperature, maximum response tokens, and `top` versus
+  `probability_threshold`
+- the reusable Rust lane now has first-class plain-text generation request and
+  response types instead of only the OpenAI-compatible chat envelope
+- session response requests and one-shot chat requests now carry typed Apple FM
+  generation options through the bridge
+- the Swift bridge now applies those generation options to real
+  `LanguageModelSession.respond(..., options: ...)` calls for both one-shot and
+  sessioned text generation
+- the bridge no longer reports derived token counts as authoritative raw usage;
+  usage detail now marks the current counts as `estimated`
+- the compatibility chat endpoint now rejects `stream: true` instead of
+  silently ignoring it before `FM-5`
+- the bridge now exposes a true session streaming endpoint at
+  `/v1/sessions/{id}/responses/stream` using SSE snapshot events
+- `psionic-apple-fm` now exposes a dedicated async Apple FM bridge client and
+  reusable async stream surface for session streaming
+- session streaming now yields full response snapshots, not token deltas, and
+  terminal completion events include final session state plus usage detail
+- the bridge now keeps transcript snapshots stable during in-flight streaming
+  and only updates the visible session transcript after successful completion
+- early client-side stream cancellation now restores the session promptly so a
+  same-session follow-up request can succeed without manual reset
+- `psionic-apple-fm` now exposes a reusable typed `AppleFmTranscript` surface
+  instead of treating transcripts as raw opaque strings only
+- the bridge now exposes `GET /v1/sessions/{id}/transcript` for explicit typed
+  transcript export
+- session creation now accepts either `transcript_json` or a typed `transcript`
+  dictionary payload for restore, while rejecting conflicting dual input
+- the reusable Rust client now supports typed transcript export plus
+  `from_transcript`-style session creation
+- invalid transcript input now fails as an explicit client/server validation
+  path instead of falling through as a generic server failure
+- the typed transcript restore path preserves the Python SDK rule that
+  historical tool mentions in transcript history do not enable new tool calls
+  unless tools are supplied again out-of-band
+- `psionic-apple-fm` now exposes reusable structured-generation types:
+  `AppleFmGenerationSchema`, `AppleFmGeneratedContent`, `AppleFmGenerationId`,
+  and the Rust-native `AppleFmStructuredType` marker trait
+- typed structured-generation schemas now derive from Rust types through
+  `schemars::JsonSchema`, which is the Rust-native equivalent of the Python
+  SDK's `Generable` / `generable` / `GenerationGuide` surface
+- the reusable Rust client now supports all three structured-generation modes:
+  typed Rust generation, explicit schema objects, and raw JSON-schema input
+- the Swift bridge now exposes a real Apple FM structured-generation route at
+  `POST /v1/sessions/{id}/responses/structured`
+- structured generation now uses Apple's `LanguageModelSession.respond(...,
+  schema: ...)` path instead of asking for JSON in the prompt
+- constraint families now covered in the Rust lane include enum/choice,
+  numeric-range, list-count, and regex-guided schema metadata where the
+  underlying Apple contract supports them
+- structured-generation tests now cover nested objects, lists, validation
+  errors, typed conversion, and a real ignored live-bridge receipt against the
+  in-tree Swift bridge binary
+- a live local receipt now exists for both explicit-schema and typed
+  structured generation through the retained Swift bridge on macOS with Apple
+  FM availability
+- `psionic-apple-fm` now exposes a reusable Rust `AppleFmTool` trait plus
+  `AppleFmToolDefinition`, `AppleFmToolCallRequest`,
+  `AppleFmToolCallResponse`, and typed `AppleFmToolCallError`
+- Apple FM sessions can now be created with active Rust-side tool
+  implementations through a session-bound loopback callback contract instead of
+  prompt-flattened tool descriptions
+- the Swift bridge now constructs real Foundation Models `Tool` objects from
+  registered Rust tool definitions and calls back into the Rust-side runtime
+  when Apple FM invokes a tool
+- client-side tests now cover direct tool invocation, typed tool registration,
+  complex argument payloads, explicit tool failure mapping, and mock-session
+  registration behavior
+- a live ignored macOS receipt now proves a real Apple FM session can use
+  multiple registered Rust tools through the Swift bridge
+- `psionic-apple-fm` now exposes a reusable typed Foundation Models error
+  family through `AppleFmErrorCode` and `AppleFmFoundationModelsError`, and
+  the bridge client/stream surface no longer collapses remote failures into
+  generic strings
+- Swift bridge failures now preserve typed Foundation Models families plus
+  failure reason, recovery suggestion, debug description, refusal explanation,
+  and tool-call metadata when Apple exposes them
+- live ignored macOS receipts now exist for invalid generation schema, tool
+  call failure, and context overflow through the retained Swift bridge
+- the Swift HTTP server now reads request bodies to full `Content-Length`
+  instead of assuming one receive chunk, which was required to make large-prompt
+  conformance receipts truthful
+- `apps/autopilot-desktop` now ships a dedicated Apple FM workbench pane wired
+  through the reusable `psionic-apple-fm` surface and the app-owned Swift-bridge
+  worker
+- macOS Mission Control now sources its CTA, `Model`, `Backend`, `Load`,
+  blockers, and log lines from Apple FM runtime truth instead of universal
+  GPT-OSS copy
+- the Mission Control `GO ONLINE` gate is now backend-aware: Apple FM on macOS,
+  while non-macOS NVIDIA hosts still require the GPT-OSS CUDA runtime to be
+  ready before provider mode unlocks
+- the Mission Control action button now opens or starts Apple FM on macOS
+  instead of pretending a GGUF load path is always primary
+- Mission Control no longer directly warms or troubleshoots GPT-OSS on
+  non-macOS hosts; that flow now lives in the separate `GPT-OSS Workbench`
+  pane
+- the macOS pane registry and command palette no longer expose the GPT-OSS
+  workbench pane, which removes the split-brain Apple-FM-vs-GPT-OSS
+  local-model story from the user-facing Mac shell
+- `docs/plans/mission-control-pane.md` now documents the backend-aware Mission
+  Control contract instead of codifying `LOAD GPT-OSS 20B` as the universal
+  gate
 
-What `FM-1` did not close:
+Remaining caveats after `FM-10`:
 
-- typed system-model availability/use-case/guardrail coverage
-- sessions and transcript lifecycle
-- generation-options validation beyond the retained minimal bridge shape
-- streaming, structured generation, tools, and typed error taxonomy
-- desktop Mission Control cutover on macOS
+- raw token counts are truthfully marked as estimated; exact token counts are
+  still not available from the retained bridge
+- the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
+  compatibility wrapper; the roadmap-authoritative Apple FM interface remains
+  the session-first surface
 
 ## Mission Control Reality On Main
 
-Mission Control is now an explicit part of this roadmap, because the current
-Mac earn-first shell is still coded around GPT-OSS model loading rather than
-Apple FM readiness.
+Mission Control is now part of the shipped Apple FM lane rather than an open
+roadmap gap.
 
 Current Mission Control truth on `main`:
 
-- the main pane copy, CTA label, and hints still say `GPT-OSS 20B`
-- the `LOAD` action records and renders `Queued GPT-OSS 20B load`
-- the log stream emits lines such as `Local GPT-OSS 20B is loading`
-- the pane fallback model label is still `GPT-OSS 20B`
-- the current Mission Control plan document explicitly requires GPT-OSS 20B to
-  be loaded before `GO ONLINE`
-
-This matters because the product rule is now different:
-
-- on macOS, Mission Control should present Apple FM as the local model truth
-- on macOS, the earn gate should reflect Apple FM readiness and its blockers,
+- on macOS, the pane presents Apple FM as the local-model truth
+- on macOS, the local-model action is `START`, `REFRESH`, `STARTING`, or
+  `OPEN APPLE FM` depending on bridge readiness
+- on macOS, `GO ONLINE` is gated by Apple FM readiness and Apple FM blockers,
   not GGUF artifact presence
-- the GPT-OSS-specific Mission Control contract should remain only for the
-  non-Mac paths that still actually depend on it
-
-So Mission Control is not a side note under desktop polish. It is part of the
-Mac Apple FM cutover definition of done.
+- on non-macOS NVIDIA paths, Mission Control only links out to the separate
+  GPT-OSS workbench and keeps GPT-OSS-specific loading/debug detail out of the
+  main pane
+- the Mission Control plan document now matches that backend-aware contract
 
 ## Coverage Target From `python-apple-fm-sdk`
 
@@ -274,23 +386,14 @@ streaming truth.
 Relative to the Python SDK target, the retained repo is currently missing at
 least the following:
 
-- no reusable `crates/psionic/*` Apple FM SDK surface
-- no typed bridge protocol beyond minimal model listing and one-shot chat
-- no session handles or explicit request-isolation contract
-- the current Swift bridge keeps a shared `LanguageModelSession`, which is not
-  the right base for a full SDK
-- no transcript export/import endpoints
-- no structured generation endpoints
-- no tool registration or tool-call/result protocol
-- no streaming contract
-- generation parameters are only partially surfaced and mostly ignored
-- usage metrics are approximate and not clearly marked as such
-- no typed Rust error taxonomy aligned to the Apple FM model contract
+- usage metrics are still explicitly estimated rather than exact
 - the desktop still defaults local inference to Psionic GPT-OSS rather than
   Apple FM on macOS
 - Mission Control still gates `GO ONLINE`, button copy, log copy, and model
   status around GPT-OSS-specific local-runtime fields instead of Apple FM
   readiness on macOS
+- desktop chat/workbench paths are not yet fully cut over to the same Apple FM
+  runtime truth on macOS
 
 ## Marching Orders
 
@@ -436,6 +539,8 @@ Acceptance:
 
 - the Rust lane can round-trip transcript state
 - transcript-backed resume behavior matches the documented Python semantics
+- invalid transcript input fails explicitly instead of degrading to a generic
+  bridge error
 
 ### FM-7: Structured generation and schema coverage
 
@@ -562,25 +667,15 @@ Acceptance:
 - on macOS, Mission Control shows Apple FM readiness, Apple FM blocker text,
   and Apple FM log lines instead of GPT-OSS-specific copy
 - the Mission Control action button and `GO ONLINE` gate are backend-aware:
-  Apple FM on macOS, GPT-OSS only where that is still the actual runtime truth
+  Apple FM on macOS, with GPT-OSS-specific management delegated to the
+  separate workbench on NVIDIA hosts
 
 ## Recommended Execution Queue
 
-After `FM-1`, the next-item order is:
+The roadmap queue is now complete on `main`.
 
-1. `FM-2` model availability/configuration truth
-2. `FM-3` session lifecycle and isolation
-3. `FM-4` plain text generation plus generation-options coverage
-4. `FM-5` streaming
-5. `FM-6` transcripts and session restore
-6. `FM-7` structured generation and schema support
-7. `FM-8` tools
-8. `FM-9` typed errors and metrics truth
-9. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
-
-That order is intentional. Tools and structured generation should not be bolted
-onto the current minimal one-shot bridge. First build the reusable substrate and
-session semantics, then extend the bridge contract, then cut the desktop over.
+Follow-on Apple FM work should be tracked as new issues rather than reopening
+the original roadmap sequence unless the shipped contract regresses.
 
 ## Definition Of Done
 
@@ -598,12 +693,13 @@ when all of the following are true:
 - transcript and session restore semantics are real, not reconstructed prompt
   hacks
 - tool calling is real, session-aware, and transcripted
-- on macOS, Apple FM is the default app local-model lane when available
+- on macOS, Apple FM is the default user-facing local-model lane when
+  available
 - on macOS, Mission Control no longer tells the user to load GPT-OSS 20B and
   instead reflects Apple FM truth throughout its sell-compute lane and log
   stream
-- the provider lane and user-facing local-inference lane use the same Apple FM
-  runtime truth
+- the provider lane and user-facing macOS local-model surfaces use the same
+  Apple FM runtime truth
 - usage and token counts are explicit about whether they are exact, derived, or
   estimated
 - conformance tests exist for every major Python SDK feature family:
@@ -619,8 +715,8 @@ when all of the following are true:
 
 ## Product Rule For MVP
 
-Until this roadmap is complete enough to support honest desktop cutover, the
-product rule remains:
+This roadmap is now complete enough for honest desktop cutover. The MVP product
+rule is:
 
 - macOS local on-device story should converge on Apple Foundation Models
 - NVIDIA local high-performance story remains Psionic GPT-OSS CUDA

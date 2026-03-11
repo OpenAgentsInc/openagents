@@ -8,7 +8,8 @@ use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, 
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
-    calculator as calculator_pane, chat as chat_pane, local_inference as local_inference_pane,
+    apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
+    chat as chat_pane, local_inference as local_inference_pane,
     relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
 use crate::render::{
@@ -35,14 +36,16 @@ const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 68.0;
 const CHAT_WORKSPACE_SLOT_HEIGHT: f32 = 52.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 208.0;
 const CHAT_COLUMN_GAP: f32 = 10.0;
-const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 68.0;
+const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 122.0;
 const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
 const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
-const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
-const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 24.0;
+const CHAT_HEADER_BUTTON_WIDTH: f32 = 104.0;
+const CHAT_HEADER_BUTTON_GAP: f32 = 8.0;
 /// Compact + button next to "Threads" to start a new thread
 const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
+const CHAT_THREAD_SEARCH_INPUT_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
 const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
 const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
@@ -50,8 +53,8 @@ const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 72.0;
 const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
 const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
 const CHAT_SHELL_ROW_GAP: f32 = 6.0;
-const CHAT_MAX_THREAD_ROWS: usize = 10;
-pub const CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT: usize = 6;
+const CHAT_MAX_THREAD_ROWS: usize = 16;
+pub const CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT: usize = 64;
 const CALCULATOR_INPUT_HEIGHT: f32 = 30.0;
 const CAST_BUTTON_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
@@ -138,6 +141,17 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.local_inference_inputs.temperature.blur();
     state.local_inference_inputs.top_k.blur();
     state.local_inference_inputs.top_p.blur();
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
@@ -164,6 +178,17 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
@@ -172,6 +197,39 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.job_history_inputs.search_job_id.blur();
     state.chat_inputs.composer.blur();
     state.local_inference_inputs.prompt.focus();
+}
+
+fn focus_apple_fm_workbench_prompt_for_pane_open(state: &mut RenderState) {
+    state.spark_inputs.invoice_amount.blur();
+    state.spark_inputs.send_request.blur();
+    state.spark_inputs.send_amount.blur();
+    state.pay_invoice_inputs.payment_request.blur();
+    state.pay_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.description.blur();
+    state.create_invoice_inputs.expiry_seconds.blur();
+    state.relay_connections_inputs.relay_url.blur();
+    state.network_requests_inputs.compute_family.blur();
+    state.network_requests_inputs.preferred_backend.blur();
+    state.network_requests_inputs.capability_constraints.blur();
+    state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.delivery_start_minutes.blur();
+    state.network_requests_inputs.window_minutes.blur();
+    state.network_requests_inputs.max_price_sats.blur();
+    state.local_inference_inputs.prompt.blur();
+    state.local_inference_inputs.requested_model.blur();
+    state.local_inference_inputs.max_tokens.blur();
+    state.local_inference_inputs.temperature.blur();
+    state.local_inference_inputs.top_k.blur();
+    state.local_inference_inputs.top_p.blur();
+    state.settings_inputs.relay_url.blur();
+    state.settings_inputs.wallet_default_send_sats.blur();
+    state.settings_inputs.provider_max_queue_depth.blur();
+    state.credentials_inputs.variable_name.blur();
+    state.credentials_inputs.variable_value.blur();
+    state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.composer.blur();
+    state.apple_fm_workbench_inputs.instructions.focus();
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -266,7 +324,7 @@ pub enum EarningsScoreboardPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
     ToggleAmountDisplay,
-    WarmLocalModel,
+    OpenLocalModelWorkbench,
     OpenDocumentation,
 }
 
@@ -294,6 +352,25 @@ pub enum LocalInferencePaneAction {
     WarmModel,
     UnloadModel,
     RunPrompt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchPaneAction {
+    RefreshBridge,
+    StartBridge,
+    CreateSession,
+    InspectSession,
+    ResetSession,
+    DeleteSession,
+    RunText,
+    RunChat,
+    RunSession,
+    RunStream,
+    RunStructured,
+    ExportTranscript,
+    RestoreTranscript,
+    CycleToolProfile,
+    CycleSamplingMode,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -733,7 +810,15 @@ pub enum PaneHitAction {
     ChatRefreshThreads,
     ChatNewThread,
     ChatCycleModel,
+    ChatCycleReasoningEffort,
+    ChatCycleServiceTier,
+    ChatCyclePersonality,
+    ChatCycleCollaborationMode,
+    ChatCycleApprovalMode,
+    ChatCycleSandboxMode,
     ChatInterruptTurn,
+    ChatImplementPlan,
+    ChatReviewThread,
     ChatToggleArchivedFilter,
     ChatCycleSortFilter,
     ChatCycleSourceFilter,
@@ -742,6 +827,9 @@ pub enum PaneHitAction {
     ChatArchiveThread,
     ChatUnarchiveThread,
     ChatRenameThread,
+    ChatReloadThread,
+    ChatOpenWorkspaceInEditor,
+    ChatCopyLastOutput,
     ChatRollbackThread,
     ChatCompactThread,
     ChatUnsubscribeThread,
@@ -769,6 +857,7 @@ pub enum PaneHitAction {
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
     LocalInference(LocalInferencePaneAction),
+    AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
     ReciprocalLoop(ReciprocalLoopPaneAction),
@@ -842,6 +931,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
+        PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(640.0, 320.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
             pane_size_for_content(900.0, 420.0)
@@ -927,6 +1017,8 @@ impl PaneController {
             focus_chat_composer_for_pane_open(state);
         } else if kind == PaneKind::LocalInference {
             focus_local_inference_prompt_for_pane_open(state);
+        } else if kind == PaneKind::AppleFmWorkbench {
+            focus_apple_fm_workbench_prompt_for_pane_open(state);
         }
         id
     }
@@ -1235,6 +1327,23 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::AppleFmWorkbench => {
+                if apple_fm_workbench_instructions_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_prompt_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_model_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_session_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_max_tokens_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_temperature_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_top_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_probability_threshold_input_bounds(content_bounds)
+                        .contains(point)
+                    || apple_fm_workbench_seed_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_schema_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_transcript_input_bounds(content_bounds).contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::Settings => {
                 if settings_relay_input_bounds(content_bounds).contains(point)
                     || settings_wallet_default_input_bounds(content_bounds).contains(point)
@@ -1387,11 +1496,12 @@ fn chat_right_column_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
+    let width = CHAT_THREAD_FILTER_BUTTON_WIDTH;
     Bounds::new(
-        rail.origin.x + 10.0,
+        rail.origin.x + rail.size.width - 10.0 - CHAT_NEW_THREAD_BUTTON_SIZE - 6.0 - width,
         rail.origin.y + 28.0,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
+        width,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
     )
 }
 
@@ -1405,21 +1515,122 @@ pub fn chat_new_thread_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn chat_thread_search_input_bounds(content_bounds: Bounds) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    Bounds::new(
+        rail.origin.x + 10.0,
+        chat_new_thread_button_bounds(content_bounds).max_y() + 8.0,
+        (rail.size.width - 20.0).max(120.0),
+        CHAT_THREAD_SEARCH_INPUT_HEIGHT,
+    )
+}
+
 pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let transcript = chat_transcript_bounds(content_bounds);
+    let controls_top = transcript.origin.y + 66.0;
     Bounds::new(
         transcript.origin.x + 10.0,
-        transcript.origin.y + 28.0,
+        controls_top,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_reasoning_effort_button_bounds(content_bounds: Bounds) -> Bounds {
+    let model = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        model.max_x() + CHAT_HEADER_BUTTON_GAP,
+        model.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_service_tier_button_bounds(content_bounds: Bounds) -> Bounds {
+    let effort = chat_cycle_reasoning_effort_button_bounds(content_bounds);
+    Bounds::new(
+        effort.max_x() + CHAT_HEADER_BUTTON_GAP,
+        effort.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_personality_button_bounds(content_bounds: Bounds) -> Bounds {
+    let tier = chat_cycle_service_tier_button_bounds(content_bounds);
+    Bounds::new(
+        tier.max_x() + CHAT_HEADER_BUTTON_GAP,
+        tier.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_collaboration_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let model = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        model.origin.x,
+        model.max_y() + 6.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_approval_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let collab = chat_cycle_collaboration_mode_button_bounds(content_bounds);
+    Bounds::new(
+        collab.max_x() + CHAT_HEADER_BUTTON_GAP,
+        collab.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_sandbox_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let approvals = chat_cycle_approval_mode_button_bounds(content_bounds);
+    Bounds::new(
+        approvals.max_x() + CHAT_HEADER_BUTTON_GAP,
+        approvals.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
 }
 
 pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
-    let cycle = chat_cycle_model_button_bounds(content_bounds);
+    let cycle = chat_cycle_sandbox_mode_button_bounds(content_bounds);
     Bounds::new(
-        cycle.max_x() + 8.0,
+        cycle.max_x() + CHAT_HEADER_BUTTON_GAP,
         cycle.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_implement_plan_button_bounds(content_bounds: Bounds) -> Bounds {
+    let interrupt = chat_interrupt_button_bounds(content_bounds);
+    Bounds::new(
+        interrupt.max_x() + CHAT_HEADER_BUTTON_GAP,
+        interrupt.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
+    let implement_plan = chat_implement_plan_button_bounds(content_bounds);
+    Bounds::new(
+        implement_plan.max_x() + CHAT_HEADER_BUTTON_GAP,
+        implement_plan.origin.y,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
+    let review = chat_review_button_bounds(content_bounds);
+    Bounds::new(
+        review.max_x() + CHAT_HEADER_BUTTON_GAP,
+        review.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
@@ -1427,7 +1638,8 @@ pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let y = rail.origin.y + 54.0 + index as f32 * (CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP);
+    let y = chat_thread_rail_controls_bottom(content_bounds)
+        + index as f32 * (CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP);
     Bounds::new(
         rail.origin.x + 8.0,
         y,
@@ -1454,10 +1666,10 @@ pub fn chat_visible_thread_row_count(content_bounds: Bounds, total_threads: usiz
 }
 
 pub fn chat_thread_filter_archived_button_bounds(content_bounds: Bounds) -> Bounds {
-    let new_thread = chat_new_thread_button_bounds(content_bounds);
+    let search = chat_thread_search_input_bounds(content_bounds);
     Bounds::new(
-        new_thread.origin.x,
-        new_thread.max_y() + 8.0,
+        search.origin.x,
+        search.max_y() + 8.0,
         CHAT_THREAD_FILTER_BUTTON_WIDTH,
         CHAT_THREAD_FILTER_BUTTON_HEIGHT,
     )
@@ -1509,16 +1721,24 @@ pub fn chat_thread_action_rename_button_bounds(content_bounds: Bounds) -> Bounds
     chat_thread_action_grid_bounds(content_bounds, 3)
 }
 
-pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_reload_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 4)
 }
 
-pub fn chat_thread_action_compact_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_open_editor_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 5)
 }
 
-pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_copy_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 6)
+}
+
+pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 7)
+}
+
+pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 8)
 }
 
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1790,7 +2010,7 @@ pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bo
     )
 }
 
-pub fn mission_control_download_model_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
     Bounds::new(
         panel.origin.x + 14.0,
@@ -1801,7 +2021,7 @@ pub fn mission_control_download_model_button_bounds(content_bounds: Bounds) -> B
 }
 
 pub fn mission_control_documentation_button_bounds(content_bounds: Bounds) -> Bounds {
-    let download = mission_control_download_model_button_bounds(content_bounds);
+    let download = mission_control_local_model_button_bounds(content_bounds);
     Bounds::new(
         download.origin.x,
         download.max_y() + 10.0,
@@ -2154,6 +2374,211 @@ pub fn local_inference_top_p_input_bounds(content_bounds: Bounds) -> Bounds {
         top_k.origin.y,
         92.0,
         top_k.size.height,
+    )
+}
+
+fn apple_fm_workbench_button_bounds(content_bounds: Bounds, row: usize, column: usize) -> Bounds {
+    let width = 128.0;
+    let height = 28.0;
+    let gap = 8.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD + column as f32 * (width + gap),
+        content_bounds.origin.y + CHAT_PAD + row as f32 * (height + gap),
+        width,
+        height,
+    )
+}
+
+pub fn apple_fm_workbench_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 0)
+}
+
+pub fn apple_fm_workbench_start_bridge_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 1)
+}
+
+pub fn apple_fm_workbench_create_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 2)
+}
+
+pub fn apple_fm_workbench_inspect_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 3)
+}
+
+pub fn apple_fm_workbench_reset_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 4)
+}
+
+pub fn apple_fm_workbench_delete_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 0, 5)
+}
+
+pub fn apple_fm_workbench_run_text_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 0)
+}
+
+pub fn apple_fm_workbench_run_chat_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 1)
+}
+
+pub fn apple_fm_workbench_run_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 2)
+}
+
+pub fn apple_fm_workbench_run_stream_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 3)
+}
+
+pub fn apple_fm_workbench_run_structured_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 4)
+}
+
+pub fn apple_fm_workbench_export_transcript_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 1, 5)
+}
+
+pub fn apple_fm_workbench_restore_transcript_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 2, 0)
+}
+
+pub fn apple_fm_workbench_tool_profile_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 2, 1)
+}
+
+pub fn apple_fm_workbench_sampling_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_button_bounds(content_bounds, 2, 2)
+}
+
+pub fn apple_fm_workbench_instructions_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + 108.0,
+        344.0,
+        74.0,
+    )
+}
+
+pub fn apple_fm_workbench_prompt_input_bounds(content_bounds: Bounds) -> Bounds {
+    let instructions = apple_fm_workbench_instructions_input_bounds(content_bounds);
+    Bounds::new(
+        instructions.origin.x,
+        instructions.max_y() + 12.0,
+        instructions.size.width,
+        132.0,
+    )
+}
+
+pub fn apple_fm_workbench_schema_input_bounds(content_bounds: Bounds) -> Bounds {
+    let instructions = apple_fm_workbench_instructions_input_bounds(content_bounds);
+    Bounds::new(
+        instructions.max_x() + 14.0,
+        instructions.origin.y,
+        360.0,
+        170.0,
+    )
+}
+
+pub fn apple_fm_workbench_transcript_input_bounds(content_bounds: Bounds) -> Bounds {
+    let schema = apple_fm_workbench_schema_input_bounds(content_bounds);
+    Bounds::new(
+        schema.origin.x,
+        schema.max_y() + 14.0,
+        schema.size.width,
+        170.0,
+    )
+}
+
+pub fn apple_fm_workbench_model_input_bounds(content_bounds: Bounds) -> Bounds {
+    let schema = apple_fm_workbench_schema_input_bounds(content_bounds);
+    let right_x = schema.max_x() + 14.0;
+    let right_width = (content_bounds.max_x() - CHAT_PAD - right_x).max(240.0);
+    Bounds::new(
+        right_x,
+        schema.origin.y,
+        (right_width * 0.48).max(112.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_session_input_bounds(content_bounds: Bounds) -> Bounds {
+    let model = apple_fm_workbench_model_input_bounds(content_bounds);
+    Bounds::new(
+        model.max_x() + JOB_INBOX_BUTTON_GAP,
+        model.origin.y,
+        (content_bounds.max_x() - CHAT_PAD - model.max_x() - JOB_INBOX_BUTTON_GAP).max(112.0),
+        model.size.height,
+    )
+}
+
+pub fn apple_fm_workbench_max_tokens_input_bounds(content_bounds: Bounds) -> Bounds {
+    let model = apple_fm_workbench_model_input_bounds(content_bounds);
+    Bounds::new(
+        model.origin.x,
+        model.max_y() + 12.0,
+        88.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_temperature_input_bounds(content_bounds: Bounds) -> Bounds {
+    let max_tokens = apple_fm_workbench_max_tokens_input_bounds(content_bounds);
+    Bounds::new(
+        max_tokens.max_x() + JOB_INBOX_BUTTON_GAP,
+        max_tokens.origin.y,
+        88.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_top_input_bounds(content_bounds: Bounds) -> Bounds {
+    let temperature = apple_fm_workbench_temperature_input_bounds(content_bounds);
+    Bounds::new(
+        temperature.max_x() + JOB_INBOX_BUTTON_GAP,
+        temperature.origin.y,
+        88.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_probability_threshold_input_bounds(content_bounds: Bounds) -> Bounds {
+    let model = apple_fm_workbench_model_input_bounds(content_bounds);
+    Bounds::new(
+        model.origin.x,
+        apple_fm_workbench_max_tokens_input_bounds(content_bounds).max_y() + 12.0,
+        172.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_seed_input_bounds(content_bounds: Bounds) -> Bounds {
+    let threshold = apple_fm_workbench_probability_threshold_input_bounds(content_bounds);
+    Bounds::new(
+        threshold.max_x() + JOB_INBOX_BUTTON_GAP,
+        threshold.origin.y,
+        132.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_output_bounds(content_bounds: Bounds) -> Bounds {
+    let model = apple_fm_workbench_model_input_bounds(content_bounds);
+    let transcript = apple_fm_workbench_transcript_input_bounds(content_bounds);
+    Bounds::new(
+        model.origin.x,
+        apple_fm_workbench_seed_input_bounds(content_bounds).max_y() + 14.0,
+        (content_bounds.max_x() - CHAT_PAD - model.origin.x).max(240.0),
+        (transcript.max_y() - apple_fm_workbench_seed_input_bounds(content_bounds).max_y() - 26.0)
+            .max(160.0),
+    )
+}
+
+pub fn apple_fm_workbench_event_log_bounds(content_bounds: Bounds) -> Bounds {
+    let top = apple_fm_workbench_transcript_input_bounds(content_bounds).max_y() + 14.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(420.0),
+        (content_bounds.max_y() - CHAT_PAD - top).max(160.0),
     )
 }
 
@@ -3680,6 +4105,80 @@ fn pane_hit_action_for_pane(
                 if chat_refresh_threads_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatRefreshThreads);
                 }
+                if chat_cycle_model_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleModel);
+                }
+                if chat_cycle_reasoning_effort_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleReasoningEffort);
+                }
+                if chat_cycle_service_tier_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleServiceTier);
+                }
+                if chat_cycle_personality_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCyclePersonality);
+                }
+                if chat_cycle_collaboration_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleCollaborationMode);
+                }
+                if chat_cycle_approval_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleApprovalMode);
+                }
+                if chat_cycle_sandbox_mode_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleSandboxMode);
+                }
+                if chat_interrupt_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatInterruptTurn);
+                }
+                if state.autopilot_chat.active_plan_artifact().is_some()
+                    && chat_implement_plan_button_bounds(content_bounds).contains(point)
+                {
+                    return Some(PaneHitAction::ChatImplementPlan);
+                }
+                if chat_review_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatReviewThread);
+                }
+                if chat_compact_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCompactThread);
+                }
+                if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatToggleArchivedFilter);
+                }
+                if chat_thread_filter_sort_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleSortFilter);
+                }
+                if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleSourceFilter);
+                }
+                if chat_thread_filter_provider_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCycleProviderFilter);
+                }
+                if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatForkThread);
+                }
+                if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatArchiveThread);
+                }
+                if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatUnarchiveThread);
+                }
+                if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatRenameThread);
+                }
+                if chat_thread_action_reload_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatReloadThread);
+                }
+                if chat_thread_action_open_editor_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatOpenWorkspaceInEditor);
+                }
+                if chat_thread_action_copy_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatCopyLastOutput);
+                }
+                if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatRollbackThread);
+                }
+                if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatUnsubscribeThread);
+                }
             }
             if state.autopilot_chat.chat_has_browseable_content() {
                 let workspace_count = chat_visible_workspace_row_count(
@@ -3760,9 +4259,9 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::ToggleAmountDisplay,
                 ))
-            } else if mission_control_download_model_button_bounds(content_bounds).contains(point) {
+            } else if mission_control_local_model_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::WarmLocalModel,
+                    MissionControlPaneAction::OpenLocalModelWorkbench,
                 ))
             } else if mission_control_documentation_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(
@@ -4022,6 +4521,84 @@ fn pane_hit_action_for_pane(
             if local_inference_run_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::LocalInference(
                     LocalInferencePaneAction::RunPrompt,
+                ));
+            }
+            None
+        }
+        PaneKind::AppleFmWorkbench => {
+            if apple_fm_workbench_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RefreshBridge,
+                ));
+            }
+            if apple_fm_workbench_start_bridge_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::StartBridge,
+                ));
+            }
+            if apple_fm_workbench_create_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::CreateSession,
+                ));
+            }
+            if apple_fm_workbench_inspect_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::InspectSession,
+                ));
+            }
+            if apple_fm_workbench_reset_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::ResetSession,
+                ));
+            }
+            if apple_fm_workbench_delete_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::DeleteSession,
+                ));
+            }
+            if apple_fm_workbench_run_text_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RunText,
+                ));
+            }
+            if apple_fm_workbench_run_chat_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RunChat,
+                ));
+            }
+            if apple_fm_workbench_run_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RunSession,
+                ));
+            }
+            if apple_fm_workbench_run_stream_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RunStream,
+                ));
+            }
+            if apple_fm_workbench_run_structured_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RunStructured,
+                ));
+            }
+            if apple_fm_workbench_export_transcript_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::ExportTranscript,
+                ));
+            }
+            if apple_fm_workbench_restore_transcript_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::RestoreTranscript,
+                ));
+            }
+            if apple_fm_workbench_tool_profile_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::CycleToolProfile,
+                ));
+            }
+            if apple_fm_workbench_sampling_mode_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::CycleSamplingMode,
                 ));
             }
             None
@@ -4725,6 +5302,35 @@ pub fn dispatch_mission_control_log_scroll_event(
         .is_handled()
 }
 
+pub fn dispatch_apple_fm_workbench_log_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    event: &InputEvent,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::AppleFmWorkbench {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds(pane.bounds);
+    let log_bounds = apple_fm_workbench_event_log_bounds(content_bounds);
+    if !log_bounds.contains(cursor_position) {
+        return false;
+    }
+
+    state
+        .apple_fm_workbench
+        .event_log
+        .event(event, log_bounds, &mut state.event_context)
+        .is_handled()
+}
+
 pub fn dispatch_activity_feed_detail_scroll_event(
     state: &mut RenderState,
     cursor_position: Point,
@@ -4810,6 +5416,13 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
 
 pub fn dispatch_local_inference_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     local_inference_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_apple_fm_workbench_input_event(
+    state: &mut RenderState,
+    event: &InputEvent,
+) -> bool {
+    apple_fm_workbench_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -5028,6 +5641,16 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
         alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+        apple_fm_workbench_create_session_button_bounds, apple_fm_workbench_event_log_bounds,
+        apple_fm_workbench_inspect_session_button_bounds,
+        apple_fm_workbench_instructions_input_bounds, apple_fm_workbench_model_input_bounds,
+        apple_fm_workbench_output_bounds, apple_fm_workbench_prompt_input_bounds,
+        apple_fm_workbench_refresh_button_bounds,
+        apple_fm_workbench_restore_transcript_button_bounds,
+        apple_fm_workbench_run_chat_button_bounds, apple_fm_workbench_run_text_button_bounds,
+        apple_fm_workbench_sampling_mode_button_bounds, apple_fm_workbench_schema_input_bounds,
+        apple_fm_workbench_session_input_bounds, apple_fm_workbench_start_bridge_button_bounds,
+        apple_fm_workbench_tool_profile_button_bounds, apple_fm_workbench_transcript_input_bounds,
         cad_action_uses_dense_row_hot_zone, cad_demo_context_menu_bounds,
         cad_demo_context_menu_row_bounds, cad_demo_cycle_variant_button_bounds,
         cad_demo_dimension_panel_bounds, cad_demo_dimension_row_bounds,
@@ -5384,6 +6007,41 @@ mod tests {
         assert!(max_tokens.max_x() < temperature.min_x());
         assert!(temperature.max_x() < top_k.min_x());
         assert!(top_k.max_x() < top_p.min_x());
+    }
+
+    #[test]
+    fn apple_fm_workbench_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 1160.0, 740.0);
+        let refresh = apple_fm_workbench_refresh_button_bounds(content);
+        let start = apple_fm_workbench_start_bridge_button_bounds(content);
+        let create = apple_fm_workbench_create_session_button_bounds(content);
+        let inspect = apple_fm_workbench_inspect_session_button_bounds(content);
+        let run_text = apple_fm_workbench_run_text_button_bounds(content);
+        let run_chat = apple_fm_workbench_run_chat_button_bounds(content);
+        let restore = apple_fm_workbench_restore_transcript_button_bounds(content);
+        let tool_profile = apple_fm_workbench_tool_profile_button_bounds(content);
+        let sampling = apple_fm_workbench_sampling_mode_button_bounds(content);
+        let instructions = apple_fm_workbench_instructions_input_bounds(content);
+        let prompt = apple_fm_workbench_prompt_input_bounds(content);
+        let schema = apple_fm_workbench_schema_input_bounds(content);
+        let transcript = apple_fm_workbench_transcript_input_bounds(content);
+        let model = apple_fm_workbench_model_input_bounds(content);
+        let session = apple_fm_workbench_session_input_bounds(content);
+        let output = apple_fm_workbench_output_bounds(content);
+        let event_log = apple_fm_workbench_event_log_bounds(content);
+
+        assert!(refresh.max_x() < start.min_x());
+        assert!(start.max_x() < create.min_x());
+        assert!(create.max_x() < inspect.min_x());
+        assert!(run_text.max_x() < run_chat.min_x());
+        assert!(restore.max_x() < tool_profile.min_x());
+        assert!(tool_profile.max_x() < sampling.min_x());
+        assert!(refresh.max_y() < instructions.min_y());
+        assert!(instructions.max_y() < prompt.min_y());
+        assert!(schema.max_y() < transcript.min_y());
+        assert!(model.max_x() < session.min_x());
+        assert!(prompt.max_x() < schema.min_x());
+        assert!(output.max_y() < event_log.min_y());
     }
 
     #[test]

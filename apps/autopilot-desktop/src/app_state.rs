@@ -91,6 +91,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderStatus,
     LocalInference,
+    AppleFmWorkbench,
     EarningsScoreboard,
     RelayConnections,
     SyncHealth,
@@ -460,6 +461,50 @@ impl Default for LocalInferencePaneInputs {
     }
 }
 
+pub struct AppleFmWorkbenchPaneInputs {
+    pub instructions: TextInput,
+    pub prompt: TextInput,
+    pub model: TextInput,
+    pub session_id: TextInput,
+    pub max_tokens: TextInput,
+    pub temperature: TextInput,
+    pub top: TextInput,
+    pub probability_threshold: TextInput,
+    pub seed: TextInput,
+    pub schema_json: TextInput,
+    pub transcript_json: TextInput,
+}
+
+impl Default for AppleFmWorkbenchPaneInputs {
+    fn default() -> Self {
+        Self {
+            instructions: TextInput::new()
+                .value("You are the OpenAgents Apple FM workbench. Be concise and literal.")
+                .placeholder("Optional session instructions"),
+            prompt: TextInput::new()
+                .value("Say hello from the Apple FM workbench in one short sentence.")
+                .placeholder("Prompt to send to Apple FM"),
+            model: TextInput::new().placeholder("Optional Apple FM model override"),
+            session_id: TextInput::new().placeholder("Bridge session id"),
+            max_tokens: TextInput::new().value("128").placeholder("Max tokens"),
+            temperature: TextInput::new().value("0.2").placeholder("Temperature"),
+            top: TextInput::new().placeholder("Random sampling top-k"),
+            probability_threshold: TextInput::new()
+                .placeholder("Random sampling probability threshold"),
+            seed: TextInput::new().placeholder("Random sampling seed"),
+            schema_json: TextInput::new()
+                .value(
+                    "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"summary\": { \"type\": \"string\" },\n    \"confidence\": { \"type\": \"number\" }\n  },\n  \"required\": [\"summary\", \"confidence\"]\n}",
+                )
+                .placeholder("Structured-generation JSON schema")
+                .mono(true),
+            transcript_json: TextInput::new()
+                .placeholder("Transcript JSON for export / restore")
+                .mono(true),
+        }
+    }
+}
+
 pub struct SettingsPaneInputs {
     pub relay_url: TextInput,
     pub wallet_default_send_sats: TextInput,
@@ -510,6 +555,7 @@ impl Default for JobHistoryPaneInputs {
 
 pub struct ChatPaneInputs {
     pub composer: TextInput,
+    pub thread_search: TextInput,
 }
 
 impl Default for ChatPaneInputs {
@@ -517,6 +563,9 @@ impl Default for ChatPaneInputs {
         Self {
             composer: TextInput::new()
                 .placeholder("Write a message, ask for analysis, or command your Autopilot...")
+                .border_color_focused(theme::border::FOCUS),
+            thread_search: TextInput::new()
+                .placeholder("Filter thread history...")
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -667,41 +716,62 @@ fn build_mission_control_log_lines(
         }
     }
 
-    let model_status = if local_inference_runtime.busy {
-        "Local GPT-OSS 20B is loading.".to_string()
-    } else if local_inference_runtime.is_ready() {
-        format!(
-            "Local GPT-OSS 20B ready on Psionic {}.",
-            if local_inference_runtime.backend_label.trim().is_empty() {
-                "runtime"
-            } else {
-                local_inference_runtime.backend_label.as_str()
-            }
-        )
-    } else if !local_inference_runtime.artifact_present {
-        local_inference_runtime
-            .configured_model_path
+    let (model_status_stream, model_status) = if mission_control_uses_apple_fm() {
+        if provider_runtime.apple_fm.is_ready() {
+            (
+                TerminalStream::Stdout,
+                format!(
+                    "Apple Foundation Models ready via Swift bridge ({}).",
+                    provider_runtime
+                        .apple_fm
+                        .ready_model
+                        .as_deref()
+                        .unwrap_or("apple-foundation-model")
+                ),
+            )
+        } else if let Some(message) = provider_runtime
+            .apple_fm
+            .availability_message
             .as_deref()
-            .map(|path| format!("Local GPT-OSS 20B missing at {}.", path))
-            .unwrap_or_else(|| "Local GPT-OSS 20B artifact missing.".to_string())
-    } else if provider_runtime.active_inference_backend().is_none() {
-        "Local GPT-OSS 20B is present but not loaded.".to_string()
+            .or(provider_runtime.apple_fm.last_error.as_deref())
+        {
+            (
+                TerminalStream::Stderr,
+                format!("Apple Foundation Models unavailable: {message}"),
+            )
+        } else if provider_runtime.apple_fm.reachable {
+            (
+                TerminalStream::Stdout,
+                "Apple Foundation Models bridge reachable but not ready yet.".to_string(),
+            )
+        } else {
+            (
+                TerminalStream::Stderr,
+                "Apple Foundation Models bridge is not running.".to_string(),
+            )
+        }
+    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
+        if local_inference_runtime.is_ready() {
+            (
+                TerminalStream::Stdout,
+                "NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane."
+                    .to_string(),
+            )
+        } else {
+            (
+                TerminalStream::Stdout,
+                "Open the separate GPT-OSS workbench to load and validate the NVIDIA local model."
+                    .to_string(),
+            )
+        }
     } else {
-        format!(
-            "Serving backend ready: {}",
-            provider_runtime.execution_backend_label()
+        (
+            TerminalStream::Stderr,
+            "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts."
+                .to_string(),
         )
     };
-    push_line(
-        if local_inference_runtime.is_ready() {
-            TerminalStream::Stdout
-        } else if !local_inference_runtime.artifact_present {
-            TerminalStream::Stderr
-        } else {
-            TerminalStream::Stdout
-        },
-        model_status,
-    );
+    push_line(model_status_stream, model_status);
 
     if let Some(action) = mission_action {
         push_line(TerminalStream::Stdout, format!("UI: {action}"));
@@ -800,6 +870,51 @@ fn build_mission_control_log_lines(
     lines
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MissionControlLocalRuntimeLane {
+    AppleFoundationModels,
+    NvidiaGptOss,
+}
+
+pub(crate) const fn mission_control_uses_apple_fm() -> bool {
+    cfg!(target_os = "macos")
+}
+
+pub(crate) fn mission_control_supports_cuda_gpt_oss(
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    !mission_control_uses_apple_fm()
+        && local_inference_runtime
+            .backend_label
+            .trim()
+            .eq_ignore_ascii_case("cuda")
+}
+
+pub(crate) fn mission_control_local_runtime_lane(
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> Option<MissionControlLocalRuntimeLane> {
+    if mission_control_uses_apple_fm() {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
+    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn mission_control_local_runtime_is_ready(
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    match mission_control_local_runtime_lane(local_inference_runtime) {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            provider_runtime.apple_fm.is_ready()
+        }
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => local_inference_runtime.is_ready(),
+        None => false,
+    }
+}
+
 fn mission_control_log_stream_for_stage(stage: JobLifecycleStage) -> TerminalStream {
     match stage {
         JobLifecycleStage::Failed => TerminalStream::Stderr,
@@ -825,6 +940,7 @@ pub enum AutopilotMessageStatus {
     Error,
 }
 
+#[derive(Clone)]
 pub struct AutopilotMessage {
     pub id: u64,
     pub role: AutopilotRole,
@@ -884,9 +1000,135 @@ pub struct AutopilotTokenUsage {
     pub output_tokens: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AutopilotTurnPlanStep {
     pub step: String,
     pub status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotPlanArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub explanation: Option<String>,
+    pub steps: Vec<AutopilotTurnPlanStep>,
+    pub workspace_cwd: Option<String>,
+    pub workspace_path: Option<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotDiffFileArtifact {
+    pub path: String,
+    pub added_line_count: u32,
+    pub removed_line_count: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotDiffArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub files: Vec<AutopilotDiffFileArtifact>,
+    pub added_line_count: u32,
+    pub removed_line_count: u32,
+    pub raw_diff: String,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotReviewArtifact {
+    pub thread_id: String,
+    pub source_thread_id: String,
+    pub source_turn_id: String,
+    pub review_thread_id: String,
+    pub delivery: String,
+    pub target: String,
+    pub summary: Option<String>,
+    pub status: String,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AutopilotCompactionArtifact {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub updated_at_epoch_ms: u64,
+    pub restored_from_thread_read: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AutopilotProjectDefaults {
+    pub model: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub reasoning_effort: Option<String>,
+    pub approval_policy: Option<codex_client::AskForApproval>,
+    pub sandbox_mode: Option<codex_client::SandboxMode>,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotProjectIdentity {
+    pub project_id: String,
+    pub project_name: String,
+    pub workspace_root: String,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub thread_ids: Vec<String>,
+    pub defaults: AutopilotProjectDefaults,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotTerminalSessionStatus {
+    Pending,
+    Running,
+    Exited,
+    Failed,
+    Closed,
+}
+
+impl AutopilotTerminalSessionStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Exited => "exited",
+            Self::Failed => "failed",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub const fn is_active(self) -> bool {
+        matches!(self, Self::Pending | Self::Running)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotTerminalSession {
+    pub thread_id: String,
+    pub workspace_root: String,
+    pub shell: String,
+    pub pid: Option<u32>,
+    pub cols: u16,
+    pub rows: u16,
+    pub status: AutopilotTerminalSessionStatus,
+    pub exit_code: Option<i32>,
+    pub lines: Vec<TerminalLine>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -899,6 +1141,13 @@ pub struct AutopilotTurnMetadata {
     pub classifier_reason: String,
     pub submitted_at_epoch_ms: u64,
     pub selected_skill_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AutopilotPendingSteerSubmission {
+    command_seq: u64,
+    thread_id: String,
+    prompt: String,
 }
 
 #[derive(Clone)]
@@ -956,13 +1205,161 @@ pub struct AutopilotAuthRefreshRequest {
     pub previous_account_id: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatServiceTier {
+    #[default]
+    Default,
+    Fast,
+    Flex,
+}
+
+impl AutopilotChatServiceTier {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Fast => "fast",
+            Self::Flex => "flex",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Default => Self::Fast,
+            Self::Fast => Self::Flex,
+            Self::Flex => Self::Default,
+        }
+    }
+
+    pub const fn request_value(self) -> Option<Option<codex_client::ServiceTier>> {
+        match self {
+            Self::Default => Some(None),
+            Self::Fast => Some(Some(codex_client::ServiceTier::Fast)),
+            Self::Flex => Some(Some(codex_client::ServiceTier::Flex)),
+        }
+    }
+
+    pub const fn from_response(value: Option<codex_client::ServiceTier>) -> Self {
+        match value {
+            Some(codex_client::ServiceTier::Fast) => Self::Fast,
+            Some(codex_client::ServiceTier::Flex) => Self::Flex,
+            None => Self::Default,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatPersonality {
+    #[default]
+    Auto,
+    Friendly,
+    Pragmatic,
+    None,
+}
+
+impl AutopilotChatPersonality {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Friendly => "friendly",
+            Self::Pragmatic => "pragmatic",
+            Self::None => "none",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::Friendly,
+            Self::Friendly => Self::Pragmatic,
+            Self::Pragmatic => Self::None,
+            Self::None => Self::Auto,
+        }
+    }
+
+    pub const fn request_value(self) -> Option<codex_client::Personality> {
+        match self {
+            Self::Auto => None,
+            Self::Friendly => Some(codex_client::Personality::Friendly),
+            Self::Pragmatic => Some(codex_client::Personality::Pragmatic),
+            Self::None => Some(codex_client::Personality::None),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AutopilotChatCollaborationMode {
+    #[default]
+    Off,
+    Default,
+    Plan,
+}
+
+impl AutopilotChatCollaborationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Default => "default",
+            Self::Plan => "plan",
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Default,
+            Self::Default => Self::Plan,
+            Self::Plan => Self::Off,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
+    pub preview: Option<String>,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub model: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub reasoning_effort: Option<String>,
+    pub approval_policy: Option<codex_client::AskForApproval>,
+    pub sandbox_mode: Option<codex_client::SandboxMode>,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+}
+
+impl Default for AutopilotThreadMetadata {
+    fn default() -> Self {
+        Self {
+            thread_name: None,
+            preview: None,
+            status: None,
+            loaded: false,
+            cwd: None,
+            path: None,
+            workspace_root: None,
+            project_id: None,
+            project_name: None,
+            git_branch: None,
+            git_dirty: None,
+            created_at: None,
+            updated_at: None,
+            model: None,
+            service_tier: AutopilotChatServiceTier::Default,
+            reasoning_effort: Some("medium".to_string()),
+            approval_policy: Some(codex_client::AskForApproval::Never),
+            sandbox_mode: Some(codex_client::SandboxMode::DangerFullAccess),
+            personality: AutopilotChatPersonality::Auto,
+            collaboration_mode: AutopilotChatCollaborationMode::Off,
+        }
+    }
 }
 
 pub struct AutopilotThreadResumeTarget {
@@ -975,10 +1372,13 @@ pub struct AutopilotThreadResumeTarget {
 pub struct AutopilotThreadListEntry {
     pub thread_id: String,
     pub thread_name: Option<String>,
+    pub preview: String,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1015,8 +1415,24 @@ pub struct AutopilotChatState {
     pub models: Vec<String>,
     pub selected_model: usize,
     pub reasoning_effort: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+    pub approval_mode: codex_client::AskForApproval,
+    pub sandbox_mode: codex_client::SandboxMode,
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
+    pub project_registry: std::collections::HashMap<String, AutopilotProjectIdentity>,
+    pub terminal_sessions: std::collections::HashMap<String, AutopilotTerminalSession>,
+    pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
+    thread_plan_artifacts: std::collections::HashMap<String, AutopilotPlanArtifact>,
+    thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
+    thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
+    thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
+    review_thread_source_map: std::collections::HashMap<String, String>,
+    thread_composer_drafts: std::collections::HashMap<String, String>,
+    detached_composer_draft: String,
+    thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
     pub active_thread_id: Option<String>,
     pub selected_workspace: ChatWorkspaceSelection,
     pub managed_chat_projection: ManagedChatProjectionState,
@@ -1031,6 +1447,7 @@ pub struct AutopilotChatState {
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub next_turn_submission_seq: u64,
     pub pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
+    pending_steer_submissions: VecDeque<AutopilotPendingSteerSubmission>,
     pub turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
     pub last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
     last_agent_item_ids: std::collections::HashMap<String, String>,
@@ -1063,18 +1480,58 @@ pub struct AutopilotChatState {
     pub last_error: Option<String>,
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
+    artifact_projection_file_path: PathBuf,
 }
 
 impl Default for AutopilotChatState {
     fn default() -> Self {
+        let artifact_projection_file_path = codex_artifact_projection_file_path();
+        let (
+            thread_diff_artifacts,
+            thread_review_artifacts,
+            thread_compaction_artifacts,
+            review_thread_source_map,
+            artifact_load_error,
+        ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
+            Ok(projection) => (
+                projection.thread_diff_artifacts,
+                projection.thread_review_artifacts,
+                projection.thread_compaction_artifacts,
+                projection.review_thread_source_map,
+                None,
+            ),
+            Err(error) => (
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                Some(error),
+            ),
+        };
         Self {
             connection_status: "ready".to_string(),
             // "auto" means "let app-server pick the current default model".
             models: vec!["auto".to_string()],
             selected_model: 0,
             reasoning_effort: Some("medium".to_string()),
+            service_tier: AutopilotChatServiceTier::Default,
+            personality: AutopilotChatPersonality::Auto,
+            collaboration_mode: AutopilotChatCollaborationMode::Off,
+            approval_mode: codex_client::AskForApproval::Never,
+            sandbox_mode: codex_client::SandboxMode::DangerFullAccess,
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
+            project_registry: std::collections::HashMap::new(),
+            terminal_sessions: std::collections::HashMap::new(),
+            thread_transcript_cache: std::collections::HashMap::new(),
+            thread_plan_artifacts: std::collections::HashMap::new(),
+            thread_diff_artifacts,
+            thread_review_artifacts,
+            thread_compaction_artifacts,
+            review_thread_source_map,
+            thread_composer_drafts: std::collections::HashMap::new(),
+            detached_composer_draft: String::new(),
+            thread_submission_history: std::collections::HashMap::new(),
             active_thread_id: None,
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
@@ -1089,6 +1546,7 @@ impl Default for AutopilotChatState {
             turn_assistant_message_ids: std::collections::HashMap::new(),
             next_turn_submission_seq: 1,
             pending_turn_metadata: VecDeque::new(),
+            pending_steer_submissions: VecDeque::new(),
             turn_metadata_by_turn_id: std::collections::HashMap::new(),
             last_submitted_turn_metadata: None,
             last_agent_item_ids: std::collections::HashMap::new(),
@@ -1118,10 +1576,370 @@ impl Default for AutopilotChatState {
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
             transcript_selection: None,
-            last_error: None,
+            last_error: artifact_load_error,
             copy_notice: None,
             copy_notice_until: None,
+            artifact_projection_file_path,
         }
+    }
+}
+
+const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v1";
+const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CodexArtifactProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+}
+
+struct LoadedCodexArtifactProjection {
+    thread_diff_artifacts: HashMap<String, Vec<AutopilotDiffArtifact>>,
+    thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
+    thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
+    review_thread_source_map: HashMap<String, String>,
+}
+
+fn codex_artifact_projection_file_path() -> PathBuf {
+    if let Ok(override_path) = std::env::var("OPENAGENTS_CODEX_ARTIFACT_PROJECTION_PATH") {
+        if !override_path.trim().is_empty() {
+            return PathBuf::from(override_path);
+        }
+    }
+    #[cfg(test)]
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT_TEST_PROJECTION_ID: AtomicU64 = AtomicU64::new(1);
+        return std::env::temp_dir().join(format!(
+            "openagents-codex-artifacts-test-{}-{}.json",
+            std::process::id(),
+            NEXT_TEST_PROJECTION_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+    }
+    #[cfg(not(test))]
+    {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".openagents")
+            .join("autopilot-codex-artifacts-v1.json")
+    }
+}
+
+fn review_artifact_thread_keys(source_thread_id: &str, review_thread_id: &str) -> Vec<String> {
+    if source_thread_id == review_thread_id {
+        vec![source_thread_id.to_string()]
+    } else {
+        vec![source_thread_id.to_string(), review_thread_id.to_string()]
+    }
+}
+
+fn normalized_review_target(value: Option<String>) -> String {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "review".to_string())
+}
+
+fn normalized_review_delivery(
+    value: Option<String>,
+    source_thread_id: &str,
+    review_thread_id: &str,
+) -> String {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if source_thread_id == review_thread_id {
+                "inline".to_string()
+            } else {
+                "detached".to_string()
+            }
+        })
+}
+
+fn normalize_codex_diff_artifacts(
+    mut artifacts: Vec<AutopilotDiffArtifact>,
+) -> Vec<AutopilotDiffArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+            .then_with(|| lhs.source_turn_id.cmp(&rhs.source_turn_id))
+    });
+    let mut seen_keys = HashSet::new();
+    artifacts.retain(|artifact| {
+        seen_keys.insert(format!(
+            "{}|{}",
+            artifact.thread_id, artifact.source_turn_id
+        ))
+    });
+    let mut thread_counts = HashMap::<String, usize>::new();
+    artifacts.retain(|artifact| {
+        let count = thread_counts.entry(artifact.thread_id.clone()).or_insert(0);
+        if *count >= CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD {
+            return false;
+        }
+        *count += 1;
+        true
+    });
+    artifacts
+}
+
+fn normalize_codex_review_artifacts(
+    mut artifacts: Vec<AutopilotReviewArtifact>,
+) -> Vec<AutopilotReviewArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+    });
+    let mut seen_thread_ids = HashSet::new();
+    artifacts.retain(|artifact| seen_thread_ids.insert(artifact.thread_id.clone()));
+    artifacts
+}
+
+fn normalize_codex_compaction_artifacts(
+    mut artifacts: Vec<AutopilotCompactionArtifact>,
+) -> Vec<AutopilotCompactionArtifact> {
+    artifacts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+    });
+    let mut seen_thread_ids = HashSet::new();
+    artifacts.retain(|artifact| seen_thread_ids.insert(artifact.thread_id.clone()));
+    artifacts
+}
+
+fn persist_codex_artifact_projection(
+    path: &Path,
+    diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
+    review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
+    compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create Codex artifact dir: {error}"))?;
+    }
+    let document = CodexArtifactProjectionDocumentV1 {
+        schema_version: CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION,
+        stream_id: CODEX_ARTIFACT_PROJECTION_STREAM_ID.to_string(),
+        diff_artifacts: normalize_codex_diff_artifacts(
+            diff_artifacts
+                .values()
+                .flat_map(|artifacts| artifacts.iter().cloned())
+                .collect(),
+        ),
+        review_artifacts: normalize_codex_review_artifacts(
+            review_artifacts.values().cloned().collect(),
+        ),
+        compaction_artifacts: normalize_codex_compaction_artifacts(
+            compaction_artifacts.values().cloned().collect(),
+        ),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write Codex artifact temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist Codex artifacts: {error}"))?;
+    Ok(())
+}
+
+fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProjection, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LoadedCodexArtifactProjection {
+                thread_diff_artifacts: HashMap::new(),
+                thread_review_artifacts: HashMap::new(),
+                thread_compaction_artifacts: HashMap::new(),
+                review_thread_source_map: HashMap::new(),
+            });
+        }
+        Err(error) => return Err(format!("Failed to read Codex artifacts: {error}")),
+    };
+    let document = serde_json::from_str::<CodexArtifactProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse Codex artifacts: {error}"))?;
+    if document.schema_version != CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported Codex artifact schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported Codex artifact stream id: {}",
+            document.stream_id
+        ));
+    }
+
+    let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
+    for artifact in normalize_codex_diff_artifacts(document.diff_artifacts) {
+        thread_diff_artifacts
+            .entry(artifact.thread_id.clone())
+            .or_default()
+            .push(artifact);
+    }
+
+    let mut thread_review_artifacts = HashMap::<String, AutopilotReviewArtifact>::new();
+    let mut review_thread_source_map = HashMap::<String, String>::new();
+    for artifact in normalize_codex_review_artifacts(document.review_artifacts) {
+        review_thread_source_map.insert(
+            artifact.review_thread_id.clone(),
+            artifact.source_thread_id.clone(),
+        );
+        thread_review_artifacts.insert(artifact.thread_id.clone(), artifact);
+    }
+
+    let mut thread_compaction_artifacts = HashMap::<String, AutopilotCompactionArtifact>::new();
+    for artifact in normalize_codex_compaction_artifacts(document.compaction_artifacts) {
+        thread_compaction_artifacts.insert(artifact.thread_id.clone(), artifact);
+    }
+
+    Ok(LoadedCodexArtifactProjection {
+        thread_diff_artifacts,
+        thread_review_artifacts,
+        thread_compaction_artifacts,
+        review_thread_source_map,
+    })
+}
+
+fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
+    let mut files = Vec::<AutopilotDiffFileArtifact>::new();
+    let mut current_file_index = None;
+    for line in raw_diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            current_file_index = Some(ensure_diff_file_entry(&mut files, path.trim()));
+            continue;
+        }
+        if let Some(path) = line.strip_prefix("rename to ") {
+            current_file_index = Some(ensure_diff_file_entry(&mut files, path.trim()));
+            continue;
+        }
+        if line.starts_with("diff --git ") {
+            current_file_index = None;
+            continue;
+        }
+        if line.starts_with("@@")
+            || line.starts_with("--- ")
+            || line.starts_with("index ")
+            || line.starts_with("new file mode ")
+            || line.starts_with("deleted file mode ")
+        {
+            continue;
+        }
+        if let Some(index) = current_file_index {
+            if line.starts_with('+') {
+                files[index].added_line_count = files[index].added_line_count.saturating_add(1);
+            } else if line.starts_with('-') {
+                files[index].removed_line_count = files[index].removed_line_count.saturating_add(1);
+            }
+        }
+    }
+    files
+}
+
+fn ensure_diff_file_entry(files: &mut Vec<AutopilotDiffFileArtifact>, path: &str) -> usize {
+    if let Some(index) = files.iter().position(|file| file.path == path) {
+        return index;
+    }
+    files.push(AutopilotDiffFileArtifact {
+        path: path.to_string(),
+        added_line_count: 0,
+        removed_line_count: 0,
+    });
+    files.len().saturating_sub(1)
+}
+
+fn normalized_optional_path(value: Option<&str>) -> Option<PathBuf> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    Some(std::fs::canonicalize(&path).unwrap_or(path))
+}
+
+fn workspace_root_for_thread_paths(cwd: Option<&str>, path: Option<&str>) -> Option<String> {
+    let base = normalized_optional_path(cwd).or_else(|| {
+        normalized_optional_path(path).and_then(|path| path.parent().map(Path::to_path_buf))
+    })?;
+    git_workspace_root(base.as_path())
+        .or_else(|| Some(base.display().to_string()))
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn git_command_output(cwd: &Path, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Some(stdout)
+}
+
+fn git_workspace_root(start: &Path) -> Option<String> {
+    git_command_output(start, &["rev-parse", "--show-toplevel"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+}
+
+fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["branch", "--show-current"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+        .or_else(|| {
+            git_command_output(root, &["rev-parse", "--short", "HEAD"])
+                .and_then(|value| (!value.is_empty()).then_some(value))
+        })
+}
+
+fn git_dirty_for_workspace_root(workspace_root: &str) -> Option<bool> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["status", "--porcelain", "--untracked-files=normal"])
+        .map(|value| !value.is_empty())
+}
+
+fn project_name_for_workspace_root(workspace_root: &str) -> String {
+    Path::new(workspace_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| workspace_root.to_string())
+}
+
+fn current_epoch_millis_for_state() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn project_defaults_from_thread_metadata(
+    metadata: &AutopilotThreadMetadata,
+) -> AutopilotProjectDefaults {
+    AutopilotProjectDefaults {
+        model: metadata.model.clone(),
+        service_tier: metadata.service_tier,
+        reasoning_effort: metadata.reasoning_effort.clone(),
+        approval_policy: metadata.approval_policy,
+        sandbox_mode: metadata.sandbox_mode,
+        personality: metadata.personality,
+        collaboration_mode: metadata.collaboration_mode,
     }
 }
 
@@ -1153,6 +1971,29 @@ impl Default for SidebarState {
 }
 
 impl AutopilotChatState {
+    #[cfg(test)]
+    fn from_artifact_projection_path_for_tests(artifact_projection_file_path: PathBuf) -> Self {
+        let mut state = Self::default();
+        state.artifact_projection_file_path = artifact_projection_file_path.clone();
+        match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
+            Ok(projection) => {
+                state.thread_diff_artifacts = projection.thread_diff_artifacts;
+                state.thread_review_artifacts = projection.thread_review_artifacts;
+                state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
+                state.review_thread_source_map = projection.review_thread_source_map;
+                state.last_error = None;
+            }
+            Err(error) => {
+                state.thread_diff_artifacts.clear();
+                state.thread_review_artifacts.clear();
+                state.thread_compaction_artifacts.clear();
+                state.review_thread_source_map.clear();
+                state.last_error = Some(error);
+            }
+        }
+        state
+    }
+
     pub fn reset_transcript_scroll(&mut self) {
         self.transcript_scroll_offset = 0.0;
         self.transcript_follow_tail = true;
@@ -1201,6 +2042,532 @@ impl AutopilotChatState {
         } else {
             Some(value.to_string())
         }
+    }
+
+    pub fn active_thread_cwd(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.cwd.as_deref())
+    }
+
+    pub fn active_thread_workspace_root(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.as_deref())
+    }
+
+    pub fn active_thread_project_name(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.project_name.as_deref())
+    }
+
+    pub fn active_thread_git_branch(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.git_branch.as_deref())
+    }
+
+    pub fn active_thread_git_dirty(&self) -> Option<bool> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.git_dirty)
+    }
+
+    pub fn project_for_thread(&self, thread_id: &str) -> Option<&AutopilotProjectIdentity> {
+        let project_id = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.project_id.as_deref())?;
+        self.project_registry.get(project_id)
+    }
+
+    pub fn active_project(&self) -> Option<&AutopilotProjectIdentity> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.project_for_thread(thread_id))
+    }
+
+    fn rebuild_project_registry(&mut self) {
+        let previous_registry = self.project_registry.clone();
+        let active_thread_id = self.active_thread_id.clone();
+        let mut project_threads = HashMap::<String, Vec<String>>::new();
+        let mut git_state_by_project = HashMap::<String, (Option<String>, Option<bool>)>::new();
+
+        for (thread_id, metadata) in self.thread_metadata.iter_mut() {
+            let workspace_root =
+                workspace_root_for_thread_paths(metadata.cwd.as_deref(), metadata.path.as_deref());
+            metadata.workspace_root = workspace_root.clone();
+            metadata.project_id = workspace_root.clone();
+            metadata.project_name = workspace_root
+                .as_deref()
+                .map(project_name_for_workspace_root);
+            if let Some(project_id) = metadata.project_id.as_ref() {
+                project_threads
+                    .entry(project_id.clone())
+                    .or_default()
+                    .push(thread_id.clone());
+            } else {
+                metadata.git_branch = None;
+                metadata.git_dirty = None;
+            }
+        }
+
+        for project_id in project_threads.keys() {
+            let git_branch = git_branch_for_workspace_root(project_id);
+            let git_dirty = git_dirty_for_workspace_root(project_id);
+            git_state_by_project.insert(project_id.clone(), (git_branch, git_dirty));
+        }
+
+        for metadata in self.thread_metadata.values_mut() {
+            if let Some(project_id) = metadata.project_id.as_ref() {
+                let (git_branch, git_dirty) = git_state_by_project
+                    .get(project_id)
+                    .cloned()
+                    .unwrap_or((None, None));
+                metadata.git_branch = git_branch;
+                metadata.git_dirty = git_dirty;
+            }
+        }
+
+        let mut next_registry = HashMap::<String, AutopilotProjectIdentity>::new();
+        for (project_id, mut thread_ids) in project_threads {
+            thread_ids.sort();
+            let metadata = thread_ids
+                .iter()
+                .filter_map(|thread_id| self.thread_metadata.get(thread_id))
+                .find(|metadata| metadata.workspace_root.is_some());
+            let Some(metadata) = metadata else {
+                continue;
+            };
+            let defaults = if active_thread_id
+                .as_deref()
+                .is_some_and(|thread_id| thread_ids.iter().any(|candidate| candidate == thread_id))
+            {
+                active_thread_id
+                    .as_deref()
+                    .and_then(|thread_id| self.thread_metadata.get(thread_id))
+                    .map(project_defaults_from_thread_metadata)
+                    .unwrap_or_default()
+            } else {
+                previous_registry
+                    .get(&project_id)
+                    .map(|entry| entry.defaults.clone())
+                    .unwrap_or_else(|| project_defaults_from_thread_metadata(metadata))
+            };
+            let (git_branch, git_dirty) = git_state_by_project
+                .get(&project_id)
+                .cloned()
+                .unwrap_or((None, None));
+            next_registry.insert(
+                project_id.clone(),
+                AutopilotProjectIdentity {
+                    project_id,
+                    project_name: metadata
+                        .project_name
+                        .clone()
+                        .unwrap_or_else(|| "workspace".to_string()),
+                    workspace_root: metadata.workspace_root.clone().unwrap_or_default(),
+                    git_branch,
+                    git_dirty,
+                    thread_ids,
+                    defaults,
+                },
+            );
+        }
+        self.project_registry = next_registry;
+    }
+
+    fn sync_project_defaults_for_thread(&mut self, thread_id: &str) {
+        let Some(metadata) = self.thread_metadata.get(thread_id) else {
+            return;
+        };
+        let Some(project_id) = metadata.project_id.as_deref() else {
+            return;
+        };
+        let Some(project) = self.project_registry.get_mut(project_id) else {
+            return;
+        };
+        project.defaults = project_defaults_from_thread_metadata(metadata);
+    }
+
+    pub fn refresh_project_registry(&mut self) {
+        self.rebuild_project_registry();
+    }
+
+    pub fn set_thread_workspace_location(
+        &mut self,
+        thread_id: &str,
+        cwd: Option<String>,
+        path: Option<String>,
+    ) {
+        let Some(metadata) = self.thread_metadata.get_mut(thread_id) else {
+            return;
+        };
+        if let Some(cwd) = cwd {
+            let trimmed = cwd.trim();
+            if !trimmed.is_empty() {
+                metadata.cwd = Some(trimmed.to_string());
+            }
+        }
+        if let Some(path) = path {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                metadata.path = Some(trimmed.to_string());
+            }
+        }
+        self.rebuild_project_registry();
+    }
+
+    pub fn active_terminal_session(&self) -> Option<&AutopilotTerminalSession> {
+        let thread_id = self.active_thread_id.as_deref()?;
+        self.terminal_sessions.get(thread_id)
+    }
+
+    pub fn terminal_session_inventory(&self) -> Vec<&AutopilotTerminalSession> {
+        let mut sessions = self.terminal_sessions.values().collect::<Vec<_>>();
+        sessions.sort_by(|left, right| {
+            right
+                .updated_at_epoch_ms
+                .cmp(&left.updated_at_epoch_ms)
+                .then_with(|| left.thread_id.cmp(&right.thread_id))
+        });
+        sessions
+    }
+
+    pub fn terminal_session_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Option<&AutopilotTerminalSession> {
+        self.terminal_sessions.get(thread_id)
+    }
+
+    pub fn prepare_terminal_session(
+        &mut self,
+        thread_id: &str,
+        workspace_root: String,
+        shell: String,
+        cols: u16,
+        rows: u16,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: workspace_root.clone(),
+                shell: shell.clone(),
+                pid: None,
+                cols,
+                rows,
+                status: AutopilotTerminalSessionStatus::Pending,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session.workspace_root = workspace_root;
+        session.shell = shell;
+        session.cols = cols;
+        session.rows = rows;
+        session.status = AutopilotTerminalSessionStatus::Pending;
+        session.exit_code = None;
+        session.updated_at_epoch_ms = now;
+        session.last_error = None;
+    }
+
+    pub fn record_terminal_session_opened(
+        &mut self,
+        thread_id: &str,
+        workspace_root: String,
+        shell: String,
+        pid: u32,
+        cols: u16,
+        rows: u16,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: workspace_root.clone(),
+                shell: shell.clone(),
+                pid: Some(pid),
+                cols,
+                rows,
+                status: AutopilotTerminalSessionStatus::Running,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session.workspace_root = workspace_root;
+        session.shell = shell;
+        session.pid = Some(pid);
+        session.cols = cols;
+        session.rows = rows;
+        session.status = AutopilotTerminalSessionStatus::Running;
+        session.exit_code = None;
+        session.updated_at_epoch_ms = now;
+        session.last_error = None;
+    }
+
+    pub fn append_terminal_session_output(
+        &mut self,
+        thread_id: &str,
+        stream: TerminalStream,
+        text: impl Into<String>,
+    ) {
+        let now = current_epoch_millis_for_state();
+        let text = text.into();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let fallback_workspace = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.clone())
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.clone())
+            })
+            .unwrap_or_default();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: fallback_workspace,
+                shell: String::new(),
+                pid: None,
+                cols: 120,
+                rows: 32,
+                status: AutopilotTerminalSessionStatus::Running,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: None,
+            });
+        session
+            .lines
+            .push(TerminalLine::new(stream, trimmed.to_string()));
+        if session.lines.len() > 256 {
+            let drop_count = session.lines.len().saturating_sub(256);
+            session.lines.drain(0..drop_count);
+        }
+        session.updated_at_epoch_ms = now;
+    }
+
+    pub fn resize_terminal_session(&mut self, thread_id: &str, cols: u16, rows: u16) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.cols = cols;
+        session.rows = rows;
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn clear_terminal_session_output(&mut self, thread_id: &str) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.lines.clear();
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn record_terminal_session_closed(
+        &mut self,
+        thread_id: &str,
+        exit_code: Option<i32>,
+        reason: Option<String>,
+    ) {
+        let Some(session) = self.terminal_sessions.get_mut(thread_id) else {
+            return;
+        };
+        session.pid = None;
+        session.exit_code = exit_code;
+        session.status = if reason.is_some() {
+            AutopilotTerminalSessionStatus::Failed
+        } else if exit_code.is_some() {
+            AutopilotTerminalSessionStatus::Exited
+        } else {
+            AutopilotTerminalSessionStatus::Closed
+        };
+        session.last_error = reason.clone();
+        session.updated_at_epoch_ms = current_epoch_millis_for_state();
+        if let Some(reason) = reason {
+            session
+                .lines
+                .push(TerminalLine::new(TerminalStream::Stderr, reason));
+        }
+    }
+
+    pub fn record_terminal_session_failure(&mut self, thread_id: &str, error: String) {
+        let now = current_epoch_millis_for_state();
+        let fallback_workspace = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.clone())
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.clone())
+            })
+            .unwrap_or_default();
+        let session = self
+            .terminal_sessions
+            .entry(thread_id.to_string())
+            .or_insert_with(|| AutopilotTerminalSession {
+                thread_id: thread_id.to_string(),
+                workspace_root: fallback_workspace,
+                shell: String::new(),
+                pid: None,
+                cols: 120,
+                rows: 32,
+                status: AutopilotTerminalSessionStatus::Failed,
+                exit_code: None,
+                lines: Vec::new(),
+                created_at_epoch_ms: now,
+                updated_at_epoch_ms: now,
+                last_error: Some(error.clone()),
+            });
+        session.status = AutopilotTerminalSessionStatus::Failed;
+        session.last_error = Some(error.clone());
+        session.updated_at_epoch_ms = now;
+        session
+            .lines
+            .push(TerminalLine::new(TerminalStream::Stderr, error));
+        if session.lines.len() > 256 {
+            let drop_count = session.lines.len().saturating_sub(256);
+            session.lines.drain(0..drop_count);
+        }
+    }
+
+    pub fn remove_inactive_terminal_sessions(&mut self) -> usize {
+        let before = self.terminal_sessions.len();
+        self.terminal_sessions
+            .retain(|_, session| session.status.is_active());
+        before.saturating_sub(self.terminal_sessions.len())
+    }
+
+    pub fn active_plan_artifact(&self) -> Option<&AutopilotPlanArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_plan_artifacts.get(thread_id))
+    }
+
+    pub fn active_diff_artifact(&self) -> Option<&AutopilotDiffArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_diff_artifacts.get(thread_id))
+            .and_then(|artifacts| artifacts.first())
+    }
+
+    pub fn active_review_artifact(&self) -> Option<&AutopilotReviewArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_review_artifacts.get(thread_id))
+    }
+
+    pub fn active_compaction_artifact(&self) -> Option<&AutopilotCompactionArtifact> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_compaction_artifacts.get(thread_id))
+    }
+
+    pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
+        let draft = draft.into();
+        if let Some(thread_id) = self.active_thread_id.clone() {
+            if draft.is_empty() {
+                self.thread_composer_drafts.remove(&thread_id);
+            } else {
+                self.thread_composer_drafts.insert(thread_id, draft);
+            }
+            return;
+        }
+        self.detached_composer_draft = draft;
+    }
+
+    pub fn active_composer_draft(&self) -> &str {
+        if let Some(thread_id) = self.active_thread_id.as_ref() {
+            return self
+                .thread_composer_drafts
+                .get(thread_id)
+                .map(String::as_str)
+                .unwrap_or("");
+        }
+        self.detached_composer_draft.as_str()
+    }
+
+    pub fn adopt_detached_composer_draft(&mut self, thread_id: &str) {
+        if self.detached_composer_draft.trim().is_empty() {
+            return;
+        }
+        let draft = self.detached_composer_draft.clone();
+        self.thread_composer_drafts
+            .entry(thread_id.to_string())
+            .or_insert(draft);
+    }
+
+    pub fn remember_submission_draft(&mut self, thread_id: &str, draft: impl Into<String>) {
+        let draft = draft.into();
+        if draft.trim().is_empty() {
+            return;
+        }
+        let history = self
+            .thread_submission_history
+            .entry(thread_id.to_string())
+            .or_default();
+        history.push_front(draft);
+        if history.len() > 16 {
+            history.truncate(16);
+        }
+    }
+
+    pub fn last_submission_draft(&self, thread_id: &str) -> Option<&str> {
+        self.thread_submission_history
+            .get(thread_id)
+            .and_then(|history| history.front())
+            .map(String::as_str)
+    }
+
+    pub fn enqueue_pending_steer_submission(
+        &mut self,
+        command_seq: u64,
+        thread_id: impl Into<String>,
+        prompt: impl Into<String>,
+    ) {
+        self.pending_steer_submissions
+            .push_back(AutopilotPendingSteerSubmission {
+                command_seq,
+                thread_id: thread_id.into(),
+                prompt: prompt.into(),
+            });
+        if self.pending_steer_submissions.len() > 32 {
+            let overflow = self.pending_steer_submissions.len().saturating_sub(32);
+            self.pending_steer_submissions.drain(0..overflow);
+        }
+    }
+
+    pub fn take_pending_steer_submission(&mut self, command_seq: u64) -> Option<(String, String)> {
+        let index = self
+            .pending_steer_submissions
+            .iter()
+            .position(|pending| pending.command_seq == command_seq)?;
+        let pending = self.pending_steer_submissions.remove(index)?;
+        Some((pending.thread_id, pending.prompt))
     }
 
     pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
@@ -1260,7 +2627,245 @@ impl AutopilotChatState {
             return;
         }
         self.selected_model = (self.selected_model + 1) % self.models.len();
+        self.record_active_session_preferences();
         self.last_error = None;
+    }
+
+    pub fn select_or_insert_model(&mut self, model: impl AsRef<str>) {
+        let value = model.as_ref().trim();
+        if value.is_empty() {
+            return;
+        }
+        if let Some(index) = self.models.iter().position(|candidate| candidate == value) {
+            self.selected_model = index;
+        } else {
+            self.models.push(value.to_string());
+            self.selected_model = self.models.len().saturating_sub(1);
+        }
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_reasoning_effort(&mut self, reasoning_effort: Option<String>) {
+        self.reasoning_effort = reasoning_effort
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_reasoning_effort(&mut self, supported_efforts: &[String]) {
+        let fallback = [
+            "minimal".to_string(),
+            "low".to_string(),
+            "medium".to_string(),
+            "high".to_string(),
+        ];
+        let options = if supported_efforts.is_empty() {
+            fallback.as_slice()
+        } else {
+            supported_efforts
+        };
+        if options.is_empty() {
+            return;
+        }
+        let current = self
+            .reasoning_effort
+            .as_deref()
+            .unwrap_or("medium")
+            .trim()
+            .to_ascii_lowercase();
+        let next_index = options
+            .iter()
+            .position(|value| value.eq_ignore_ascii_case(current.as_str()))
+            .map(|index| (index + 1) % options.len())
+            .unwrap_or(0);
+        self.set_reasoning_effort(options.get(next_index).cloned());
+    }
+
+    pub fn cycle_service_tier(&mut self) {
+        self.service_tier = self.service_tier.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_service_tier(&mut self, service_tier: AutopilotChatServiceTier) {
+        self.service_tier = service_tier;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_personality(&mut self) {
+        self.personality = self.personality.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_personality(&mut self, personality: AutopilotChatPersonality) {
+        self.personality = personality;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_collaboration_mode(&mut self) {
+        self.collaboration_mode = self.collaboration_mode.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_collaboration_mode(&mut self, collaboration_mode: AutopilotChatCollaborationMode) {
+        self.collaboration_mode = collaboration_mode;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_approval_mode(&mut self) {
+        self.approval_mode = match self.approval_mode {
+            codex_client::AskForApproval::Never => codex_client::AskForApproval::OnFailure,
+            codex_client::AskForApproval::OnFailure => codex_client::AskForApproval::OnRequest,
+            codex_client::AskForApproval::OnRequest => codex_client::AskForApproval::UnlessTrusted,
+            codex_client::AskForApproval::UnlessTrusted
+            | codex_client::AskForApproval::Reject { .. } => codex_client::AskForApproval::Never,
+        };
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_approval_mode(&mut self, approval_mode: codex_client::AskForApproval) {
+        self.approval_mode = approval_mode;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn cycle_sandbox_mode(&mut self) {
+        self.sandbox_mode = match self.sandbox_mode {
+            codex_client::SandboxMode::DangerFullAccess => {
+                codex_client::SandboxMode::WorkspaceWrite
+            }
+            codex_client::SandboxMode::WorkspaceWrite => codex_client::SandboxMode::ReadOnly,
+            codex_client::SandboxMode::ReadOnly => codex_client::SandboxMode::DangerFullAccess,
+        };
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_sandbox_mode(&mut self, sandbox_mode: codex_client::SandboxMode) {
+        self.sandbox_mode = sandbox_mode;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    fn record_active_session_preferences(&mut self) {
+        let Some(thread_id) = self.active_thread_id.clone() else {
+            return;
+        };
+        let selected_model = self.selected_model_override();
+        let reasoning_effort = self.reasoning_effort.clone();
+        let service_tier = self.service_tier;
+        let approval_mode = self.approval_mode;
+        let sandbox_mode = self.sandbox_mode;
+        let personality = self.personality;
+        let collaboration_mode = self.collaboration_mode;
+        if let Some(metadata) = self.thread_metadata.get_mut(&thread_id) {
+            metadata.model = selected_model;
+            metadata.service_tier = service_tier;
+            metadata.reasoning_effort = reasoning_effort;
+            metadata.approval_policy = Some(approval_mode);
+            metadata.sandbox_mode = Some(sandbox_mode);
+            metadata.personality = personality;
+            metadata.collaboration_mode = collaboration_mode;
+        }
+        self.sync_project_defaults_for_thread(&thread_id);
+    }
+
+    pub fn apply_thread_session_configuration(
+        &mut self,
+        thread_id: &str,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<codex_client::AskForApproval>,
+        sandbox_mode: Option<codex_client::SandboxMode>,
+        service_tier: Option<codex_client::ServiceTier>,
+        reasoning_effort: Option<String>,
+    ) {
+        let service_tier_selection = AutopilotChatServiceTier::from_response(service_tier);
+        let normalized_model = model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let normalized_effort = reasoning_effort
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let cwd_changed = cwd.is_some();
+
+        {
+            let metadata = self
+                .thread_metadata
+                .entry(thread_id.to_string())
+                .or_default();
+            if let Some(value) = normalized_model.as_ref() {
+                metadata.model = Some(value.clone());
+            }
+            if let Some(value) = cwd {
+                metadata.cwd = Some(value);
+            }
+            if let Some(value) = normalized_effort.as_ref() {
+                metadata.reasoning_effort = Some(value.clone());
+            }
+            if let Some(value) = approval_policy {
+                metadata.approval_policy = Some(value);
+            }
+            if let Some(value) = sandbox_mode {
+                metadata.sandbox_mode = Some(value);
+            }
+            metadata.service_tier = service_tier_selection;
+        }
+
+        if cwd_changed {
+            self.rebuild_project_registry();
+        } else {
+            self.sync_project_defaults_for_thread(thread_id);
+        }
+
+        if self.is_active_thread(thread_id) {
+            if let Some(value) = normalized_model.as_ref() {
+                self.select_or_insert_model(value);
+            }
+            self.service_tier = service_tier_selection;
+            if let Some(value) = normalized_effort {
+                self.reasoning_effort = Some(value);
+            }
+            if let Some(value) = approval_policy {
+                self.approval_mode = value;
+            }
+            if let Some(value) = sandbox_mode {
+                self.sandbox_mode = value;
+            }
+            self.record_active_session_preferences();
+        }
+    }
+
+    pub fn restore_session_preferences_from_thread(&mut self, thread_id: &str) {
+        let Some(metadata) = self.thread_metadata.get(thread_id).cloned() else {
+            return;
+        };
+        if let Some(model) = metadata.model.as_ref() {
+            self.select_or_insert_model(model);
+        }
+        self.service_tier = metadata.service_tier;
+        self.reasoning_effort = metadata.reasoning_effort.clone();
+        if let Some(value) = metadata.approval_policy {
+            self.approval_mode = value;
+        }
+        if let Some(value) = metadata.sandbox_mode {
+            self.sandbox_mode = value;
+        }
+        self.personality = metadata.personality;
+        self.collaboration_mode = metadata.collaboration_mode;
+        self.record_active_session_preferences();
     }
 
     pub fn set_connection_status(&mut self, status: impl Into<String>) {
@@ -1877,14 +3482,41 @@ impl AutopilotChatState {
             .collect();
         self.thread_metadata.clear();
         for entry in entries {
+            let previous = previous_metadata
+                .get(&entry.thread_id)
+                .cloned()
+                .unwrap_or_default();
             self.thread_metadata.insert(
                 entry.thread_id.clone(),
                 AutopilotThreadMetadata {
                     thread_name: entry.thread_name,
+                    preview: if entry.preview.trim().is_empty() {
+                        previous.preview.clone()
+                    } else {
+                        Some(entry.preview)
+                    },
                     status: entry.status,
                     loaded: entry.loaded,
-                    cwd: entry.cwd,
-                    path: entry.path,
+                    cwd: entry.cwd.or(previous.cwd.clone()),
+                    path: entry.path.or(previous.path.clone()),
+                    workspace_root: previous.workspace_root.clone(),
+                    project_id: previous.project_id.clone(),
+                    project_name: previous.project_name.clone(),
+                    git_branch: previous.git_branch.clone(),
+                    git_dirty: previous.git_dirty,
+                    created_at: (entry.created_at > 0)
+                        .then_some(entry.created_at)
+                        .or(previous.created_at),
+                    updated_at: (entry.updated_at > 0)
+                        .then_some(entry.updated_at)
+                        .or(previous.updated_at),
+                    model: previous.model.clone(),
+                    service_tier: previous.service_tier,
+                    reasoning_effort: previous.reasoning_effort.clone(),
+                    approval_policy: previous.approval_policy,
+                    sandbox_mode: previous.sandbox_mode,
+                    personality: previous.personality,
+                    collaboration_mode: previous.collaboration_mode,
                 },
             );
         }
@@ -1896,27 +3528,66 @@ impl AutopilotChatState {
                     previous_metadata
                         .get(&active_id)
                         .cloned()
-                        .unwrap_or(AutopilotThreadMetadata {
-                            thread_name: None,
-                            status: None,
-                            loaded: false,
-                            cwd: None,
-                            path: None,
-                        }),
+                        .unwrap_or_default(),
                 );
             }
             self.active_thread_id = Some(active_id);
         } else {
             self.active_thread_id = self.threads.first().cloned();
         }
+        self.rebuild_project_registry();
+    }
+
+    fn cache_active_thread_transcript(&mut self) {
+        let Some(thread_id) = self.active_thread_id.clone() else {
+            return;
+        };
+        if self.messages.is_empty() {
+            return;
+        }
+        self.thread_transcript_cache
+            .insert(thread_id, self.messages.clone());
+    }
+
+    fn restore_cached_thread_transcript(&mut self, thread_id: &str) {
+        let Some(messages) = self.thread_transcript_cache.get(thread_id).cloned() else {
+            self.set_active_thread_transcript(thread_id, Vec::new());
+            return;
+        };
+        self.apply_active_thread_messages(thread_id, messages);
+    }
+
+    pub fn cache_thread_transcript(
+        &mut self,
+        thread_id: &str,
+        messages: Vec<(AutopilotRole, String)>,
+    ) {
+        let mut cached_messages = Vec::new();
+        let mut next_message_id = 1u64;
+        for (role, content) in messages {
+            if content.trim().is_empty() {
+                continue;
+            }
+            cached_messages.push(AutopilotMessage {
+                id: next_message_id,
+                role,
+                status: AutopilotMessageStatus::Done,
+                content,
+                structured: None,
+            });
+            next_message_id = next_message_id.saturating_add(1);
+        }
+        self.thread_transcript_cache
+            .insert(thread_id.to_string(), cached_messages);
     }
 
     pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
         let thread_id = self.threads.get(index).cloned()?;
+        self.cache_active_thread_transcript();
         self.active_thread_id = Some(thread_id.clone());
         self.reset_transcript_scroll();
         self.last_error = None;
-        self.set_active_thread_transcript(&thread_id, Vec::new());
+        self.restore_cached_thread_transcript(&thread_id);
         let metadata = self.thread_metadata.get(&thread_id).cloned();
         Some(AutopilotThreadResumeTarget {
             thread_id,
@@ -1930,15 +3601,7 @@ impl AutopilotChatState {
         if !self.threads.iter().any(|existing| existing == &thread_id) {
             self.threads.insert(0, thread_id.clone());
         }
-        self.thread_metadata
-            .entry(thread_id.clone())
-            .or_insert_with(|| AutopilotThreadMetadata {
-                thread_name: None,
-                status: None,
-                loaded: false,
-                cwd: None,
-                path: None,
-            });
+        self.thread_metadata.entry(thread_id.clone()).or_default();
         if self.active_thread_id.is_none() {
             self.active_thread_id = Some(thread_id);
         }
@@ -1957,8 +3620,21 @@ impl AutopilotChatState {
     pub fn remove_thread(&mut self, thread_id: &str) {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
+        self.terminal_sessions.remove(thread_id);
+        self.thread_transcript_cache.remove(thread_id);
+        self.thread_plan_artifacts.remove(thread_id);
+        self.thread_diff_artifacts.remove(thread_id);
+        self.thread_review_artifacts.remove(thread_id);
+        self.thread_compaction_artifacts.remove(thread_id);
+        self.review_thread_source_map.remove(thread_id);
+        self.review_thread_source_map
+            .retain(|_, source_thread_id| source_thread_id != thread_id);
+        self.thread_composer_drafts.remove(thread_id);
+        self.thread_submission_history.remove(thread_id);
         self.pending_turn_metadata
             .retain(|metadata| metadata.thread_id != thread_id);
+        self.pending_steer_submissions
+            .retain(|pending| pending.thread_id != thread_id);
         self.turn_metadata_by_turn_id
             .retain(|_, metadata| metadata.thread_id != thread_id);
         if self
@@ -1970,32 +3646,32 @@ impl AutopilotChatState {
         }
         if self.active_thread_id.as_deref() == Some(thread_id) {
             self.active_thread_id = self.threads.first().cloned();
+            if let Some(next_thread_id) = self.active_thread_id.clone() {
+                self.restore_cached_thread_transcript(&next_thread_id);
+            } else {
+                self.apply_active_thread_messages("", Vec::new());
+            }
         }
+        self.persist_codex_artifact_projection();
     }
 
-    pub fn set_active_thread_transcript(
-        &mut self,
-        thread_id: &str,
-        messages: Vec<(AutopilotRole, String)>,
-    ) {
-        if !self.is_active_thread(thread_id) {
+    fn apply_active_thread_messages(&mut self, thread_id: &str, messages: Vec<AutopilotMessage>) {
+        if !thread_id.is_empty() && !self.is_active_thread(thread_id) {
             return;
         }
 
-        self.messages.clear();
-        self.next_message_id = 1;
-        for (role, content) in messages {
-            if content.trim().is_empty() {
-                continue;
-            }
-            self.messages.push(AutopilotMessage {
-                id: self.next_message_id,
-                role,
-                status: AutopilotMessageStatus::Done,
-                content,
-                structured: None,
-            });
-            self.next_message_id = self.next_message_id.saturating_add(1);
+        self.messages = messages;
+        self.next_message_id = self
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+            .max(1);
+        if !thread_id.is_empty() {
+            self.thread_transcript_cache
+                .insert(thread_id.to_string(), self.messages.clone());
         }
 
         self.active_turn_id = None;
@@ -2025,6 +3701,37 @@ impl AutopilotChatState {
         self.turn_timeline.clear();
         self.transcript_selection = None;
         self.last_error = None;
+        if !thread_id.is_empty() {
+            self.restore_active_plan_state(thread_id);
+            self.restore_active_diff_state(thread_id);
+        }
+    }
+
+    pub fn set_active_thread_transcript(
+        &mut self,
+        thread_id: &str,
+        messages: Vec<(AutopilotRole, String)>,
+    ) {
+        if !self.is_active_thread(thread_id) {
+            return;
+        }
+
+        let mut active_messages = Vec::new();
+        let mut next_message_id = 1u64;
+        for (role, content) in messages {
+            if content.trim().is_empty() {
+                continue;
+            }
+            active_messages.push(AutopilotMessage {
+                id: next_message_id,
+                role,
+                status: AutopilotMessageStatus::Done,
+                content,
+                structured: None,
+            });
+            next_message_id = next_message_id.saturating_add(1);
+        }
+        self.apply_active_thread_messages(thread_id, active_messages);
     }
 
     pub fn submit_prompt(&mut self, prompt: String) {
@@ -2065,6 +3772,66 @@ impl AutopilotChatState {
         self.pending_assistant_message_ids
             .push_back(assistant_message_id);
         self.active_assistant_message_id = Some(assistant_message_id);
+    }
+
+    pub fn submit_steer_prompt(&mut self, prompt: String) {
+        self.last_error = None;
+        self.transcript_selection = None;
+        let trimmed = prompt.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.messages.push(AutopilotMessage {
+            id: self.next_message_id,
+            role: AutopilotRole::User,
+            status: AutopilotMessageStatus::Done,
+            content: trimmed.to_string(),
+            structured: None,
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+        self.last_turn_status = Some("inProgress".to_string());
+    }
+
+    pub fn append_local_exchange(
+        &mut self,
+        prompt: impl Into<String>,
+        response: impl Into<String>,
+        is_error: bool,
+    ) {
+        self.transcript_selection = None;
+        let prompt = prompt.into();
+        let response = response.into();
+        let trimmed_prompt = prompt.trim();
+        let trimmed_response = response.trim();
+        if !trimmed_prompt.is_empty() {
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::User,
+                status: AutopilotMessageStatus::Done,
+                content: trimmed_prompt.to_string(),
+                structured: None,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+        if !trimmed_response.is_empty() {
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::Codex,
+                status: if is_error {
+                    AutopilotMessageStatus::Error
+                } else {
+                    AutopilotMessageStatus::Done
+                },
+                content: trimmed_response.to_string(),
+                structured: None,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+        }
+        if let Some(thread_id) = self.active_thread_id.clone() {
+            self.thread_transcript_cache
+                .insert(thread_id, self.messages.clone());
+        }
+        self.last_error = is_error.then(|| trimmed_response.to_string());
     }
 
     pub fn record_turn_submission_metadata(
@@ -2822,6 +4589,394 @@ impl AutopilotChatState {
         self.turn_plan = plan;
     }
 
+    pub fn clear_plan_artifact(&mut self, thread_id: &str) {
+        self.thread_plan_artifacts.remove(thread_id);
+        if self.is_active_thread(thread_id) {
+            self.turn_plan_explanation = None;
+            self.turn_plan.clear();
+        }
+    }
+
+    pub fn set_plan_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        explanation: Option<String>,
+        steps: Vec<AutopilotTurnPlanStep>,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        let metadata = self.thread_metadata.get(thread_id);
+        let artifact = AutopilotPlanArtifact {
+            thread_id: thread_id.to_string(),
+            source_turn_id: source_turn_id.into(),
+            explanation,
+            steps,
+            workspace_cwd: metadata.and_then(|value| value.cwd.clone()),
+            workspace_path: metadata.and_then(|value| value.path.clone()),
+            workspace_root: metadata.and_then(|value| value.workspace_root.clone()),
+            project_id: metadata.and_then(|value| value.project_id.clone()),
+            project_name: metadata.and_then(|value| value.project_name.clone()),
+            git_branch: metadata.and_then(|value| value.git_branch.clone()),
+            git_dirty: metadata.and_then(|value| value.git_dirty),
+            updated_at_epoch_ms,
+            restored_from_thread_read,
+        };
+        if self.is_active_thread(thread_id) {
+            self.turn_plan_explanation = artifact.explanation.clone();
+            self.turn_plan = artifact.steps.clone();
+        }
+        self.thread_plan_artifacts
+            .insert(thread_id.to_string(), artifact);
+    }
+
+    pub fn restore_plan_artifact_from_text(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        plan_text: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let (explanation, steps) = Self::parse_plan_artifact_text(plan_text);
+        if explanation.is_none() && steps.is_empty() {
+            self.clear_plan_artifact(thread_id);
+            return;
+        }
+        self.set_plan_artifact(
+            thread_id,
+            source_turn_id,
+            explanation,
+            steps,
+            updated_at_epoch_ms,
+            true,
+        );
+    }
+
+    fn restore_active_plan_state(&mut self, thread_id: &str) {
+        let Some(artifact) = self.thread_plan_artifacts.get(thread_id).cloned() else {
+            self.turn_plan_explanation = None;
+            self.turn_plan.clear();
+            return;
+        };
+        self.turn_plan_explanation = artifact.explanation;
+        self.turn_plan = artifact.steps;
+    }
+
+    fn restore_active_diff_state(&mut self, thread_id: &str) {
+        self.turn_diff = self
+            .thread_diff_artifacts
+            .get(thread_id)
+            .and_then(|artifacts| artifacts.first())
+            .map(|artifact| artifact.raw_diff.clone());
+    }
+
+    fn parse_plan_artifact_text(plan_text: &str) -> (Option<String>, Vec<AutopilotTurnPlanStep>) {
+        let mut explanation_lines = Vec::new();
+        let mut steps = Vec::new();
+        let mut saw_step = false;
+        for raw_line in plan_text.lines() {
+            let trimmed = raw_line.trim();
+            if trimmed.is_empty() {
+                if !saw_step && !explanation_lines.is_empty() {
+                    explanation_lines.push(String::new());
+                }
+                continue;
+            }
+            if let Some(step) = Self::parse_plan_step_line(trimmed) {
+                saw_step = true;
+                steps.push(step);
+            } else if !saw_step {
+                explanation_lines.push(trimmed.to_string());
+            }
+        }
+        if steps.is_empty() {
+            steps = plan_text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(|line| AutopilotTurnPlanStep {
+                    step: line.to_string(),
+                    status: "pending".to_string(),
+                })
+                .collect();
+            explanation_lines.clear();
+        }
+        let explanation = if explanation_lines.is_empty() {
+            None
+        } else {
+            Some(explanation_lines.join("\n").trim().to_string())
+        }
+        .filter(|value| !value.is_empty());
+        (explanation, steps)
+    }
+
+    fn parse_plan_step_line(line: &str) -> Option<AutopilotTurnPlanStep> {
+        let bracket_prefixes = [
+            ("[x] ", "completed"),
+            ("[X] ", "completed"),
+            ("[~] ", "inProgress"),
+            ("[-] ", "inProgress"),
+            ("[ ] ", "pending"),
+        ];
+        for (prefix, status) in bracket_prefixes {
+            if let Some(step) = line.strip_prefix(prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: status.to_string(),
+                    });
+                }
+            }
+            let bullet_prefix = format!("- {prefix}");
+            if let Some(step) = line.strip_prefix(&bullet_prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: status.to_string(),
+                    });
+                }
+            }
+        }
+
+        for prefix in ["- ", "* ", "+ "] {
+            if let Some(step) = line.strip_prefix(prefix).map(str::trim) {
+                if !step.is_empty() {
+                    return Some(AutopilotTurnPlanStep {
+                        step: step.to_string(),
+                        status: "pending".to_string(),
+                    });
+                }
+            }
+        }
+
+        let digit_count = line.chars().take_while(|ch| ch.is_ascii_digit()).count();
+        if digit_count > 0 {
+            let suffix = line[digit_count..].trim_start();
+            if let Some(step) = suffix
+                .strip_prefix('.')
+                .or_else(|| suffix.strip_prefix(')'))
+                .map(str::trim)
+                && !step.is_empty()
+            {
+                return Some(AutopilotTurnPlanStep {
+                    step: step.to_string(),
+                    status: "pending".to_string(),
+                });
+            }
+        }
+
+        None
+    }
+
+    pub fn set_diff_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        raw_diff: String,
+        updated_at_epoch_ms: u64,
+    ) {
+        let trimmed_diff = raw_diff.trim();
+        if trimmed_diff.is_empty() {
+            return;
+        }
+        let source_turn_id = source_turn_id.into();
+        let files = parse_diff_file_artifacts(trimmed_diff);
+        let added_line_count = files.iter().map(|file| file.added_line_count).sum();
+        let removed_line_count = files.iter().map(|file| file.removed_line_count).sum();
+        let artifact = AutopilotDiffArtifact {
+            thread_id: thread_id.to_string(),
+            source_turn_id: source_turn_id.clone(),
+            files,
+            added_line_count,
+            removed_line_count,
+            raw_diff: trimmed_diff.to_string(),
+            workspace_root: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.workspace_root.clone()),
+            project_id: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.project_id.clone()),
+            project_name: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.project_name.clone()),
+            git_branch: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.git_branch.clone()),
+            git_dirty: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.git_dirty),
+            updated_at_epoch_ms,
+        };
+        let artifacts = self
+            .thread_diff_artifacts
+            .entry(thread_id.to_string())
+            .or_default();
+        if let Some(existing) = artifacts
+            .iter_mut()
+            .find(|existing| existing.source_turn_id == source_turn_id)
+        {
+            *existing = artifact.clone();
+        } else {
+            artifacts.push(artifact.clone());
+        }
+        *artifacts = normalize_codex_diff_artifacts(std::mem::take(artifacts));
+        if self.is_active_thread(thread_id) {
+            self.turn_diff = Some(artifact.raw_diff.clone());
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn begin_review_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_thread_id: impl Into<String>,
+        delivery: impl Into<String>,
+        target: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) {
+        let source_turn_id = source_turn_id.into();
+        let review_thread_id = review_thread_id.into();
+        let delivery =
+            normalized_review_delivery(Some(delivery.into()), thread_id, review_thread_id.as_str());
+        let target = normalized_review_target(Some(target.into()));
+        self.review_thread_source_map
+            .insert(review_thread_id.clone(), thread_id.to_string());
+
+        for artifact_thread_id in review_artifact_thread_keys(thread_id, review_thread_id.as_str())
+        {
+            self.thread_review_artifacts.insert(
+                artifact_thread_id.clone(),
+                AutopilotReviewArtifact {
+                    thread_id: artifact_thread_id,
+                    source_thread_id: thread_id.to_string(),
+                    source_turn_id: source_turn_id.clone(),
+                    review_thread_id: review_thread_id.clone(),
+                    delivery: delivery.clone(),
+                    target: target.clone(),
+                    summary: None,
+                    status: "running".to_string(),
+                    updated_at_epoch_ms,
+                    restored_from_thread_read: false,
+                },
+            );
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn complete_review_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_text: &str,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        let source_turn_id = source_turn_id.into();
+        let existing = self.thread_review_artifacts.get(thread_id).cloned();
+        let source_thread_id = existing
+            .as_ref()
+            .map(|artifact| artifact.source_thread_id.clone())
+            .or_else(|| self.review_thread_source_map.get(thread_id).cloned())
+            .unwrap_or_else(|| thread_id.to_string());
+        let review_thread_id = existing
+            .as_ref()
+            .map(|artifact| artifact.review_thread_id.clone())
+            .unwrap_or_else(|| thread_id.to_string());
+        let delivery = normalized_review_delivery(
+            existing.as_ref().map(|artifact| artifact.delivery.clone()),
+            source_thread_id.as_str(),
+            review_thread_id.as_str(),
+        );
+        let target =
+            normalized_review_target(existing.as_ref().map(|artifact| artifact.target.clone()));
+        self.review_thread_source_map
+            .insert(review_thread_id.clone(), source_thread_id.clone());
+        let summary = review_text.trim();
+        let summary = (!summary.is_empty()).then(|| summary.to_string());
+
+        for artifact_thread_id in
+            review_artifact_thread_keys(source_thread_id.as_str(), review_thread_id.as_str())
+        {
+            self.thread_review_artifacts.insert(
+                artifact_thread_id.clone(),
+                AutopilotReviewArtifact {
+                    thread_id: artifact_thread_id,
+                    source_thread_id: source_thread_id.clone(),
+                    source_turn_id: source_turn_id.clone(),
+                    review_thread_id: review_thread_id.clone(),
+                    delivery: delivery.clone(),
+                    target: target.clone(),
+                    summary: summary.clone(),
+                    status: "completed".to_string(),
+                    updated_at_epoch_ms,
+                    restored_from_thread_read,
+                },
+            );
+        }
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn restore_review_artifact_from_text(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        review_text: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        self.complete_review_artifact(
+            thread_id,
+            source_turn_id,
+            review_text,
+            updated_at_epoch_ms,
+            true,
+        );
+    }
+
+    pub fn set_compaction_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        updated_at_epoch_ms: u64,
+        restored_from_thread_read: bool,
+    ) {
+        self.thread_compaction_artifacts.insert(
+            thread_id.to_string(),
+            AutopilotCompactionArtifact {
+                thread_id: thread_id.to_string(),
+                source_turn_id: source_turn_id.into(),
+                updated_at_epoch_ms,
+                restored_from_thread_read,
+            },
+        );
+        self.persist_codex_artifact_projection();
+    }
+
+    pub fn restore_compaction_artifact(
+        &mut self,
+        thread_id: &str,
+        source_turn_id: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) {
+        self.set_compaction_artifact(thread_id, source_turn_id, updated_at_epoch_ms, true);
+    }
+
+    fn persist_codex_artifact_projection(&mut self) {
+        if let Err(error) = persist_codex_artifact_projection(
+            self.artifact_projection_file_path.as_path(),
+            &self.thread_diff_artifacts,
+            &self.thread_review_artifacts,
+            &self.thread_compaction_artifacts,
+        ) {
+            tracing::warn!("failed to persist codex artifacts: {error}");
+        }
+    }
+
     pub fn set_turn_diff(&mut self, diff: Option<String>) {
         self.turn_diff = diff;
     }
@@ -2847,16 +5002,9 @@ impl AutopilotChatState {
             metadata.status = status;
             return;
         }
-        self.thread_metadata.insert(
-            thread_id.to_string(),
-            AutopilotThreadMetadata {
-                thread_name: None,
-                status,
-                loaded: false,
-                cwd: None,
-                path: None,
-            },
-        );
+        let mut metadata = AutopilotThreadMetadata::default();
+        metadata.status = status;
+        self.thread_metadata.insert(thread_id.to_string(), metadata);
     }
 
     pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
@@ -2864,16 +5012,9 @@ impl AutopilotChatState {
             metadata.thread_name = thread_name;
             return;
         }
-        self.thread_metadata.insert(
-            thread_id.to_string(),
-            AutopilotThreadMetadata {
-                thread_name,
-                status: None,
-                loaded: false,
-                cwd: None,
-                path: None,
-            },
-        );
+        let mut metadata = AutopilotThreadMetadata::default();
+        metadata.thread_name = thread_name;
+        self.thread_metadata.insert(thread_id.to_string(), metadata);
     }
 
     pub fn active_thread_status(&self) -> Option<&str> {
@@ -2888,6 +5029,78 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .map(|metadata| metadata.loaded)
+    }
+
+    pub fn active_thread_preview(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.preview.as_deref())
+    }
+
+    pub fn active_thread_path(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.path.as_deref())
+    }
+
+    pub fn active_thread_updated_at(&self) -> Option<i64> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.updated_at)
+    }
+
+    pub fn suggested_thread_name(&self, thread_id: &str) -> Option<String> {
+        let active_candidate = if self.is_active_thread(thread_id) {
+            self.messages
+                .iter()
+                .find(|message| message.role == AutopilotRole::User)
+                .map(|message| message.content.as_str())
+        } else {
+            None
+        };
+        active_candidate
+            .and_then(Self::sanitized_thread_title_candidate)
+            .or_else(|| {
+                self.thread_transcript_cache
+                    .get(thread_id)
+                    .and_then(|messages| {
+                        messages
+                            .iter()
+                            .find(|message| message.role == AutopilotRole::User)
+                            .and_then(|message| {
+                                Self::sanitized_thread_title_candidate(message.content.as_str())
+                            })
+                    })
+            })
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.preview.as_deref())
+                    .and_then(Self::sanitized_thread_title_candidate)
+            })
+    }
+
+    fn sanitized_thread_title_candidate(value: &str) -> Option<String> {
+        let normalized = value
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !line.starts_with("```"))?
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized.is_empty() {
+            return None;
+        }
+        let mut candidate = normalized.chars().take(64).collect::<String>();
+        if normalized.chars().count() > 64 {
+            candidate = candidate
+                .trim_end_matches([' ', ',', '.', ':', ';'])
+                .to_string();
+        }
+        (!candidate.is_empty()).then_some(candidate)
     }
 
     pub fn thread_label(&self, thread_id: &str) -> String {
@@ -5561,6 +7774,7 @@ pub struct RenderState {
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
     pub local_inference_inputs: LocalInferencePaneInputs,
+    pub apple_fm_workbench_inputs: AppleFmWorkbenchPaneInputs,
     pub settings_inputs: SettingsPaneInputs,
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
@@ -5576,6 +7790,7 @@ pub struct RenderState {
     pub codex_mcp: CodexMcpPaneState,
     pub codex_apps: CodexAppsPaneState,
     pub codex_labs: CodexLabsPaneState,
+    pub codex_remote: CodexRemoteState,
     pub codex_diagnostics: CodexDiagnosticsPaneState,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
@@ -5599,11 +7814,15 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub local_inference: LocalInferencePaneState,
+    pub apple_fm_workbench: AppleFmWorkbenchPaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,
     pub provider_admin_listen_addr: Option<String>,
     pub provider_admin_last_error: Option<String>,
     pub provider_admin_last_sync_signature: Option<String>,
     pub provider_admin_last_sync_at: Option<Instant>,
+    pub codex_remote_runtime: Option<crate::codex_remote::DesktopCodexRemoteRuntime>,
+    pub codex_remote_last_sync_signature: Option<String>,
+    pub codex_remote_last_sync_at: Option<Instant>,
     pub earnings_scoreboard: EarningsScoreboardState,
     pub network_aggregate_counters: NetworkAggregateCountersState,
     pub relay_connections: RelayConnectionsState,
@@ -5642,6 +7861,7 @@ pub struct RenderState {
     pub skill_trust_revocation: SkillTrustRevocationPaneState,
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
+    pub chat_terminal_worker: crate::chat_terminal::ChatTerminalWorker,
     pub cad_demo: CadDemoPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
@@ -5784,15 +8004,15 @@ impl RenderState {
         self.apple_fm_execution_worker.enqueue(command)
     }
 
-    pub fn mission_control_gpt_oss_ready(&self) -> bool {
-        self.ollama_execution.is_ready()
+    pub fn mission_control_local_runtime_ready(&self) -> bool {
+        mission_control_local_runtime_is_ready(&self.provider_runtime, &self.ollama_execution)
     }
 
     pub fn mission_control_go_online_enabled(&self) -> bool {
         !matches!(
             self.provider_runtime.mode,
             ProviderMode::Offline | ProviderMode::Degraded
-        ) || self.mission_control_gpt_oss_ready()
+        ) || self.mission_control_local_runtime_ready()
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
@@ -5858,16 +8078,23 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        if self.provider_runtime.active_inference_backend().is_none() {
-            if !self.provider_runtime.apple_fm.reachable {
-                blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
-            } else if !self.provider_runtime.apple_fm.is_ready() {
-                blockers.push(ProviderBlocker::AppleFoundationModelsModelUnavailable);
+        match mission_control_local_runtime_lane(&self.ollama_execution) {
+            Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+                if !self.provider_runtime.apple_fm.reachable {
+                    blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
+                } else if !self.provider_runtime.apple_fm.is_ready() {
+                    blockers.push(ProviderBlocker::AppleFoundationModelsModelUnavailable);
+                }
             }
-            if !self.provider_runtime.ollama.reachable {
+            Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
+                if !self.provider_runtime.ollama.reachable {
+                    blockers.push(ProviderBlocker::OllamaUnavailable);
+                } else if !self.provider_runtime.ollama.is_ready() {
+                    blockers.push(ProviderBlocker::OllamaModelUnavailable);
+                }
+            }
+            None => {
                 blockers.push(ProviderBlocker::OllamaUnavailable);
-            } else if !self.provider_runtime.ollama.is_ready() {
-                blockers.push(ProviderBlocker::OllamaModelUnavailable);
             }
         }
         blockers
@@ -5879,21 +8106,22 @@ mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
-        AutopilotMessageStatus, AutopilotRole, BuyerResolutionMode, BuyerResolutionReason,
-        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
-        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        AutopilotMessageStatus, AutopilotRole, AutopilotTerminalSessionStatus,
+        AutopilotTurnPlanStep, BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass,
+        CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState,
+        CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode,
+        CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
+        CadThreeDMouseMode, CadThreeDMouseProfile, EarnJobLifecycleProjectionRow,
+        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
+        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
+        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase,
     };
     use crate::bitcoin_display::BitcoinAmountDisplayMode;
     use chrono::TimeZone;
@@ -5904,6 +8132,71 @@ mod tests {
         let sidebar = SidebarState::default();
         assert!(!sidebar.is_open);
         assert_eq!(sidebar.width, 300.0);
+    }
+
+    fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "openagents-codex-artifacts-{label}-{}-{nanos}.json",
+            std::process::id()
+        ))
+    }
+
+    fn unique_temp_dir(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "openagents-cx7-{label}-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("temporary directory should be created");
+        path
+    }
+
+    fn init_git_workspace(label: &str) -> std::path::PathBuf {
+        let repo = unique_temp_dir(label);
+        let init_status = std::process::Command::new("git")
+            .arg("init")
+            .arg(&repo)
+            .status()
+            .expect("git init should launch");
+        assert!(init_status.success(), "git init should succeed");
+        let config_email = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["config", "user.email", "autopilot@example.com"])
+            .status()
+            .expect("git config email should launch");
+        assert!(config_email.success(), "git config email should succeed");
+        let config_name = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["config", "user.name", "Autopilot"])
+            .status()
+            .expect("git config name should launch");
+        assert!(config_name.success(), "git config name should succeed");
+        std::fs::create_dir_all(repo.join("src")).expect("git repo src dir should exist");
+        std::fs::write(repo.join("README.md"), "hello\n").expect("initial file should write");
+        let add_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "README.md"])
+            .status()
+            .expect("git add should launch");
+        assert!(add_status.success(), "git add should succeed");
+        let commit_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["commit", "-m", "init"])
+            .status()
+            .expect("git commit should launch");
+        assert!(commit_status.success(), "git commit should succeed");
+        repo
     }
 
     fn fixture_inbox_request(
@@ -6352,6 +8645,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -6385,6 +8682,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -6443,6 +8744,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -7158,10 +9463,13 @@ mod tests {
         chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
             thread_id: "thread-other".to_string(),
             thread_name: Some("Other".to_string()),
+            preview: "other preview".to_string(),
             status: Some("idle".to_string()),
             loaded: false,
             cwd: Some("/tmp/other".to_string()),
             path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
@@ -7202,24 +9510,300 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_tracks_plan_artifacts_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: Some("/tmp/b.jsonl".to_string()),
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
+            },
+        ]);
+
+        chat.set_plan_artifact(
+            "thread-a",
+            "turn-a",
+            Some("Plan A".to_string()),
+            vec![AutopilotTurnPlanStep {
+                step: "Do A".to_string(),
+                status: "pending".to_string(),
+            }],
+            1_700_000_100,
+            false,
+        );
+        assert_eq!(
+            chat.active_plan_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-a")
+        );
+
+        let selected_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        let _ = chat.select_thread_by_index(selected_index);
+        assert!(chat.active_plan_artifact().is_none());
+
+        chat.set_plan_artifact(
+            "thread-b",
+            "turn-b",
+            Some("Plan B".to_string()),
+            vec![AutopilotTurnPlanStep {
+                step: "Do B".to_string(),
+                status: "inProgress".to_string(),
+            }],
+            1_700_000_300,
+            false,
+        );
+        assert_eq!(
+            chat.active_plan_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-b")
+        );
+        assert_eq!(chat.turn_plan_explanation.as_deref(), Some("Plan B"));
+    }
+
+    #[test]
+    fn chat_state_restores_plan_artifact_from_thread_read_text() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.restore_plan_artifact_from_text(
+            "thread-a",
+            "turn-a",
+            "Plan the rollout.\n\n- [ ] add tests\n- [x] update docs",
+            1_700_000_100,
+        );
+
+        let artifact = chat.active_plan_artifact().expect("artifact");
+        assert_eq!(artifact.explanation.as_deref(), Some("Plan the rollout."));
+        assert_eq!(artifact.steps.len(), 2);
+        assert_eq!(artifact.steps[0].status, "pending");
+        assert_eq!(artifact.steps[1].status, "completed");
+        assert!(artifact.restored_from_thread_read);
+        assert_eq!(artifact.workspace_cwd.as_deref(), Some("/tmp/a"));
+        assert_eq!(artifact.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(artifact.project_name.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn chat_state_tracks_diff_artifacts_per_thread() {
+        let projection_path = unique_codex_artifact_projection_path("diff-track");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: Some("/tmp/b.jsonl".to_string()),
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
+            },
+        ]);
+
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-a",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@\n-old\n+new\n"
+                .to_string(),
+            1_700_000_100,
+        );
+        assert_eq!(
+            chat.active_diff_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-a")
+        );
+        assert!(
+            chat.turn_diff
+                .as_deref()
+                .is_some_and(|diff| diff.contains("+new"))
+        );
+        let diff = chat.active_diff_artifact().expect("thread-a diff");
+        assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(diff.project_name.as_deref(), Some("a"));
+
+        let selected_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        let _ = chat.select_thread_by_index(selected_index);
+        assert!(chat.active_diff_artifact().is_none());
+
+        chat.set_diff_artifact(
+            "thread-b",
+            "turn-b",
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@\n-removed\n+added\n"
+                .to_string(),
+            1_700_000_300,
+        );
+        assert_eq!(
+            chat.active_diff_artifact()
+                .map(|artifact| artifact.source_turn_id.as_str()),
+            Some("turn-b")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_persists_codex_review_diff_and_compaction_artifacts() {
+        let projection_path = unique_codex_artifact_projection_path("artifact-persist");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@\n-old\n+new\n"
+                .to_string(),
+            1_700_000_100,
+        );
+        chat.begin_review_artifact(
+            "thread-a",
+            "turn-review",
+            "review-thread-1",
+            "detached",
+            "uncommitted changes",
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "review-thread-1",
+            "turn-review",
+            "Looks solid overall.\n- Keep the tests close to the behavior change.",
+            1_700_000_140,
+            false,
+        );
+        chat.set_compaction_artifact("thread-a", "turn-compact", 1_700_000_160, false);
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_diff = reloaded
+            .thread_diff_artifacts
+            .get("thread-a")
+            .and_then(|artifacts| artifacts.first())
+            .expect("reloaded diff artifact");
+        assert_eq!(reloaded_diff.source_turn_id, "turn-diff");
+        assert_eq!(reloaded_diff.added_line_count, 1);
+        assert_eq!(reloaded_diff.removed_line_count, 1);
+        assert_eq!(reloaded_diff.files.len(), 1);
+        assert_eq!(reloaded_diff.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(reloaded_diff.project_name.as_deref(), Some("a"));
+
+        let reloaded_review = reloaded
+            .thread_review_artifacts
+            .get("thread-a")
+            .expect("reloaded review artifact");
+        assert_eq!(reloaded_review.review_thread_id, "review-thread-1");
+        assert_eq!(reloaded_review.delivery, "detached");
+        assert_eq!(reloaded_review.status, "completed");
+        assert_eq!(
+            reloaded_review.summary.as_deref(),
+            Some("Looks solid overall.\n- Keep the tests close to the behavior change.")
+        );
+        assert_eq!(
+            reloaded
+                .thread_review_artifacts
+                .get("review-thread-1")
+                .expect("reloaded detached review artifact")
+                .source_thread_id,
+            "thread-a"
+        );
+        assert_eq!(
+            reloaded.review_thread_source_map.get("review-thread-1"),
+            Some(&"thread-a".to_string())
+        );
+        assert_eq!(
+            reloaded
+                .thread_compaction_artifacts
+                .get("thread-a")
+                .expect("reloaded compaction artifact")
+                .source_turn_id,
+            "turn-compact"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
     fn chat_state_tracks_thread_metadata_and_filters() {
         let mut chat = AutopilotChatState::default();
         chat.set_thread_entries(vec![
             super::AutopilotThreadListEntry {
                 thread_id: "thread-a".to_string(),
                 thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
                 status: Some("idle".to_string()),
                 loaded: false,
                 cwd: Some("/tmp/a".to_string()),
                 path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
             },
             super::AutopilotThreadListEntry {
                 thread_id: "thread-b".to_string(),
                 thread_name: None,
+                preview: "second preview".to_string(),
                 status: Some("active:waitingOnApproval".to_string()),
                 loaded: false,
                 cwd: Some("/tmp/b".to_string()),
                 path: None,
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
             },
         ]);
 
@@ -7228,6 +9812,25 @@ mod tests {
         assert_eq!(chat.thread_label("thread-a"), "Alpha [thread-a]");
         assert_eq!(chat.thread_metadata["thread-a"].loaded, false);
         assert_eq!(chat.thread_metadata["thread-b"].loaded, true);
+        assert_eq!(
+            chat.thread_metadata["thread-a"].preview.as_deref(),
+            Some("first preview")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-a"].workspace_root.as_deref(),
+            Some("/tmp/a")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-a"].project_name.as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            chat.project_registry
+                .get("/tmp/a")
+                .map(|project| project.project_name.as_str()),
+            Some("a")
+        );
+        assert_eq!(chat.active_thread_updated_at(), Some(1_700_000_100));
 
         chat.cycle_thread_filter_archived();
         chat.cycle_thread_filter_sort_key();
@@ -7247,6 +9850,353 @@ mod tests {
         assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
         assert_eq!(params.search_term.as_deref(), Some("alpha"));
         assert_eq!(params.cwd.as_deref(), Some("/workspace"));
+    }
+
+    #[test]
+    fn chat_state_detects_git_workspace_identity_and_dirty_status() {
+        let repo = init_git_workspace("git-identity");
+        std::fs::write(repo.join("README.md"), "hello\nworld\n")
+            .expect("modified repo file should write");
+        let cwd = repo.join("src").display().to_string();
+
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-git".to_string(),
+            thread_name: Some("Git thread".to_string()),
+            preview: "git preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some(cwd),
+            path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        let repo_root = std::fs::canonicalize(&repo)
+            .expect("git repo root should canonicalize")
+            .display()
+            .to_string();
+        let metadata = chat
+            .thread_metadata
+            .get("thread-git")
+            .expect("git thread metadata");
+        assert_eq!(metadata.workspace_root.as_deref(), Some(repo_root.as_str()));
+        assert_eq!(
+            metadata.project_name.as_deref(),
+            repo.file_name().and_then(|value| value.to_str())
+        );
+        assert!(
+            metadata
+                .git_branch
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        );
+        assert_eq!(metadata.git_dirty, Some(true));
+
+        let project = chat
+            .project_registry
+            .get(repo_root.as_str())
+            .expect("project registry entry for git workspace");
+        assert_eq!(project.workspace_root, repo_root);
+        assert_eq!(project.git_dirty, Some(true));
+        assert_eq!(project.thread_ids, vec!["thread-git".to_string()]);
+
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_tracks_project_defaults_from_active_thread_preferences() {
+        let workspace = unique_temp_dir("project-defaults");
+        let workspace_root = workspace.display().to_string();
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some(workspace_root.clone()),
+            path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.apply_thread_session_configuration(
+            "thread-a",
+            Some("gpt-5.2-codex".to_string()),
+            None,
+            Some(codex_client::AskForApproval::OnRequest),
+            Some(codex_client::SandboxMode::ReadOnly),
+            Some(codex_client::ServiceTier::Flex),
+            Some("low".to_string()),
+        );
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+
+        let project = chat
+            .active_project()
+            .expect("project defaults should exist for active thread");
+        assert_eq!(project.defaults.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(
+            project.defaults.service_tier,
+            super::AutopilotChatServiceTier::Flex
+        );
+        assert_eq!(project.defaults.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(
+            project.defaults.approval_policy,
+            Some(codex_client::AskForApproval::OnRequest)
+        );
+        assert_eq!(
+            project.defaults.sandbox_mode,
+            Some(codex_client::SandboxMode::ReadOnly)
+        );
+        assert_eq!(
+            project.defaults.personality,
+            super::AutopilotChatPersonality::Friendly
+        );
+        assert_eq!(
+            project.defaults.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn chat_state_restores_cached_transcript_when_switching_back() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![(AutopilotRole::User, "alpha".to_string())],
+        );
+        chat.remember_thread("thread-b");
+
+        let thread_b_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        chat.select_thread_by_index(thread_b_index)
+            .expect("thread-b should select");
+        chat.set_active_thread_transcript(
+            "thread-b",
+            vec![(AutopilotRole::User, "beta".to_string())],
+        );
+
+        let thread_a_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-a")
+            .expect("thread-a should exist");
+        chat.select_thread_by_index(thread_a_index)
+            .expect("thread-a should select");
+
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-a"));
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].content, "alpha");
+    }
+
+    #[test]
+    fn chat_state_restores_session_preferences_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.select_or_insert_model("gpt-5.2-codex");
+        chat.set_reasoning_effort(Some("high".to_string()));
+        chat.cycle_service_tier();
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+        chat.cycle_approval_mode();
+        chat.cycle_sandbox_mode();
+
+        let thread_a = chat
+            .thread_metadata
+            .get("thread-a")
+            .cloned()
+            .expect("thread-a metadata should exist");
+        assert_eq!(thread_a.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(thread_a.service_tier, super::AutopilotChatServiceTier::Fast);
+        assert_eq!(thread_a.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            thread_a.approval_policy,
+            Some(codex_client::AskForApproval::OnFailure)
+        );
+        assert_eq!(
+            thread_a.sandbox_mode,
+            Some(codex_client::SandboxMode::WorkspaceWrite)
+        );
+        assert_eq!(
+            thread_a.personality,
+            super::AutopilotChatPersonality::Friendly
+        );
+        assert_eq!(
+            thread_a.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+
+        chat.ensure_thread("thread-b".to_string());
+        chat.apply_thread_session_configuration(
+            "thread-b",
+            Some("gpt-5.3-codex".to_string()),
+            Some("/tmp/thread-b".to_string()),
+            Some(codex_client::AskForApproval::OnRequest),
+            Some(codex_client::SandboxMode::ReadOnly),
+            Some(codex_client::ServiceTier::Flex),
+            Some("low".to_string()),
+        );
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+
+        assert_eq!(chat.current_model(), "gpt-5.3-codex");
+        assert_eq!(chat.service_tier, super::AutopilotChatServiceTier::Flex);
+        assert_eq!(chat.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(chat.approval_mode, codex_client::AskForApproval::OnRequest);
+        assert_eq!(chat.sandbox_mode, codex_client::SandboxMode::ReadOnly);
+        assert_eq!(chat.personality, super::AutopilotChatPersonality::Pragmatic);
+        assert_eq!(
+            chat.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Plan
+        );
+
+        chat.ensure_thread("thread-a".to_string());
+        chat.restore_session_preferences_from_thread("thread-a");
+        assert_eq!(chat.current_model(), "gpt-5.2-codex");
+        assert_eq!(chat.service_tier, super::AutopilotChatServiceTier::Fast);
+        assert_eq!(chat.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(chat.approval_mode, codex_client::AskForApproval::OnFailure);
+        assert_eq!(chat.sandbox_mode, codex_client::SandboxMode::WorkspaceWrite);
+        assert_eq!(chat.personality, super::AutopilotChatPersonality::Friendly);
+        assert_eq!(
+            chat.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+    }
+
+    #[test]
+    fn chat_state_tracks_composer_drafts_per_thread_and_detached() {
+        let mut chat = AutopilotChatState::default();
+        chat.record_composer_draft("detached draft".to_string());
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+
+        chat.ensure_thread("thread-a".to_string());
+        chat.adopt_detached_composer_draft("thread-a");
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+
+        chat.record_composer_draft("draft for a".to_string());
+        assert_eq!(chat.active_composer_draft(), "draft for a");
+
+        chat.ensure_thread("thread-b".to_string());
+        assert_eq!(chat.active_composer_draft(), "");
+        chat.record_composer_draft("draft for b".to_string());
+
+        chat.ensure_thread("thread-a".to_string());
+        assert_eq!(chat.active_composer_draft(), "draft for a");
+
+        chat.active_thread_id = None;
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+    }
+
+    #[test]
+    fn chat_state_tracks_submission_history_and_pending_steers() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.remember_submission_draft("thread-a", "first draft".to_string());
+        chat.remember_submission_draft("thread-a", "second draft".to_string());
+        assert_eq!(chat.last_submission_draft("thread-a"), Some("second draft"));
+
+        chat.enqueue_pending_steer_submission(11, "thread-a", "continue".to_string());
+        assert_eq!(
+            chat.take_pending_steer_submission(11),
+            Some(("thread-a".to_string(), "continue".to_string()))
+        );
+        assert_eq!(chat.take_pending_steer_submission(11), None);
+    }
+
+    #[test]
+    fn chat_state_tracks_terminal_sessions_per_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.prepare_terminal_session(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_opened(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            4242,
+            120,
+            32,
+        );
+        chat.append_terminal_session_output("thread-a", TerminalStream::Stdout, "cargo test");
+        chat.append_terminal_session_output("thread-a", TerminalStream::Stderr, "warning");
+
+        let session = chat.active_terminal_session().expect("terminal session");
+        assert_eq!(session.status, AutopilotTerminalSessionStatus::Running);
+        assert_eq!(session.pid, Some(4242));
+        assert_eq!(session.lines.len(), 2);
+
+        chat.record_terminal_session_closed(
+            "thread-a",
+            Some(0),
+            Some("shell exited from /tmp/project-a with status 0".to_string()),
+        );
+        let session = chat
+            .active_terminal_session()
+            .expect("closed terminal session");
+        assert_eq!(session.status, AutopilotTerminalSessionStatus::Failed);
+        assert!(session.last_error.is_some());
+    }
+
+    #[test]
+    fn chat_state_cleans_inactive_terminal_sessions() {
+        let mut chat = AutopilotChatState::default();
+        chat.prepare_terminal_session(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_opened(
+            "thread-a",
+            "/tmp/project-a".to_string(),
+            "/bin/zsh".to_string(),
+            1,
+            120,
+            32,
+        );
+        chat.prepare_terminal_session(
+            "thread-b",
+            "/tmp/project-b".to_string(),
+            "/bin/zsh".to_string(),
+            120,
+            32,
+        );
+        chat.record_terminal_session_failure("thread-b", "failed to start".to_string());
+
+        assert_eq!(chat.remove_inactive_terminal_sessions(), 1);
+        assert!(chat.terminal_session_for_thread("thread-a").is_some());
+        assert!(chat.terminal_session_for_thread("thread-b").is_none());
+    }
+
+    #[test]
+    fn chat_state_submit_steer_prompt_adds_user_message_without_assistant_placeholder() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.submit_prompt("initial".to_string());
+        let pending_before = chat.pending_assistant_message_ids.len();
+
+        chat.submit_steer_prompt("follow up".to_string());
+
+        assert_eq!(
+            chat.messages.last().map(|message| message.content.as_str()),
+            Some("follow up")
+        );
+        assert_eq!(chat.pending_assistant_message_ids.len(), pending_before);
     }
 
     #[test]

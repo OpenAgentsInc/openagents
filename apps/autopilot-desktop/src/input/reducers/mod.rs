@@ -1,6 +1,7 @@
 //! Runtime update reducers are split by domain to keep `input.rs` focused on event routing.
 
 mod ac;
+mod apple_fm_workbench;
 mod cad;
 mod codex;
 mod jobs;
@@ -36,6 +37,14 @@ pub(super) fn run_job_history_action(
     action: JobHistoryPaneAction,
 ) -> bool {
     jobs::run_job_history_action(state, action)
+}
+
+pub(super) fn queue_codex_readiness_refresh(
+    state: &mut RenderState,
+    refresh_token: bool,
+    reason: &str,
+) {
+    codex::queue_codex_readiness_refresh(state, refresh_token, reason);
 }
 
 pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool {
@@ -134,6 +143,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     }
 
     for update in state.apple_fm_execution_worker.drain_updates() {
+        changed |= apple_fm_workbench::apply_bridge_update(state, &update);
         changed |= jobs::apply_active_job_apple_fm_update(state, update);
     }
 

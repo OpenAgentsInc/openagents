@@ -17,13 +17,14 @@ use codex_client::{
     FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
     FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
     InitializeCapabilities, InitializeParams, ListMcpServerStatusParams, LoginAccountParams,
-    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SandboxMode, SkillScope,
-    SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, SkillsRemoteReadParams,
-    SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams,
-    ThreadListParams, ThreadLoadedListParams, ThreadReadParams, ThreadRealtimeAppendTextParams,
-    ThreadRealtimeStartParams, ThreadRealtimeStopParams, ThreadResumeParams, ThreadRollbackParams,
-    ThreadSetNameParams, ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
-    ToolRequestUserInputParams, ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SandboxMode, ServiceTier,
+    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse,
+    SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams,
+    ThreadForkParams, ThreadListParams, ThreadLoadedListParams, ThreadReadParams,
+    ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
+    ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
+    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams, TurnSteerParams,
     WindowsSandboxSetupStartParams,
 };
 use serde_json::Value;
@@ -35,7 +36,11 @@ mod router;
 mod session;
 mod types;
 
-use normalizer::{extract_thread_transcript_messages, normalize_notification, thread_status_label};
+use normalizer::{
+    extract_latest_thread_compaction_artifact, extract_latest_thread_plan_artifact,
+    extract_latest_thread_review_artifact, extract_thread_transcript_messages,
+    normalize_notification, thread_status_label,
+};
 use router::run_codex_lane_loop;
 use session::{
     account_summary, fetch_model_catalog, fetch_model_catalog_entries, is_disconnect_error,
@@ -54,6 +59,56 @@ fn default_opt_out_notification_methods() -> Vec<String> {
 
 fn is_pre_materialization_thread_read_error(message: &str) -> bool {
     message.contains("not materialized yet") && message.contains("includeTurns is unavailable")
+}
+
+fn sandbox_mode_from_policy(policy: Option<&codex_client::SandboxPolicy>) -> Option<SandboxMode> {
+    match policy {
+        Some(codex_client::SandboxPolicy::DangerFullAccess) => Some(SandboxMode::DangerFullAccess),
+        Some(codex_client::SandboxPolicy::ReadOnly)
+        | Some(codex_client::SandboxPolicy::ExternalSandbox { .. }) => Some(SandboxMode::ReadOnly),
+        Some(codex_client::SandboxPolicy::WorkspaceWrite { .. }) => {
+            Some(SandboxMode::WorkspaceWrite)
+        }
+        None => None,
+    }
+}
+
+fn reasoning_effort_label(
+    reasoning_effort: Option<codex_client::ReasoningEffort>,
+) -> Option<String> {
+    reasoning_effort.map(|value| {
+        serde_json::to_string(&value)
+            .unwrap_or_else(|_| "\"unknown\"".to_string())
+            .trim_matches('"')
+            .to_string()
+    })
+}
+
+fn review_delivery_label(delivery: Option<codex_client::ReviewDelivery>) -> String {
+    match delivery.unwrap_or(codex_client::ReviewDelivery::Inline) {
+        codex_client::ReviewDelivery::Inline => "inline".to_string(),
+        codex_client::ReviewDelivery::Detached => "detached".to_string(),
+    }
+}
+
+fn review_target_label(target: &codex_client::ReviewTarget) -> String {
+    match target {
+        codex_client::ReviewTarget::UncommittedChanges => "uncommitted changes".to_string(),
+        codex_client::ReviewTarget::BaseBranch { branch } => format!("base branch {branch}"),
+        codex_client::ReviewTarget::Commit { sha, title } => title
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|title| format!("commit {} ({title})", sha))
+            .unwrap_or_else(|| format!("commit {sha}")),
+        codex_client::ReviewTarget::Custom { instructions } => {
+            let trimmed = instructions.trim();
+            if trimmed.is_empty() {
+                "custom review".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -120,6 +175,7 @@ pub struct CodexLaneSnapshot {
     pub active_thread_id: Option<String>,
     pub last_error: Option<String>,
     pub last_status: Option<String>,
+    pub install_probe: codex_client::CodexInstallationProbe,
 }
 
 impl Default for CodexLaneSnapshot {
@@ -129,6 +185,7 @@ impl Default for CodexLaneSnapshot {
             active_thread_id: None,
             last_error: None,
             last_status: Some("Codex lane starting".to_string()),
+            install_probe: codex_client::CodexInstallationProbe::default(),
         }
     }
 }
@@ -148,6 +205,7 @@ pub enum CodexLaneCommandKind {
     ThreadList,
     ThreadLoadedList,
     TurnStart,
+    TurnSteer,
     TurnInterrupt,
     ServerRequestCommandApprovalRespond,
     ServerRequestFileApprovalRespond,
@@ -203,6 +261,7 @@ impl CodexLaneCommandKind {
             Self::ThreadList => "thread/list",
             Self::ThreadLoadedList => "thread/loaded/list",
             Self::TurnStart => "turn/start",
+            Self::TurnSteer => "turn/steer",
             Self::TurnInterrupt => "turn/interrupt",
             Self::ServerRequestCommandApprovalRespond => {
                 "item/commandExecution/requestApproval:respond"
@@ -287,6 +346,7 @@ pub enum CodexLaneCommand {
     ThreadList(ThreadListParams),
     ThreadLoadedList(ThreadLoadedListParams),
     TurnStart(TurnStartParams),
+    TurnSteer(TurnSteerParams),
     TurnInterrupt(TurnInterruptParams),
     ServerRequestCommandApprovalRespond {
         request_id: AppServerRequestId,
@@ -357,6 +417,7 @@ impl CodexLaneCommand {
             Self::ThreadList(_) => CodexLaneCommandKind::ThreadList,
             Self::ThreadLoadedList(_) => CodexLaneCommandKind::ThreadLoadedList,
             Self::TurnStart(_) => CodexLaneCommandKind::TurnStart,
+            Self::TurnSteer(_) => CodexLaneCommandKind::TurnSteer,
             Self::TurnInterrupt(_) => CodexLaneCommandKind::TurnInterrupt,
             Self::ServerRequestCommandApprovalRespond { .. } => {
                 CodexLaneCommandKind::ServerRequestCommandApprovalRespond
@@ -454,6 +515,8 @@ pub enum CodexLaneNotification {
     },
     ConfigLoaded {
         config: String,
+        origins: String,
+        layers: String,
     },
     ConfigRequirementsLoaded {
         requirements: String,
@@ -489,6 +552,8 @@ pub enum CodexLaneNotification {
         thread_id: String,
         turn_id: String,
         review_thread_id: String,
+        delivery: String,
+        target: String,
     },
     CommandExecCompleted {
         exit_code: i32,
@@ -556,12 +621,30 @@ pub enum CodexLaneNotification {
     ThreadReadLoaded {
         thread_id: String,
         messages: Vec<CodexThreadTranscriptMessage>,
+        latest_plan: Option<CodexThreadPlanArtifact>,
+        latest_review: Option<CodexThreadReviewArtifact>,
+        latest_compaction: Option<CodexThreadCompactionArtifact>,
     },
     ThreadSelected {
         thread_id: String,
     },
     ThreadStarted {
         thread_id: String,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
+        service_tier: Option<ServiceTier>,
+        reasoning_effort: Option<String>,
+    },
+    ThreadSessionConfigured {
+        thread_id: String,
+        model: Option<String>,
+        cwd: Option<String>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
+        service_tier: Option<ServiceTier>,
+        reasoning_effort: Option<String>,
     },
     ThreadStatusChanged {
         thread_id: String,
@@ -627,11 +710,21 @@ pub enum CodexLaneNotification {
         turn_id: String,
         diff: String,
     },
+    ReviewProgressUpdated {
+        thread_id: String,
+        turn_id: String,
+        review: String,
+        completed: bool,
+    },
     TurnPlanUpdated {
         thread_id: String,
         turn_id: String,
         explanation: Option<String>,
         plan: Vec<CodexTurnPlanStep>,
+    },
+    ThreadCompacted {
+        thread_id: String,
+        turn_id: String,
     },
     ThreadTokenUsageUpdated {
         thread_id: String,
@@ -814,8 +907,10 @@ struct CodexCommandEffect {
 
 impl CodexLaneState {
     fn new() -> Self {
+        let mut snapshot = CodexLaneSnapshot::default();
+        snapshot.install_probe = codex_client::probe_codex_installation();
         Self {
-            snapshot: CodexLaneSnapshot::default(),
+            snapshot,
             client: None,
             channels: None,
             pending_server_requests: HashMap::new(),
@@ -914,9 +1009,12 @@ impl CodexLaneState {
             let thread_start = ThreadStartParams {
                 model: config.bootstrap_model.clone(),
                 model_provider: None,
+                service_tier: Some(None),
                 cwd: config.cwd.as_ref().map(|path| path.display().to_string()),
                 approval_policy: config.approval_policy,
                 sandbox: Some(SandboxMode::DangerFullAccess),
+                personality: None,
+                ephemeral: None,
                 dynamic_tools: Some(
                     crate::openagents_dynamic_tools::openagents_dynamic_tool_specs(),
                 ),
@@ -940,6 +1038,14 @@ impl CodexLaneState {
                     let _ = update_tx.send(CodexLaneUpdate::Notification(
                         CodexLaneNotification::ThreadStarted {
                             thread_id: thread_id.clone(),
+                            model: Some(response.model),
+                            cwd: response.cwd.map(|value| value.display().to_string()),
+                            approval_policy: response.approval_policy,
+                            sandbox_mode: sandbox_mode_from_policy(
+                                response.sandbox_policy.as_ref(),
+                            ),
+                            service_tier: response.service_tier,
+                            reasoning_effort: reasoning_effort_label(response.reasoning_effort),
                         },
                     ));
                     let _ = update_tx.send(CodexLaneUpdate::Notification(
@@ -947,10 +1053,13 @@ impl CodexLaneState {
                             entries: vec![CodexThreadListEntry {
                                 thread_id,
                                 thread_name: None,
+                                preview: String::new(),
                                 status: Some("idle".to_string()),
                                 loaded: true,
                                 cwd: config.cwd.as_ref().map(|value| value.display().to_string()),
                                 path: None,
+                                created_at: 0,
+                                updated_at: 0,
                             }],
                         },
                     ));
@@ -1008,10 +1117,13 @@ impl CodexLaneState {
                 .map(|thread| CodexThreadListEntry {
                     thread_id: thread.id,
                     thread_name: thread.name,
+                    preview: thread.preview,
                     status: thread.status.as_ref().and_then(thread_status_label),
                     loaded: false,
                     cwd: thread.cwd.map(|value| value.display().to_string()),
                     path: thread.path.map(|value| value.display().to_string()),
+                    created_at: thread.created_at,
+                    updated_at: thread.updated_at,
                 })
                 .collect::<Vec<_>>();
             thread_count = entries.len();
@@ -1126,14 +1238,31 @@ impl CodexLaneState {
                 let thread_id = response.thread.id;
                 Ok(CodexCommandEffect {
                     active_thread_id: Some(thread_id.clone()),
-                    notification: Some(CodexLaneNotification::ThreadStarted { thread_id }),
+                    notification: Some(CodexLaneNotification::ThreadStarted {
+                        thread_id,
+                        model: Some(response.model),
+                        cwd: response.cwd.map(|value| value.display().to_string()),
+                        approval_policy: response.approval_policy,
+                        sandbox_mode: sandbox_mode_from_policy(response.sandbox_policy.as_ref()),
+                        service_tier: response.service_tier,
+                        reasoning_effort: reasoning_effort_label(response.reasoning_effort),
+                    }),
                 })
             }
             CodexLaneCommand::ThreadResume(params) => {
-                let _ = runtime.block_on(client.thread_resume(params))?;
+                let thread_id = params.thread_id.clone();
+                let response = runtime.block_on(client.thread_resume(params))?;
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: None,
+                    notification: Some(CodexLaneNotification::ThreadSessionConfigured {
+                        thread_id,
+                        model: Some(response.model),
+                        cwd: response.cwd.map(|value| value.display().to_string()),
+                        approval_policy: response.approval_policy,
+                        sandbox_mode: sandbox_mode_from_policy(response.sandbox_policy.as_ref()),
+                        service_tier: response.service_tier,
+                        reasoning_effort: reasoning_effort_label(response.reasoning_effort),
+                    }),
                 })
             }
             CodexLaneCommand::ThreadFork(params) => {
@@ -1199,11 +1328,18 @@ impl CodexLaneState {
                 let response = runtime.block_on(client.thread_read(params))?;
                 let thread_id = response.thread.id.clone();
                 let messages = extract_thread_transcript_messages(&response.thread);
+                let latest_plan = extract_latest_thread_plan_artifact(&response.thread);
+                let latest_review = extract_latest_thread_review_artifact(&response.thread);
+                let latest_compaction =
+                    extract_latest_thread_compaction_artifact(&response.thread);
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
                     notification: Some(CodexLaneNotification::ThreadReadLoaded {
                         thread_id,
                         messages,
+                        latest_plan,
+                        latest_review,
+                        latest_compaction,
                     }),
                 })
             }
@@ -1215,10 +1351,13 @@ impl CodexLaneState {
                     .map(|thread| CodexThreadListEntry {
                         thread_id: thread.id,
                         thread_name: thread.name,
+                        preview: thread.preview,
                         status: thread.status.as_ref().and_then(thread_status_label),
                         loaded: false,
                         cwd: thread.cwd.map(|value| value.display().to_string()),
                         path: thread.path.map(|value| value.display().to_string()),
+                        created_at: thread.created_at,
+                        updated_at: thread.updated_at,
                     })
                     .collect();
                 Ok(CodexCommandEffect {
@@ -1244,6 +1383,13 @@ impl CodexLaneState {
                         thread_id,
                         turn_id: response.turn.id,
                     }),
+                })
+            }
+            CodexLaneCommand::TurnSteer(params) => {
+                let _ = runtime.block_on(client.turn_steer(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
                 })
             }
             CodexLaneCommand::TurnInterrupt(params) => {
@@ -1403,9 +1549,22 @@ impl CodexLaneState {
                 let response = runtime.block_on(client.config_read(params))?;
                 let config = serde_json::to_string_pretty(&response.config)
                     .unwrap_or_else(|_| "{}".to_string());
+                let origins = serde_json::to_string_pretty(&response.origins)
+                    .unwrap_or_else(|_| "{}".to_string());
+                let layers = response
+                    .layers
+                    .as_ref()
+                    .map(|value| {
+                        serde_json::to_string_pretty(value).unwrap_or_else(|_| "[]".to_string())
+                    })
+                    .unwrap_or_else(|| "[]".to_string());
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: Some(CodexLaneNotification::ConfigLoaded { config }),
+                    notification: Some(CodexLaneNotification::ConfigLoaded {
+                        config,
+                        origins,
+                        layers,
+                    }),
                 })
             }
             CodexLaneCommand::ConfigRequirementsRead => {
@@ -1522,6 +1681,8 @@ impl CodexLaneState {
             }
             CodexLaneCommand::ReviewStart(params) => {
                 let thread_id = params.thread_id.clone();
+                let delivery = review_delivery_label(params.delivery);
+                let target = review_target_label(&params.target);
                 let response = runtime.block_on(client.review_start(params))?;
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
@@ -1529,6 +1690,8 @@ impl CodexLaneState {
                         thread_id,
                         turn_id: response.turn.id,
                         review_thread_id: response.review_thread_id,
+                        delivery,
+                        target,
                     }),
                 })
             }

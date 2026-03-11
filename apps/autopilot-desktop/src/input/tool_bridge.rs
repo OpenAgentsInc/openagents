@@ -1773,6 +1773,7 @@ fn execute_pane_set_input(
         PaneKind::AutopilotChat => apply_chat_input(state, &field, &value),
         PaneKind::RelayConnections => apply_relay_connections_input(state, &field, &value),
         PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
+        PaneKind::AppleFmWorkbench => apply_apple_fm_workbench_input(state, &field, &value),
         PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
         PaneKind::Settings => apply_settings_input(state, &field, &value),
         PaneKind::Credentials => apply_credentials_input(state, &field, &value),
@@ -1896,6 +1897,24 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                     }),
                 );
             }
+            PaneKind::AppleFmWorkbench => {
+                map.insert(
+                    "apple_fm_workbench".to_string(),
+                    json!({
+                        "pending_request_id": state.apple_fm_workbench.pending_request_id,
+                        "last_request_id": state.apple_fm_workbench.last_request_id,
+                        "last_operation": state.apple_fm_workbench.last_operation,
+                        "active_session_id": state.apple_fm_workbench.active_session_id,
+                        "last_model": state.apple_fm_workbench.last_model,
+                        "output_chars": state.apple_fm_workbench.output_chars,
+                        "tool_profile": state.apple_fm_workbench.tool_profile.label(),
+                        "sampling_mode": state.apple_fm_workbench.sampling_mode.label(),
+                        "bridge_reachable": state.apple_fm_execution.reachable,
+                        "ready_model": state.apple_fm_execution.ready_model,
+                        "last_error": state.apple_fm_workbench.last_error,
+                    }),
+                );
+            }
             PaneKind::CadDemo => {
                 let visible_variant_ids = state.cad_demo.visible_variant_ids();
                 map.insert(
@@ -2002,9 +2021,11 @@ fn pane_action_to_hit_action(
             "toggle_amount_display" | "toggle_amounts" => Ok(PaneHitAction::MissionControl(
                 crate::pane_system::MissionControlPaneAction::ToggleAmountDisplay,
             )),
-            "warm_model" | "download_model" => Ok(PaneHitAction::MissionControl(
-                crate::pane_system::MissionControlPaneAction::WarmLocalModel,
-            )),
+            "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
+                Ok(PaneHitAction::MissionControl(
+                    crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
+                ))
+            }
             "open_docs" | "documentation" => Ok(PaneHitAction::MissionControl(
                 crate::pane_system::MissionControlPaneAction::OpenDocumentation,
             )),
@@ -2145,6 +2166,54 @@ fn pane_action_to_hit_action(
             )),
             "run" | "run_prompt" | "submit" => Ok(PaneHitAction::LocalInference(
                 LocalInferencePaneAction::RunPrompt,
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::AppleFmWorkbench => match action {
+            "refresh" | "refresh_bridge" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RefreshBridge,
+            )),
+            "start" | "start_bridge" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::StartBridge,
+            )),
+            "create_session" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::CreateSession,
+            )),
+            "inspect_session" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::InspectSession,
+            )),
+            "reset_session" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::ResetSession,
+            )),
+            "delete_session" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::DeleteSession,
+            )),
+            "run_text" | "text" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunText,
+            )),
+            "run_chat" | "chat" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunChat,
+            )),
+            "run_session" | "session" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunSession,
+            )),
+            "run_stream" | "stream" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunStream,
+            )),
+            "run_structured" | "structured" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunStructured,
+            )),
+            "export_transcript" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::ExportTranscript,
+            )),
+            "restore_transcript" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RestoreTranscript,
+            )),
+            "cycle_tool_profile" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::CycleToolProfile,
+            )),
+            "cycle_sampling_mode" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::CycleSamplingMode,
             )),
             _ => unsupported(),
         },
@@ -2589,6 +2658,57 @@ fn apply_local_inference_input(state: &mut RenderState, field: &str, value: &str
         "top_p" => state
             .local_inference_inputs
             .top_p
+            .set_value(value.to_string()),
+        _ => return false,
+    }
+    true
+}
+
+fn apply_apple_fm_workbench_input(state: &mut RenderState, field: &str, value: &str) -> bool {
+    match field {
+        "instructions" => state
+            .apple_fm_workbench_inputs
+            .instructions
+            .set_value(value.to_string()),
+        "prompt" => state
+            .apple_fm_workbench_inputs
+            .prompt
+            .set_value(value.to_string()),
+        "model" | "requested_model" => state
+            .apple_fm_workbench_inputs
+            .model
+            .set_value(value.to_string()),
+        "session" | "session_id" => state
+            .apple_fm_workbench_inputs
+            .session_id
+            .set_value(value.to_string()),
+        "max_tokens" => state
+            .apple_fm_workbench_inputs
+            .max_tokens
+            .set_value(value.to_string()),
+        "temperature" => state
+            .apple_fm_workbench_inputs
+            .temperature
+            .set_value(value.to_string()),
+        "top" | "top_k" => state
+            .apple_fm_workbench_inputs
+            .top
+            .set_value(value.to_string()),
+        "probability_threshold" | "top_p" => state
+            .apple_fm_workbench_inputs
+            .probability_threshold
+            .set_value(value.to_string()),
+        "seed" => state
+            .apple_fm_workbench_inputs
+            .seed
+            .set_value(value.to_string()),
+        "schema" | "schema_json" => state
+            .apple_fm_workbench_inputs
+            .schema_json
+            .set_value(value.to_string()),
+        "transcript" | "transcript_json" => state
+            .apple_fm_workbench_inputs
+            .transcript_json
             .set_value(value.to_string()),
         _ => return false,
     }
@@ -5594,6 +5714,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "gptoss",
             "workbench",
         ],
+        PaneKind::AppleFmWorkbench => &[
+            "apple_fm",
+            "apple_fm_workbench",
+            "fm_workbench",
+            "foundation_models",
+        ],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
@@ -5620,6 +5746,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::GoOnline => "go_online",
         PaneKind::ProviderStatus => "provider_status",
         PaneKind::LocalInference => "local_inference",
+        PaneKind::AppleFmWorkbench => "apple_fm_workbench",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",
         PaneKind::SyncHealth => "sync_health",
@@ -5742,6 +5869,10 @@ mod tests {
                 approval_policy: Some(codex_client::AskForApproval::Never),
                 sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
                 model: Some("gpt-5.2-codex".to_string()),
+                service_tier: None,
+                effort: None,
+                personality: None,
+                collaboration_mode: None,
             },
         )
         .labor_binding
@@ -5907,13 +6038,31 @@ mod tests {
             resolve_pane_kind_for_runtime("calc"),
             Some(PaneKind::Calculator)
         );
+        if cfg!(target_os = "macos") {
+            assert_eq!(resolve_pane_kind_for_runtime("pane.local_inference"), None);
+            assert_eq!(resolve_pane_kind_for_runtime("GPT-OSS Workbench"), None);
+            assert_eq!(resolve_pane_kind_for_runtime("gptoss"), None);
+        } else {
+            assert_eq!(
+                resolve_pane_kind_for_runtime("pane.local_inference"),
+                Some(PaneKind::LocalInference)
+            );
+            assert_eq!(
+                resolve_pane_kind_for_runtime("GPT-OSS Workbench"),
+                Some(PaneKind::LocalInference)
+            );
+            assert_eq!(
+                resolve_pane_kind_for_runtime("gptoss"),
+                Some(PaneKind::LocalInference)
+            );
+        }
         assert_eq!(
-            resolve_pane_kind_for_runtime("pane.local_inference"),
-            Some(PaneKind::LocalInference)
+            resolve_pane_kind_for_runtime("pane.apple_fm_workbench"),
+            Some(PaneKind::AppleFmWorkbench)
         );
         assert_eq!(
-            resolve_pane_kind_for_runtime("gptoss"),
-            Some(PaneKind::LocalInference)
+            resolve_pane_kind_for_runtime("foundation_models"),
+            Some(PaneKind::AppleFmWorkbench)
         );
     }
 
@@ -5947,6 +6096,13 @@ mod tests {
         assert_eq!(
             pane_action_to_hit_action(PaneKind::Settings, "save", None).expect("settings save"),
             PaneHitAction::Settings(SettingsPaneAction::Save)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::AppleFmWorkbench, "run_stream", None)
+                .expect("apple fm run stream"),
+            PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::RunStream
+            )
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::SparkWallet, "refresh", None)

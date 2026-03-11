@@ -30,10 +30,109 @@ impl Default for LocalInferencePaneState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchSamplingMode {
+    Auto,
+    Greedy,
+    Random,
+}
+
+impl AppleFmWorkbenchSamplingMode {
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Auto => "AUTO",
+            Self::Greedy => "GREEDY",
+            Self::Random => "RANDOM",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::Auto => Self::Greedy,
+            Self::Greedy => Self::Random,
+            Self::Random => Self::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchToolProfile {
+    None,
+    Demo,
+    Failing,
+}
+
+impl AppleFmWorkbenchToolProfile {
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::None => "TOOLS: NONE",
+            Self::Demo => "TOOLS: DEMO",
+            Self::Failing => "TOOLS: FAILING",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::None => Self::Demo,
+            Self::Demo => Self::Failing,
+            Self::Failing => Self::None,
+        }
+    }
+}
+
+pub struct AppleFmWorkbenchPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub pending_request_id: Option<String>,
+    pub last_request_id: Option<String>,
+    pub last_operation: Option<String>,
+    pub active_session_id: Option<String>,
+    pub last_model: Option<String>,
+    pub sampling_mode: AppleFmWorkbenchSamplingMode,
+    pub tool_profile: AppleFmWorkbenchToolProfile,
+    pub output_preview: String,
+    pub output_chars: usize,
+    pub session_preview: String,
+    pub structured_preview: String,
+    pub usage_preview: String,
+    pub event_log: TerminalPane,
+}
+
+impl Default for AppleFmWorkbenchPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for Apple FM bridge snapshot".to_string()),
+            pending_request_id: None,
+            last_request_id: None,
+            last_operation: None,
+            active_session_id: None,
+            last_model: None,
+            sampling_mode: AppleFmWorkbenchSamplingMode::Auto,
+            tool_profile: AppleFmWorkbenchToolProfile::None,
+            output_preview: String::new(),
+            output_chars: 0,
+            session_preview: String::new(),
+            structured_preview: String::new(),
+            usage_preview: String::new(),
+            event_log: TerminalPane::new().title("\\\\ EVENTS"),
+        }
+    }
+}
+
 pub struct CodexAccountPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub install_available: bool,
+    pub install_command: Option<String>,
+    pub install_version: Option<String>,
+    pub readiness_summary: String,
+    pub config_summary: String,
+    pub config_requirements_summary: String,
+    pub config_constraint_summary: Option<String>,
     pub account_summary: String,
     pub requires_openai_auth: bool,
     pub auth_mode: Option<String>,
@@ -48,6 +147,13 @@ impl Default for CodexAccountPaneState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for account/read".to_string()),
+            install_available: false,
+            install_command: None,
+            install_version: None,
+            readiness_summary: "Waiting for Codex lane readiness".to_string(),
+            config_summary: "Waiting for config/read".to_string(),
+            config_requirements_summary: "Waiting for configRequirements/read".to_string(),
+            config_constraint_summary: None,
             account_summary: "unknown".to_string(),
             requires_openai_auth: true,
             auth_mode: None,
@@ -94,7 +200,12 @@ pub struct CodexConfigPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub summary: String,
+    pub requirements_summary: String,
+    pub constraint_summary: Option<String>,
     pub config_json: String,
+    pub origins_json: String,
+    pub layers_json: String,
     pub requirements_json: String,
     pub detected_external_configs: usize,
 }
@@ -105,7 +216,12 @@ impl Default for CodexConfigPaneState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for config/read".to_string()),
+            summary: "Waiting for config/read".to_string(),
+            requirements_summary: "Waiting for configRequirements/read".to_string(),
+            constraint_summary: None,
             config_json: "{}".to_string(),
+            origins_json: "{}".to_string(),
+            layers_json: "[]".to_string(),
             requirements_json: "null".to_string(),
             detected_external_configs: 0,
         }
@@ -214,6 +330,32 @@ impl Default for CodexLabsPaneState {
             fuzzy_session_id: format!("labs-{}", std::process::id()),
             fuzzy_last_status: "idle".to_string(),
             windows_last_status: None,
+        }
+    }
+}
+
+pub struct CodexRemoteState {
+    pub enabled: bool,
+    pub requested_bind_addr: String,
+    pub listen_addr: Option<String>,
+    pub base_url: Option<String>,
+    pub pairing_url: Option<String>,
+    pub auth_token_preview: Option<String>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
+impl Default for CodexRemoteState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requested_bind_addr: "127.0.0.1:4848".to_string(),
+            listen_addr: None,
+            base_url: None,
+            pairing_url: None,
+            auth_token_preview: None,
+            last_error: None,
+            last_action: Some("Remote companion disabled".to_string()),
         }
     }
 }
@@ -401,6 +543,10 @@ pub struct SkillRegistryPaneState {
     pub discovered_skills: Vec<SkillRegistryDiscoveredSkill>,
     pub discovery_errors: Vec<String>,
     pub selected_skill_index: Option<usize>,
+    pub remote_scope: codex_client::HazelnutScope,
+    pub remote_skills: Vec<SkillRegistryRemoteSkill>,
+    pub last_remote_export_id: Option<String>,
+    pub last_remote_export_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -411,6 +557,13 @@ pub struct SkillRegistryDiscoveredSkill {
     pub enabled: bool,
     pub interface_display_name: Option<String>,
     pub dependency_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SkillRegistryRemoteSkill {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 impl Default for SkillRegistryPaneState {
@@ -431,6 +584,10 @@ impl Default for SkillRegistryPaneState {
             discovered_skills: Vec::new(),
             discovery_errors: Vec::new(),
             selected_skill_index: None,
+            remote_scope: codex_client::HazelnutScope::Example,
+            remote_skills: Vec::new(),
+            last_remote_export_id: None,
+            last_remote_export_path: None,
         }
     }
 }

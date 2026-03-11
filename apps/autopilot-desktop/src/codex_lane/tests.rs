@@ -1,8 +1,9 @@
 use super::{
     CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
     CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime, CodexLaneUpdate,
-    CodexLaneWorker, CodexThreadTranscriptRole, extract_thread_transcript_messages,
-    normalize_notification,
+    CodexLaneWorker, CodexThreadTranscriptRole, extract_latest_thread_compaction_artifact,
+    extract_latest_thread_plan_artifact, extract_latest_thread_review_artifact,
+    extract_thread_transcript_messages, normalize_notification,
 };
 
 use std::collections::HashSet;
@@ -19,7 +20,7 @@ use codex_client::{
     FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, ReviewStartParams,
     ReviewTarget, SkillsListExtraRootsForCwd, SkillsListParams, SkillsRemoteWriteParams,
     ThreadListParams, ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams,
-    ThreadRealtimeStopParams, WindowsSandboxSetupStartParams,
+    ThreadRealtimeStopParams, TurnSteerParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -1115,6 +1116,9 @@ fn thread_read_parser_handles_camel_case_items() {
     let thread = codex_client::ThreadSnapshot {
         id: "thread-1".to_string(),
         preview: "preview".to_string(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
         turns: vec![codex_client::ThreadTurn {
             id: "turn-1".to_string(),
             items: vec![
@@ -1148,6 +1152,149 @@ fn pre_materialization_thread_read_errors_are_benign() {
     assert!(!super::is_pre_materialization_thread_read_error(
         "App-server error -32600: thread/read failed for another reason"
     ));
+}
+
+#[test]
+fn thread_read_extracts_latest_plan_artifact() {
+    let thread = codex_client::ThreadSnapshot {
+        id: "thread-1".to_string(),
+        preview: String::new(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
+        turns: vec![
+            codex_client::ThreadTurn {
+                id: "turn-older".to_string(),
+                items: vec![json!({
+                    "type": "plan",
+                    "text": "older plan"
+                })],
+            },
+            codex_client::ThreadTurn {
+                id: "turn-latest".to_string(),
+                items: vec![
+                    json!({
+                        "type": "agentMessage",
+                        "text": "done"
+                    }),
+                    json!({
+                        "type": "plan",
+                        "text": "latest plan"
+                    }),
+                ],
+            },
+        ],
+    };
+
+    let artifact = extract_latest_thread_plan_artifact(&thread).expect("plan artifact");
+    assert_eq!(artifact.turn_id, "turn-latest");
+    assert_eq!(artifact.text, "latest plan");
+}
+
+#[test]
+fn thread_read_extracts_latest_review_and_compaction_artifacts() {
+    let thread = codex_client::ThreadSnapshot {
+        id: "thread-1".to_string(),
+        preview: String::new(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
+        turns: vec![
+            codex_client::ThreadTurn {
+                id: "turn-older".to_string(),
+                items: vec![json!({
+                    "type": "enteredReviewMode",
+                    "review": "reviewing older changes"
+                })],
+            },
+            codex_client::ThreadTurn {
+                id: "turn-latest".to_string(),
+                items: vec![
+                    json!({
+                        "type": "contextCompaction"
+                    }),
+                    json!({
+                        "type": "exitedReviewMode",
+                        "review": "Looks solid overall."
+                    }),
+                ],
+            },
+        ],
+    };
+
+    let review = extract_latest_thread_review_artifact(&thread).expect("review artifact");
+    assert_eq!(review.turn_id, "turn-latest");
+    assert_eq!(review.review, "Looks solid overall.");
+    assert!(review.completed);
+
+    let compaction =
+        extract_latest_thread_compaction_artifact(&thread).expect("compaction artifact");
+    assert_eq!(compaction.turn_id, "turn-latest");
+}
+
+#[test]
+fn review_progress_and_compaction_notifications_are_normalized() {
+    let review_started = normalize_notification(codex_client::AppServerNotification {
+        method: "item/started".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-a",
+            "item": {
+                "type": "enteredReviewMode",
+                "id": "item-1",
+                "review": "current changes"
+            }
+        })),
+    })
+    .expect("review started notification");
+    assert_eq!(
+        review_started,
+        CodexLaneNotification::ReviewProgressUpdated {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-a".to_string(),
+            review: "current changes".to_string(),
+            completed: false,
+        }
+    );
+
+    let review_completed = normalize_notification(codex_client::AppServerNotification {
+        method: "item/completed".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-a",
+            "item": {
+                "type": "exitedReviewMode",
+                "id": "item-2",
+                "review": "Looks good."
+            }
+        })),
+    })
+    .expect("review completed notification");
+    assert_eq!(
+        review_completed,
+        CodexLaneNotification::ReviewProgressUpdated {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-a".to_string(),
+            review: "Looks good.".to_string(),
+            completed: true,
+        }
+    );
+
+    let compacted = normalize_notification(codex_client::AppServerNotification {
+        method: "thread/compacted".to_string(),
+        params: Some(json!({
+            "threadId": "thread-a",
+            "turnId": "turn-compact"
+        })),
+    })
+    .expect("thread compacted notification");
+    assert_eq!(
+        compacted,
+        CodexLaneNotification::ThreadCompacted {
+            thread_id: "thread-a".to_string(),
+            turn_id: "turn-compact".to_string(),
+        }
+    );
 }
 
 #[test]
@@ -1505,6 +1652,133 @@ fn command_routing_sends_thread_list_request() {
     assert_eq!(response.command, CodexLaneCommandKind::ThreadList);
     assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
     assert!(saw_thread_list.load(Ordering::SeqCst));
+
+    shutdown_worker(&mut worker);
+    join_server(server);
+}
+
+#[test]
+fn command_routing_sends_turn_steer_request() {
+    let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+    let (client_read, client_write) = tokio::io::split(client_stream);
+    let (server_read, mut server_write) = tokio::io::split(server_stream);
+    let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap_or_else(|_| panic!("failed to build runtime"));
+    let _entered = runtime_guard.enter();
+    let (client, channels) =
+        AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+    drop(_entered);
+
+    let saw_turn_steer = Arc::new(AtomicBool::new(false));
+    let saw_turn_steer_clone = Arc::clone(&saw_turn_steer);
+    let server = std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(_) => return,
+        };
+        runtime.block_on(async move {
+            let mut reader = BufReader::new(server_read);
+            let mut request_line = String::new();
+            loop {
+                request_line.clear();
+                let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                if bytes == 0 {
+                    break;
+                }
+                let value: Value = match serde_json::from_str(request_line.trim()) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+                if value.get("id").is_none() {
+                    continue;
+                }
+                let method = value
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let response = match method {
+                    "initialize" => json!({
+                        "id": value["id"].clone(),
+                        "result": {"userAgent": "test-agent"}
+                    }),
+                    "thread/start" => json!({
+                        "id": value["id"].clone(),
+                        "result": {
+                            "thread": {"id": "thread-bootstrap"},
+                            "model": "gpt-5.3-codex"
+                        }
+                    }),
+                    "turn/steer" => {
+                        saw_turn_steer_clone.store(true, Ordering::SeqCst);
+                        assert_eq!(
+                            value["params"],
+                            json!({
+                                "threadId": "thread-bootstrap",
+                                "expectedTurnId": "turn-active",
+                                "input": [
+                                    {
+                                        "type": "text",
+                                        "text": "continue"
+                                    }
+                                ]
+                            })
+                        );
+                        json!({
+                            "id": value["id"].clone(),
+                            "result": {"turnId": "turn-active"}
+                        })
+                    }
+                    _ => json!({
+                        "id": value["id"].clone(),
+                        "result": {}
+                    }),
+                };
+
+                if let Ok(line) = serde_json::to_string(&response) {
+                    let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                    let _ = server_write.flush().await;
+                }
+                if saw_turn_steer_clone.load(Ordering::SeqCst) {
+                    break;
+                }
+            }
+            drop(server_write);
+        });
+    });
+
+    let mut worker = CodexLaneWorker::spawn_with_runtime(
+        CodexLaneConfig::default(),
+        Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+    );
+
+    let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+        snapshot.lifecycle == CodexLaneLifecycle::Ready
+    });
+
+    let enqueue_result = worker.enqueue(
+        43,
+        CodexLaneCommand::TurnSteer(TurnSteerParams {
+            thread_id: "thread-bootstrap".to_string(),
+            expected_turn_id: "turn-active".to_string(),
+            input: vec![UserInput::Text {
+                text: "continue".to_string(),
+                text_elements: Vec::new(),
+            }],
+        }),
+    );
+    assert!(enqueue_result.is_ok());
+
+    let response = wait_for_command_response(&mut worker, Duration::from_secs(2), |response| {
+        response.command_seq == 43
+    });
+    assert_eq!(response.command, CodexLaneCommandKind::TurnSteer);
+    assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
+    assert!(saw_turn_steer.load(Ordering::SeqCst));
 
     shutdown_worker(&mut worker);
     join_server(server);

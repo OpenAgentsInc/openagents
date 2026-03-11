@@ -199,6 +199,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
+        let chat_terminal_worker = crate::chat_terminal::ChatTerminalWorker::spawn();
         let local_inference_runtime = default_local_inference_runtime().map_err(|error| {
             anyhow::anyhow!("failed to start default local inference runtime: {error}")
         })?;
@@ -274,6 +275,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
             network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
             local_inference_inputs: crate::app_state::LocalInferencePaneInputs::default(),
+            apple_fm_workbench_inputs: crate::app_state::AppleFmWorkbenchPaneInputs::default(),
             settings_inputs,
             credentials_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
@@ -289,6 +291,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             codex_mcp: crate::app_state::CodexMcpPaneState::default(),
             codex_apps: crate::app_state::CodexAppsPaneState::default(),
             codex_labs: crate::app_state::CodexLabsPaneState::default(),
+            codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
             codex_lane: CodexLaneSnapshot::default(),
             codex_lane_config,
@@ -312,11 +315,15 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             local_inference: crate::app_state::LocalInferencePaneState::default(),
+            apple_fm_workbench: crate::app_state::AppleFmWorkbenchPaneState::default(),
             provider_admin_runtime,
             provider_admin_listen_addr,
             provider_admin_last_error,
             provider_admin_last_sync_signature: None,
             provider_admin_last_sync_at: None,
+            codex_remote_runtime: None,
+            codex_remote_last_sync_signature: None,
+            codex_remote_last_sync_at: None,
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
             relay_connections,
@@ -357,6 +364,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
+            chat_terminal_worker,
             cad_demo: crate::app_state::CadDemoPaneState::default(),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
             autopilot_goals,
@@ -993,13 +1001,16 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.codex_mcp,
             &state.codex_apps,
             &state.codex_labs,
+            &state.codex_remote,
             &state.codex_diagnostics,
             &state.sa_lane,
             &state.skl_lane,
             &state.ac_lane,
             &state.provider_runtime,
             &state.ollama_execution,
+            &state.apple_fm_execution,
             &state.local_inference,
+            &mut state.apple_fm_workbench,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
             &state.relay_connections,
@@ -1031,6 +1042,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.relay_connections_inputs,
             &mut state.network_requests_inputs,
             &mut state.local_inference_inputs,
+            &mut state.apple_fm_workbench_inputs,
             &mut state.settings_inputs,
             &mut state.credentials_inputs,
             &mut state.job_history_inputs,

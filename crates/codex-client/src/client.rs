@@ -977,6 +977,15 @@ struct AppServerCommand {
     args: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexInstallationProbe {
+    pub available: bool,
+    pub invocation: Option<String>,
+    pub resolved_program: Option<PathBuf>,
+    pub version: Option<String>,
+    pub error: Option<String>,
+}
+
 fn common_bin_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let mut seen = HashSet::new();
@@ -1119,11 +1128,32 @@ fn find_codex_executable() -> Result<PathBuf> {
 
 /// Check if Codex app-server is available on this system.
 pub fn is_codex_available() -> bool {
-    which::which("codex-app-server").is_ok()
-        || resolve_codex_app_server_override().is_some()
-        || resolve_codex_bin_from_env().is_some()
-        || which::which("codex").is_ok()
-        || find_in_common_bins("codex").is_some()
+    probe_codex_installation().available
+}
+
+pub fn probe_codex_installation() -> CodexInstallationProbe {
+    match resolve_app_server_command() {
+        Ok(command) => CodexInstallationProbe {
+            available: true,
+            invocation: Some(format_command_invocation(&command)),
+            resolved_program: Some(command.program.clone()),
+            version: probe_executable_version(&command.program),
+            error: None,
+        },
+        Err(error) => CodexInstallationProbe {
+            available: false,
+            invocation: None,
+            resolved_program: None,
+            version: None,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+fn format_command_invocation(command: &AppServerCommand) -> String {
+    let mut parts = vec![command.program.display().to_string()];
+    parts.extend(command.args.iter().cloned());
+    parts.join(" ")
 }
 
 fn probe_executable_version(program: &Path) -> Option<String> {
@@ -1146,4 +1176,100 @@ fn probe_executable_version(program: &Path) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::panic,
+    reason = "These installation-probe tests use explicit panic messages for fixture setup."
+)]
+mod tests {
+    use super::{probe_codex_installation, resolve_app_server_command};
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_dir(tag: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "openagents-codex-client-{tag}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn probe_codex_installation_reports_resolved_command_and_version() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|_| panic!("env lock poisoned"));
+        let root = unique_temp_dir("probe");
+        fs::create_dir_all(&root).unwrap_or_else(|_| panic!("failed to create temp dir"));
+        let fake = root.join("codex-app-server");
+        fs::write(
+            &fake,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'codex-test 1.2.3\\n'\n  exit 0\nfi\nexit 0\n",
+        )
+        .unwrap_or_else(|_| panic!("failed to write fake codex-app-server"));
+        let mut permissions = fs::metadata(&fake)
+            .unwrap_or_else(|_| panic!("failed to stat fake codex-app-server"))
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake, permissions)
+            .unwrap_or_else(|_| panic!("failed to chmod fake codex-app-server"));
+
+        let original_path = std::env::var_os("PATH");
+        let original_codex_bin = std::env::var_os("CODEX_BIN");
+        let original_codex_app_server = std::env::var_os("CODEX_APP_SERVER");
+        // Serialized by `env_lock`, so mutating process env stays deterministic here.
+        unsafe {
+            std::env::set_var("PATH", &root);
+            std::env::remove_var("CODEX_BIN");
+            std::env::remove_var("CODEX_APP_SERVER");
+        }
+
+        let resolved =
+            resolve_app_server_command().unwrap_or_else(|_| panic!("expected fake command"));
+        assert_eq!(resolved.program, fake);
+
+        let probe = probe_codex_installation();
+        assert!(probe.available);
+        assert_eq!(probe.resolved_program.as_deref(), Some(fake.as_path()));
+        let expected_invocation = fake.display().to_string();
+        assert_eq!(
+            probe.invocation.as_deref(),
+            Some(expected_invocation.as_str())
+        );
+        assert_eq!(probe.version.as_deref(), Some("codex-test 1.2.3"));
+        assert!(probe.error.is_none());
+
+        unsafe {
+            if let Some(value) = original_path {
+                std::env::set_var("PATH", value);
+            } else {
+                std::env::remove_var("PATH");
+            }
+            if let Some(value) = original_codex_bin {
+                std::env::set_var("CODEX_BIN", value);
+            } else {
+                std::env::remove_var("CODEX_BIN");
+            }
+            if let Some(value) = original_codex_app_server {
+                std::env::set_var("CODEX_APP_SERVER", value);
+            } else {
+                std::env::remove_var("CODEX_APP_SERVER");
+            }
+        }
+        let _ = fs::remove_file(&fake);
+        let _ = fs::remove_dir_all(&root);
+    }
 }

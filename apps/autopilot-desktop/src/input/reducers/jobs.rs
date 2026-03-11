@@ -327,7 +327,7 @@ pub(super) fn apply_active_job_codex_notification(
     notification: &CodexLaneNotification,
 ) -> bool {
     match notification {
-        CodexLaneNotification::ThreadStarted { thread_id } => {
+        CodexLaneNotification::ThreadStarted { thread_id, .. } => {
             if state.active_job.job.is_none()
                 || state.active_job.execution_thread_id.is_some()
                 || state
@@ -568,6 +568,7 @@ pub(super) fn apply_active_job_apple_fm_update(
             apply_apple_fm_execution_completed(state, completed)
         }
         AppleFmBridgeUpdate::Failed(failed) => apply_apple_fm_execution_failed(state, failed),
+        AppleFmBridgeUpdate::Workbench(_) => false,
     }
 }
 
@@ -589,6 +590,13 @@ fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
 fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
     state.provider_runtime.apple_fm.reachable = state.apple_fm_execution.reachable;
     state.provider_runtime.apple_fm.model_available = state.apple_fm_execution.model_available;
+    state.provider_runtime.apple_fm.system_model = state.apple_fm_execution.system_model.clone();
+    state.provider_runtime.apple_fm.unavailable_reason =
+        state.apple_fm_execution.unavailable_reason;
+    state.provider_runtime.apple_fm.supported_use_cases =
+        state.apple_fm_execution.supported_use_cases.clone();
+    state.provider_runtime.apple_fm.supported_guardrails =
+        state.apple_fm_execution.supported_guardrails.clone();
     state.provider_runtime.apple_fm.ready_model = state.apple_fm_execution.ready_model.clone();
     state.provider_runtime.apple_fm.available_models =
         state.apple_fm_execution.available_models.clone();
@@ -652,7 +660,13 @@ fn provider_compute_capability_from_apple_fm(
             .apple_fm_execution
             .last_error
             .clone()
-            .or_else(|| state.apple_fm_execution.availability_message.clone()),
+            .or_else(|| state.apple_fm_execution.availability_message.clone())
+            .or_else(|| {
+                state
+                    .apple_fm_execution
+                    .unavailable_reason
+                    .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
+            }),
     }
 }
 
@@ -882,9 +896,12 @@ fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), 
     let command = CodexLaneCommand::ThreadStart(codex_client::ThreadStartParams {
         model: state.autopilot_chat.selected_model_override(),
         model_provider: None,
+        service_tier: None,
         cwd,
         approval_policy: super::super::actions::cad_turn_approval_policy(false),
         sandbox: super::super::actions::goal_scoped_thread_sandbox_mode(state),
+        personality: None,
+        ephemeral: None,
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     let seq = state.queue_codex_command(command)?;
@@ -967,6 +984,7 @@ fn queue_provider_execution_turn_start(
         approval_policy: super::super::actions::cad_turn_approval_policy(false),
         sandbox_policy: super::super::actions::goal_scoped_turn_sandbox_policy(state),
         model: state.autopilot_chat.selected_model_override(),
+        service_tier: None,
         effort: None,
         summary: None,
         personality: None,
@@ -2115,6 +2133,10 @@ mod tests {
         ProviderAppleFmRuntimeState {
             reachable: true,
             model_available: true,
+            system_model: Default::default(),
+            unavailable_reason: None,
+            supported_use_cases: vec![],
+            supported_guardrails: vec![],
             ready_model: Some("apple-foundation-model".to_string()),
             available_models: vec!["apple-foundation-model".to_string()],
             last_error: None,

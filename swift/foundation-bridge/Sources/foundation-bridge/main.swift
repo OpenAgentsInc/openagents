@@ -19,6 +19,14 @@ struct FoundationBridge {
         Endpoints:
           GET  /health
           GET  /v1/models
+          POST /v1/sessions
+          GET  /v1/sessions/{id}
+          GET  /v1/sessions/{id}/transcript
+          POST /v1/sessions/{id}/responses
+          POST /v1/sessions/{id}/responses/structured
+          POST /v1/sessions/{id}/responses/stream
+          POST /v1/sessions/{id}/reset
+          DELETE /v1/sessions/{id}
           POST /v1/chat/completions
 
         Press Ctrl+C to stop.
@@ -27,7 +35,7 @@ struct FoundationBridge {
         let chatHandler = ChatHandler()
         let server = HTTPServer(port: port, chatHandler: chatHandler)
 
-        let (available, message) = await chatHandler.getAvailabilityStatus()
+        let (available, _, message) = await chatHandler.getAvailabilityStatus()
         if available {
             print("Foundation Models: Available")
         } else {
