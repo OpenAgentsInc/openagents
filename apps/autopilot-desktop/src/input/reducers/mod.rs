@@ -193,7 +193,32 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             Nip28ChatLaneUpdate::RelayEvent(event) => {
                 state.autopilot_chat.managed_chat_projection.record_relay_event(event);
             }
+            Nip28ChatLaneUpdate::PublishAck { event_id } => {
+                tracing::info!(event_id = %event_id, "nip28: outbound ack");
+                let _ = state.autopilot_chat.managed_chat_projection.ack_outbound_message(&event_id);
+                state.nip28_chat_lane_worker.clear_dispatched(&event_id);
+            }
+            Nip28ChatLaneUpdate::PublishError { event_id, message } => {
+                tracing::warn!(event_id = %event_id, message = %message, "nip28: outbound error");
+                let _ = state.autopilot_chat.managed_chat_projection.fail_outbound_message(&event_id, &message);
+                state.nip28_chat_lane_worker.clear_dispatched(&event_id);
+            }
             Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+        }
+    }
+    // Forward pending outbound messages to the lane.
+    {
+        use crate::app_state::ManagedChatDeliveryState;
+        let pending_events: Vec<_> = state
+            .autopilot_chat
+            .managed_chat_projection
+            .outbound_messages
+            .iter()
+            .filter(|m| m.delivery_state == ManagedChatDeliveryState::Publishing)
+            .map(|m| m.event.clone())
+            .collect();
+        for event in pending_events {
+            state.nip28_chat_lane_worker.publish(event);
         }
     }
     // One-shot auto-select: fires once when projection first gains content.
