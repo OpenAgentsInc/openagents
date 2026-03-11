@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod apple_fm_workbench;
+pub mod buy_mode_payments;
 pub mod cad;
 pub mod calculator;
 pub mod cast;

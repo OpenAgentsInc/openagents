@@ -1,19 +1,20 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
-    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState, CadDemoPaneState,
-    CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs, CodexAccountPaneState,
-    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
-    CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
-    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
-    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, LocalInferencePaneInputs,
-    LocalInferencePaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
-    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
-    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
+    BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
+    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
+    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
+    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
+    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
+    ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
     mission_control_show_local_model_button,
 };
@@ -40,32 +41,32 @@ use crate::pane_system::{
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
     job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
-    mission_control_copy_seed_button_bounds, mission_control_layout_for_mode,
-    mission_control_load_funds_layout, mission_control_local_fm_test_button_bounds,
-    mission_control_local_model_button_bounds, mission_control_send_invoice_input_bounds,
-    mission_control_send_lightning_button_bounds, mission_control_wallet_refresh_button_bounds,
-    mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
-    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
-    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
-    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
-    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
-    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
-    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-    settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_buy_mode_history_button_bounds, mission_control_copy_seed_button_bounds,
+    mission_control_layout_for_mode, mission_control_load_funds_layout,
+    mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
+    mission_control_send_invoice_input_bounds, mission_control_send_lightning_button_bounds,
+    mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
+    mission_control_withdraw_invoice_input_bounds, network_requests_accept_button_bounds,
+    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
+    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+    network_requests_type_input_bounds, network_requests_visible_quote_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
+    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane, cad as cad_pane,
-    calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, local_inference as local_inference_pane,
-    project_ops as project_ops_pane, relay_connections as relay_connections_pane,
-    skill as skill_pane, wallet as wallet_pane,
+    agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
+    buy_mode_payments as buy_mode_payments_pane, cad as cad_pane, calculator as calculator_pane,
+    cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    local_inference as local_inference_pane, project_ops as project_ops_pane,
+    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
@@ -147,6 +148,7 @@ impl PaneRenderer {
         chat_inputs: &mut ChatPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
         mission_control: &mut MissionControlPaneState,
+        buy_mode_payments: &mut BuyModePaymentsPaneState,
         paint: &mut PaintContext,
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -340,6 +342,15 @@ impl PaneRenderer {
                         job_history,
                         earn_job_lifecycle_projection,
                         job_history_inputs,
+                        paint,
+                    );
+                }
+                PaneKind::BuyModePayments => {
+                    buy_mode_payments_pane::paint(
+                        content_bounds,
+                        buy_mode_payments,
+                        network_requests,
+                        spark_wallet,
                         paint,
                     );
                 }
@@ -1414,6 +1425,13 @@ fn paint_mission_control_buy_mode_panel(
             mission_control_muted_color()
         },
         panel_state.button_enabled,
+        paint,
+    );
+    paint_mission_control_command_button(
+        mission_control_buy_mode_history_button_bounds(content_bounds, true),
+        "PAYMENT HISTORY",
+        mission_control_cyan_color(),
+        true,
         paint,
     );
 }

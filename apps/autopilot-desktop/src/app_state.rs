@@ -105,6 +105,7 @@ pub enum PaneKind {
     JobInbox,
     ActiveJob,
     JobHistory,
+    BuyModePayments,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,
@@ -812,6 +813,154 @@ impl MissionControlPaneState {
             self.last_mirrored_trace_id = entry.id;
         }
     }
+}
+
+pub struct BuyModePaymentsPaneState {
+    pub ledger: TerminalPane,
+    rendered_rows: Vec<(TerminalStream, String)>,
+}
+
+impl Default for BuyModePaymentsPaneState {
+    fn default() -> Self {
+        Self {
+            ledger: TerminalPane::new()
+                .title("\\ BUY MODE PAYMENTS")
+                .show_frame(false)
+                .code_block_style(true),
+            rendered_rows: Vec::new(),
+        }
+    }
+}
+
+impl BuyModePaymentsPaneState {
+    pub fn sync_rows(
+        &mut self,
+        network_requests: &crate::state::operations::NetworkRequestsState,
+        spark_wallet: &SparkPaneState,
+    ) {
+        let rows = build_buy_mode_payment_rows(network_requests, spark_wallet);
+        if self.rendered_rows == rows {
+            return;
+        }
+
+        self.ledger.clear();
+        for (stream, text) in &rows {
+            self.ledger
+                .push_line(TerminalLine::new(stream.clone(), text.clone()));
+        }
+        self.rendered_rows = rows;
+    }
+}
+
+fn build_buy_mode_payment_rows(
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> Vec<(TerminalStream, String)> {
+    let mut rows = Vec::<(TerminalStream, String)>::new();
+    for request in network_requests
+        .submitted
+        .iter()
+        .rev()
+        .filter(|request| request.request_type == MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+        .filter(|request| buy_mode_request_has_payment_history(request))
+    {
+        let wallet_payment = request
+            .last_payment_pointer
+            .as_deref()
+            .and_then(|payment_id| {
+                spark_wallet
+                    .recent_payments
+                    .iter()
+                    .find(|payment| payment.id == payment_id)
+            });
+        let timestamp = wallet_payment
+            .map(|payment| payment.timestamp)
+            .or(request.payment_sent_at_epoch_seconds)
+            .or(request.payment_failed_at_epoch_seconds)
+            .or(request.payment_required_at_epoch_seconds);
+        let amount_sats = wallet_payment
+            .map(|payment| payment.amount_sats)
+            .unwrap_or(request.budget_sats);
+        let provider_pubkey = request
+            .winning_provider_pubkey
+            .as_deref()
+            .or(request.last_provider_pubkey.as_deref())
+            .unwrap_or("-");
+        let wallet_status = wallet_payment
+            .map(|payment| payment.status.as_str())
+            .unwrap_or("-");
+        let request_event_id = request.published_request_event_id.as_deref().unwrap_or("-");
+        let result_event_id = request
+            .winning_result_event_id
+            .as_deref()
+            .or(request.last_result_event_id.as_deref())
+            .unwrap_or("-");
+        let payment_pointer = request.last_payment_pointer.as_deref().unwrap_or("-");
+        let summary_stream = if request.status
+            == crate::state::operations::NetworkRequestStatus::Failed
+            || request.payment_failed_at_epoch_seconds.is_some()
+            || request.payment_error.is_some()
+        {
+            TerminalStream::Stderr
+        } else {
+            TerminalStream::Stdout
+        };
+        rows.push((
+            summary_stream.clone(),
+            format!(
+                "{}  status={}  amount={} sats  wallet_status={}  provider_pubkey={}",
+                buy_mode_payment_timestamp_label(timestamp),
+                request.status.label(),
+                amount_sats,
+                wallet_status,
+                provider_pubkey,
+            ),
+        ));
+        rows.push((
+            summary_stream.clone(),
+            format!(
+                "request_id={}  payment_pointer={}  request_event_id={}  result_event_id={}",
+                request.request_id, payment_pointer, request_event_id, result_event_id,
+            ),
+        ));
+        if let Some(invoice) = request.pending_bolt11.as_deref() {
+            rows.push((TerminalStream::Stdout, format!("pending_bolt11={invoice}")));
+        }
+        if let Some(error) = request.payment_error.as_deref() {
+            rows.push((TerminalStream::Stderr, format!("payment_error={error}")));
+        }
+        rows.push((TerminalStream::Stdout, String::new()));
+    }
+
+    if rows.is_empty() {
+        rows.push((
+            TerminalStream::Stdout,
+            "No Buy Mode payment invoices or settlements yet.".to_string(),
+        ));
+    }
+
+    rows
+}
+
+fn buy_mode_request_has_payment_history(
+    request: &crate::state::operations::SubmittedNetworkRequest,
+) -> bool {
+    request.payment_required_at_epoch_seconds.is_some()
+        || request.payment_sent_at_epoch_seconds.is_some()
+        || request.payment_failed_at_epoch_seconds.is_some()
+        || request.last_payment_pointer.is_some()
+        || request.pending_bolt11.is_some()
+        || request
+            .payment_error
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn buy_mode_payment_timestamp_label(epoch_seconds: Option<u64>) -> String {
+    epoch_seconds
+        .and_then(|value| Local.timestamp_opt(value as i64, 0).single())
+        .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "timestamp=-".to_string())
 }
 
 fn mission_control_log_timestamp(epoch_secs: u64) -> String {
@@ -8232,6 +8381,7 @@ pub struct RenderState {
     pub chat_inputs: ChatPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
     pub mission_control: MissionControlPaneState,
+    pub buy_mode_payments: BuyModePaymentsPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
@@ -11962,6 +12112,71 @@ mod tests {
                 authority_command_seq,
             })
             .expect("buy mode request should queue")
+    }
+
+    #[test]
+    fn buy_mode_payments_pane_sync_rows_include_pubkey_and_payment_pointer() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-ledger-001", 21);
+        let provider_pubkey = "23".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-ledger-001",
+            2,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-buy-ledger-001",
+            Some("payment-required"),
+            Some("invoice required"),
+        );
+        requests.prepare_auto_payment_attempt(
+            request_id.as_str(),
+            "lnbc1buyledgerinvoice",
+            Some(2_000),
+            1_762_700_111,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-buy-ledger-001",
+            Some("success"),
+        );
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-buy-ledger-001",
+            1_762_700_123,
+        );
+
+        let mut wallet = SparkPaneState::default();
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-buy-ledger-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                timestamp: 1_762_700_123,
+            });
+
+        let mut pane = super::BuyModePaymentsPaneState::default();
+        pane.sync_rows(&requests, &wallet);
+        let lines = pane.ledger.recent_lines(6);
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("status=paid")
+                && line.text.contains("wallet_status=succeeded")
+                && line.text.contains(provider_pubkey.as_str())
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains(request_id.as_str())
+                && line.text.contains("wallet-payment-buy-ledger-001")
+                && line.text.contains("event-buy-ledger-001")
+                && line.text.contains("result-buy-ledger-001")
+        }));
     }
 
     #[test]

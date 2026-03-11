@@ -591,7 +591,7 @@ impl SparkPaneState {
                     fetched_balance,
                     payments.as_slice(),
                 );
-                self.recent_payments = payments.into_iter().take(10).collect();
+                self.recent_payments = payments;
             }
             Err(error) => {
                 self.last_error = Some(format!("Failed to list payments: {error}"));
