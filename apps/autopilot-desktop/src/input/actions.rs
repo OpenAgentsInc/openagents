@@ -18,6 +18,7 @@ const MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED: &str =
     "Managed chat relay control transport is not wired yet; no server state changed.";
 const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Direct message relay publish transport is not wired yet; local echo saved for retry.";
+const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -9041,22 +9042,7 @@ pub(super) fn run_mission_control_action(
                 return true;
             }
 
-            let payload = serde_json::json!({
-                "prompt": "Reply with the exact text BUY MODE OK.",
-                "mode": "mission_control.buy_mode.5050",
-                "source": "mission_control",
-            })
-            .to_string();
-            match submit_signed_network_request(
-                state,
-                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
-                payload,
-                None,
-                None,
-                crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
-                Vec::new(),
-            ) {
+            match submit_mission_control_buy_mode_request(state) {
                 Ok(request_id) => {
                     state
                         .mission_control
@@ -9642,6 +9628,51 @@ fn submit_signed_network_request(
         configured_relays.as_slice(),
         target_provider_pubkeys.as_slice(),
     )?;
+    submit_signed_network_request_with_event(
+        state,
+        request_type,
+        payload,
+        skill_scope_id,
+        credit_envelope_ref,
+        budget_sats,
+        timeout_seconds,
+        target_provider_pubkeys,
+        request_event,
+    )
+}
+
+fn submit_mission_control_buy_mode_request(
+    state: &mut crate::app_state::RenderState,
+) -> Result<String, String> {
+    let configured_relays = state.configured_provider_relay_urls();
+    let request_event = build_mission_control_buy_mode_request_event(
+        state.nostr_identity.as_ref(),
+        configured_relays.as_slice(),
+    )?;
+    submit_signed_network_request_with_event(
+        state,
+        crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+        MISSION_CONTROL_BUY_MODE_PROMPT.to_string(),
+        None,
+        None,
+        crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+        crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+        Vec::new(),
+        request_event,
+    )
+}
+
+fn submit_signed_network_request_with_event(
+    state: &mut crate::app_state::RenderState,
+    request_type: String,
+    payload: String,
+    skill_scope_id: Option<String>,
+    credit_envelope_ref: Option<String>,
+    budget_sats: u64,
+    timeout_seconds: u64,
+    target_provider_pubkeys: Vec<String>,
+    request_event: nostr::Event,
+) -> Result<String, String> {
     let published_request_id = request_event.id.clone();
     let command_seq = state.reserve_runtime_command_seq();
     let request_id = state
@@ -9853,6 +9884,53 @@ fn build_nip90_request_event_for_network_submission(
         if !provider.is_empty() {
             request = request.add_service_provider(provider.to_string());
         }
+    }
+
+    let template = nostr::nip90::create_job_request_event(&request);
+    sign_nip90_template(identity, &template)
+}
+
+fn build_mission_control_buy_mode_request_event(
+    identity: Option<&nostr::NostrIdentity>,
+    relay_urls: &[String],
+) -> Result<nostr::Event, String> {
+    let Some(identity) = identity else {
+        return Err("Cannot publish NIP-90 request: Nostr identity unavailable".to_string());
+    };
+
+    let normalized_relays = relay_urls
+        .iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    if normalized_relays.is_empty() {
+        return Err(
+            "Cannot publish NIP-90 request: no relay URLs configured for request publication"
+                .to_string(),
+        );
+    }
+
+    let mut request =
+        nostr::nip90::JobRequest::new(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_KIND)
+            .map_err(|error| format!("Cannot build NIP-90 request: {error}"))?
+            .add_input(
+                nostr::nip90::JobInput::text(MISSION_CONTROL_BUY_MODE_PROMPT).with_marker("prompt"),
+            )
+            .add_param(
+                "request_type",
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
+            )
+            .add_param(
+                "oa_resolution_mode",
+                crate::app_state::BuyerResolutionMode::Race.label(),
+            )
+            .add_param(
+                "timeout_seconds",
+                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS.to_string(),
+            )
+            .with_bid(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS.saturating_mul(1000));
+    for relay in normalized_relays {
+        request = request.add_relay(relay);
     }
 
     let template = nostr::nip90::create_job_request_event(&request);
@@ -12529,10 +12607,11 @@ mod tests {
         ChatAppsComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
         ChatRemoteComposerIntent, ChatRequestComposerIntent, ChatSkillsComposerIntent,
         ChatSpacetimeComposerIntent, ChatTerminalComposerIntent, ChatWalletComposerIntent,
-        ChatWalletMessagePayload, DirectMessageComposerIntent, ManagedChatComposerIntent,
-        build_direct_message_outbound_message, build_managed_chat_join_request_event,
-        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
-        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
+        ChatWalletMessagePayload, DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT,
+        ManagedChatComposerIntent, build_direct_message_outbound_message,
+        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
+        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
+        build_managed_chat_reaction_event, build_mission_control_buy_mode_request_event,
         build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
         classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
         extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
@@ -12824,6 +12903,45 @@ mod tests {
                 .params
                 .iter()
                 .any(|p| p.key == "oa_resolution_mode" && p.value == "race")
+        );
+    }
+
+    #[test]
+    fn builds_mission_control_buy_mode_request_with_fixed_5050_contract() {
+        let identity = fixture_identity();
+        let event = build_mission_control_buy_mode_request_event(
+            Some(&identity),
+            &["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+        )
+        .expect("buy mode request event should build");
+        assert_eq!(
+            event.kind,
+            crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_KIND
+        );
+
+        let request = nostr::nip90::JobRequest::from_event(&event).expect("request should parse");
+        assert_eq!(
+            request.bid,
+            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000)
+        );
+        assert_eq!(request.relays.len(), 2);
+        assert_eq!(request.inputs.len(), 1);
+        assert_eq!(request.inputs[0].data, MISSION_CONTROL_BUY_MODE_PROMPT);
+        assert_eq!(request.inputs[0].marker.as_deref(), Some("prompt"));
+        assert!(
+            request.params.iter().any(|param| {
+                param.key == "request_type"
+                    && param.value == crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
+            }),
+            "buy mode request should carry the fixed request type"
+        );
+        assert!(
+            request.params.iter().any(|param| {
+                param.key == "timeout_seconds"
+                    && param.value
+                        == crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS.to_string()
+            }),
+            "buy mode request should carry the fixed timeout"
         );
     }
 

@@ -11587,6 +11587,44 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_missing_bolt11_marks_payment_failure() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-missing-bolt11".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Reply with the exact text BUY MODE OK.".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 16,
+            })
+            .expect("request should queue");
+
+        let prepared =
+            requests.prepare_auto_payment_attempt(request_id.as_str(), "", None, 1_762_700_020);
+        assert!(
+            prepared.is_none(),
+            "missing bolt11 should block payment attempt"
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(row.status, NetworkRequestStatus::Failed);
+        assert_eq!(
+            row.payment_error.as_deref(),
+            Some("provider feedback is missing bolt11 invoice")
+        );
+        assert_eq!(row.payment_failed_at_epoch_seconds, Some(1_762_700_020));
+    }
+
+    #[test]
     fn network_requests_race_mode_flags_late_result_as_unpaid_duplicate() {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
