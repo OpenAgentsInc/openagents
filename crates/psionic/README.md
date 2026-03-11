@@ -33,6 +33,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-backend-metal`: Metal backend with a first embeddings product path.
 - `psionic-backend-amd-kfd`: AMD KFD discovery/readiness backend.
 - `psionic-backend-amd-userspace`: AMD userspace discovery/readiness backend.
+- `psionic-apple-fm`: Apple Foundation Models bridge contracts, HTTP client, and types for the Swift sidecar.
 
 ## Design Principles
 
@@ -49,3 +50,9 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 This subtree now has a tested CPU product baseline, a first Metal-backed
 `psionic.embeddings` path, and explicit AMD discovery/readiness groundwork.
 AMD execution support is still future work.
+
+## Docs
+
+- **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
+- **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
+- Other planning and reference docs live under `crates/psionic/docs/`.
