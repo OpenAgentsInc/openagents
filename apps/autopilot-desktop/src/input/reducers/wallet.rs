@@ -1,4 +1,5 @@
 use crate::app_state::{EarnFailureClass, RenderState};
+use qrcode::QrCode;
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     let previous_invoice = state.spark_wallet.last_invoice.clone();
@@ -28,6 +29,30 @@ fn reconcile_spark_wallet_update(
         let invoice = invoice.to_string();
         state.spark_inputs.send_request.set_value(invoice.clone());
         state.pay_invoice_inputs.payment_request.set_value(invoice);
+    }
+
+    if state.spark_wallet.last_invoice != previous_invoice
+        && state
+            .spark_wallet
+            .last_action
+            .as_deref()
+            .is_some_and(|action| action.starts_with("Created Lightning invoice"))
+        && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
+    {
+        match lightning_invoice_terminal_qr(invoice) {
+            Ok(qr) => {
+                tracing::info!(
+                    target: "autopilot_desktop::spark_wallet",
+                    "Lightning invoice QR:\n{qr}"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    target: "autopilot_desktop::spark_wallet",
+                    "failed to render Lightning invoice QR: {error}"
+                );
+            }
+        }
     }
 
     reconcile_provider_settlement_invoice_state(
@@ -91,6 +116,18 @@ fn reconcile_spark_wallet_update(
     super::super::refresh_earnings_scoreboard(state, std::time::Instant::now());
 }
 
+fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {
+    let qr = QrCode::new(invoice.as_bytes())
+        .map_err(|error| format!("invalid Lightning invoice for QR render: {error}"))?;
+    Ok(qr
+        .render::<char>()
+        .quiet_zone(true)
+        .module_dimensions(2, 1)
+        .dark_color('█')
+        .light_color(' ')
+        .build())
+}
+
 fn reconcile_provider_settlement_invoice_state(
     active_job: &mut crate::app_state::ActiveJobState,
     provider_runtime: &mut crate::state::provider_runtime::ProviderRuntimeState,
@@ -133,7 +170,7 @@ fn reconcile_provider_settlement_invoice_state(
 
 #[cfg(test)]
 mod tests {
-    use super::reconcile_provider_settlement_invoice_state;
+    use super::{lightning_invoice_terminal_qr, reconcile_provider_settlement_invoice_state};
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
         JobInboxValidation, JobLifecycleStage, PaneLoadState,
@@ -239,5 +276,14 @@ mod tests {
             provider_runtime.last_authoritative_error_class,
             Some(EarnFailureClass::Payment)
         );
+    }
+
+    #[test]
+    fn lightning_invoice_terminal_qr_renders_multiline_blocks() {
+        let qr = lightning_invoice_terminal_qr("lnbc20n1providerready")
+            .expect("qr render should succeed for invoice text");
+
+        assert!(qr.contains('\n'));
+        assert!(qr.contains('█'));
     }
 }

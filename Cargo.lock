@@ -554,6 +554,7 @@ dependencies = [
  "pollster",
  "psionic-apple-fm",
  "psionic-serve",
+ "qrcode",
  "reqwest",
  "serde",
  "serde_json",
