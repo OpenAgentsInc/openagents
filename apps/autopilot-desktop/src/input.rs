@@ -3091,6 +3091,13 @@ fn handle_mission_control_keyboard_input(
         mission_control_inputs_focused,
         dispatch_mission_control_input_event,
         |s| {
+            if s.mission_control.load_funds_amount_sats.is_focused() {
+                let _ = run_mission_control_action(
+                    s,
+                    crate::pane_system::MissionControlPaneAction::CreateLightningReceiveTarget,
+                );
+                return true;
+            }
             if s.mission_control.withdraw_invoice.is_focused() {
                 let _ = run_mission_control_action(
                     s,

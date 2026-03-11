@@ -8948,6 +8948,97 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
+        MissionControlPaneAction::CreateLightningReceiveTarget => {
+            let amount_sats = match parse_positive_amount_str(
+                state.mission_control.load_funds_amount_sats.get_value(),
+                "Lightning receive amount",
+            ) {
+                Ok(amount_sats) => amount_sats,
+                Err(error) => {
+                    state.spark_wallet.last_error = Some(error.clone());
+                    state.mission_control.record_error(error);
+                    return true;
+                }
+            };
+
+            queue_spark_command(
+                state,
+                SparkWalletCommand::CreateBolt11Invoice {
+                    amount_sats,
+                    description: Some("Mission Control load funds".to_string()),
+                    expiry_seconds: Some(3600),
+                },
+            );
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state.mission_control.record_action(format!(
+                    "Queued Lightning receive target for {}",
+                    format_sats_amount(amount_sats)
+                ));
+            }
+            true
+        }
+        MissionControlPaneAction::CopyLightningReceiveTarget => {
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs());
+            let notice = match state.spark_wallet.last_invoice_state(now_epoch_seconds) {
+                crate::spark_wallet::SparkInvoiceState::Empty => {
+                    "No Lightning receive target available. Generate one first.".to_string()
+                }
+                crate::spark_wallet::SparkInvoiceState::Expired => {
+                    "Lightning receive target expired. Generate a new one.".to_string()
+                }
+                crate::spark_wallet::SparkInvoiceState::Ready => {
+                    match state.spark_wallet.last_invoice.as_deref() {
+                        Some(invoice) if !invoice.trim().is_empty() => match copy_to_clipboard(invoice)
+                        {
+                            Ok(()) => "Copied Lightning receive target to clipboard".to_string(),
+                            Err(error) => {
+                                format!("Failed to copy Lightning receive target: {error}")
+                            }
+                        },
+                        _ => "No Lightning receive target available. Generate one first."
+                            .to_string(),
+                    }
+                }
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
+        MissionControlPaneAction::GenerateBitcoinReceiveAddress => {
+            queue_spark_command(state, SparkWalletCommand::GenerateBitcoinAddress);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state
+                    .mission_control
+                    .record_action("Queued Bitcoin receive address");
+            }
+            true
+        }
+        MissionControlPaneAction::CopyBitcoinReceiveAddress => {
+            let notice = match state.spark_wallet.bitcoin_address.as_deref() {
+                Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
+                    Ok(()) => "Copied Bitcoin receive address to clipboard".to_string(),
+                    Err(error) => format!("Failed to copy Bitcoin receive address: {error}"),
+                },
+                _ => "No Bitcoin receive address available. Generate one first.".to_string(),
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
         MissionControlPaneAction::OpenLocalModelWorkbench => {
             match crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,

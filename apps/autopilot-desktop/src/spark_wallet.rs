@@ -42,6 +42,13 @@ pub enum SparkWalletCommand {
     CancelPending,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SparkInvoiceState {
+    Empty,
+    Ready,
+    Expired,
+}
+
 pub struct SparkWalletWorker {
     command_tx: Sender<SparkWalletCommand>,
     result_rx: Receiver<SparkPaneState>,
@@ -118,6 +125,8 @@ pub struct SparkPaneState {
     pub bitcoin_address: Option<String>,
     pub recent_payments: Vec<PaymentSummary>,
     pub last_invoice: Option<String>,
+    pub last_invoice_created_at_epoch_seconds: Option<u64>,
+    pub last_invoice_expiry_seconds: Option<u64>,
     pub last_payment_id: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
@@ -136,6 +145,8 @@ impl Clone for SparkPaneState {
             bitcoin_address: self.bitcoin_address.clone(),
             recent_payments: self.recent_payments.clone(),
             last_invoice: self.last_invoice.clone(),
+            last_invoice_created_at_epoch_seconds: self.last_invoice_created_at_epoch_seconds,
+            last_invoice_expiry_seconds: self.last_invoice_expiry_seconds,
             last_payment_id: self.last_payment_id.clone(),
             last_action: self.last_action.clone(),
             last_error: self.last_error.clone(),
@@ -162,6 +173,8 @@ impl SparkPaneState {
             bitcoin_address: None,
             recent_payments: Vec::new(),
             last_invoice: None,
+            last_invoice_created_at_epoch_seconds: None,
+            last_invoice_expiry_seconds: None,
             last_payment_id: None,
             last_action: None,
             last_error: None,
@@ -183,6 +196,30 @@ impl SparkPaneState {
             Some(NetworkStatus::Connected) => "connected",
             Some(NetworkStatus::Disconnected) => "disconnected",
             None => "unknown",
+        }
+    }
+
+    pub fn last_invoice_state(&self, now_epoch_seconds: u64) -> SparkInvoiceState {
+        let has_invoice = self
+            .last_invoice
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|invoice| !invoice.is_empty());
+        if !has_invoice {
+            return SparkInvoiceState::Empty;
+        }
+
+        match (
+            self.last_invoice_created_at_epoch_seconds,
+            self.last_invoice_expiry_seconds,
+        ) {
+            (Some(created_at), Some(expiry_seconds))
+                if expiry_seconds > 0
+                    && now_epoch_seconds >= created_at.saturating_add(expiry_seconds) =>
+            {
+                SparkInvoiceState::Expired
+            }
+            _ => SparkInvoiceState::Ready,
         }
     }
 
@@ -367,6 +404,8 @@ impl SparkPaneState {
         };
 
         self.last_invoice = Some(invoice.clone());
+        self.last_invoice_created_at_epoch_seconds = Some(current_epoch_seconds());
+        self.last_invoice_expiry_seconds = expiry_seconds;
         self.last_action = Some(format!(
             "Created invoice for {}",
             format_sats_amount(amount_sats)
@@ -407,6 +446,8 @@ impl SparkPaneState {
         };
 
         self.last_invoice = Some(invoice.clone());
+        self.last_invoice_created_at_epoch_seconds = Some(current_epoch_seconds());
+        self.last_invoice_expiry_seconds = expiry_seconds.map(u64::from);
         self.last_action = Some(format!(
             "Created Lightning invoice for {}",
             format_sats_amount(amount_sats)
@@ -586,6 +627,12 @@ where
     }
 }
 
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 pub fn configured_network() -> Network {
     let configured = std::env::var(ENV_SPARK_NETWORK)
         .unwrap_or_else(|_| "regtest".to_string())
@@ -620,8 +667,8 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Network, SPARK_ACTION_TIMEOUT, SparkPaneState, SparkWalletCommand, SparkWalletWorker,
-        run_with_timeout, timeout_message,
+        Network, SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
+        SparkWalletWorker, run_with_timeout, timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
@@ -717,6 +764,21 @@ mod tests {
             assert!(error.contains("No identity mnemonic found"));
             assert!(state.last_invoice.is_none());
         });
+    }
+
+    #[test]
+    fn spark_invoice_state_tracks_empty_ready_and_expired_targets() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        assert_eq!(state.last_invoice_state(1_000), SparkInvoiceState::Empty);
+
+        state.last_invoice = Some("lnbc1missioncontrol".to_string());
+        state.last_invoice_created_at_epoch_seconds = Some(1_000);
+        state.last_invoice_expiry_seconds = Some(300);
+        assert_eq!(state.last_invoice_state(1_299), SparkInvoiceState::Ready);
+        assert_eq!(state.last_invoice_state(1_300), SparkInvoiceState::Expired);
+
+        state.last_invoice_expiry_seconds = None;
+        assert_eq!(state.last_invoice_state(9_999), SparkInvoiceState::Ready);
     }
 
     #[test]

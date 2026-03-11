@@ -604,6 +604,7 @@ impl Default for CalculatorPaneInputs {
 
 pub struct MissionControlPaneState {
     pub log_stream: TerminalPane,
+    pub load_funds_amount_sats: TextInput,
     pub withdraw_invoice: TextInput,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
@@ -618,6 +619,15 @@ impl Default for MissionControlPaneState {
                 .title("\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
+            load_funds_amount_sats: TextInput::new()
+                .value("1000")
+                .placeholder("Lightning sats")
+                .mono(true)
+                .background(wgpui::theme::bg::APP)
+                .border_color(wgpui::Hsla::from_hex(0x3A5D66))
+                .border_color_focused(wgpui::Hsla::from_hex(0x2DE2E6))
+                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
+                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             withdraw_invoice: TextInput::new()
                 .placeholder("Paste Lightning invoice to withdraw")
                 .mono(true)
