@@ -147,14 +147,14 @@ impl TerminalPane {
         }
 
         if matches!(line.stream, TerminalStream::Stderr)
-            || contains_any(
+            || contains_any(&lowered, &["timed out"])
+            || contains_any_keyword(
                 &lowered,
                 &[
                     "error",
                     "failed",
                     "unavailable",
                     "rejected",
-                    "timed out",
                     "timeout",
                     "panic",
                     "fatal",
@@ -278,6 +278,39 @@ fn wrap_terminal_text(text: &str, max_chars: usize) -> Vec<String> {
 
 fn contains_any(text: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| text.contains(needle))
+}
+
+fn contains_any_keyword(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| contains_keyword(text, needle))
+}
+
+fn contains_keyword(text: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+
+    let mut search_from = 0usize;
+    while let Some(relative_index) = text[search_from..].find(needle) {
+        let start = search_from + relative_index;
+        let end = start + needle.len();
+        let leading_ok = start == 0
+            || !text[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_identifier_char);
+        let trailing_ok =
+            end == text.len() || !text[end..].chars().next().is_some_and(is_identifier_char);
+        if leading_ok && trailing_ok {
+            return true;
+        }
+        search_from = start + needle.len();
+    }
+
+    false
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
 }
 
 impl Default for TerminalPane {
@@ -541,6 +574,16 @@ mod tests {
         );
 
         assert_eq!(TerminalPane::line_color(&line), theme::status::ERROR);
+    }
+
+    #[test]
+    fn timeout_seconds_fields_do_not_color_buy_mode_logs_red() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "INFO autopilot_desktop::buy_mode: Buy Mode dispatched request_id=req-123 timeout_seconds=75",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::accent::PRIMARY);
     }
 
     #[test]
