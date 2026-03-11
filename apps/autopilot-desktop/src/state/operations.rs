@@ -1168,6 +1168,9 @@ impl NetworkRequestsState {
         else {
             return None;
         };
+        if request.status.is_terminal() {
+            return None;
+        }
         if request
             .observed_buyer_event_ids
             .iter()
@@ -1222,6 +1225,9 @@ impl NetworkRequestsState {
         else {
             return None;
         };
+        if request.status.is_terminal() {
+            return None;
+        }
         if request
             .observed_buyer_event_ids
             .iter()

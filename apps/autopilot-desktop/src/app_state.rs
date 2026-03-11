@@ -11586,12 +11586,14 @@ mod tests {
         assert_eq!(row.payment_error, None);
     }
 
-    #[test]
-    fn network_requests_missing_bolt11_marks_payment_failure() {
-        let mut requests = NetworkRequestsState::default();
-        let request_id = requests
+    fn queue_buy_mode_request_for_tests(
+        requests: &mut NetworkRequestsState,
+        request_id: &str,
+        authority_command_seq: u64,
+    ) -> String {
+        requests
             .queue_request_submission(NetworkRequestSubmission {
-                request_id: Some("req-pay-missing-bolt11".to_string()),
+                request_id: Some(request_id.to_string()),
                 request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
                 payload: "Reply with the exact text BUY MODE OK.".to_string(),
                 resolution_mode: BuyerResolutionMode::Race,
@@ -11600,9 +11602,105 @@ mod tests {
                 credit_envelope_ref: None,
                 budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
                 timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
-                authority_command_seq: 16,
+                authority_command_seq,
             })
-            .expect("request should queue");
+            .expect("buy mode request should queue")
+    }
+
+    #[test]
+    fn network_requests_buy_mode_requires_payment_settlement_for_terminal_success() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-smoke-001", 17);
+        let provider_pubkey = "33".repeat(32);
+
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-smoke-001",
+            2,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-buy-smoke-001",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        let prepared = requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1buysmoke",
+                Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+                1_762_700_030,
+            )
+            .expect("buy mode payment should prepare");
+        assert_eq!(
+            prepared.1,
+            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS)
+        );
+
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-buy-smoke-001",
+            Some("success"),
+        );
+
+        let before_payment = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after result");
+        assert_eq!(before_payment.status, NetworkRequestStatus::ResultReceived);
+        assert!(before_payment.last_payment_pointer.is_none());
+        assert!(
+            requests.has_in_flight_request_by_type(
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
+            ),
+            "buy mode should stay in-flight until Spark settles the invoice"
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-buy-smoke-001",
+            1_762_700_031,
+        );
+
+        let after_payment = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after payment");
+        assert_eq!(after_payment.status, NetworkRequestStatus::Paid);
+        assert_eq!(
+            after_payment.last_payment_pointer.as_deref(),
+            Some("wallet-payment-buy-smoke-001")
+        );
+        assert!(
+            !requests.has_in_flight_request_by_type(
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
+            ),
+            "buy mode should become terminal only after Spark reports payment sent"
+        );
+        assert!(
+            requests
+                .prepare_auto_payment_attempt(
+                    request_id.as_str(),
+                    "lnbc1buysmoke-second",
+                    Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+                    1_762_700_032,
+                )
+                .is_none(),
+            "settled buy mode request must not queue a second payment"
+        );
+    }
+
+    #[test]
+    fn network_requests_missing_bolt11_marks_payment_failure() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-missing-bolt11", 16);
 
         let prepared =
             requests.prepare_auto_payment_attempt(request_id.as_str(), "", None, 1_762_700_020);
@@ -11622,6 +11720,60 @@ mod tests {
             Some("provider feedback is missing bolt11 invoice")
         );
         assert_eq!(row.payment_failed_at_epoch_seconds, Some(1_762_700_020));
+    }
+
+    #[test]
+    fn network_requests_payment_failure_stays_terminal_when_late_result_arrives() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-pay-fail-001", 18);
+        let provider_pubkey = "44".repeat(32);
+
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-fail-001",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1payfail",
+                Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+                1_762_700_050,
+            )
+            .expect("payment-required invoice should prepare");
+        requests.mark_auto_payment_failed(request_id.as_str(), "spark send failed", 1_762_700_051);
+
+        let observed_before = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist before late result")
+            .observed_buyer_event_ids
+            .len();
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                "result-pay-fail-001",
+                Some("success"),
+            ),
+            None
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after late result");
+        assert_eq!(row.status, NetworkRequestStatus::Failed);
+        assert_eq!(row.last_result_event_id, None);
+        assert_eq!(row.winning_provider_pubkey, None);
+        assert_eq!(row.payment_error.as_deref(), Some("spark send failed"));
+        assert_eq!(row.observed_buyer_event_ids.len(), observed_before);
+        assert_eq!(requests.pending_auto_payment_request_id, None);
     }
 
     #[test]
