@@ -9026,6 +9026,31 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::CopyLogStream => {
+            let output = state
+                .mission_control
+                .log_stream
+                .recent_lines(2000)
+                .iter()
+                .map(|line| line.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let notice = if output.trim().is_empty() {
+                "Mission Control log stream is empty".to_string()
+            } else {
+                match copy_to_clipboard(&output) {
+                    Ok(()) => "Copied Mission Control log stream to clipboard".to_string(),
+                    Err(error) => format!("Failed to copy Mission Control log stream: {error}"),
+                }
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
         MissionControlPaneAction::SendLightningPayment => {
             let command = match build_pay_invoice_command(
                 PayInvoicePaneAction::SendPayment,
