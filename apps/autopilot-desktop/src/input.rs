@@ -104,6 +104,85 @@ pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderSta
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
 }
 
+pub(crate) fn remote_select_codex_thread(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    let Some(index) = state
+        .autopilot_chat
+        .threads
+        .iter()
+        .position(|candidate| candidate == thread_id)
+    else {
+        return Err(format!("Unknown Codex thread `{thread_id}`"));
+    };
+    actions::sync_chat_composer_draft(state);
+    let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
+        return Err(format!("Failed to select thread `{thread_id}`"));
+    };
+    actions::restore_chat_composer_draft(state);
+    let experimental_api = state.codex_lane_config.experimental_api;
+    let resume_path = if experimental_api { target.path.clone() } else { None };
+    state
+        .autopilot_chat
+        .restore_session_preferences_from_thread(&target.thread_id);
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadResume(
+        ThreadResumeParams {
+            thread_id: target.thread_id.clone(),
+            model: state.autopilot_chat.selected_model_override(),
+            model_provider: None,
+            service_tier: actions::chat_session_service_tier(state),
+            cwd: target.cwd.or_else(|| actions::current_chat_session_cwd(state)),
+            approval_policy: actions::chat_session_approval_policy(state),
+            sandbox: actions::chat_session_thread_sandbox_mode(state),
+            personality: actions::chat_session_personality(state),
+            path: resume_path.map(std::path::PathBuf::from),
+        },
+    ))?;
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadRead(
+        codex_client::ThreadReadParams {
+            thread_id: target.thread_id,
+            include_turns: true,
+        },
+    ))?;
+    state.autopilot_chat.last_error = None;
+    Ok(())
+}
+
+pub(crate) fn remote_submit_codex_prompt(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    state.chat_inputs.composer.set_value(prompt.clone());
+    state.autopilot_chat.record_composer_draft(prompt);
+    let _ = actions::run_chat_submit_action_with_trigger(
+        state,
+        crate::labor_orchestrator::CodexRunTrigger::PersonalAgent,
+    );
+    if let Some(error) = state.autopilot_chat.last_error.clone() {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn remote_interrupt_codex_turn(
+    state: &mut crate::app_state::RenderState,
+) -> Result<(), String> {
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.selected_workspace = crate::app_state::ChatWorkspaceSelection::Autopilot;
+    let _ = actions::run_chat_interrupt_turn_action(state);
+    if let Some(error) = state.autopilot_chat.last_error.clone() {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
         return;
@@ -473,6 +552,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if crate::provider_admin::pump_runtime(state) {
+        changed = true;
+    }
+    if crate::codex_remote::pump_runtime(state) {
         changed = true;
     }
     if crate::chat_terminal::pump_runtime(state) {

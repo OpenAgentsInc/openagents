@@ -334,6 +334,32 @@ impl Default for CodexLabsPaneState {
     }
 }
 
+pub struct CodexRemoteState {
+    pub enabled: bool,
+    pub requested_bind_addr: String,
+    pub listen_addr: Option<String>,
+    pub base_url: Option<String>,
+    pub pairing_url: Option<String>,
+    pub auth_token_preview: Option<String>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
+impl Default for CodexRemoteState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requested_bind_addr: "127.0.0.1:4848".to_string(),
+            listen_addr: None,
+            base_url: None,
+            pairing_url: None,
+            auth_token_preview: None,
+            last_error: None,
+            last_action: Some("Remote companion disabled".to_string()),
+        }
+    }
+}
+
 pub struct CodexDiagnosticsMethodCountState {
     pub method: String,
     pub count: u64,

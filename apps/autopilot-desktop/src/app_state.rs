@@ -2705,14 +2705,35 @@ impl AutopilotChatState {
         self.last_error = None;
     }
 
+    pub fn set_service_tier(&mut self, service_tier: AutopilotChatServiceTier) {
+        self.service_tier = service_tier;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
     pub fn cycle_personality(&mut self) {
         self.personality = self.personality.next();
         self.record_active_session_preferences();
         self.last_error = None;
     }
 
+    pub fn set_personality(&mut self, personality: AutopilotChatPersonality) {
+        self.personality = personality;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
     pub fn cycle_collaboration_mode(&mut self) {
         self.collaboration_mode = self.collaboration_mode.next();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_collaboration_mode(
+        &mut self,
+        collaboration_mode: AutopilotChatCollaborationMode,
+    ) {
+        self.collaboration_mode = collaboration_mode;
         self.record_active_session_preferences();
         self.last_error = None;
     }
@@ -2729,6 +2750,12 @@ impl AutopilotChatState {
         self.last_error = None;
     }
 
+    pub fn set_approval_mode(&mut self, approval_mode: codex_client::AskForApproval) {
+        self.approval_mode = approval_mode;
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
     pub fn cycle_sandbox_mode(&mut self) {
         self.sandbox_mode = match self.sandbox_mode {
             codex_client::SandboxMode::DangerFullAccess => {
@@ -2737,6 +2764,12 @@ impl AutopilotChatState {
             codex_client::SandboxMode::WorkspaceWrite => codex_client::SandboxMode::ReadOnly,
             codex_client::SandboxMode::ReadOnly => codex_client::SandboxMode::DangerFullAccess,
         };
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_sandbox_mode(&mut self, sandbox_mode: codex_client::SandboxMode) {
+        self.sandbox_mode = sandbox_mode;
         self.record_active_session_preferences();
         self.last_error = None;
     }
@@ -7776,6 +7809,7 @@ pub struct RenderState {
     pub codex_mcp: CodexMcpPaneState,
     pub codex_apps: CodexAppsPaneState,
     pub codex_labs: CodexLabsPaneState,
+    pub codex_remote: CodexRemoteState,
     pub codex_diagnostics: CodexDiagnosticsPaneState,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
@@ -7805,6 +7839,9 @@ pub struct RenderState {
     pub provider_admin_last_error: Option<String>,
     pub provider_admin_last_sync_signature: Option<String>,
     pub provider_admin_last_sync_at: Option<Instant>,
+    pub codex_remote_runtime: Option<crate::codex_remote::DesktopCodexRemoteRuntime>,
+    pub codex_remote_last_sync_signature: Option<String>,
+    pub codex_remote_last_sync_at: Option<Instant>,
     pub earnings_scoreboard: EarningsScoreboardState,
     pub network_aggregate_counters: NetworkAggregateCountersState,
     pub relay_connections: RelayConnectionsState,

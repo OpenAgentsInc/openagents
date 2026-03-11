@@ -2,7 +2,7 @@ use wgpui::PaintContext;
 
 use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodexRemoteState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -511,6 +511,7 @@ pub fn paint_apps_pane(
 pub fn paint_labs_pane(
     content_bounds: wgpui::Bounds,
     pane_state: &CodexLabsPaneState,
+    remote_state: &CodexRemoteState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "codex", paint);
@@ -638,12 +639,58 @@ pub fn paint_labs_pane(
         "Fuzzy status",
         &pane_state.fuzzy_last_status,
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Windows setup",
         pane_state.windows_last_status.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote enabled",
+        if remote_state.enabled { "true" } else { "false" },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote bind",
+        remote_state.listen_addr.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote URL",
+        remote_state.base_url.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote pairing",
+        remote_state.pairing_url.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote token",
+        remote_state.auth_token_preview.as_deref().unwrap_or("n/a"),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote status",
+        remote_state
+            .last_error
+            .as_deref()
+            .or(remote_state.last_action.as_deref())
+            .unwrap_or("n/a"),
     );
 }
 

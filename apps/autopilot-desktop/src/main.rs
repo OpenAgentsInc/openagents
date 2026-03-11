@@ -14,6 +14,7 @@ mod cad_rebuild_worker;
 mod chat_spacetime;
 mod chat_terminal;
 mod codex_lane;
+mod codex_remote;
 mod credentials;
 mod economy_kernel_receipts;
 mod hotbar;
