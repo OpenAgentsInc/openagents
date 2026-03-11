@@ -85,6 +85,38 @@ impl ProviderAppleFmRuntimeState {
         self.reachable && self.model_available && self.ready_model.is_some()
     }
 
+    pub fn availability_error_message(&self) -> Option<String> {
+        self.last_error.clone().or_else(|| {
+            (!self.model_available)
+                .then(|| {
+                    self.availability_message
+                        .clone()
+                        .filter(|message| !is_positive_apple_fm_availability_message(message))
+                        .or_else(|| {
+                            self.unavailable_reason
+                                .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
+                        })
+                })
+                .flatten()
+        })
+    }
+
+    pub fn readiness_block_reason(&self) -> Option<String> {
+        if self.is_ready() {
+            return None;
+        }
+        self.availability_error_message().or_else(|| {
+            if self.reachable {
+                Some(
+                    "Apple Foundation Models bridge reachable; waiting for model inventory."
+                        .to_string(),
+                )
+            } else {
+                Some("Apple Foundation Models bridge is not running.".to_string())
+            }
+        })
+    }
+
     pub fn substrate_health(&self) -> ProviderBackendHealth {
         ProviderBackendHealth {
             reachable: self.reachable,
@@ -105,6 +137,12 @@ impl ProviderAppleFmRuntimeState {
                 .map(|duration_ns| duration_ns / 1_000_000),
         }
     }
+}
+
+fn is_positive_apple_fm_availability_message(message: &str) -> bool {
+    message
+        .trim()
+        .eq_ignore_ascii_case("Foundation Models is available")
 }
 
 pub struct ProviderRuntimeState {
@@ -277,6 +315,7 @@ mod tests {
         LocalInferenceBackend, ProviderInventoryControls, ProviderInventoryProductToggleTarget,
         ProviderRuntimeState,
     };
+    use psionic_apple_fm::AppleFmSystemLanguageModelUnavailableReason;
 
     #[test]
     fn provider_runtime_truth_labels_distinguish_control_and_projection() {
@@ -334,5 +373,56 @@ mod tests {
 
         assert!(!runtime.sandbox_runtimes().is_empty());
         assert!(runtime.sandbox_profiles().is_empty());
+    }
+
+    #[test]
+    fn apple_fm_availability_error_ignores_positive_health_message() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: true,
+            ready_model: None,
+            availability_message: Some("Foundation Models is available".to_string()),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+
+        assert_eq!(runtime.availability_error_message(), None);
+        assert_eq!(
+            runtime.readiness_block_reason().as_deref(),
+            Some("Apple Foundation Models bridge reachable; waiting for model inventory.")
+        );
+    }
+
+    #[test]
+    fn apple_fm_availability_error_uses_unavailable_reason() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: false,
+            unavailable_reason: Some(
+                AppleFmSystemLanguageModelUnavailableReason::AppleIntelligenceNotEnabled,
+            ),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+
+        assert_eq!(
+            runtime.availability_error_message().as_deref(),
+            Some("Apple FM unavailable: apple_intelligence_not_enabled")
+        );
+    }
+
+    #[test]
+    fn apple_fm_availability_error_prefers_explicit_last_error() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: true,
+            ready_model: Some("apple-foundation-model".to_string()),
+            availability_message: Some("Foundation Models is available".to_string()),
+            last_error: Some("bridge request timed out".to_string()),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+
+        assert_eq!(
+            runtime.availability_error_message().as_deref(),
+            Some("bridge request timed out")
+        );
     }
 }

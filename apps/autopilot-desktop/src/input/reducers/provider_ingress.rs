@@ -61,9 +61,7 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
     let backend_unavailable_detail = state
         .provider_runtime
         .apple_fm
-        .last_error
-        .clone()
-        .or_else(|| state.provider_runtime.apple_fm.availability_message.clone())
+        .availability_error_message()
         .or_else(|| state.provider_runtime.ollama.last_error.clone())
         .or_else(|| state.ollama_execution.last_error.clone());
     let transition = derive_provider_lifecycle(&ProviderLifecycleInput {

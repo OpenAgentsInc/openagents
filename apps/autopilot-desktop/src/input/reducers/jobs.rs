@@ -775,24 +775,15 @@ fn provider_compute_capability_from_ollama(state: &RenderState) -> ProviderNip90
 fn provider_compute_capability_from_apple_fm(
     state: &RenderState,
 ) -> ProviderNip90ComputeCapability {
+    let apple_fm = &state.provider_runtime.apple_fm;
     ProviderNip90ComputeCapability {
         backend: "apple_foundation_models".to_string(),
-        reachable: state.apple_fm_execution.reachable,
+        reachable: apple_fm.reachable,
         configured_model: None,
-        ready_model: state.apple_fm_execution.ready_model.clone(),
-        available_models: state.apple_fm_execution.available_models.clone(),
+        ready_model: apple_fm.ready_model.clone(),
+        available_models: apple_fm.available_models.clone(),
         loaded_models: Vec::new(),
-        last_error: state
-            .apple_fm_execution
-            .last_error
-            .clone()
-            .or_else(|| state.apple_fm_execution.availability_message.clone())
-            .or_else(|| {
-                state
-                    .apple_fm_execution
-                    .unavailable_reason
-                    .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
-            }),
+        last_error: apple_fm.readiness_block_reason(),
     }
 }
 
@@ -2449,9 +2440,7 @@ fn apple_fm_request_accept_block_reason(
     if !apple_fm.reachable {
         return Some(
             apple_fm
-                .last_error
-                .clone()
-                .or_else(|| apple_fm.availability_message.clone())
+                .availability_error_message()
                 .unwrap_or_else(|| "Apple Foundation Models backend is unavailable".to_string()),
         );
     }
@@ -2467,15 +2456,9 @@ fn apple_fm_request_accept_block_reason(
             ));
         }
     } else if !apple_fm.is_ready() {
-        return Some(
-            apple_fm
-                .last_error
-                .clone()
-                .or_else(|| apple_fm.availability_message.clone())
-                .unwrap_or_else(|| {
-                    "Apple Foundation Models is not ready to serve inference".to_string()
-                }),
-        );
+        return Some(apple_fm.readiness_block_reason().unwrap_or_else(|| {
+            "Apple Foundation Models is not ready to serve inference".to_string()
+        }));
     }
     None
 }
