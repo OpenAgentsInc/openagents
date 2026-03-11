@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
-use chrono::{Datelike, TimeZone, Utc};
+use chrono::{Datelike, Local, TimeZone, Utc};
 use nostr::NostrIdentity;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
@@ -603,7 +603,8 @@ pub struct MissionControlPaneState {
     pub withdraw_invoice: TextInput,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
-    rendered_log_lines: Vec<TerminalLine>,
+    /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
+    rendered_log_content: Vec<(TerminalStream, String)>,
 }
 
 impl Default for MissionControlPaneState {
@@ -623,7 +624,7 @@ impl Default for MissionControlPaneState {
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
-            rendered_log_lines: Vec::new(),
+            rendered_log_content: Vec::new(),
         }
     }
 }
@@ -649,7 +650,7 @@ impl MissionControlPaneState {
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
     ) {
-        let lines = build_mission_control_log_lines(
+        let (lines, content) = build_mission_control_log_lines(
             self.last_action.as_deref(),
             self.last_error.as_deref(),
             desktop_shell_mode,
@@ -661,16 +662,21 @@ impl MissionControlPaneState {
             job_inbox,
             active_job,
         );
-        if lines == self.rendered_log_lines {
-            return;
+        for (line, entry) in lines.into_iter().zip(content.into_iter()) {
+            if !self.rendered_log_content.contains(&entry) {
+                self.log_stream.push_line(line);
+                self.rendered_log_content.push(entry);
+            }
         }
-
-        self.log_stream.clear();
-        for line in &lines {
-            self.log_stream.push_line(line.clone());
-        }
-        self.rendered_log_lines = lines;
     }
+}
+
+fn mission_control_log_timestamp(epoch_secs: u64) -> String {
+    Local
+        .timestamp_opt(epoch_secs as i64, 0)
+        .single()
+        .map(|t| t.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| Local::now().format("%H:%M:%S").to_string())
 }
 
 fn build_mission_control_log_lines(
@@ -684,16 +690,21 @@ fn build_mission_control_log_lines(
     spark_wallet: &SparkPaneState,
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
-) -> Vec<TerminalLine> {
-    let mut lines = Vec::<TerminalLine>::new();
+) -> (Vec<TerminalLine>, Vec<(TerminalStream, String)>) {
+    let now_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    type LogEntry = (u64, TerminalStream, String);
+    let mut entries: Vec<LogEntry> = Vec::new();
     let mut seen = HashSet::<String>::new();
-    let mut push_line = |stream: TerminalStream, text: String| {
+    let mut push_entry = |stream: TerminalStream, text: String, at_epoch: Option<u64>| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return;
         }
         if seen.insert(trimmed.to_string()) {
-            lines.push(TerminalLine::new(stream, trimmed));
+            entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string()));
         }
     };
 
@@ -711,19 +722,20 @@ fn build_mission_control_log_lines(
             "Provider degraded. Review blockers and wallet or relay health.".to_string()
         }
     };
-    push_line(TerminalStream::Stdout, mode_line);
+    push_entry(TerminalStream::Stdout, mode_line, None);
 
     if provider_blockers.is_empty() {
-        push_line(TerminalStream::Stdout, "Preflight clear.".to_string());
+        push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None);
     } else {
         for blocker in provider_blockers.iter().take(3) {
-            push_line(
+            push_entry(
                 TerminalStream::Stderr,
                 format!(
                     "Preflight blocker [{}]: {}",
                     blocker.code(),
                     blocker.detail()
                 ),
+                None,
             );
         }
     }
@@ -786,36 +798,36 @@ fn build_mission_control_log_lines(
                     .to_string(),
             ),
         };
-    push_line(model_status_stream, model_status);
+    push_entry(model_status_stream, model_status, None);
 
     if let Some(action) = mission_action {
-        push_line(TerminalStream::Stdout, format!("UI: {action}"));
+        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None);
     }
     if let Some(error) = mission_error {
-        push_line(TerminalStream::Stderr, format!("UI error: {error}"));
+        push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None);
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
-        push_line(TerminalStream::Stdout, format!("Provider: {result}"));
+        push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
-        push_line(TerminalStream::Stderr, format!("Provider error: {error}"));
+        push_entry(TerminalStream::Stderr, format!("Provider error: {error}"), None);
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
-        push_line(TerminalStream::Stdout, format!("Inventory: {action}"));
+        push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None);
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
-        push_line(TerminalStream::Stderr, format!("Inventory error: {error}"));
+        push_entry(TerminalStream::Stderr, format!("Inventory error: {error}"), None);
     }
 
     if let Some(action) = spark_wallet.last_action.as_deref() {
-        push_line(TerminalStream::Stdout, format!("Wallet: {action}"));
+        push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None);
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
-        push_line(TerminalStream::Stderr, format!("Wallet error: {error}"));
+        push_entry(TerminalStream::Stderr, format!("Wallet error: {error}"), None);
     }
 
     if job_inbox.requests.is_empty() {
-        push_line(
+        push_entry(
             TerminalStream::Stdout,
             if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
                 "Relay preview idle. Observed market activity will appear here before you go online."
@@ -823,24 +835,26 @@ fn build_mission_control_log_lines(
             } else {
                 "Watching relays for matching jobs.".to_string()
             },
+            None,
         );
     } else {
         let request_count = job_inbox.requests.len();
-        push_line(
+        push_entry(
             TerminalStream::Stdout,
             if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
                 format!("Relay preview: {request_count} observed jobs while offline.")
             } else {
                 format!("Relay intake: {request_count} observed jobs available.")
             },
+            None,
         );
     }
     if let Some(action) = job_inbox.last_action.as_deref() {
-        push_line(TerminalStream::Stdout, format!("Inbox: {action}"));
+        push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
     }
 
     if let Some(job) = active_job.job.as_ref() {
-        push_line(
+        push_entry(
             mission_control_log_stream_for_stage(job.stage),
             format!(
                 "Active {} -> {} [{}] {}",
@@ -849,22 +863,31 @@ fn build_mission_control_log_lines(
                 job.stage.label(),
                 format_mission_control_amount(job.quoted_price_sats)
             ),
+            None,
         );
     }
     if let Some(action) = active_job.last_action.as_deref() {
-        push_line(TerminalStream::Stdout, format!("Active job: {action}"));
+        push_entry(TerminalStream::Stdout, format!("Active job: {action}"), None);
     }
     if let Some(error) = active_job.last_error.as_deref() {
-        push_line(TerminalStream::Stderr, format!("Active job error: {error}"));
+        push_entry(TerminalStream::Stderr, format!("Active job error: {error}"), None);
     }
 
-    for row in earn_job_lifecycle_projection.rows.iter().take(8).rev() {
+    const LOG_STREAM_EARN_WINDOW_SECS: u64 = 900;
+    let earn_cutoff = now_epoch.saturating_sub(LOG_STREAM_EARN_WINDOW_SECS);
+    for row in earn_job_lifecycle_projection
+        .rows
+        .iter()
+        .rev()
+        .filter(|row| row.occurred_at_epoch_seconds >= earn_cutoff)
+        .take(8)
+    {
         let source = if row.source_tag.to_ascii_lowercase().contains("starter") {
             "STARTER"
         } else {
             "OPEN"
         };
-        push_line(
+        push_entry(
             mission_control_log_stream_for_stage(row.stage),
             format!(
                 "[{source}] {} {} {}",
@@ -872,17 +895,33 @@ fn build_mission_control_log_lines(
                 row.job_id,
                 format_mission_control_amount(row.quoted_price_sats)
             ),
+            Some(row.occurred_at_epoch_seconds),
         );
     }
 
-    if lines.is_empty() {
-        lines.push(TerminalLine::new(
-            TerminalStream::Stdout,
-            "Mission Control log waiting for provider and wallet state.",
-        ));
-    }
+    entries.sort_by_key(|e| e.0);
+    let content: Vec<(TerminalStream, String)> =
+        entries.iter().map(|(_, stream, text)| (stream.clone(), text.clone())).collect();
+    let lines: Vec<TerminalLine> = entries
+        .into_iter()
+        .map(|(epoch, stream, text)| {
+            let timestamp = mission_control_log_timestamp(epoch);
+            TerminalLine::new(stream, format!("{timestamp}  {text}"))
+        })
+        .collect();
 
-    lines
+    if lines.is_empty() {
+        let fallback = "Mission Control log waiting for provider and wallet state.";
+        (
+            vec![TerminalLine::new(
+                TerminalStream::Stdout,
+                format!("{}  {fallback}", mission_control_log_timestamp(now_epoch)),
+            )],
+            vec![(TerminalStream::Stdout, fallback.to_string())],
+        )
+    } else {
+        (lines, content)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -932,8 +971,7 @@ pub(crate) fn mission_control_local_runtime_is_ready(
     }
 }
 
-/// True when Mission Control should show the local-model button (open workbench).
-/// When false, Apple FM refresh/start is automatic on pane open; no button.
+/// True when Mission Control should show the local-model button (Refresh/Start/Open Apple FM or Open GPT-OSS).
 pub(crate) fn mission_control_show_local_model_button(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
@@ -941,7 +979,7 @@ pub(crate) fn mission_control_show_local_model_button(
 ) -> bool {
     match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            desktop_shell_mode.is_dev() && provider_runtime.apple_fm.is_ready()
+            provider_runtime.apple_fm.bridge_status.as_deref() != Some("starting")
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => true,
         None => false,
@@ -12738,6 +12776,10 @@ mod tests {
 
     #[test]
     fn mission_control_log_lines_use_grouped_integer_projection_amounts() {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_762_000_000);
         let provider = ProviderRuntimeState::default();
         let projection = EarnJobLifecycleProjectionState {
             load_state: super::PaneLoadState::Ready,
@@ -12752,7 +12794,7 @@ mod tests {
                 request_id: "123".to_string(),
                 stage: JobLifecycleStage::Paid,
                 source_tag: "starter-demand".to_string(),
-                occurred_at_epoch_seconds: 1_762_000_000,
+                occurred_at_epoch_seconds: now_epoch.saturating_sub(60),
                 quoted_price_sats: 1_000,
                 payment_pointer: Some("wallet:123".to_string()),
                 settlement_authority: "wallet.reconciliation".to_string(),
@@ -12761,7 +12803,7 @@ mod tests {
             projection_file_path: earn_projection_test_path("mission-control-log"),
         };
 
-        let lines = super::build_mission_control_log_lines(
+        let (lines, _) = super::build_mission_control_log_lines(
             Some("Mission Control ready"),
             None,
             crate::desktop_shell::DesktopShellMode::Production,
@@ -12813,7 +12855,7 @@ mod tests {
             ..super::LocalInferenceExecutionSnapshot::default()
         };
 
-        let lines = super::build_mission_control_log_lines(
+        let (lines, _) = super::build_mission_control_log_lines(
             None,
             None,
             crate::desktop_shell::DesktopShellMode::Production,

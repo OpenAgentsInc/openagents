@@ -2856,6 +2856,7 @@ pub(crate) fn apply_provider_mode_target(
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
 
     if wants_online {
+        let _ = ensure_mission_control_apple_fm_refresh(state);
         queue_spark_command(state, SparkWalletCommand::Refresh);
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();

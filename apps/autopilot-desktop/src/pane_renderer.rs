@@ -839,16 +839,7 @@ fn paint_go_online_pane(
     let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
     paint.scene.push_clip(earnings_clip);
     const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        "BIP-177 SATS",
-        Point::new(
-            layout.earnings_panel.max_x() - 110.0,
-            layout.earnings_panel.origin.y + 12.0,
-        ),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    ));
-    let mut earnings_y = layout.earnings_panel.origin.y + 48.0;
+    let mut earnings_y = layout.earnings_panel.origin.y + 36.0;
     earnings_y = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
@@ -1028,27 +1019,6 @@ fn paint_go_online_pane(
     } else {
         ("SCANNING", mission_control_cyan_color())
     };
-    let scanner_bounds = Bounds::new(
-        layout.active_jobs_panel.max_x() - 84.0,
-        layout.active_jobs_panel.origin.y + 18.0,
-        56.0,
-        layout.active_jobs_panel.size.height - 36.0,
-    );
-    let scanner_segment_height = ((scanner_bounds.size.height - 18.0) / 4.0).max(8.0);
-    for index in 0..4 {
-        let segment_bounds = Bounds::new(
-            scanner_bounds.origin.x,
-            scanner_bounds.origin.y + index as f32 * (scanner_segment_height + 6.0),
-            scanner_bounds.size.width,
-            scanner_segment_height,
-        );
-        let alpha = 0.16 + index as f32 * 0.08;
-        paint.scene.draw_quad(
-            Quad::new(segment_bounds)
-                .with_background(active_state.1.with_alpha(alpha))
-                .with_border(active_state.1.with_alpha(alpha + 0.08), 1.0),
-        );
-    }
     paint.scene.draw_text(paint.text.layout_mono(
         active_state.0,
         Point::new(
@@ -1382,8 +1352,10 @@ fn mission_control_local_model_button_label(
                 String::from("STARTING APPLE FM")
             } else if desktop_shell_mode.is_dev() && provider_runtime.apple_fm.is_ready() {
                 String::from("OPEN APPLE FM")
+            } else if provider_runtime.apple_fm.reachable {
+                String::from("REFRESH APPLE FM")
             } else {
-                String::from("NO LOCAL MODEL")
+                String::from("START APPLE FM")
             }
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
@@ -5367,7 +5339,7 @@ mod tests {
                 &provider,
                 &local
             ),
-            "NO LOCAL MODEL"
+            "REFRESH APPLE FM"
         );
         assert_eq!(
             mission_control_go_online_hint(
@@ -5395,7 +5367,7 @@ mod tests {
                 &provider,
                 &local
             ),
-            "NO LOCAL MODEL"
+            "START APPLE FM"
         );
         assert_eq!(
             mission_control_go_online_hint(
