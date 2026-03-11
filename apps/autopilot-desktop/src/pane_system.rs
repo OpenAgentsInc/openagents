@@ -338,6 +338,7 @@ pub enum MissionControlPaneAction {
     RefreshWallet,
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
+    CopyLogStream,
     SendLightningPayment,
     CopySeedPhrase,
     OpenLocalModelWorkbench,
@@ -2423,6 +2424,19 @@ pub fn mission_control_log_stream_bounds_for_mode(
     buy_mode_enabled: bool,
 ) -> Bounds {
     mission_control_layout_for_mode(content_bounds, buy_mode_enabled).log_stream
+}
+
+pub fn mission_control_copy_log_stream_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    let log_stream = mission_control_layout_for_mode(content_bounds, buy_mode_enabled).log_stream;
+    Bounds::new(
+        log_stream.max_x() - 108.0,
+        log_stream.origin.y + 4.0,
+        96.0,
+        20.0,
+    )
 }
 
 pub fn mission_control_buy_mode_button_bounds(
@@ -5085,6 +5099,15 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopySeedPhrase,
                 ))
+            } else if mission_control_copy_log_stream_button_bounds(
+                content_bounds,
+                buy_mode_enabled,
+            )
+            .contains(point)
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::CopyLogStream,
+                ))
             } else if state.mission_control_buy_mode_enabled()
                 && mission_control_buy_mode_button_bounds(content_bounds, true).contains(point)
                 && state.mission_control_buy_mode_toggle_enabled()
@@ -6923,6 +6946,18 @@ mod tests {
         assert!(history.max_x() <= layout.buy_mode_panel.max_x());
         assert_eq!(primary.origin.y, history.origin.y);
         assert_eq!(primary.size.height, history.size.height);
+    }
+
+    #[test]
+    fn mission_control_log_copy_button_fits_inside_log_panel() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout_for_mode(content_bounds, true);
+        let button = super::mission_control_copy_log_stream_button_bounds(content_bounds, true);
+
+        assert!(button.origin.x >= layout.log_stream.origin.x);
+        assert!(button.origin.y >= layout.log_stream.origin.y);
+        assert!(button.max_x() <= layout.log_stream.max_x());
+        assert!(button.max_y() <= layout.log_stream.origin.y + 28.0);
     }
 
     #[test]

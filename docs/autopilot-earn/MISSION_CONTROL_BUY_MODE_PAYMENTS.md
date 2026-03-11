@@ -58,8 +58,9 @@ every Spark sync line.
 
 ## History Pane
 
-The `Buy Mode Payments` pane now retains and renders, when available:
+The `Buy Mode Payments` pane now retains and renders:
 
+- active buy-mode requests even before invoice / payment evidence exists
 - timestamp
 - request id
 - wallet payment pointer
@@ -76,6 +77,9 @@ correlate wallet events and request outcomes after failure.
 
 The pane also exposes a `Copy all` action that copies the summary line and all
 rendered payment rows to the system clipboard for operator debugging.
+
+Mission Control also exposes a `Copy log` action in the `LOG STREAM` header so
+operators can export the full mirrored buyer/provider/wallet log buffer.
 
 ## Breez 0.6.6 Limitation
 

@@ -860,7 +860,6 @@ fn buy_mode_payment_history_requests(
         .iter()
         .rev()
         .filter(|request| request.request_type == MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
-        .filter(|request| buy_mode_request_has_payment_history(request))
         .collect()
 }
 
@@ -912,7 +911,7 @@ pub(crate) fn buy_mode_payments_clipboard_text(
     let mut sections = vec![
         "Buy Mode Payments".to_string(),
         buy_mode_payments_summary_text(network_requests, spark_wallet),
-        "Rows are sourced from buy-mode requests and matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.".to_string(),
+        "Rows are sourced from buy-mode requests. When wallet evidence exists, rows are matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.".to_string(),
         String::new(),
     ];
     for (_, text) in build_buy_mode_payment_rows(network_requests, spark_wallet) {
@@ -1023,29 +1022,11 @@ fn build_buy_mode_payment_rows(
     if rows.is_empty() {
         rows.push((
             TerminalStream::Stdout,
-            "No Buy Mode payment invoices or settlements yet.".to_string(),
+            "No Buy Mode requests yet.".to_string(),
         ));
     }
 
     rows
-}
-
-fn buy_mode_request_has_payment_history(
-    request: &crate::state::operations::SubmittedNetworkRequest,
-) -> bool {
-    request.payment_required_at_epoch_seconds.is_some()
-        || request.payment_sent_at_epoch_seconds.is_some()
-        || request.payment_failed_at_epoch_seconds.is_some()
-        || request.last_payment_pointer.is_some()
-        || request.pending_bolt11.is_some()
-        || request
-            .payment_notice
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
-        || request
-            .payment_error
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
 }
 
 fn buy_mode_payment_timestamp_label(epoch_seconds: Option<u64>) -> String {
@@ -1612,20 +1593,44 @@ fn mission_control_network_request_log_line(
     request: &crate::state::operations::SubmittedNetworkRequest,
     spark_wallet: &SparkPaneState,
 ) -> String {
+    let provider_state = request
+        .winning_provider_pubkey
+        .as_deref()
+        .or(request.last_provider_pubkey.as_deref())
+        .map(mission_control_log_short_id)
+        .unwrap_or_else(|| "awaiting".to_string());
+    let work_state = if request.status == crate::state::operations::NetworkRequestStatus::Failed {
+        "failed".to_string()
+    } else if request.last_result_event_id.is_some() {
+        "result-received".to_string()
+    } else {
+        match request.last_feedback_status.as_deref() {
+            Some(status) if status.eq_ignore_ascii_case("processing") => {
+                "provider-working".to_string()
+            }
+            Some(status) if status.eq_ignore_ascii_case("payment-required") => {
+                "invoice-requested".to_string()
+            }
+            Some(status) => format!("feedback-{status}"),
+            None if request.published_request_event_id.is_some() => "awaiting-provider".to_string(),
+            None => "queued".to_string(),
+        }
+    };
+    let payment_state =
+        buy_mode_wallet_state_label(request, buy_mode_wallet_payment(request, spark_wallet));
     let mut line = format!(
-        "Buyer {} [{}] {} {}",
+        "Buyer {} [{}] {} {} provider={} work={} payment={}",
         mission_control_log_short_id(request.request_id.as_str()),
         request.request_type,
         request.status.label(),
-        format_mission_control_amount(request.budget_sats)
+        format_mission_control_amount(request.budget_sats),
+        provider_state,
+        work_state,
+        payment_state,
     );
     if let Some(event_id) = request.published_request_event_id.as_deref() {
         line.push_str(" event=");
         line.push_str(mission_control_log_short_id(event_id).as_str());
-    }
-    if let Some(provider) = request.last_provider_pubkey.as_deref() {
-        line.push_str(" provider=");
-        line.push_str(mission_control_log_short_id(provider).as_str());
     }
     if let Some(status) = request.last_feedback_status.as_deref() {
         line.push_str(" feedback=");
@@ -1634,14 +1639,17 @@ fn mission_control_network_request_log_line(
     if request.last_result_event_id.is_some() {
         line.push_str(" result=received");
     }
-    if request.pending_bolt11.is_some() {
-        line.push_str(" payment=invoice");
+    if let Some(pointer) = request.last_payment_pointer.as_deref() {
+        line.push_str(" pointer=");
+        line.push_str(mission_control_log_short_id(pointer).as_str());
     }
-    if let Some(wallet_payment) = buy_mode_wallet_payment(request, spark_wallet) {
-        line.push_str(" payment=");
-        line.push_str(buy_mode_wallet_state_label(request, Some(wallet_payment)).as_str());
-    } else if request.payment_sent_at_epoch_seconds.is_some() {
-        line.push_str(" payment=settled");
+    if let Some(invoice) = request.pending_bolt11.as_deref() {
+        line.push_str(" invoice=");
+        line.push_str(compact_payment_invoice(invoice).as_str());
+    }
+    if let Some(notice) = request.payment_notice.as_deref() {
+        line.push_str(" notice=");
+        line.push_str(notice);
     }
     if let Some(error) = request.payment_error.as_deref() {
         line.push_str(" error=");
@@ -12412,6 +12420,34 @@ mod tests {
     }
 
     #[test]
+    fn buy_mode_payments_pane_includes_published_request_before_payment_evidence() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-buy-pending-ledger-001", 25);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-pending-ledger-001",
+            3,
+            1,
+            None,
+        );
+
+        let mut pane = super::BuyModePaymentsPaneState::default();
+        pane.sync_rows(&requests, &SparkPaneState::default());
+        let lines = pane.ledger.recent_lines(6);
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("status=streaming")
+                && line.text.contains("wallet_status=idle")
+                && line.text.contains("amount=2 sats")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains(request_id.as_str())
+                && line.text.contains("event-buy-pending-ledger-001")
+        }));
+    }
+
+    #[test]
     fn buy_mode_payments_clipboard_text_includes_nonterminal_payment_notice() {
         let mut requests = NetworkRequestsState::default();
         let request_id =
@@ -14088,7 +14124,8 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text.contains("Buyer req-buy-mode")
                 && line.text.contains("buy_mode")
-                && line.text.contains("streaming")
+                && line.text.contains("work=awaiting-provider")
+                && line.text.contains("payment=idle")
         }));
     }
 
