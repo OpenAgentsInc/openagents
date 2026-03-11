@@ -4783,6 +4783,69 @@ fn push_active_job_wrapped_line(
     }
 }
 
+fn active_job_timeline_stage_reached(
+    active_job: &ActiveJobState,
+    stage: JobLifecycleStage,
+) -> bool {
+    let Some(job) = active_job.job.as_ref() else {
+        return false;
+    };
+
+    if job.stage != JobLifecycleStage::Failed {
+        return match stage {
+            JobLifecycleStage::Received => true,
+            JobLifecycleStage::Accepted => true,
+            JobLifecycleStage::Running => matches!(
+                job.stage,
+                JobLifecycleStage::Running | JobLifecycleStage::Delivered | JobLifecycleStage::Paid
+            ),
+            JobLifecycleStage::Delivered => {
+                matches!(
+                    job.stage,
+                    JobLifecycleStage::Delivered | JobLifecycleStage::Paid
+                )
+            }
+            JobLifecycleStage::Paid => job.stage == JobLifecycleStage::Paid,
+            JobLifecycleStage::Failed => false,
+        };
+    }
+
+    match stage {
+        JobLifecycleStage::Received => true,
+        JobLifecycleStage::Accepted => true,
+        JobLifecycleStage::Running => {
+            active_job.execution_turn_completed
+                || active_job.execution_output.as_deref().is_some()
+                || active_job.result_publish_in_flight
+                || job.sa_tick_result_event_id.is_some()
+                || active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
+                || job.ac_settlement_event_id.is_some()
+        }
+        JobLifecycleStage::Delivered => {
+            job.sa_tick_result_event_id.is_some()
+                || active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
+                || job.ac_settlement_event_id.is_some()
+        }
+        JobLifecycleStage::Paid => {
+            active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
+                || job.ac_settlement_event_id.is_some()
+        }
+        JobLifecycleStage::Failed => true,
+    }
+}
+
+fn active_job_has_authoritative_payment_pointer(pointer: Option<&str>) -> bool {
+    let Some(pointer) = pointer else {
+        return false;
+    };
+    let pointer = pointer.trim();
+    !pointer.is_empty()
+        && !pointer.starts_with("pending:")
+        && !pointer.starts_with("pay:")
+        && !pointer.starts_with("inv-")
+        && !pointer.starts_with("pay-req-")
+}
+
 fn build_active_job_scroll_lines(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
@@ -4905,18 +4968,11 @@ fn build_active_job_scroll_lines(
         JobLifecycleStage::Delivered,
         JobLifecycleStage::Paid,
     ];
-    let current_idx = stage_flow
-        .iter()
-        .position(|stage| *stage == job.stage)
-        .unwrap_or(stage_flow.len().saturating_sub(1));
-    for (idx, stage) in stage_flow.iter().enumerate() {
+    for stage in stage_flow {
+        let reached = active_job_timeline_stage_reached(active_job, stage);
         lines.push(ActiveJobRenderLine {
-            text: format!(
-                "[{}] {}",
-                if idx <= current_idx { "x" } else { " " },
-                stage.label()
-            ),
-            color: if idx <= current_idx {
+            text: format!("[{}] {}", if reached { "x" } else { " " }, stage.label()),
+            color: if reached {
                 theme::status::SUCCESS
             } else {
                 theme::text::MUTED
@@ -5898,7 +5954,7 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        create_invoice_view_state, mission_control_body_chunk_len,
+        build_active_job_scroll_lines, create_invoice_view_state, mission_control_body_chunk_len,
         mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
         mission_control_go_online_hint, mission_control_lightning_receive_state_label,
         mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
@@ -5906,7 +5962,11 @@ mod tests {
         mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
         payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
-    use crate::app_state::{MissionControlPaneState, PaneLoadState};
+    use crate::app_state::{
+        ActiveJobState, EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision,
+        JobInboxRequest, JobInboxValidation, JobLifecycleStage, MissionControlPaneState,
+        PaneLoadState,
+    };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
     use crate::state::operations::{
@@ -5936,6 +5996,34 @@ mod tests {
 
     fn fixture_mission_control() -> MissionControlPaneState {
         MissionControlPaneState::default()
+    }
+
+    fn fixture_active_job_request(request_id: &str) -> JobInboxRequest {
+        JobInboxRequest {
+            request_id: request_id.to_string(),
+            requester: "buyer".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: Some("Reply with OK".to_string()),
+            execution_prompt: Some("Reply with OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: Some("text/plain".to_string()),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some(request_id.to_string()),
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: JobInboxDecision::Accepted {
+                reason: "accepted".to_string(),
+            },
+        }
     }
 
     #[test]
@@ -6022,6 +6110,35 @@ mod tests {
                 "raw:{\"x\":1}".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn failed_active_job_timeline_does_not_mark_paid_without_payment() {
+        let request = fixture_active_job_request("req-active-job-failed");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.execution_turn_completed = true;
+        active_job.execution_output = Some("BUY MODE OK".to_string());
+        let job = active_job.job.as_mut().expect("active job");
+        job.stage = JobLifecycleStage::Failed;
+        job.failure_reason =
+            Some("job delivery timed out after 75s after local execution completed".to_string());
+
+        let lines = build_active_job_scroll_lines(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            120,
+        );
+        let texts = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(texts.contains(&"[x] received"));
+        assert!(texts.contains(&"[x] accepted"));
+        assert!(texts.contains(&"[x] running"));
+        assert!(texts.contains(&"[ ] delivered"));
+        assert!(texts.contains(&"[ ] paid"));
     }
 
     #[test]

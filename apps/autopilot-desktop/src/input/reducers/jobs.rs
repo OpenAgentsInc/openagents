@@ -454,6 +454,8 @@ pub(super) fn apply_active_job_codex_notification(
                     "active_job.execution_failed",
                     true,
                 );
+            } else {
+                refresh_active_job_phase_deadline(state);
             }
             true
         }
@@ -742,6 +744,26 @@ fn active_job_timeout_reason(
         ),
         _ => format!("job execution timed out after {}s", ttl_seconds),
     }
+}
+
+fn set_active_job_phase_deadline_at(
+    active_job: &mut crate::app_state::ActiveJobState,
+    ttl_seconds: u64,
+    now_epoch_seconds: u64,
+) {
+    active_job.execution_deadline_epoch_seconds =
+        Some(now_epoch_seconds.saturating_add(ttl_seconds));
+}
+
+fn refresh_active_job_phase_deadline(state: &mut RenderState) {
+    let Some(ttl_seconds) = state.active_job.job.as_ref().map(|job| job.ttl_seconds) else {
+        return;
+    };
+    set_active_job_phase_deadline_at(&mut state.active_job, ttl_seconds, current_epoch_seconds());
+}
+
+fn clear_active_job_phase_deadline(active_job: &mut crate::app_state::ActiveJobState) {
+    active_job.execution_deadline_epoch_seconds = None;
 }
 
 fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90ComputeCapability {
@@ -1447,6 +1469,7 @@ fn apply_ollama_execution_completed(
     }
     state.active_job.execution_backend_request_id = None;
     state.active_job.execution_turn_completed = true;
+    refresh_active_job_phase_deadline(state);
     store_execution_output(state, completed.output.as_str());
     if let Some(job) = state.active_job.job.as_mut() {
         job.execution_provenance = Some(completed.provenance.clone());
@@ -1526,6 +1549,7 @@ fn apply_apple_fm_execution_completed(
     }
     state.active_job.execution_backend_request_id = None;
     state.active_job.execution_turn_completed = true;
+    refresh_active_job_phase_deadline(state);
     store_execution_output(state, completed.output.as_str());
     if let Some(job) = state.active_job.job.as_mut() {
         job.execution_provenance = Some(completed.provenance.clone());
@@ -1680,6 +1704,7 @@ fn transition_active_job_to_delivered(
         }
         None => return Err("No active job selected".to_string()),
     };
+    refresh_active_job_phase_deadline(state);
     if let Some(job) = state.active_job.job.as_ref().cloned() {
         let output_bytes = state
             .active_job
@@ -1780,6 +1805,7 @@ pub(super) fn transition_active_job_to_paid(
     state.active_job.payment_required_failed = false;
     state.active_job.pending_bolt11 = None;
     state.active_job.pending_result_publish_event_id = None;
+    clear_active_job_phase_deadline(&mut state.active_job);
 
     sync_provider_runtime_queue_depth(state);
     state.provider_runtime.last_error_detail = None;
@@ -1845,6 +1871,7 @@ fn fail_active_job_execution(
     state.active_job.result_publish_in_flight = false;
     state.active_job.pending_result_publish_event_id = None;
     state.active_job.execution_turn_completed = false;
+    clear_active_job_phase_deadline(&mut state.active_job);
     state.active_job.execution_backend_request_id = None;
     state.active_job.execution_thread_start_command_seq = None;
     state.active_job.execution_turn_start_command_seq = None;
@@ -2508,9 +2535,10 @@ mod tests {
     use super::{
         ProviderExecutionBackend, active_job_matches_publish_outcome, active_job_timeout_reason,
         apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
-        build_nip90_feedback_event, next_auto_accept_request_id_for,
-        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
-        provider_execution_backend_for_kind, turn_completed_failed,
+        build_nip90_feedback_event, clear_active_job_phase_deadline,
+        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
+        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
+        set_active_job_phase_deadline_at, turn_completed_failed,
         visible_result_content_for_job_kind,
     };
     use crate::app_state::{
@@ -2713,6 +2741,29 @@ mod tests {
             active_job_timeout_reason(JobLifecycleStage::Delivered, true, 75),
             "job settlement timed out after 75s while awaiting payment flow"
         );
+    }
+
+    #[test]
+    fn active_job_phase_deadline_refresh_replaces_existing_deadline() {
+        let mut active_job = ActiveJobState::default();
+        active_job.execution_deadline_epoch_seconds = Some(5);
+
+        set_active_job_phase_deadline_at(&mut active_job, 75, 1_700_000_000);
+
+        assert_eq!(
+            active_job.execution_deadline_epoch_seconds,
+            Some(1_700_000_075)
+        );
+    }
+
+    #[test]
+    fn active_job_phase_deadline_can_be_cleared() {
+        let mut active_job = ActiveJobState::default();
+        active_job.execution_deadline_epoch_seconds = Some(1_700_000_075);
+
+        clear_active_job_phase_deadline(&mut active_job);
+
+        assert_eq!(active_job.execution_deadline_epoch_seconds, None);
     }
 
     #[test]

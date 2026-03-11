@@ -1705,7 +1705,7 @@ fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
     );
     mirror_ui_error(
         "provider.runtime",
-        state.provider_runtime.last_error_detail.as_deref(),
+        provider_runtime_console_error(state).as_deref(),
     );
     mirror_ui_error(
         "earnings.scoreboard",
@@ -3070,6 +3070,14 @@ fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Opt
         state.provider_runtime.apple_fm.last_error.as_deref(),
     )
     .map(|details| format!("Cannot go online yet: {details}"))
+}
+
+fn provider_runtime_console_error(state: &crate::app_state::RenderState) -> Option<String> {
+    let detail = state.provider_runtime.last_error_detail.as_deref()?.trim();
+    if detail.is_empty() || detail.eq_ignore_ascii_case("Foundation Models is available") {
+        return None;
+    }
+    Some(detail.to_string())
 }
 
 fn handle_chat_keyboard_input(
