@@ -44,13 +44,14 @@ Delivery process:
 
 ---
 
-## Ticket A — Default channel config (AC1)
+## Ticket A — Default channel config (AC1) — Done
 
 | Field | Value |
 |-------|--------|
 | **Issue type** | Story or Task |
 | **Title** | [NIP-28] Define default channel configuration |
 | **Epic Link** | Link to Epic above |
+| **Status** | Done |
 
 **Description:**
 
@@ -65,15 +66,18 @@ Acceptance criteria:
 Ref: PRD acceptance criterion 1.
 ```
 
+**Implementation (done):** `DefaultNip28ChannelConfig` in `apps/autopilot-desktop/src/app_state.rs` with env vars `OA_DEFAULT_NIP28_RELAY_URL` / `OA_DEFAULT_NIP28_CHANNEL_ID`; `.env.example` updated.
+
 ---
 
-## Ticket B — Subscription and ingestion (AC2)
+## Ticket B — Subscription and ingestion (AC2) — Done
 
 | Field | Value |
 |-------|--------|
 | **Issue type** | Story or Task |
 | **Title** | [NIP-28] Relay subscription and ingestion for default channel |
 | **Epic Link** | Link to Epic above |
+| **Status** | Done |
 
 **Description:**
 
@@ -94,15 +98,18 @@ received events into managed_chat_projection. See apps/autopilot-desktop/src/run
 crates/nostr/client/src/subscription.rs for the existing subscription plumbing to build on.
 ```
 
+**Implementation (done):** `apps/autopilot-desktop/src/nip28_chat_lane.rs` — new `Nip28ChatLaneWorker` / `run_nip28_chat_lane_loop`; subscribes kinds 40/41/42 for the default channel. Wired into `RenderState` (spawned in `render.rs`) and `drain_runtime_lane_updates` in `input/reducers/mod.rs` which calls `managed_chat_projection.record_relay_event`.
+
 ---
 
-## Ticket C — Auto-select default channel (AC3)
+## Ticket C — Auto-select default channel (AC3) — Done
 
 | Field | Value |
 |-------|--------|
 | **Issue type** | Story or Task |
 | **Title** | [NIP-28] Auto-select default channel when projection has data |
 | **Epic Link** | Link to Epic above |
+| **Status** | Done |
 
 **Description:**
 
@@ -116,15 +123,18 @@ Acceptance criteria:
 Ref: PRD acceptance criterion 3. See app_state.rs (selected_workspace, active_managed_chat_*).
 ```
 
+**Implementation (done):** `maybe_auto_select_default_nip28_channel()` added to `AutopilotChatState` in `apps/autopilot-desktop/src/app_state.rs`; called once per frame after the NIP-28 drain in `apps/autopilot-desktop/src/input/reducers/mod.rs`. Tested: connects to `relay.damus.io`, receives kind-42 events (with `h` tag), auto-selects workspace to `oa-default` managed group.
+
 ---
 
-## Ticket D — Chat pane transcript and send (AC4)
+## Ticket D — Chat pane transcript and send (AC4) — Done
 
 | Field | Value |
 |-------|--------|
 | **Issue type** | Story or Task |
 | **Title** | [NIP-28] Chat pane shows default channel transcript and send path |
 | **Epic Link** | Link to Epic above |
+| **Status** | Done |
 
 **Description:**
 
@@ -138,6 +148,8 @@ Acceptance criteria:
 
 Ref: PRD acceptance criterion 4.
 ```
+
+**Implementation (done):** Added `Nip28ChatLaneCommand::Publish` and command channel to `apps/autopilot-desktop/src/nip28_chat_lane.rs`; added `publish()` / `clear_dispatched()` on `Nip28ChatLaneWorker` with in-flight deduplication. Added `PublishAck` / `PublishError` update variants. In `apps/autopilot-desktop/src/input/reducers/mod.rs`: drains `Publishing` outbound messages and forwards to lane each frame; handles ack/error. In `apps/autopilot-desktop/src/input/actions.rs`: removed hard-coded `fail_outbound_message(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)` from both the `ChannelMessage` send path and the retry path.
 
 ---
 
