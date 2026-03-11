@@ -1002,6 +1002,17 @@ fn build_mission_control_log_lines(
         );
     }
 
+    if let Some(action) = provider_runtime.apple_fm.last_action.as_deref() {
+        push_entry(TerminalStream::Stdout, format!("Apple FM: {action}"), None);
+    }
+    if let Some(error) = provider_runtime.apple_fm.last_error.as_deref() {
+        push_entry(
+            TerminalStream::Stderr,
+            format!("Apple FM error: {error}"),
+            None,
+        );
+    }
+
     if let Some(action) = spark_wallet.last_action.as_deref() {
         push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None);
     }

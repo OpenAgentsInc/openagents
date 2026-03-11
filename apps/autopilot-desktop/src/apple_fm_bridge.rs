@@ -359,12 +359,20 @@ struct AppleFmLocalBridge {
     status: AppleFmBridgeStatus,
 }
 
+/// Sends current snapshot to the UI log when a sender is provided.
+fn emit_snapshot_if(snapshot: &AppleFmBridgeSnapshot, emit: Option<&Sender<AppleFmBridgeUpdate>>) {
+    if let Some(tx) = emit {
+        let _ = tx.send(AppleFmBridgeUpdate::Snapshot(Box::new(snapshot.clone())));
+    }
+}
+
 impl AppleFmLocalBridge {
     fn ensure_running(
         &mut self,
         config: &AppleFmBridgeConfig,
         client: &AppleFmBridgeClient,
         snapshot: &mut AppleFmBridgeSnapshot,
+        emit: Option<&Sender<AppleFmBridgeUpdate>>,
     ) -> Result<(), String> {
         if !cfg!(target_os = "macos") {
             self.status = AppleFmBridgeStatus::UnsupportedPlatform;
@@ -372,6 +380,7 @@ impl AppleFmLocalBridge {
             snapshot.last_error =
                 Some("Apple Foundation Models requires macOS 26+ on Apple Silicon".to_string());
             snapshot.last_action = Some("Apple FM bridge unavailable on this platform".to_string());
+            emit_snapshot_if(snapshot, emit);
             return Err(snapshot.last_error.clone().unwrap_or_default());
         }
 
@@ -384,28 +393,73 @@ impl AppleFmLocalBridge {
             }
         }
         if self.child.is_none() {
+            snapshot.last_action = Some("Looking for Apple FM bridge binary...".to_string());
+            snapshot.last_error = None;
+            emit_snapshot_if(snapshot, emit);
+
             let binary = find_bridge_binary().or_else(|| {
-                try_build_bridge(snapshot);
+                snapshot.last_action =
+                    Some("Apple FM bridge not found; running build.sh to build it...".to_string());
+                emit_snapshot_if(snapshot, emit);
+                let built = try_build_bridge(snapshot);
+                emit_snapshot_if(snapshot, emit);
+                if built {
+                    snapshot.last_action =
+                        Some("Build finished; looking for Apple FM bridge binary again...".to_string());
+                    emit_snapshot_if(snapshot, emit);
+                }
                 find_bridge_binary()
-            }).ok_or_else(|| {
+            });
+
+            let binary = binary.ok_or_else(|| {
+                snapshot.last_action = Some(
+                    "Apple FM bridge binary not found and auto-build failed.".to_string(),
+                );
+                snapshot.last_error = Some(
+                    "Need Xcode/Swift to build; see swift/foundation-bridge/README.md.".to_string(),
+                );
+                emit_snapshot_if(snapshot, emit);
                 "Apple FM bridge binary not found and auto-build failed (need Xcode/Swift; see swift/foundation-bridge/README.md).".to_string()
             })?;
+
+            snapshot.last_action = Some("Found Apple FM bridge binary; starting process...".to_string());
+            snapshot.last_error = None;
+            emit_snapshot_if(snapshot, emit);
+
             let port = port_from_base_url(config.base_url.as_str()).unwrap_or(11435);
-            let child = Command::new(binary)
+            let child = Command::new(&binary)
                 .arg(port.to_string())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
-                .map_err(|error| format!("failed to start Apple FM bridge: {error}"))?;
+                .map_err(|error| {
+                    snapshot.last_action = Some("Apple FM bridge process failed to start.".to_string());
+                    snapshot.last_error = Some(error.to_string());
+                    emit_snapshot_if(snapshot, emit);
+                    format!("failed to start Apple FM bridge: {error}")
+                })?;
             self.child = Some(child);
             self.status = AppleFmBridgeStatus::Starting;
             snapshot.bridge_status = Some(self.status.label().to_string());
-            snapshot.last_action = Some("Starting Apple FM bridge".to_string());
+            snapshot.last_action = Some("Apple FM bridge process started; waiting for health...".to_string());
+            snapshot.last_error = None;
+            emit_snapshot_if(snapshot, emit);
         }
-        wait_for_bridge_health(client)?;
+
+        snapshot.last_action = Some("Waiting for Apple FM bridge to respond...".to_string());
+        emit_snapshot_if(snapshot, emit);
+        wait_for_bridge_health(client).map_err(|e| {
+            snapshot.last_action = Some("Apple FM bridge health check timed out.".to_string());
+            snapshot.last_error = Some(e.clone());
+            emit_snapshot_if(snapshot, emit);
+            e
+        })?;
         self.status = AppleFmBridgeStatus::Running;
         snapshot.bridge_status = Some(self.status.label().to_string());
+        snapshot.last_action = Some("Apple FM bridge running and healthy.".to_string());
+        snapshot.last_error = None;
+        emit_snapshot_if(snapshot, emit);
         Ok(())
     }
 
@@ -491,10 +545,13 @@ impl AppleFmBridgeState {
         self.snapshot.model_available = false;
         self.snapshot.refreshed_at = Some(Instant::now());
 
+        self.snapshot.last_action = Some("Checking Apple FM bridge health...".to_string());
+        self.publish_snapshot(update_tx);
+
         if !cfg!(target_os = "macos") {
             self.snapshot.bridge_status =
                 Some(AppleFmBridgeStatus::UnsupportedPlatform.label().to_string());
-            self.snapshot.last_action = Some("Apple FM bridge unsupported".to_string());
+            self.snapshot.last_action = Some("Apple FM bridge unsupported on this platform".to_string());
             self.snapshot.last_error =
                 Some("Apple Foundation Models requires macOS 26+ on Apple Silicon".to_string());
             self.publish_snapshot(update_tx);
@@ -502,7 +559,7 @@ impl AppleFmBridgeState {
         }
 
         let Some(client) = self.client.as_ref() else {
-            self.snapshot.last_action = Some("Apple FM refresh failed".to_string());
+            self.snapshot.last_action = Some("Apple FM refresh failed: HTTP client unavailable".to_string());
             self.snapshot.last_error = Some(
                 self.client_error
                     .clone()
@@ -527,7 +584,8 @@ impl AppleFmBridgeState {
                 self.snapshot.bridge_status =
                     Some(AppleFmBridgeStatus::Running.label().to_string());
                 self.snapshot.last_error = None;
-                self.snapshot.last_action = Some("Refreshed Apple FM bridge health".to_string());
+                self.snapshot.last_action = Some("Apple FM bridge health OK; listing models...".to_string());
+                self.publish_snapshot(update_tx);
                 match client.list_models() {
                     Ok(models) => {
                         self.snapshot.available_models = models.model_ids();
@@ -538,19 +596,27 @@ impl AppleFmBridgeState {
                                 .cloned()
                                 .unwrap_or_else(|| self.snapshot.system_model.id.clone())
                         });
+                        self.snapshot.last_action = Some(
+                            if system_model_status.available {
+                                "Refreshed Apple FM bridge health; model ready.".to_string()
+                            } else {
+                                "Refreshed Apple FM bridge health; system model not available yet.".to_string()
+                            },
+                        );
                     }
                     Err(error) => {
                         self.snapshot.last_error = Some(error.to_string());
                         self.snapshot.ready_model = system_model_status
                             .available
                             .then(|| self.snapshot.system_model.id.clone());
+                        self.snapshot.last_action = Some("Apple FM bridge health OK but list_models failed.".to_string());
                     }
                 }
             }
             Err(error) => {
                 self.snapshot.bridge_status = Some(self.bridge.status.label().to_string());
                 self.snapshot.last_error = Some(error.to_string());
-                self.snapshot.last_action = Some("Apple FM refresh failed".to_string());
+                self.snapshot.last_action = Some("Apple FM bridge health check failed.".to_string());
             }
         }
         self.publish_snapshot(update_tx);
@@ -567,10 +633,12 @@ impl AppleFmBridgeState {
             self.publish_snapshot(update_tx);
             return;
         };
-        match self
-            .bridge
-            .ensure_running(&self.config, client, &mut self.snapshot)
-        {
+        match self.bridge.ensure_running(
+            &self.config,
+            client,
+            &mut self.snapshot,
+            Some(update_tx),
+        ) {
             Ok(()) => {
                 self.snapshot.last_error = None;
                 self.snapshot.last_action = Some("Apple FM bridge running".to_string());
@@ -601,9 +669,12 @@ impl AppleFmBridgeState {
         };
 
         if self.config.auto_start {
-            let _ = self
-                .bridge
-                .ensure_running(&self.config, client, &mut self.snapshot);
+            let _ = self.bridge.ensure_running(
+                &self.config,
+                client,
+                &mut self.snapshot,
+                None,
+            );
         }
 
         let model = job
@@ -725,9 +796,12 @@ impl AppleFmBridgeState {
         };
 
         if self.config.auto_start {
-            let _ = self
-                .bridge
-                .ensure_running(&self.config, &client, &mut self.snapshot);
+            let _ = self.bridge.ensure_running(
+                &self.config,
+                &client,
+                &mut self.snapshot,
+                None,
+            );
         }
 
         self.publish_workbench_started(
@@ -790,9 +864,12 @@ impl AppleFmBridgeState {
         };
 
         if self.config.auto_start {
-            let _ = self
-                .bridge
-                .ensure_running(&self.config, &client, &mut self.snapshot);
+            let _ = self.bridge.ensure_running(
+                &self.config,
+                &client,
+                &mut self.snapshot,
+                None,
+            );
         }
 
         self.publish_mission_control_summary_update(
@@ -1646,20 +1723,30 @@ fn find_repo_root_from_exe() -> Option<PathBuf> {
 fn try_build_bridge(snapshot: &mut AppleFmBridgeSnapshot) -> bool {
     let root = match find_repo_root_from_exe() {
         Some(r) => r,
-        None => return false,
+        None => {
+            snapshot.last_action = Some("Cannot build: repo root not found from executable path.".to_string());
+            return false;
+        }
     };
     let bridge_dir = root.join("swift/foundation-bridge");
     if !bridge_dir.exists() {
+        snapshot.last_action = Some("Cannot build: swift/foundation-bridge directory not found.".to_string());
         return false;
     }
-    snapshot.last_action = Some("Building Apple FM bridge...".to_string());
+    snapshot.last_action = Some("Building Apple FM bridge (running build.sh)...".to_string());
     let status = Command::new("./build.sh")
         .current_dir(&bridge_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .status();
-    matches!(status, Ok(s) if s.success())
+    let ok = matches!(status, Ok(s) if s.success());
+    snapshot.last_action = Some(if ok {
+        "Apple FM bridge build finished successfully.".to_string()
+    } else {
+        "Apple FM bridge build failed (check Xcode/Swift installed).".to_string()
+    });
+    ok
 }
 
 fn find_bridge_binary() -> Option<PathBuf> {
