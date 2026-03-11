@@ -80,6 +80,7 @@ Script fails fast unless all are true:
 - `git`
 - `hdiutil`
 - `shasum`
+- `swift` (or Xcode Command Line Tools) to build the bundled `foundation-bridge` helper
 - `gh` (only when `--publish`)
 - `codesign` + `xcrun` (only for signed mode)
 
@@ -96,12 +97,13 @@ Script fails fast unless all are true:
    - `cargo test --workspace`
    - `cargo build --release -p autopilot-desktop`
 5. Bundle app with `cargo bundle`.
-6. Sign app (`codesign`) unless `--allow-unsigned`.
-7. Build DMG with `hdiutil`.
-8. Notarize + staple DMG unless `--allow-unsigned`.
-9. Write SHA256 checksum.
-10. Commit version bump and create annotated git tag.
-11. If `--publish`, push and run `gh release create` with DMG + checksum.
+6. Build `swift/foundation-bridge` and copy `bin/foundation-bridge` into `Autopilot.app/Contents/MacOS/`.
+7. Sign all app executables plus the enclosing app bundle unless `--allow-unsigned`.
+8. Build DMG with `hdiutil`.
+9. Notarize + staple DMG unless `--allow-unsigned`.
+10. Write SHA256 checksum.
+11. Commit version bump and create annotated git tag.
+12. If `--publish`, push and run `gh release create` with DMG + checksum.
 
 ## Failure / Recovery
 
