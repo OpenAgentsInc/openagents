@@ -550,6 +550,21 @@ pub(super) fn apply_buyer_response_event(
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Buyer response request_id={} kind={} event_id={} provider={} status={} status_extra={} amount_msats={} bolt11_present={}",
+        event.request_id,
+        event.kind.label(),
+        event.event_id,
+        event.provider_pubkey,
+        event.status.as_deref().unwrap_or("none"),
+        event.status_extra.as_deref().unwrap_or("none"),
+        event
+            .amount_msats
+            .map(|amount| amount.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        event.bolt11.as_ref().is_some_and(|bolt11| !bolt11.trim().is_empty())
+    );
     let resolution_action = match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
             state.network_requests.apply_nip90_buyer_feedback_event(
@@ -651,6 +666,12 @@ fn queue_auto_payment_for_feedback(
     }
 
     let Some(bolt11) = event.bolt11.as_deref() else {
+        tracing::error!(
+            target: "autopilot_desktop::buyer",
+            "Buyer payment-required feedback missing bolt11 request_id={} event_id={}",
+            event.request_id,
+            event.event_id
+        );
         state.network_requests.mark_auto_payment_failed(
             event.request_id.as_str(),
             "provider returned payment-required without bolt11 invoice",
@@ -667,11 +688,26 @@ fn queue_auto_payment_for_feedback(
     ) else {
         return;
     };
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Queueing Spark payment for buyer request_id={} amount_sats={} bolt11_present={}",
+        event.request_id,
+        amount_sats
+            .map(|amount| amount.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        !payment_request.trim().is_empty()
+    );
 
     if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::SendPayment {
         payment_request,
         amount_sats,
     }) {
+        tracing::error!(
+            target: "autopilot_desktop::buyer",
+            "Failed to enqueue Spark payment for request_id={}: {}",
+            event.request_id,
+            error
+        );
         state.network_requests.mark_auto_payment_failed(
             event.request_id.as_str(),
             format!("failed to enqueue Spark payment command: {error}").as_str(),
@@ -878,6 +914,40 @@ fn parse_nostr_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String
 
 pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNip90PublishOutcome) {
     let publish_succeeded = outcome.accepted_relays > 0;
+    if outcome.role == ProviderNip90PublishRole::Request {
+        let request_type = state
+            .network_requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == outcome.request_id)
+            .map(|request| request.request_type.as_str())
+            .unwrap_or("unknown");
+        if publish_succeeded {
+            tracing::info!(
+                target: "autopilot_desktop::buyer",
+                "Published NIP-90 request request_id={} request_type={} event_id={} accepted_relays={} rejected_relays={}",
+                outcome.request_id,
+                request_type,
+                outcome.event_id,
+                outcome.accepted_relays,
+                outcome.rejected_relays
+            );
+        } else {
+            tracing::error!(
+                target: "autopilot_desktop::buyer",
+                "Failed NIP-90 request publish request_id={} request_type={} event_id={} accepted_relays={} rejected_relays={} error={}",
+                outcome.request_id,
+                request_type,
+                outcome.event_id,
+                outcome.accepted_relays,
+                outcome.rejected_relays,
+                outcome
+                    .first_error
+                    .as_deref()
+                    .unwrap_or("all relays rejected publish")
+            );
+        }
+    }
 
     if !publish_succeeded {
         let error = outcome
