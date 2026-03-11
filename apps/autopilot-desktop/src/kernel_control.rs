@@ -334,7 +334,7 @@ pub(crate) fn register_online_compute_inventory_with_kernel(
     ensure_inventory_session_started(state);
     let client = match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => {
-            tracing::info!(
+            tracing::debug!(
                 target: "autopilot_desktop::provider",
                 "Kernel authority unavailable; provider inventory remains local-only bindings={}",
                 bindings.len()

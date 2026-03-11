@@ -564,6 +564,14 @@ impl AppleFmBridgeState {
             .or_else(|| self.snapshot.ready_model.clone())
             .unwrap_or_else(|| self.snapshot.system_model.id.clone());
 
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Apple FM bridge dispatching request_id={} model={} prompt_chars={}",
+            job.request_id,
+            model,
+            job.prompt.chars().count()
+        );
+
         let _ = update_tx.send(AppleFmBridgeUpdate::Started(AppleFmExecutionStarted {
             request_id: job.request_id.clone(),
             model: model.clone(),
@@ -616,6 +624,14 @@ impl AppleFmBridgeState {
                 ));
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
+                tracing::info!(
+                    target: "autopilot_desktop::provider",
+                    "Apple FM bridge completed request_id={} model={} output_chars={} total_duration_ms={}",
+                    job.request_id,
+                    result.model,
+                    result.output.chars().count(),
+                    start.elapsed().as_millis()
+                );
                 let _ = update_tx.send(AppleFmBridgeUpdate::Completed(AppleFmExecutionCompleted {
                     request_id: job.request_id,
                     model: result.model,
@@ -629,6 +645,12 @@ impl AppleFmBridgeState {
                 self.snapshot.last_action = Some("Apple FM generation failed".to_string());
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
+                tracing::error!(
+                    target: "autopilot_desktop::provider",
+                    "Apple FM bridge failed request_id={} error={}",
+                    job.request_id,
+                    error
+                );
                 let _ = update_tx.send(AppleFmBridgeUpdate::Failed(AppleFmExecutionFailed {
                     request_id: job.request_id,
                     error: error.to_string(),
