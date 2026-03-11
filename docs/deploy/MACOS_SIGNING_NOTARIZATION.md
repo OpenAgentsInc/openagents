@@ -9,6 +9,7 @@ This document is the setup/runbook for signed macOS releases using:
 1. Apple Developer Program membership for the OpenAgents team.
 2. A valid Developer ID Application certificate in your login keychain.
 3. App Store Connect API key (`.p8`) for notarization API access.
+4. Swift available on the release machine (`xcode-select --install` is sufficient) so the bundled `foundation-bridge` helper can be built during packaging.
 
 ## Script Inputs (Required for Signed Mode)
 
@@ -83,11 +84,12 @@ Example:
 The script will:
 
 1. Build and bundle `Autopilot.app`
-2. Sign app binaries and bundle
-3. Create `Autopilot-<version>.dmg`
-4. Submit DMG for notarization
-5. Staple notarization ticket
-6. Create checksum and publish assets (if `--publish`)
+2. Build `swift/foundation-bridge` and copy the helper into `Autopilot.app/Contents/MacOS/foundation-bridge`
+3. Sign each executable inside the app bundle, then sign the app bundle
+4. Create `Autopilot-<version>.dmg`
+5. Submit DMG for notarization
+6. Staple notarization ticket
+7. Create checksum and publish assets (if `--publish`)
 
 ## 5) Post-release Validation
 
@@ -95,6 +97,7 @@ After build/publish, validate locally:
 
 ```bash
 codesign --verify --deep --strict target/release/bundle/osx/Autopilot.app
+spctl --assess --type exec --verbose=4 target/release/bundle/osx/Autopilot.app
 xcrun stapler validate target/release/Autopilot-0.1.1.dmg
 spctl --assess --type open --verbose=4 target/release/Autopilot-0.1.1.dmg
 shasum -a 256 -c target/release/Autopilot-0.1.1.dmg.sha256
@@ -105,3 +108,5 @@ shasum -a 256 -c target/release/Autopilot-0.1.1.dmg.sha256
 - Keep secrets in shell profile, 1Password shell plugin, or CI secret store.
 - Never commit `.p8` keys, cert exports, or private key material.
 - For local dry runs without signing/notarization, use `--allow-unsigned`.
+- The current shipping path is Developer ID distribution outside the Mac App Store; no App Store provisioning profile is part of this flow.
+- The packaged Apple Foundation Models lane still requires end users to be on macOS 26+ with Apple Silicon and Apple Intelligence enabled.

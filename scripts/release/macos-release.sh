@@ -5,9 +5,12 @@ set -euo pipefail
 SCRIPT_NAME=$(basename "$0")
 ROOT_CARGO_TOML="Cargo.toml"
 APP_CARGO_TOML="apps/autopilot-desktop/Cargo.toml"
+APP_DIR="apps/autopilot-desktop"
 LOCKFILE_PATH="Cargo.lock"
 APP_NAME="Autopilot"
 APP_PACKAGE="autopilot-desktop"
+FOUNDATION_BRIDGE_BUILD_SCRIPT="swift/foundation-bridge/build.sh"
+FOUNDATION_BRIDGE_BINARY="bin/foundation-bridge"
 
 PUBLISH=false
 ALLOW_UNSIGNED=false
@@ -139,7 +142,7 @@ update_version_in_section() {
 }
 
 ensure_cargo_bundle() {
-  if cargo bundle --version >/dev/null 2>&1; then
+  if command -v cargo-bundle >/dev/null 2>&1; then
     CARGO_BUNDLE_CMD=(cargo bundle)
     return
   fi
@@ -169,13 +172,58 @@ require_signing_env() {
   done
 }
 
+build_foundation_bridge() {
+  [[ -x "$FOUNDATION_BRIDGE_BUILD_SCRIPT" ]] || die "Missing bridge build script: $FOUNDATION_BRIDGE_BUILD_SCRIPT"
+
+  log "Building Foundation Models bridge"
+  "./$FOUNDATION_BRIDGE_BUILD_SCRIPT"
+
+  [[ -x "$FOUNDATION_BRIDGE_BINARY" ]] || die "Bridge build did not produce executable binary at $FOUNDATION_BRIDGE_BINARY"
+}
+
+bundle_foundation_bridge() {
+  local app_path="$1"
+  local dest_dir="${app_path}/Contents/MacOS"
+  local dest_path="${dest_dir}/foundation-bridge"
+
+  [[ -d "$dest_dir" ]] || die "App bundle is missing MacOS directory: $dest_dir"
+  [[ -x "$FOUNDATION_BRIDGE_BINARY" ]] || die "Bridge binary is missing: $FOUNDATION_BRIDGE_BINARY"
+
+  log "Bundling Foundation Models bridge into app"
+  cp "$FOUNDATION_BRIDGE_BINARY" "$dest_path"
+  chmod +x "$dest_path"
+}
+
+sign_binary() {
+  local path="$1"
+
+  [[ -e "$path" ]] || die "Cannot sign missing path: $path"
+  codesign --force --timestamp --options runtime --sign "$MACOS_SIGNING_IDENTITY" "$path"
+}
+
+sign_app_bundle() {
+  local app_path="$1"
+  local nested_binary
+
+  [[ -d "$app_path" ]] || die "Cannot sign missing app bundle: $app_path"
+
+  log "Code-signing app executables"
+  for nested_binary in "${app_path}/Contents/MacOS/"*; do
+    [[ -f "$nested_binary" && -x "$nested_binary" ]] || continue
+    sign_binary "$nested_binary"
+  done
+
+  log "Code-signing app bundle"
+  sign_binary "$app_path"
+}
+
 cleanup_on_error() {
   local line="$1"
   echo "[$SCRIPT_NAME] ERROR: Failed at line $line" >&2
 
   if [[ "$VERSIONS_UPDATED" == true && "$COMMIT_CREATED" == false ]]; then
     echo "[$SCRIPT_NAME] Reverting version file changes" >&2
-    git checkout -- "$ROOT_CARGO_TOML" "$APP_CARGO_TOML" || true
+    git checkout -- "$ROOT_CARGO_TOML" "$APP_CARGO_TOML" "$LOCKFILE_PATH" || true
   fi
 
   if [[ "$COMMIT_CREATED" == true ]]; then
@@ -244,6 +292,7 @@ require_command shasum
 if [[ "$PUBLISH" == true ]]; then
   require_command gh
 fi
+require_command swift
 if [[ "$ALLOW_UNSIGNED" == false ]]; then
   require_command codesign
   require_command xcrun
@@ -251,6 +300,7 @@ fi
 
 [[ -f "$ROOT_CARGO_TOML" ]] || die "Missing $ROOT_CARGO_TOML"
 [[ -f "$APP_CARGO_TOML" ]] || die "Missing $APP_CARGO_TOML"
+[[ -d "$APP_DIR" ]] || die "Missing $APP_DIR"
 
 [[ -z "$(git status --porcelain)" ]] || die "Git working tree must be clean"
 
@@ -308,15 +358,19 @@ cargo build --release -p "$APP_PACKAGE"
 ensure_cargo_bundle
 
 log "Bundling macOS app"
-"${CARGO_BUNDLE_CMD[@]}" --release -p "$APP_PACKAGE" --format osx
+(
+  cd "$APP_DIR"
+  "${CARGO_BUNDLE_CMD[@]}" --release --format osx --bin "$APP_PACKAGE"
+)
 
 APP_PATH="target/release/bundle/osx/${APP_NAME}.app"
 [[ -d "$APP_PATH" ]] || die "Bundled app not found at $APP_PATH"
 
+build_foundation_bridge
+bundle_foundation_bridge "$APP_PATH"
+
 if [[ "$ALLOW_UNSIGNED" == false ]]; then
-  log "Code-signing app bundle"
-  codesign --force --timestamp --options runtime --sign "$MACOS_SIGNING_IDENTITY" "${APP_PATH}/Contents/MacOS/${APP_PACKAGE}"
-  codesign --force --timestamp --options runtime --sign "$MACOS_SIGNING_IDENTITY" "$APP_PATH"
+  sign_app_bundle "$APP_PATH"
   codesign --verify --deep --strict "$APP_PATH"
 fi
 
