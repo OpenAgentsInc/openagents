@@ -84,7 +84,49 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
                 state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
             }
         }
-        ProviderLifecycleTransition::HoldCurrent => {}
+        ProviderLifecycleTransition::HoldCurrent => {
+            if state
+                .provider_runtime
+                .last_error_detail
+                .as_deref()
+                .is_some_and(|detail| {
+                    detail
+                        .trim()
+                        .eq_ignore_ascii_case("Foundation Models is available")
+                })
+            {
+                state.provider_runtime.last_error_detail = None;
+                if state.provider_runtime.last_authoritative_error_class
+                    == Some(EarnFailureClass::Execution)
+                {
+                    state.provider_runtime.last_authoritative_error_class = None;
+                }
+            }
+
+            if matches!(state.provider_runtime.mode, ProviderMode::Degraded)
+                && matches!(
+                    state.provider_nip90_lane.mode,
+                    ProviderNip90LaneMode::Offline
+                        | ProviderNip90LaneMode::Preview
+                        | ProviderNip90LaneMode::Connecting
+                )
+                && availability.active_inference_backend().is_some()
+                && state.provider_runtime.last_authoritative_error_class
+                    == Some(EarnFailureClass::Execution)
+            {
+                state.provider_runtime.mode = ProviderMode::Offline;
+                state.provider_runtime.degraded_reason_code = None;
+                state.provider_runtime.last_error_detail = None;
+                state.provider_runtime.last_authoritative_error_class = None;
+                state.provider_runtime.last_result = state
+                    .provider_runtime
+                    .apple_fm
+                    .last_action
+                    .clone()
+                    .or_else(|| state.provider_runtime.ollama.last_action.clone());
+                state.provider_runtime.mode_changed_at = now;
+            }
+        }
         ProviderLifecycleTransition::Degraded {
             reason_code,
             error_detail,

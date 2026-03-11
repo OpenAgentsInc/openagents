@@ -11,7 +11,7 @@ use psionic_apple_fm::{
     AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
     AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
     AppleFmTextGenerationRequest, AppleFmTextStreamEventKind, AppleFmTool, AppleFmToolCallError,
-    AppleFmToolDefinition,
+    AppleFmToolDefinition, DEFAULT_APPLE_FM_MODEL_ID,
 };
 use reqwest::Url;
 use reqwest::blocking::Client as HttpClient;
@@ -396,6 +396,46 @@ fn reset_snapshot_health(snapshot: &mut AppleFmBridgeSnapshot) {
     snapshot.availability_message = None;
 }
 
+fn hydrate_snapshot_from_health(
+    snapshot: &mut AppleFmBridgeSnapshot,
+    health: &psionic_apple_fm::AppleFmHealthResponse,
+) {
+    let system_model_status = health.system_model_availability();
+    snapshot.reachable = true;
+    snapshot.model_available = system_model_status.available;
+    snapshot.system_model = system_model_status.model.clone();
+    snapshot.unavailable_reason = system_model_status.unavailable_reason;
+    snapshot.supported_use_cases = system_model_status.supported_use_cases.clone();
+    snapshot.supported_guardrails = system_model_status.supported_guardrails.clone();
+    snapshot.availability_message = system_model_status.availability_message.clone();
+    if !system_model_status.available {
+        snapshot.ready_model = None;
+    }
+}
+
+fn mark_snapshot_request_success(snapshot: &mut AppleFmBridgeSnapshot, served_model: Option<&str>) {
+    snapshot.reachable = true;
+    snapshot.model_available = true;
+    snapshot.unavailable_reason = None;
+    snapshot.bridge_status = Some(AppleFmBridgeStatus::Running.label().to_string());
+    snapshot.availability_message = Some("Foundation Models is available".to_string());
+    let model = served_model
+        .map(str::to_string)
+        .or_else(|| snapshot.ready_model.clone())
+        .or_else(|| {
+            (!snapshot.system_model.id.trim().is_empty()).then(|| snapshot.system_model.id.clone())
+        })
+        .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL_ID.to_string());
+    if !snapshot
+        .available_models
+        .iter()
+        .any(|candidate| candidate == &model)
+    {
+        snapshot.available_models.push(model.clone());
+    }
+    snapshot.ready_model = Some(model);
+}
+
 impl AppleFmLocalBridge {
     fn ensure_running(
         &mut self,
@@ -425,6 +465,17 @@ impl AppleFmLocalBridge {
             }
         }
         if self.child.is_none() {
+            if let Ok(health) = client.health() {
+                self.status = AppleFmBridgeStatus::Running;
+                hydrate_snapshot_from_health(snapshot, &health);
+                snapshot.bridge_status = Some(self.status.label().to_string());
+                snapshot.last_action =
+                    Some("Apple FM bridge already responding on configured URL.".to_string());
+                snapshot.last_error = None;
+                emit_snapshot_if(snapshot, emit);
+                return Ok(());
+            }
+
             snapshot.last_action = Some("Looking for Apple FM bridge binary...".to_string());
             snapshot.last_error = None;
             emit_snapshot_if(snapshot, emit);
@@ -607,15 +658,7 @@ impl AppleFmBridgeState {
         match client.health() {
             Ok(health) => {
                 let system_model_status = health.system_model_availability();
-                self.snapshot.reachable = true;
-                self.snapshot.model_available = system_model_status.available;
-                self.snapshot.system_model = system_model_status.model.clone();
-                self.snapshot.unavailable_reason = system_model_status.unavailable_reason;
-                self.snapshot.supported_use_cases = system_model_status.supported_use_cases.clone();
-                self.snapshot.supported_guardrails =
-                    system_model_status.supported_guardrails.clone();
-                self.snapshot.availability_message =
-                    system_model_status.availability_message.clone();
+                hydrate_snapshot_from_health(&mut self.snapshot, &health);
                 self.snapshot.bridge_status =
                     Some(AppleFmBridgeStatus::Running.label().to_string());
                 self.snapshot.last_error = None;
@@ -845,6 +888,7 @@ impl AppleFmBridgeState {
 
         match self.execute_workbench_command(&client, update_tx, &command) {
             Ok(completed) => {
+                mark_snapshot_request_success(&mut self.snapshot, completed.model.as_deref());
                 self.snapshot.last_error = None;
                 self.snapshot.last_request_id = Some(completed.request_id.clone());
                 self.snapshot.last_action = Some(format!(
@@ -911,6 +955,7 @@ impl AppleFmBridgeState {
 
         match self.execute_mission_control_summary(&client, update_tx, &command) {
             Ok(completed) => {
+                mark_snapshot_request_success(&mut self.snapshot, completed.model.as_deref());
                 self.snapshot.last_error = None;
                 self.snapshot.last_request_id = Some(completed.request_id.clone());
                 self.snapshot.last_action =
@@ -2449,6 +2494,130 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         assert!(
             saw_revalidated_ready_snapshot,
             "expected ready Apple FM snapshot after second refresh"
+        );
+
+        server_handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn ensure_bridge_running_reuses_existing_healthy_bridge() {
+        let (base_url, _saw_chat_completion, server_handle) = spawn_mock_bridge();
+        let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {
+            base_url,
+            auto_start: false,
+        });
+
+        worker
+            .enqueue(AppleFmBridgeCommand::EnsureBridgeRunning)
+            .expect("queue ensure-running command");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut saw_ready_snapshot = false;
+        let mut saw_local_spawn_attempt = false;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let AppleFmBridgeUpdate::Snapshot(snapshot) = update {
+                    if snapshot
+                        .last_action
+                        .as_deref()
+                        .is_some_and(|action| action.contains("starting process"))
+                    {
+                        saw_local_spawn_attempt = true;
+                    }
+                    if snapshot.is_ready()
+                        || snapshot.last_action.as_deref()
+                            == Some("Apple FM bridge already responding on configured URL.")
+                    {
+                        saw_ready_snapshot = true;
+                        break;
+                    }
+                }
+            }
+            if saw_ready_snapshot {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            saw_ready_snapshot,
+            "expected ensure-running to detect existing healthy bridge"
+        );
+        assert!(
+            !saw_local_spawn_attempt,
+            "ensure-running should not spawn a second bridge when one is already healthy"
+        );
+
+        server_handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn mission_control_summary_success_repairs_snapshot_readiness() {
+        let (base_url, _saw_chat_completion, server_handle) = spawn_mock_bridge();
+        let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {
+            base_url,
+            auto_start: false,
+        });
+
+        let request_id = "mission-control-summary-ready-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::MissionControlSummary(
+                AppleFmMissionControlSummaryCommand {
+                    request_id: request_id.clone(),
+                    instructions: "Summarize the control state".to_string(),
+                    prompt: "Latest logs go here".to_string(),
+                    requested_model: Some("apple-foundation-model".to_string()),
+                    options: Some(
+                        AppleFmGenerationOptions::new(None, Some(0.2), Some(96))
+                            .expect("summary options"),
+                    ),
+                },
+            ))
+            .expect("queue mission control summary command");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut saw_summary_complete = false;
+        let mut saw_ready_snapshot = false;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    AppleFmBridgeUpdate::Snapshot(snapshot) => {
+                        if snapshot.is_ready()
+                            && snapshot.ready_model.as_deref() == Some("apple-foundation-model")
+                        {
+                            saw_ready_snapshot = true;
+                        }
+                    }
+                    AppleFmBridgeUpdate::MissionControlSummary(update) => match *update {
+                        AppleFmMissionControlSummaryUpdate::Completed(completed)
+                            if completed.request_id == request_id =>
+                        {
+                            saw_summary_complete = true;
+                        }
+                        AppleFmMissionControlSummaryUpdate::Started(_)
+                        | AppleFmMissionControlSummaryUpdate::Delta(_)
+                        | AppleFmMissionControlSummaryUpdate::Completed(_)
+                        | AppleFmMissionControlSummaryUpdate::Failed(_) => {}
+                    },
+                    AppleFmBridgeUpdate::Started(_)
+                    | AppleFmBridgeUpdate::Completed(_)
+                    | AppleFmBridgeUpdate::Failed(_)
+                    | AppleFmBridgeUpdate::Workbench(_) => {}
+                }
+            }
+            if saw_summary_complete && saw_ready_snapshot {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            saw_summary_complete,
+            "expected mission control summary completion"
+        );
+        assert!(
+            saw_ready_snapshot,
+            "successful mission control summary should repair Apple FM readiness snapshot"
         );
 
         server_handle.join().expect("mock bridge thread");
