@@ -46,7 +46,8 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
-  - Mission Control now owns the explicit GPT-OSS 20B local-model gate for provider mode: it shows configured model/backend/load truth, exposes the `LOAD GPT-OSS 20B` action, and keeps `GO ONLINE` disabled until the local Psionic runtime reports a loaded model.
+  - Mission Control is FM-first on macOS: it shows Apple FM readiness, opens the Apple FM workbench, and keeps `GO ONLINE` disabled until the active local runtime is ready.
+  - GPT-OSS loading and troubleshooting are no longer owned by Mission Control; NVIDIA hosts use the separate `GPT-OSS Workbench` pane for that flow.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
   - Action: toggle online/offline.
@@ -54,7 +55,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
   - Action: read-only operational visibility.
-- `Local Inference`
+- `GPT-OSS Workbench`
   - GPT-OSS local inference workbench for the app-owned runtime seam.
   - Shows runtime reachability, configured model path, backend label, artifact presence, configured/ready/loaded model state, pane-owned prompt runs, and the last output preview.
   - Inputs: prompt, optional requested model, max tokens, temperature, top-k, and top-p.
@@ -222,7 +223,7 @@ Current pane badge mapping:
 - `Codex Diagnostics`: `source: codex`
 - `Go Online`: `source: runtime`
 - `Provider Status`: `source: runtime`
-- `Local Inference`: `source: runtime`
+- `GPT-OSS Workbench`: `source: runtime`
 - `Earnings Scoreboard`: `source: runtime+wallet`
 - `Relay Connections`: `source: runtime`
 - `Sync Health`: `source: spacetime.sync.lifecycle`
@@ -264,7 +265,7 @@ Current pane badge mapping:
   - `Codex Diagnostics` -> opens `Codex Diagnostics`.
   - `Go Online` -> opens `Go Online`.
   - `Provider Status` -> opens `Provider Status`.
-  - `Local Inference` -> opens `Local Inference`.
+  - `GPT-OSS Workbench` -> opens `GPT-OSS Workbench`.
   - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
@@ -291,7 +292,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Local Inference, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, GPT-OSS Workbench, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

@@ -277,11 +277,15 @@ What shipped:
   blockers, and log lines from Apple FM runtime truth instead of universal
   GPT-OSS copy
 - the Mission Control `GO ONLINE` gate is now backend-aware: Apple FM on macOS,
-  GPT-OSS CUDA only where that remains the truthful runtime path
+  while non-macOS NVIDIA hosts still require the GPT-OSS CUDA runtime to be
+  ready before provider mode unlocks
 - the Mission Control action button now opens or starts Apple FM on macOS
   instead of pretending a GGUF load path is always primary
+- Mission Control no longer directly warms or troubleshoots GPT-OSS on
+  non-macOS hosts; that flow now lives in the separate `GPT-OSS Workbench`
+  pane
 - the macOS pane registry and command palette no longer expose the GPT-OSS
-  `Local Inference` pane, which removes the split-brain Apple-FM-vs-GPT-OSS
+  workbench pane, which removes the split-brain Apple-FM-vs-GPT-OSS
   local-model story from the user-facing Mac shell
 - `docs/plans/mission-control-pane.md` now documents the backend-aware Mission
   Control contract instead of codifying `LOAD GPT-OSS 20B` as the universal
@@ -307,8 +311,9 @@ Current Mission Control truth on `main`:
   `OPEN APPLE FM` depending on bridge readiness
 - on macOS, `GO ONLINE` is gated by Apple FM readiness and Apple FM blockers,
   not GGUF artifact presence
-- on non-macOS GPT-OSS paths, Mission Control still surfaces truthful GPT-OSS
-  CUDA load copy where that is the real runtime path
+- on non-macOS NVIDIA paths, Mission Control only links out to the separate
+  GPT-OSS workbench and keeps GPT-OSS-specific loading/debug detail out of the
+  main pane
 - the Mission Control plan document now matches that backend-aware contract
 
 ## Coverage Target From `python-apple-fm-sdk`
@@ -662,7 +667,8 @@ Acceptance:
 - on macOS, Mission Control shows Apple FM readiness, Apple FM blocker text,
   and Apple FM log lines instead of GPT-OSS-specific copy
 - the Mission Control action button and `GO ONLINE` gate are backend-aware:
-  Apple FM on macOS, GPT-OSS only where that is still the actual runtime truth
+  Apple FM on macOS, with GPT-OSS-specific management delegated to the
+  separate workbench on NVIDIA hosts
 
 ## Recommended Execution Queue
 

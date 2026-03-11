@@ -2021,9 +2021,11 @@ fn pane_action_to_hit_action(
             "toggle_amount_display" | "toggle_amounts" => Ok(PaneHitAction::MissionControl(
                 crate::pane_system::MissionControlPaneAction::ToggleAmountDisplay,
             )),
-            "warm_model" | "download_model" => Ok(PaneHitAction::MissionControl(
-                crate::pane_system::MissionControlPaneAction::WarmLocalModel,
-            )),
+            "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
+                Ok(PaneHitAction::MissionControl(
+                    crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
+                ))
+            }
             "open_docs" | "documentation" => Ok(PaneHitAction::MissionControl(
                 crate::pane_system::MissionControlPaneAction::OpenDocumentation,
             )),
@@ -6038,10 +6040,15 @@ mod tests {
         );
         if cfg!(target_os = "macos") {
             assert_eq!(resolve_pane_kind_for_runtime("pane.local_inference"), None);
+            assert_eq!(resolve_pane_kind_for_runtime("GPT-OSS Workbench"), None);
             assert_eq!(resolve_pane_kind_for_runtime("gptoss"), None);
         } else {
             assert_eq!(
                 resolve_pane_kind_for_runtime("pane.local_inference"),
+                Some(PaneKind::LocalInference)
+            );
+            assert_eq!(
+                resolve_pane_kind_for_runtime("GPT-OSS Workbench"),
                 Some(PaneKind::LocalInference)
             );
             assert_eq!(

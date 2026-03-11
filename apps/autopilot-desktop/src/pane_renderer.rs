@@ -41,8 +41,8 @@ use crate::pane_system::{
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_amount_toggle_button_bounds,
-    mission_control_documentation_button_bounds, mission_control_download_model_button_bounds,
-    mission_control_layout, network_requests_accept_button_bounds,
+    mission_control_documentation_button_bounds, mission_control_layout,
+    mission_control_local_model_button_bounds, network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -838,9 +838,9 @@ fn paint_go_online_pane(
     );
     paint.scene.pop_clip();
 
-    let download_bounds = mission_control_download_model_button_bounds(content_bounds);
+    let download_bounds = mission_control_local_model_button_bounds(content_bounds);
     let download_label =
-        mission_control_download_button_label(provider_runtime, local_inference_runtime);
+        mission_control_local_model_button_label(provider_runtime, local_inference_runtime);
     if mission_control_local_action_enabled(provider_runtime, local_inference_runtime) {
         paint_secondary_button(download_bounds, &download_label, paint);
     } else {
@@ -961,7 +961,7 @@ fn paint_mission_control_amount_line(
     y + 20.0
 }
 
-fn mission_control_download_button_label(
+fn mission_control_local_model_button_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
@@ -978,13 +978,7 @@ fn mission_control_download_button_label(
             }
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            if local_inference_runtime.busy {
-                return String::from("LOADING GPT-OSS CUDA");
-            }
-            if local_inference_runtime.is_ready() {
-                return String::from("OPEN GPT-OSS CUDA");
-            }
-            String::from("LOAD GPT-OSS CUDA")
+            String::from("OPEN GPT-OSS WORKBENCH")
         }
         None => String::from("NO LOCAL MODEL"),
     }
@@ -998,7 +992,7 @@ fn mission_control_local_action_enabled(
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             provider_runtime.apple_fm.bridge_status.as_deref() != Some("starting")
         }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => !local_inference_runtime.busy,
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => true,
         None => false,
     }
 }
@@ -1027,9 +1021,8 @@ fn mission_control_primary_model_label(
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => local_inference_runtime
             .ready_model
             .as_deref()
-            .or(local_inference_runtime.configured_model.as_deref())
             .map(mission_control_short_model_label)
-            .unwrap_or_else(|| String::from("GPT-OSS CUDA")),
+            .unwrap_or_else(|| String::from("SEE WORKBENCH")),
         None => String::from("NO SUPPORTED MODEL"),
     }
 }
@@ -1052,7 +1045,7 @@ fn mission_control_backend_label(
             } else {
                 local_inference_runtime.backend_label.as_str()
             };
-            format!("Psionic GPT-OSS ({backend})")
+            format!("Psionic {backend} (workbench)")
         }
         None => "No supported local backend".to_string(),
     }
@@ -1079,14 +1072,10 @@ fn mission_control_model_load_status(
             }
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            if local_inference_runtime.busy {
-                String::from("loading")
-            } else if local_inference_runtime.is_ready() {
-                String::from("loaded")
-            } else if !local_inference_runtime.artifact_present {
-                String::from("artifact missing")
+            if local_inference_runtime.is_ready() {
+                String::from("ready")
             } else {
-                String::from("not loaded")
+                String::from("open workbench")
             }
         }
         None => String::from("unsupported"),
@@ -1125,32 +1114,16 @@ fn mission_control_go_online_hint(
             }
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            if local_inference_runtime.busy {
+            if !local_inference_runtime.is_ready() {
                 String::from(
-                    "GPT-OSS CUDA is loading. Go Online unlocks when the model is resident.",
+                    "Use the separate GPT-OSS workbench to load and validate the NVIDIA local model before you go online.",
                 )
-            } else if !local_inference_runtime.artifact_present {
-                local_inference_runtime
-                    .configured_model_path
-                    .as_deref()
-                    .map(|path| {
-                        format!(
-                            "Mission Control needs a GPT-OSS CUDA artifact at {path} before you can go online."
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        String::from(
-                            "Mission Control needs a GPT-OSS CUDA artifact before you can go online.",
-                        )
-                    })
-            } else if !local_inference_runtime.is_ready() {
-                String::from("Load GPT-OSS CUDA before you go online.")
             } else {
                 String::new()
             }
         }
         None => String::from(
-            "Mission Control needs Apple Foundation Models on macOS or GPT-OSS on NVIDIA CUDA.",
+            "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts.",
         ),
     }
 }
@@ -4533,11 +4506,10 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        create_invoice_view_state, mission_control_body_chunk_len,
-        mission_control_download_button_label, mission_control_go_online_hint,
-        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
-        pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state,
-        split_text_for_display,
+        create_invoice_view_state, mission_control_body_chunk_len, mission_control_go_online_hint,
+        mission_control_local_model_button_label, mission_control_value_chunk_len,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
@@ -4669,14 +4641,14 @@ mod tests {
 
         if cfg!(target_os = "macos") {
             assert_eq!(
-                mission_control_download_button_label(&provider, &local),
+                mission_control_local_model_button_label(&provider, &local),
                 "OPEN APPLE FM"
             );
             assert_eq!(mission_control_go_online_hint(&provider, &local), "");
         } else {
             assert_eq!(
-                mission_control_download_button_label(&provider, &local),
-                "OPEN GPT-OSS CUDA"
+                mission_control_local_model_button_label(&provider, &local),
+                "OPEN GPT-OSS WORKBENCH"
             );
         }
     }
@@ -4693,15 +4665,15 @@ mod tests {
 
         if cfg!(target_os = "macos") {
             assert_eq!(
-                mission_control_download_button_label(&provider, &local),
+                mission_control_local_model_button_label(&provider, &local),
                 "START APPLE FM"
             );
         } else {
             assert_eq!(
-                mission_control_download_button_label(&provider, &local),
+                mission_control_local_model_button_label(&provider, &local),
                 "NO LOCAL MODEL"
             );
-            assert!(mission_control_go_online_hint(&provider, &local).contains("NVIDIA CUDA"));
+            assert!(mission_control_go_online_hint(&provider, &local).contains("FM-first"));
         }
     }
 }
