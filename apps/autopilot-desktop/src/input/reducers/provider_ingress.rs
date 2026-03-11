@@ -157,6 +157,10 @@ pub(super) fn apply_ingressed_request(
     state: &mut RenderState,
     mut request: JobInboxNetworkRequest,
 ) {
+    if state.provider_runtime.active_inference_backend().is_none() {
+        return;
+    }
+
     let preview_only = state.provider_runtime.mode == ProviderMode::Offline;
     apply_encrypted_request_handling(state, &mut request);
     if let Some(reason) = target_policy_reject_reason(state, &request) {

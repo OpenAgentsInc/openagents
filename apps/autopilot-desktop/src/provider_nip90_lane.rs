@@ -329,6 +329,79 @@ impl ProviderNip90LaneState {
     fn connection_expected(&self) -> bool {
         !matches!(self.desired_state(), DesiredLaneState::Offline)
     }
+
+    fn provider_request_ingress_enabled(&self) -> bool {
+        self.compute_capability.is_ready()
+    }
+
+    fn ingress_filters(&self) -> Vec<serde_json::Value> {
+        build_ingress_filters(
+            self.provider_request_ingress_enabled(),
+            self.tracked_buyer_request_ids.as_slice(),
+        )
+    }
+
+    fn preview_last_action(&self, connected_relays: usize) -> String {
+        if self.provider_request_ingress_enabled() {
+            format!(
+                "Relay preview active ({}/{})",
+                connected_relays,
+                self.snapshot.configured_relays.len()
+            )
+        } else if self.tracked_buyer_request_ids.is_empty() {
+            format!(
+                "Buyer relay transport active ({}/{})",
+                connected_relays,
+                self.snapshot.configured_relays.len()
+            )
+        } else {
+            format!(
+                "Buyer response relay tracking active ({}/{})",
+                connected_relays,
+                self.snapshot.configured_relays.len()
+            )
+        }
+    }
+
+    fn preview_connecting_action(&self) -> String {
+        if self.provider_request_ingress_enabled() {
+            "Connecting relay preview".to_string()
+        } else if self.tracked_buyer_request_ids.is_empty() {
+            "Connecting buyer relay transport".to_string()
+        } else {
+            "Connecting buyer response relay tracking".to_string()
+        }
+    }
+
+    fn preview_degraded_action(&self) -> String {
+        if self.provider_request_ingress_enabled() {
+            "Relay preview degraded".to_string()
+        } else if self.tracked_buyer_request_ids.is_empty() {
+            "Buyer relay transport degraded".to_string()
+        } else {
+            "Buyer response relay tracking degraded".to_string()
+        }
+    }
+
+    fn preview_zero_connected_error(&self) -> String {
+        if self.provider_request_ingress_enabled() {
+            "Relay preview has zero connected relays while provider is offline".to_string()
+        } else if self.tracked_buyer_request_ids.is_empty() {
+            "Buyer relay transport has zero connected relays".to_string()
+        } else {
+            "Buyer response relay tracking has zero connected relays".to_string()
+        }
+    }
+
+    fn preview_failed_to_connect_action(&self) -> String {
+        if self.provider_request_ingress_enabled() {
+            "Relay preview failed to connect".to_string()
+        } else if self.tracked_buyer_request_ids.is_empty() {
+            "Buyer relay transport failed to connect".to_string()
+        } else {
+            "Buyer response relay tracking failed to connect".to_string()
+        }
+    }
 }
 
 fn run_lane_loop(
@@ -623,10 +696,10 @@ fn handle_command(
                 } else if state.pool.is_some() {
                     state.snapshot.mode = ProviderNip90LaneMode::Preview;
                     state.snapshot.last_action =
-                        Some("Relay preview active while provider is offline".to_string());
+                        Some(state.preview_last_action(state.snapshot.connected_relays));
                 } else {
                     state.snapshot.mode = ProviderNip90LaneMode::Connecting;
-                    state.snapshot.last_action = Some("Connecting relay preview".to_string());
+                    state.snapshot.last_action = Some(state.preview_connecting_action());
                     state.snapshot.relay_health = relay_health_rows_for(
                         &state.snapshot.configured_relays,
                         ProviderNip90RelayStatus::Connecting,
@@ -838,11 +911,8 @@ fn ensure_connected_pool(
             match desired_state {
                 DesiredLaneState::Preview => {
                     state.snapshot.mode = ProviderNip90LaneMode::Preview;
-                    state.snapshot.last_action = Some(format!(
-                        "Relay preview active ({}/{})",
-                        state.snapshot.connected_relays,
-                        state.snapshot.configured_relays.len()
-                    ));
+                    state.snapshot.last_action =
+                        Some(state.preview_last_action(state.snapshot.connected_relays));
                 }
                 DesiredLaneState::Online => {
                     state.snapshot.mode = ProviderNip90LaneMode::Online;
@@ -859,16 +929,14 @@ fn ensure_connected_pool(
 
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
         state.snapshot.last_error = Some(match desired_state {
-            DesiredLaneState::Preview => {
-                "Relay preview has zero connected relays while provider is offline".to_string()
-            }
+            DesiredLaneState::Preview => state.preview_zero_connected_error(),
             DesiredLaneState::Online => {
                 "Provider ingress has zero connected relays while online".to_string()
             }
             DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
         });
         state.snapshot.last_action = Some(match desired_state {
-            DesiredLaneState::Preview => "Relay preview degraded".to_string(),
+            DesiredLaneState::Preview => state.preview_degraded_action(),
             DesiredLaneState::Online => "Provider relay ingress degraded".to_string(),
             DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
         });
@@ -891,7 +959,7 @@ fn ensure_connected_pool(
             }
         }
 
-        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
+        let filters = state.ingress_filters();
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let connect_started = Instant::now();
@@ -905,10 +973,14 @@ fn ensure_connected_pool(
 
                     match pool.relay(relay).await {
                         Some(connection) => {
-                            if let Err(error) = connection
-                                .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
-                                .await
-                            {
+                            let subscription_result = if filters.is_empty() {
+                                connection.unsubscribe(SUBSCRIPTION_ID).await
+                            } else {
+                                connection
+                                    .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                                    .await
+                            };
+                            if let Err(error) = subscription_result {
                                 let detail = format!(
                                     "Failed subscribing provider ingress filters for {relay}: {error}"
                                 );
@@ -955,7 +1027,7 @@ fn ensure_connected_pool(
         state.snapshot.mode = ProviderNip90LaneMode::Degraded;
         state.snapshot.last_error = first_error;
         state.snapshot.last_action = Some(match desired_state {
-            DesiredLaneState::Preview => "Relay preview failed to connect".to_string(),
+            DesiredLaneState::Preview => state.preview_failed_to_connect_action(),
             DesiredLaneState::Online => "Provider relay ingress failed to connect".to_string(),
             DesiredLaneState::Offline => "Provider relay ingress offline".to_string(),
         });
@@ -969,11 +1041,7 @@ fn ensure_connected_pool(
         DesiredLaneState::Preview => {
             state.snapshot.mode = ProviderNip90LaneMode::Preview;
             state.snapshot.last_error = None;
-            state.snapshot.last_action = Some(format!(
-                "Relay preview active ({}/{})",
-                connected_relays,
-                state.snapshot.configured_relays.len()
-            ));
+            state.snapshot.last_action = Some(state.preview_last_action(connected_relays));
         }
         DesiredLaneState::Online => {
             state.snapshot.mode = ProviderNip90LaneMode::Online;
@@ -1014,7 +1082,7 @@ fn reconnect_disconnected_relays(
     pool: Arc<RelayPool>,
 ) {
     runtime.block_on(async {
-        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
+        let filters = state.ingress_filters();
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let Some(connection) = pool.relay(relay).await else {
@@ -1033,10 +1101,14 @@ fn reconnect_disconnected_relays(
                     state
                         .relay_last_seen
                         .insert(relay_key.clone(), Instant::now());
-                    if let Err(error) = connection
-                        .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
-                        .await
-                    {
+                    let subscription_result = if filters.is_empty() {
+                        connection.unsubscribe(SUBSCRIPTION_ID).await
+                    } else {
+                        connection
+                            .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                            .await
+                    };
+                    if let Err(error) = subscription_result {
                         state.relay_last_error.insert(
                             relay_key.clone(),
                             format!(
@@ -1064,7 +1136,7 @@ fn resubscribe_ingress_filters(
     pool: Arc<RelayPool>,
 ) {
     runtime.block_on(async {
-        let filters = build_ingress_filters(state.tracked_buyer_request_ids.as_slice());
+        let filters = state.ingress_filters();
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let Some(connection) = pool.relay(relay).await else {
@@ -1073,10 +1145,14 @@ fn resubscribe_ingress_filters(
             if connection.state().await != ConnectionState::Connected {
                 continue;
             }
-            if let Err(error) = connection
-                .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
-                .await
-            {
+            let subscription_result = if filters.is_empty() {
+                connection.unsubscribe(SUBSCRIPTION_ID).await
+            } else {
+                connection
+                    .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                    .await
+            };
+            if let Err(error) = subscription_result {
                 state.relay_last_error.insert(
                     relay_key.clone(),
                     format!("Failed refreshing provider ingress filters for {relay}: {error}"),
@@ -1140,11 +1216,17 @@ fn maybe_publish_handler_info(
     }
 }
 
-fn build_ingress_filters(tracked_buyer_request_ids: &[String]) -> Vec<serde_json::Value> {
-    let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
-        .map(serde_json::Value::from)
-        .collect::<Vec<_>>();
-    let mut filters = vec![json!({"kinds": kinds, "limit": 256})];
+fn build_ingress_filters(
+    observe_provider_requests: bool,
+    tracked_buyer_request_ids: &[String],
+) -> Vec<serde_json::Value> {
+    let mut filters = Vec::new();
+    if observe_provider_requests {
+        let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
+            .map(serde_json::Value::from)
+            .collect::<Vec<_>>();
+        filters.push(json!({"kinds": kinds, "limit": 256}));
+    }
     if !tracked_buyer_request_ids.is_empty() {
         let response_kinds = (JOB_RESULT_KIND_MIN..=JOB_RESULT_KIND_MAX)
             .map(serde_json::Value::from)
@@ -2413,6 +2495,11 @@ mod tests {
             .expect("build tokio runtime for relay harness");
         let (relay_url, relay_task) = runtime.block_on(spawn_mock_relay_with_request());
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_ollama_capability(),
+            })
+            .expect("queue ready capability");
 
         let deadline = Instant::now() + Duration::from_secs(4);
         let mut ingressed = false;
@@ -2465,6 +2552,70 @@ mod tests {
     }
 
     #[test]
+    fn worker_keeps_buyer_only_preview_when_provider_capability_is_unavailable() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task) = runtime.block_on(spawn_mock_relay_with_request());
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let mut ingressed = false;
+        let mut buyer_transport_snapshot_seen = false;
+        let mut last_snapshot: Option<String> = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    ProviderNip90LaneUpdate::IngressedRequest(row)
+                        if row.request_id == "request-live-1" =>
+                    {
+                        ingressed = true;
+                    }
+                    ProviderNip90LaneUpdate::Snapshot(snapshot) => {
+                        if snapshot.mode == super::ProviderNip90LaneMode::Preview
+                            && snapshot.connected_relays > 0
+                            && snapshot
+                                .last_action
+                                .as_deref()
+                                .is_some_and(|action| action.starts_with("Buyer relay transport"))
+                        {
+                            buyer_transport_snapshot_seen = true;
+                        }
+                        last_snapshot = Some(format!(
+                            "mode={} connected_relays={} relays={} last_error={:?} last_action={:?}",
+                            snapshot.mode.label(),
+                            snapshot.connected_relays,
+                            snapshot.relay_health.len(),
+                            snapshot.last_error,
+                            snapshot.last_action
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            if buyer_transport_snapshot_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        assert!(
+            buyer_transport_snapshot_seen,
+            "expected buyer-only relay preview snapshot (last snapshot: {})",
+            last_snapshot.clone().unwrap_or_else(|| "none".to_string())
+        );
+        assert!(
+            !ingressed,
+            "provider requests should stay hidden when provider capability is unavailable (last snapshot: {})",
+            last_snapshot.unwrap_or_else(|| "none".to_string())
+        );
+
+        relay_task.abort();
+    }
+
+    #[test]
     fn worker_ingests_live_relay_request() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -2473,6 +2624,11 @@ mod tests {
             .expect("build tokio runtime for relay harness");
         let (relay_url, relay_task) = runtime.block_on(spawn_mock_relay_with_request());
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_ollama_capability(),
+            })
+            .expect("queue ready capability");
         worker
             .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
             .expect("queue online command");
@@ -2645,7 +2801,10 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(preview_ready, "relay lane should enter preview while offline");
+        assert!(
+            preview_ready,
+            "relay lane should enter preview while offline"
+        );
 
         let event = Event {
             id: "buyer-request-event-1".to_string(),
@@ -2655,7 +2814,11 @@ mod tests {
             tags: vec![
                 vec!["relays".to_string(), "wss://relay.example".to_string()],
                 vec!["bid".to_string(), "2000".to_string()],
-                vec!["param".to_string(), "request_type".to_string(), "smoke-test".to_string()],
+                vec![
+                    "param".to_string(),
+                    "request_type".to_string(),
+                    "smoke-test".to_string(),
+                ],
             ],
             content: "buy mode request".to_string(),
             sig: "33".repeat(64),
@@ -2907,6 +3070,11 @@ mod tests {
             runtime.block_on(spawn_mock_relay_with_request_and_publish_capture());
 
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_ollama_capability(),
+            })
+            .expect("queue ready capability");
         worker
             .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
             .expect("queue online command");
