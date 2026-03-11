@@ -332,6 +332,7 @@ pub enum EarningsScoreboardPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
+    RefreshWallet,
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
     GenerateBitcoinReceiveAddress,
@@ -2226,6 +2227,17 @@ pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Boun
         top,
         (panel.size.width - 28.0).max(0.0),
         height,
+    )
+}
+
+pub fn mission_control_wallet_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = mission_control_layout(content_bounds).wallet_panel;
+    let width = (panel.size.width * 0.42).clamp(92.0, 118.0);
+    Bounds::new(
+        panel.max_x() - width - 10.0,
+        panel.origin.y + 2.0,
+        width.max(0.0),
+        18.0,
     )
 }
 
@@ -4631,6 +4643,10 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
+            } else if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::RefreshWallet,
+                ))
             } else if mission_control_lightning_receive_button_bounds(
                 content_bounds,
                 buy_mode_enabled,
@@ -6167,7 +6183,8 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
-        mission_control_local_model_button_bounds, mission_control_withdraw_button_bounds,
+        mission_control_local_model_button_bounds, mission_control_wallet_refresh_button_bounds,
+        mission_control_withdraw_button_bounds,
         mission_control_withdraw_invoice_input_bounds, network_requests_budget_input_bounds,
         network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
         network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
@@ -6274,6 +6291,17 @@ mod tests {
         assert!(local_model.max_y() <= withdraw_input.origin.y);
         assert!(withdraw_input.max_y() <= withdraw_button.origin.y);
         assert!(withdraw_button.max_y() <= layout.actions_panel.max_y());
+    }
+
+    #[test]
+    fn mission_control_wallet_refresh_button_fits_inside_wallet_panel() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout(content_bounds);
+        let button = mission_control_wallet_refresh_button_bounds(content_bounds);
+
+        assert!(layout.wallet_panel.contains(button.origin));
+        assert!(button.max_x() <= layout.wallet_panel.max_x());
+        assert!(button.max_y() <= layout.wallet_panel.origin.y + 22.0);
     }
 
     #[test]

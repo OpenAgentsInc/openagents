@@ -41,7 +41,7 @@ use crate::pane_system::{
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_layout_for_mode, mission_control_load_funds_layout,
-    mission_control_local_model_button_bounds,
+    mission_control_local_model_button_bounds, mission_control_wallet_refresh_button_bounds,
     mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
@@ -678,6 +678,13 @@ fn paint_go_online_pane(
         layout.wallet_panel,
         "WALLET",
         mission_control_cyan_color(),
+        paint,
+    );
+    paint_mission_control_command_button(
+        mission_control_wallet_refresh_button_bounds(content_bounds),
+        "REFRESH",
+        mission_control_cyan_color(),
+        true,
         paint,
     );
     paint_mission_control_section_panel(

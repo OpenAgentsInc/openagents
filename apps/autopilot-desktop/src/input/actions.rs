@@ -8948,6 +8948,15 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
+        MissionControlPaneAction::RefreshWallet => {
+            queue_spark_command(state, SparkWalletCommand::Refresh);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state.mission_control.record_action("Queued wallet refresh");
+            }
+            true
+        }
         MissionControlPaneAction::CreateLightningReceiveTarget => {
             let amount_sats = match parse_positive_amount_str(
                 state.mission_control.load_funds_amount_sats.get_value(),
