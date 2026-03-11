@@ -40,7 +40,8 @@ use crate::pane_system::{
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
-    mission_control_layout_for_mode, mission_control_local_model_button_bounds,
+    mission_control_layout_for_mode, mission_control_load_funds_layout,
+    mission_control_local_model_button_bounds,
     mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
@@ -64,7 +65,7 @@ use crate::panes::{
     project_ops as project_ops_pane, relay_connections as relay_connections_pane,
     skill as skill_pane, wallet as wallet_pane,
 };
-use crate::spark_wallet::SparkPaneState;
+use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
 
 pub struct PaneRenderer;
@@ -699,6 +700,12 @@ fn paint_go_online_pane(
             paint,
         );
     }
+    paint_mission_control_section_panel(
+        layout.load_funds_panel,
+        "LOAD FUNDS",
+        mission_control_cyan_color(),
+        paint,
+    );
 
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let wants_online = matches!(
@@ -912,6 +919,7 @@ fn paint_go_online_pane(
         .or(spark_wallet.bitcoin_address.as_deref())
         .map(mask_secret)
         .unwrap_or_else(|| "NOT GENERATED".to_string());
+    let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
     let mut wallet_y = layout.wallet_panel.origin.y + 42.0;
     wallet_y = paint_mission_control_amount_line(
@@ -929,6 +937,16 @@ fn paint_go_online_pane(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
+        "Network",
+        &wallet_network,
+        wallet_value_chunk_len,
+        layout.wallet_panel.size.width - 24.0,
+        true,
+    );
+    wallet_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
         "Status",
         wallet_status,
         wallet_value_chunk_len,
@@ -939,7 +957,7 @@ fn paint_go_online_pane(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
-        "Address",
+        "Target",
         &wallet_address,
         wallet_value_chunk_len,
         layout.wallet_panel.size.width - 24.0,
@@ -1020,6 +1038,158 @@ fn paint_go_online_pane(
             paint,
         );
     }
+
+    let load_funds_layout = mission_control_load_funds_layout(content_bounds, buy_mode_enabled);
+    let lightning_amount_valid = mission_control
+        .load_funds_amount_sats
+        .get_value()
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .is_some_and(|value| value > 0);
+    let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
+    let lightning_target_text = match lightning_state {
+        SparkInvoiceState::Ready => spark_wallet
+            .last_invoice
+            .as_deref()
+            .unwrap_or("Generate a Lightning invoice to fund this wallet.")
+            .to_string(),
+        SparkInvoiceState::Expired => {
+            "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
+        }
+        SparkInvoiceState::Empty => {
+            "Generate a Lightning invoice to fund this wallet.".to_string()
+        }
+    };
+    let bitcoin_target_text = spark_wallet
+        .bitcoin_address
+        .as_deref()
+        .filter(|address| !address.trim().is_empty())
+        .unwrap_or("Generate a Bitcoin address to fund this wallet on-chain.")
+        .to_string();
+    let bitcoin_target_ready = spark_wallet
+        .bitcoin_address
+        .as_deref()
+        .is_some_and(|address| !address.trim().is_empty());
+    let load_funds_clip = mission_control_section_clip_bounds(layout.load_funds_panel);
+    paint.scene.push_clip(load_funds_clip);
+    paint.scene.draw_text(paint.text.layout_mono(
+        "LIGHTNING SATS",
+        Point::new(
+            load_funds_layout.amount_input.origin.x,
+            load_funds_layout.amount_input.origin.y - 12.0,
+        ),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        mission_control_muted_color(),
+    ));
+    mission_control
+        .load_funds_amount_sats
+        .set_max_width(load_funds_layout.amount_input.size.width);
+    mission_control
+        .load_funds_amount_sats
+        .paint(load_funds_layout.amount_input, paint);
+    paint_mission_control_command_button(
+        load_funds_layout.lightning_button,
+        "LIGHTNING RECEIVE",
+        mission_control_green_color(),
+        lightning_amount_valid,
+        paint,
+    );
+    paint_mission_control_command_button(
+        load_funds_layout.copy_lightning_button,
+        "COPY LIGHTNING",
+        mission_control_cyan_color(),
+        lightning_state == SparkInvoiceState::Ready,
+        paint,
+    );
+    paint_mission_control_command_button(
+        load_funds_layout.bitcoin_button,
+        "BITCOIN ADDRESS",
+        mission_control_orange_color(),
+        true,
+        paint,
+    );
+    paint_mission_control_command_button(
+        load_funds_layout.copy_bitcoin_button,
+        "COPY BITCOIN",
+        mission_control_cyan_color(),
+        bitcoin_target_ready,
+        paint,
+    );
+    let load_funds_value_chunk_len = mission_control_value_chunk_len(load_funds_layout.details_column);
+    let load_funds_body_chunk_len = mission_control_body_chunk_len(load_funds_layout.details_column);
+    let mut load_funds_y = load_funds_layout.details_column.origin.y;
+    load_funds_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Network",
+        &wallet_network,
+        load_funds_value_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    load_funds_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Connection",
+        wallet_status,
+        load_funds_value_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    load_funds_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Lightning",
+        mission_control_lightning_receive_state_label(lightning_state),
+        load_funds_value_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    load_funds_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Bitcoin",
+        if bitcoin_target_ready { "READY" } else { "EMPTY" },
+        load_funds_value_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    load_funds_y = paint_mission_control_body_block(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Lightning target",
+        &lightning_target_text,
+        load_funds_body_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    load_funds_y = paint_mission_control_body_block(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Bitcoin target",
+        &bitcoin_target_text,
+        load_funds_body_chunk_len,
+        load_funds_layout.details_column.size.width,
+        true,
+    );
+    let _ = paint_mission_control_body_block(
+        paint,
+        load_funds_layout.details_column.origin.x,
+        load_funds_y,
+        "Recent receives",
+        &mission_control_recent_receive_history(spark_wallet),
+        load_funds_body_chunk_len,
+        load_funds_layout.details_column.size.width,
+        false,
+    );
+    paint.scene.pop_clip();
 
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
@@ -5158,6 +5328,41 @@ fn paint_wrapped_label_line_mission_control_label(
     }
 }
 
+fn paint_mission_control_body_block(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    row_width: f32,
+    show_divider: bool,
+) -> f32 {
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(x, y),
+        12.0,
+        mission_control_muted_color(),
+    ));
+
+    let mut line_y = y + 16.0;
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(x, line_y),
+            11.0,
+            mission_control_text_color(),
+        ));
+        line_y += 16.0;
+    }
+    let row_bottom = line_y + 4.0;
+    if show_divider {
+        paint_mission_control_row_divider(paint, x, row_bottom, row_width)
+    } else {
+        row_bottom + 12.0
+    }
+}
+
 fn paint_mission_control_row_divider(
     paint: &mut PaintContext,
     x: f32,
@@ -5251,6 +5456,41 @@ fn mission_control_value_chunk_len(card: Bounds) -> usize {
 fn mission_control_body_chunk_len(card: Bounds) -> usize {
     let body_width = (card.size.width - 24.0).max(48.0);
     ((body_width / 6.2).floor() as usize).max(12)
+}
+
+fn mission_control_now_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
+fn mission_control_lightning_receive_state_label(state: SparkInvoiceState) -> &'static str {
+    match state {
+        SparkInvoiceState::Empty => "EMPTY",
+        SparkInvoiceState::Ready => "READY",
+        SparkInvoiceState::Expired => "REFRESH",
+    }
+}
+
+fn mission_control_recent_receive_history(spark_wallet: &SparkPaneState) -> String {
+    let recent_receives: Vec<String> = spark_wallet
+        .recent_payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .take(3)
+        .map(|payment| {
+            format!(
+                "{}  {}",
+                payment.status.to_ascii_uppercase(),
+                format_sats_amount(payment.amount_sats)
+            )
+        })
+        .collect();
+    if recent_receives.is_empty() {
+        "No receives recorded yet.".to_string()
+    } else {
+        recent_receives.join("\n")
+    }
 }
 
 fn mission_control_blocker_detail(
@@ -5349,13 +5589,13 @@ mod tests {
         create_invoice_view_state, mission_control_body_chunk_len,
         mission_control_buy_mode_panel_state, mission_control_buy_mode_settlement_label,
         mission_control_go_online_hint, mission_control_local_model_button_label,
-        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
-        pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state,
-        split_text_for_display,
+        mission_control_lightning_receive_state_label, mission_control_value_chunk_len,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
-    use crate::spark_wallet::SparkPaneState;
+    use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
     use crate::state::operations::{
         BuyerResolutionMode, NetworkRequestSubmission, NetworkRequestsState,
     };
@@ -5485,6 +5725,22 @@ mod tests {
         assert_eq!(
             mission_control_value_x_offset("Projection authority status"),
             118.0
+        );
+    }
+
+    #[test]
+    fn mission_control_lightning_receive_state_label_tracks_expiry() {
+        assert_eq!(
+            mission_control_lightning_receive_state_label(SparkInvoiceState::Empty),
+            "EMPTY"
+        );
+        assert_eq!(
+            mission_control_lightning_receive_state_label(SparkInvoiceState::Ready),
+            "READY"
+        );
+        assert_eq!(
+            mission_control_lightning_receive_state_label(SparkInvoiceState::Expired),
+            "REFRESH"
         );
     }
 
