@@ -1399,6 +1399,24 @@ impl NetworkRequestsState {
         ));
     }
 
+    pub fn record_auto_payment_pointer(&mut self, request_id: &str, payment_pointer: &str) {
+        let payment_pointer = payment_pointer.trim();
+        if payment_pointer.is_empty() {
+            return;
+        }
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        if request.last_payment_pointer.as_deref() == Some(payment_pointer) {
+            return;
+        }
+        request.last_payment_pointer = Some(payment_pointer.to_string());
+    }
+
     pub fn mark_auto_payment_failed(
         &mut self,
         request_id: &str,

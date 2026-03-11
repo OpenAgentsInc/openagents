@@ -229,6 +229,7 @@ mod tests {
             status: status.to_string(),
             amount_sats,
             timestamp: 25,
+            ..Default::default()
         });
         wallet
     }

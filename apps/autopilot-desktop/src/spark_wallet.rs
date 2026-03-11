@@ -584,7 +584,7 @@ impl SparkPaneState {
             runtime,
             "List Spark payments",
             SPARK_ACTION_TIMEOUT,
-            wallet.list_payments(Some(25), None),
+            wallet.list_all_payments(),
         ) {
             Ok(payments) => {
                 self.apply_balance_refresh_with_payment_confirmation(
@@ -613,7 +613,7 @@ impl SparkPaneState {
             return;
         };
 
-        let Some(payment_id) = self.pending_balance_confirmation_payment_id.as_deref() else {
+        let Some(payment_id) = self.pending_balance_confirmation_payment_id.clone() else {
             self.balance = Some(balance);
             return;
         };
@@ -626,15 +626,25 @@ impl SparkPaneState {
         };
 
         if !is_terminal_wallet_payment_status(payment.status.as_str()) {
-            self.last_action = Some(format!(
-                "Payment sent ({payment_id}); Spark still reports {}",
-                payment.status
-            ));
+            let status_detail = payment
+                .status_detail
+                .as_deref()
+                .unwrap_or(payment.status.as_str());
+            self.last_action = Some(format!("Payment pending ({payment_id}); {status_detail}"));
             return;
         }
 
         self.balance = Some(balance);
         self.pending_balance_confirmation_payment_id = None;
+        if is_settled_wallet_payment_status(payment.status.as_str()) {
+            self.last_action = Some(format!("Payment settled ({payment_id}); wallet confirmed"));
+        } else {
+            let status_detail = payment
+                .status_detail
+                .as_deref()
+                .unwrap_or(payment.status.as_str());
+            self.last_action = Some(format!("Payment failed ({payment_id}); {status_detail}"));
+        }
     }
 }
 
@@ -1003,6 +1013,7 @@ mod tests {
                 status: "pending".to_string(),
                 amount_sats: 20,
                 timestamp: 1,
+                ..Default::default()
             }],
         );
 
@@ -1035,6 +1046,7 @@ mod tests {
                 status: "completed".to_string(),
                 amount_sats: 20,
                 timestamp: 1,
+                ..Default::default()
             }],
         );
 

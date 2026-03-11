@@ -13196,6 +13196,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_001,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "wallet-failed-001".to_string(),
@@ -13203,6 +13204,7 @@ mod tests {
                 status: "failed".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_002,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "wallet-wrong-amount-001".to_string(),
@@ -13210,6 +13212,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 9,
                 timestamp: 1_762_700_003,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "pending:req-open-network-001".to_string(),
@@ -13217,6 +13220,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_004,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "wallet-used-001".to_string(),
@@ -13224,6 +13228,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_005,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "wallet-pointer-001".to_string(),
@@ -13231,6 +13236,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_006,
+                ..Default::default()
             },
             openagents_spark::PaymentSummary {
                 id: "wallet-pointer-002".to_string(),
@@ -13238,6 +13244,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_007,
+                ..Default::default()
             },
         ];
 
@@ -14111,6 +14118,7 @@ mod tests {
                 status: "pending".to_string(),
                 amount_sats: 1500,
                 timestamp: 1_762_700_100,
+                ..Default::default()
             });
         let summary =
             chat_wallet_payment_status_summary(&payload, &spark_wallet).expect("status summary");

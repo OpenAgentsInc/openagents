@@ -2555,6 +2555,7 @@ mod tests {
             status: "succeeded".to_string(),
             amount_sats: 1_000,
             timestamp: 1_700_000_009,
+            ..Default::default()
         });
 
         let report = state

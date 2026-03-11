@@ -1493,7 +1493,7 @@ fn mission_control_buy_mode_panel_state(
                     compact_mission_control_id(request.request_id.as_str()),
                     mission_control_buy_mode_provider_summary(request),
                     mission_control_buy_mode_work_summary(request),
-                    payment
+                    mission_control_buy_mode_payment_summary(request, spark_wallet)
                 )
             })
             .or_else(|| {
@@ -1728,26 +1728,52 @@ fn mission_control_buy_mode_payment_label(
     spark_wallet: &SparkPaneState,
 ) -> String {
     match request {
-        Some(request) if request.last_payment_pointer.is_some() => "sent".to_string(),
-        Some(request) if request.pending_bolt11.is_some() => "queued".to_string(),
-        Some(request) => request
-            .payment_error
-            .clone()
-            .or_else(|| {
-                request
-                    .payment_required_at_epoch_seconds
-                    .and(spark_wallet.last_error.clone())
-            })
-            .map(|_| "failed".to_string())
-            .unwrap_or_else(|| {
-                if request.payment_required_at_epoch_seconds.is_some() {
-                    "invoice".to_string()
-                } else {
-                    "idle".to_string()
-                }
-            }),
+        Some(request) => crate::app_state::buy_mode_wallet_state_label(
+            request,
+            crate::app_state::buy_mode_wallet_payment(request, spark_wallet),
+        ),
         None => "idle".to_string(),
     }
+}
+
+fn mission_control_buy_mode_payment_summary(
+    request: &crate::app_state::SubmittedNetworkRequest,
+    spark_wallet: &SparkPaneState,
+) -> String {
+    let wallet_payment = crate::app_state::buy_mode_wallet_payment(request, spark_wallet);
+    if request.payment_sent_at_epoch_seconds.is_some()
+        || request.status == crate::state::operations::NetworkRequestStatus::Paid
+    {
+        return "payment sent".to_string();
+    }
+    if let Some(wallet_payment) = wallet_payment {
+        if wallet_payment.is_returned_htlc_failure() {
+            return "payment returned; refund should settle back to wallet".to_string();
+        }
+        if crate::spark_wallet::is_terminal_wallet_payment_status(wallet_payment.status.as_str()) {
+            return wallet_payment
+                .status_detail
+                .clone()
+                .unwrap_or_else(|| "payment failed".to_string());
+        }
+        return wallet_payment
+            .status_detail
+            .clone()
+            .unwrap_or_else(|| "payment pending Spark confirmation".to_string());
+    }
+    if request.last_payment_pointer.is_some() {
+        return "payment pending Spark confirmation".to_string();
+    }
+    if request.pending_bolt11.is_some() {
+        return "payment queued".to_string();
+    }
+    if request.payment_required_at_epoch_seconds.is_some() {
+        return "invoice received".to_string();
+    }
+    if request.payment_error.is_some() {
+        return "payment failed".to_string();
+    }
+    "payment idle".to_string()
 }
 
 fn mission_control_buy_mode_provider_label(
@@ -6308,5 +6334,70 @@ mod tests {
         assert_eq!(settled.payment, "sent");
         assert!(settled.summary.contains("payment sent"));
         assert!(settled.button_enabled);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_shows_pending_and_failed_wallet_payment_states() {
+        let mut mission_control = fixture_mission_control();
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut requests = queue_buy_mode_request_for_tests();
+        let provider_pubkey = "55".repeat(32);
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-002",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                "req-buy-render-001",
+                "lnbc1buyrenderpending",
+                Some(2_000),
+                1_762_700_050,
+            )
+            .expect("payment-required invoice should prepare");
+        requests.record_auto_payment_pointer("req-buy-render-001", "wallet-buy-render-001");
+
+        let pending = mission_control_buy_mode_panel_state(
+            true,
+            &mission_control,
+            &requests,
+            &SparkPaneState::default(),
+            now,
+        )
+        .expect("buy mode panel should render pending wallet confirmation");
+        assert_eq!(pending.payment, "pending");
+        assert!(
+            pending
+                .summary
+                .contains("payment pending Spark confirmation")
+        );
+
+        let mut wallet = SparkPaneState::default();
+        wallet.recent_payments.push(openagents_spark::PaymentSummary {
+            id: "wallet-buy-render-001".to_string(),
+            direction: "send".to_string(),
+            status: "failed".to_string(),
+            amount_sats: 2,
+            method: "lightning".to_string(),
+            status_detail: Some(
+                "lightning send failed before preimage settlement; see Mission Control log for Breez terminal detail"
+                    .to_string(),
+            ),
+            timestamp: 1_762_700_051,
+            ..Default::default()
+        });
+
+        let failed =
+            mission_control_buy_mode_panel_state(true, &mission_control, &requests, &wallet, now)
+                .expect("buy mode panel should render failed wallet state");
+        assert_eq!(failed.payment, "failed");
+        assert!(
+            failed
+                .summary
+                .contains("lightning send failed before preimage settlement")
+        );
     }
 }

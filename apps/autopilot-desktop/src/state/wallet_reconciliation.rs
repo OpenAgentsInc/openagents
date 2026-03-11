@@ -381,6 +381,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 1_500,
                 timestamp: 1_700_000_100,
+                ..Default::default()
             },
             PaymentSummary {
                 id: "wallet:spend:1".to_string(),
@@ -388,6 +389,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 amount_sats: 200,
                 timestamp: 1_700_000_120,
+                ..Default::default()
             },
         ];
 

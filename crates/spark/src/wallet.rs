@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use breez_sdk_spark::{
-    BreezSdk, GetInfoRequest, ListPaymentsRequest, Network as SdkNetwork, PaymentType,
-    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder, Seed,
-    SendPaymentRequest, SyncWalletRequest, default_config,
+    BreezSdk, GetInfoRequest, ListPaymentsRequest, Network as SdkNetwork, Payment, PaymentDetails,
+    PaymentStatus, PaymentType, PrepareSendPaymentRequest, ReceivePaymentMethod,
+    ReceivePaymentRequest, SdkBuilder, Seed, SendPaymentRequest, SyncWalletRequest, default_config,
 };
 
 use crate::{SparkError, SparkSigner};
@@ -77,13 +77,32 @@ pub struct NetworkStatusReport {
     pub detail: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PaymentSummary {
     pub id: String,
     pub direction: String,
     pub status: String,
     pub amount_sats: u64,
+    pub fees_sats: u64,
     pub timestamp: u64,
+    pub method: String,
+    pub description: Option<String>,
+    pub invoice: Option<String>,
+    pub destination_pubkey: Option<String>,
+    pub payment_hash: Option<String>,
+    pub htlc_status: Option<String>,
+    pub htlc_expiry_epoch_seconds: Option<u64>,
+    pub status_detail: Option<String>,
+}
+
+impl PaymentSummary {
+    pub fn is_returned_htlc_failure(&self) -> bool {
+        self.status.eq_ignore_ascii_case("failed")
+            && self
+                .htlc_status
+                .as_deref()
+                .is_some_and(|status| status.eq_ignore_ascii_case("returned"))
+    }
 }
 
 pub struct SparkWallet {
@@ -302,15 +321,26 @@ impl SparkWallet {
         let payments = response
             .payments
             .into_iter()
-            .map(|payment| PaymentSummary {
-                id: payment.id,
-                direction: payment_direction_label(payment.payment_type).to_string(),
-                status: format!("{:?}", payment.status).to_ascii_lowercase(),
-                amount_sats: u64::try_from(payment.amount).unwrap_or(u64::MAX),
-                timestamp: payment.timestamp,
-            })
+            .map(payment_summary_from_sdk_payment)
             .collect();
 
+        Ok(payments)
+    }
+
+    pub async fn list_all_payments(&self) -> Result<Vec<PaymentSummary>, SparkError> {
+        const PAGE_SIZE: u32 = 100;
+
+        let mut payments = Vec::new();
+        let mut offset = 0u32;
+        loop {
+            let mut page = self.list_payments(Some(PAGE_SIZE), Some(offset)).await?;
+            let page_len = page.len();
+            payments.append(&mut page);
+            if page_len < PAGE_SIZE as usize {
+                break;
+            }
+            offset = offset.saturating_add(PAGE_SIZE);
+        }
         Ok(payments)
     }
 }
@@ -322,10 +352,116 @@ fn payment_direction_label(payment_type: PaymentType) -> &'static str {
     }
 }
 
+fn payment_summary_from_sdk_payment(payment: Payment) -> PaymentSummary {
+    let mut description = None;
+    let mut invoice = None;
+    let mut destination_pubkey = None;
+    let mut payment_hash = None;
+    let mut htlc_status = None;
+    let mut htlc_expiry_epoch_seconds = None;
+
+    if let Some(details) = payment.details.as_ref() {
+        match details {
+            PaymentDetails::Lightning {
+                description: lightning_description,
+                preimage,
+                invoice: lightning_invoice,
+                payment_hash: lightning_payment_hash,
+                destination_pubkey: lightning_destination_pubkey,
+                ..
+            } => {
+                description.clone_from(lightning_description);
+                invoice = Some(lightning_invoice.clone());
+                destination_pubkey = Some(lightning_destination_pubkey.clone());
+                payment_hash = Some(lightning_payment_hash.clone());
+                if matches!(payment.status, PaymentStatus::Failed) && preimage.is_none() {
+                    htlc_status = Some("preimage-missing".to_string());
+                }
+            }
+            PaymentDetails::Spark {
+                invoice_details,
+                htlc_details,
+                ..
+            } => {
+                if let Some(invoice_details) = invoice_details.as_ref() {
+                    description.clone_from(&invoice_details.description);
+                    invoice = Some(invoice_details.invoice.clone());
+                }
+                if let Some(htlc_details) = htlc_details.as_ref() {
+                    payment_hash = Some(htlc_details.payment_hash.clone());
+                    htlc_status = Some(htlc_details.status.to_string().to_ascii_lowercase());
+                    htlc_expiry_epoch_seconds = Some(htlc_details.expiry_time);
+                }
+            }
+            PaymentDetails::Token {
+                invoice_details, ..
+            } => {
+                if let Some(invoice_details) = invoice_details.as_ref() {
+                    description.clone_from(&invoice_details.description);
+                    invoice = Some(invoice_details.invoice.clone());
+                }
+            }
+            PaymentDetails::Withdraw { .. } | PaymentDetails::Deposit { .. } => {}
+        }
+    }
+
+    let status = payment.status.to_string();
+    PaymentSummary {
+        id: payment.id,
+        direction: payment_direction_label(payment.payment_type).to_string(),
+        status_detail: payment_status_detail(payment.status, htlc_status.as_deref()),
+        status,
+        amount_sats: u64::try_from(payment.amount).unwrap_or(u64::MAX),
+        fees_sats: u64::try_from(payment.fees).unwrap_or(u64::MAX),
+        timestamp: payment.timestamp,
+        method: payment.method.to_string(),
+        description,
+        invoice,
+        destination_pubkey,
+        payment_hash,
+        htlc_status,
+        htlc_expiry_epoch_seconds,
+    }
+}
+
+fn payment_status_detail(status: PaymentStatus, htlc_status: Option<&str>) -> Option<String> {
+    if matches!(status, PaymentStatus::Failed)
+        && htlc_status.is_some_and(|value| value.eq_ignore_ascii_case("returned"))
+    {
+        return Some(
+            "lightning htlc returned after expiry; refund should settle back to the wallet"
+                .to_string(),
+        );
+    }
+    if matches!(status, PaymentStatus::Failed)
+        && htlc_status.is_some_and(|value| value.eq_ignore_ascii_case("preimage-missing"))
+    {
+        return Some(
+            "lightning send failed before preimage settlement; see Mission Control log for Breez terminal detail"
+                .to_string(),
+        );
+    }
+    if matches!(status, PaymentStatus::Pending)
+        && htlc_status.is_some_and(|value| value.eq_ignore_ascii_case("waitingforpreimage"))
+    {
+        return Some("waiting for receiver preimage".to_string());
+    }
+    if matches!(status, PaymentStatus::Pending)
+        && htlc_status.is_some_and(|value| value.eq_ignore_ascii_case("preimageshared"))
+    {
+        return Some("receiver preimage shared; settlement still pending".to_string());
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Balance, Network, PaymentType, SdkNetwork, WalletConfig, payment_direction_label};
+    use super::{
+        Balance, Network, PaymentSummary, PaymentType, SdkNetwork, WalletConfig,
+        payment_direction_label, payment_summary_from_sdk_payment,
+    };
     use crate::SparkError;
+    use breez_sdk_spark::{Payment, PaymentDetails, PaymentMethod, PaymentStatus};
 
     #[test]
     fn network_mapping_mainnet_is_explicit() {
@@ -380,5 +516,77 @@ mod tests {
     fn payment_direction_labels_match_payment_type() {
         assert_eq!(payment_direction_label(PaymentType::Send), "send");
         assert_eq!(payment_direction_label(PaymentType::Receive), "receive");
+    }
+
+    #[test]
+    fn payment_summary_preserves_lightning_htlc_return_detail() {
+        let payment = Payment {
+            id: "wallet-payment-001".to_string(),
+            payment_type: PaymentType::Send,
+            status: PaymentStatus::Failed,
+            amount: 25,
+            fees: 3,
+            timestamp: 1_773_249_634,
+            method: PaymentMethod::Lightning,
+            details: Some(PaymentDetails::Lightning {
+                description: Some("DVM textgen".to_string()),
+                preimage: None,
+                invoice: "lnbc250n1example".to_string(),
+                payment_hash: "6b4921d489584b67a8d073e152eda483e69397d7ff06b33b45b74fc37b88d01a"
+                    .to_string(),
+                destination_pubkey:
+                    "02c8e87a7ab29092eba909533919c508839aea48d8e6a88c39c42a0f198a5f6401".to_string(),
+                lnurl_pay_info: None,
+                lnurl_withdraw_info: None,
+                lnurl_receive_metadata: None,
+            }),
+        };
+
+        let summary = payment_summary_from_sdk_payment(payment);
+        assert_eq!(summary.status, "failed");
+        assert_eq!(summary.method, "lightning");
+        assert_eq!(summary.fees_sats, 3);
+        assert_eq!(
+            summary.destination_pubkey.as_deref(),
+            Some("02c8e87a7ab29092eba909533919c508839aea48d8e6a88c39c42a0f198a5f6401")
+        );
+        assert_eq!(
+            summary.payment_hash.as_deref(),
+            Some("6b4921d489584b67a8d073e152eda483e69397d7ff06b33b45b74fc37b88d01a")
+        );
+        assert_eq!(summary.htlc_status.as_deref(), Some("preimage-missing"));
+        assert!(!summary.is_returned_htlc_failure());
+        assert_eq!(
+            summary.status_detail.as_deref(),
+            Some(
+                "lightning send failed before preimage settlement; see Mission Control log for Breez terminal detail"
+            )
+        );
+    }
+
+    #[test]
+    fn payment_summary_retains_pending_preimage_detail() {
+        let summary = PaymentSummary {
+            id: "wallet-payment-002".to_string(),
+            direction: "send".to_string(),
+            status: "pending".to_string(),
+            amount_sats: 2,
+            fees_sats: 0,
+            timestamp: 1_762_700_040,
+            method: "lightning".to_string(),
+            description: None,
+            invoice: None,
+            destination_pubkey: None,
+            payment_hash: Some("hash-002".to_string()),
+            htlc_status: Some("waitingforpreimage".to_string()),
+            htlc_expiry_epoch_seconds: Some(1_762_700_070),
+            status_detail: Some("waiting for receiver preimage".to_string()),
+        };
+
+        assert!(!summary.is_returned_htlc_failure());
+        assert_eq!(
+            summary.status_detail.as_deref(),
+            Some("waiting for receiver preimage")
+        );
     }
 }
