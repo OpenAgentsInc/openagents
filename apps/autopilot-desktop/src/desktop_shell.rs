@@ -37,12 +37,12 @@ pub fn buy_mode_enabled_from_env() -> bool {
     std::env::var(BUY_MODE_ENV)
         .ok()
         .map(|value| {
-            matches!(
+            !matches!(
                 value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
+                "0" | "false" | "no" | "off"
             )
         })
-        .unwrap_or(false)
+        .unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -56,8 +56,8 @@ mod tests {
             "tests should keep dev mode disabled by default"
         );
         assert!(
-            !buy_mode_enabled_from_env(),
-            "tests should keep buy mode disabled by default"
+            buy_mode_enabled_from_env(),
+            "buy mode should be visible by default"
         );
         assert_eq!(DesktopShellMode::from_env(), DesktopShellMode::Production);
     }

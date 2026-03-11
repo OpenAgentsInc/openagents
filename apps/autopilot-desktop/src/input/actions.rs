@@ -9117,34 +9117,34 @@ pub(super) fn run_mission_control_action(
                 }
             }
         }
-        MissionControlPaneAction::RunBuyModeSmokeTest => {
+        MissionControlPaneAction::ToggleBuyModeLoop => {
             if !state.mission_control_buy_mode_enabled() {
                 state
                     .mission_control
                     .record_error("Buy Mode is disabled for this session");
                 return true;
             }
-            if state.network_requests.has_in_flight_request_by_type(
-                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
-            ) {
+
+            let now = std::time::Instant::now();
+            if state.mission_control.buy_mode_loop_enabled {
+                state.mission_control.toggle_buy_mode_loop(now);
                 state
                     .mission_control
-                    .record_error("Buy Mode already has an in-flight smoke test");
-                return true;
-            }
-
-            match submit_mission_control_buy_mode_request(state) {
-                Ok(request_id) => {
-                    state
-                        .mission_control
-                        .record_action(format!("Queued BUY 5050 TEST JOB {request_id}"));
-                }
-                Err(error) => {
-                    state.provider_runtime.last_error_detail = Some(error.clone());
-                    state
-                        .mission_control
-                        .record_error(format!("Buy Mode request failed: {error}"));
-                }
+                    .record_action("Buy Mode stopped".to_string());
+            } else if let Some(reason) =
+                crate::app_state::mission_control_buy_mode_start_block_reason(&state.spark_wallet)
+            {
+                state.mission_control.record_error(reason.clone());
+                state.provider_runtime.last_error_detail = Some(reason);
+            } else if state.mission_control.toggle_buy_mode_loop(now) {
+                state
+                    .mission_control
+                    .record_action(format!(
+                        "Buy Mode armed // 5050 // {} sats // every {}s",
+                        crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                        crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+                    ));
+                let _ = run_mission_control_buy_mode_tick(state, now);
             }
             true
         }
@@ -9751,6 +9751,49 @@ fn submit_mission_control_buy_mode_request(
         Vec::new(),
         request_event,
     )
+}
+
+pub(super) fn run_mission_control_buy_mode_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state.mission_control_buy_mode_enabled() || !state.mission_control.buy_mode_loop_enabled {
+        return false;
+    }
+    if let Some(reason) =
+        crate::app_state::mission_control_buy_mode_start_block_reason(&state.spark_wallet)
+    {
+        state.mission_control.toggle_buy_mode_loop(now);
+        state.provider_runtime.last_error_detail = Some(reason.clone());
+        state.mission_control.record_error(reason);
+        return true;
+    }
+    if !state.mission_control.buy_mode_dispatch_due(now) {
+        return false;
+    }
+    if state.network_requests.has_in_flight_request_by_type(
+        crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
+    ) {
+        return false;
+    }
+
+    match submit_mission_control_buy_mode_request(state) {
+        Ok(request_id) => {
+            state.mission_control.schedule_next_buy_mode_dispatch(now);
+            state
+                .mission_control
+                .record_action(format!("Buy Mode dispatched {request_id}"));
+            true
+        }
+        Err(error) => {
+            state.mission_control.schedule_buy_mode_retry(now);
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state
+                .mission_control
+                .record_error(format!("Buy Mode dispatch failed: {error}"));
+            true
+        }
+    }
 }
 
 fn submit_signed_network_request_with_event(

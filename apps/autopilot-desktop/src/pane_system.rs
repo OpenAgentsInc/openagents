@@ -337,7 +337,7 @@ pub enum MissionControlPaneAction {
     GenerateBitcoinReceiveAddress,
     CopyBitcoinReceiveAddress,
     OpenLocalModelWorkbench,
-    RunBuyModeSmokeTest,
+    ToggleBuyModeLoop,
     SendWithdrawal,
     OpenDocumentation,
 }
@@ -2137,7 +2137,7 @@ pub fn mission_control_layout_for_mode(
         active_jobs_height,
     );
     let buy_mode_panel = if buy_mode_enabled {
-        let buy_mode_height = (right_column.size.height * 0.22).clamp(108.0, 128.0);
+        let buy_mode_height = (right_column.size.height * 0.24).clamp(122.0, 144.0);
         Bounds::new(
             right_column.origin.x,
             active_jobs_panel.max_y() + panel_gap,
@@ -4665,13 +4665,11 @@ fn pane_hit_action_for_pane(
                     MissionControlPaneAction::CopyBitcoinReceiveAddress,
                 ))
             } else if state.mission_control_buy_mode_enabled()
-                && !state.network_requests.has_in_flight_request_by_type(
-                    crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
-                )
                 && mission_control_buy_mode_button_bounds(content_bounds, true).contains(point)
+                && state.mission_control_buy_mode_toggle_enabled()
             {
                 Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::RunBuyModeSmokeTest,
+                    MissionControlPaneAction::ToggleBuyModeLoop,
                 ))
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
@@ -6320,6 +6318,16 @@ mod tests {
         assert!(layout.active_jobs_panel.max_y() <= layout.buy_mode_panel.origin.y);
         assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_leaves_room_for_status_row_above_button() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout_for_mode(content_bounds, true);
+        let button = super::mission_control_buy_mode_button_bounds(content_bounds, true);
+        let status_row_bottom = layout.buy_mode_panel.origin.y + 48.0 + 34.0;
+
+        assert!(status_row_bottom <= button.origin.y);
     }
 
     #[test]

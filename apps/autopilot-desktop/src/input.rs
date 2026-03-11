@@ -606,6 +606,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_cast_control_loop(state, now) {
         changed = true;
     }
+    if run_mission_control_buy_mode_tick(state, now) {
+        changed = true;
+    }
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
     }
@@ -2795,7 +2798,6 @@ pub(crate) fn apply_provider_mode_target(
                     duration.as_millis().min(i64::MAX as u128) as i64
                 }),
         );
-        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
         if state.ollama_execution.is_ready() {
@@ -2997,6 +2999,9 @@ fn format_provider_blockers_for_display(
 }
 
 fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Option<String> {
+    if !should_mirror_provider_preflight_error(state.provider_runtime.mode) {
+        return None;
+    }
     let blockers = state.provider_blockers();
     format_provider_blockers_for_display(
         blockers.as_slice(),
@@ -3005,6 +3010,12 @@ fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Op
         state.provider_runtime.apple_fm.last_error.as_deref(),
     )
     .map(|details| format!("Mission Control preflight blockers: {details}"))
+}
+
+fn should_mirror_provider_preflight_error(
+    mode: crate::state::provider_runtime::ProviderMode,
+) -> bool {
+    !matches!(mode, crate::state::provider_runtime::ProviderMode::Offline)
 }
 
 fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Option<String> {
@@ -3469,7 +3480,8 @@ mod tests {
         goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
         is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
         provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
-        should_open_command_palette, terminal_goal_labor_linkage,
+        should_mirror_provider_preflight_error, should_open_command_palette,
+        terminal_goal_labor_linkage,
         validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
@@ -3568,6 +3580,22 @@ mod tests {
             "WALLET_ERROR (Spark wallet lane failed); OLLAMA_UNAVAILABLE (No active job backend is available)"
         );
         assert!(format_provider_blockers_for_display(&[], None, None, None).is_none());
+    }
+
+    #[test]
+    fn provider_preflight_console_error_stays_quiet_while_offline() {
+        assert!(!should_mirror_provider_preflight_error(
+            crate::state::provider_runtime::ProviderMode::Offline,
+        ));
+        assert!(should_mirror_provider_preflight_error(
+            crate::state::provider_runtime::ProviderMode::Connecting,
+        ));
+        assert!(should_mirror_provider_preflight_error(
+            crate::state::provider_runtime::ProviderMode::Online,
+        ));
+        assert!(should_mirror_provider_preflight_error(
+            crate::state::provider_runtime::ProviderMode::Degraded,
+        ));
     }
 
     #[test]
