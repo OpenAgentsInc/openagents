@@ -5,7 +5,8 @@ use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, 
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
+    mission_control_show_local_model_button, ActivityFeedFilter, DesktopPane, PaneDragMode,
+    PaneKind, PanePresentation, RenderState,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -2009,7 +2010,7 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
         content_bounds.origin.x + outer_pad,
         content_bounds.origin.y + outer_pad,
         (content_bounds.size.width - outer_pad * 2.0).max(0.0),
-        30.0,
+        36.0,
     );
     let alert_band = Bounds::new(
         status_row.origin.x,
@@ -4394,7 +4395,12 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
-            } else if mission_control_local_model_button_bounds(content_bounds).contains(point) {
+            } else if mission_control_show_local_model_button(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.ollama_execution,
+            ) && mission_control_local_model_button_bounds(content_bounds).contains(point)
+            {
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
                 ))

@@ -932,6 +932,22 @@ pub(crate) fn mission_control_local_runtime_is_ready(
     }
 }
 
+/// True when Mission Control should show the local-model button (open workbench).
+/// When false, Apple FM refresh/start is automatic on pane open; no button.
+pub(crate) fn mission_control_show_local_model_button(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            desktop_shell_mode.is_dev() && provider_runtime.apple_fm.is_ready()
+        }
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => true,
+        None => false,
+    }
+}
+
 fn mission_control_log_stream_for_stage(stage: JobLifecycleStage) -> TerminalStream {
     match stage {
         JobLifecycleStage::Failed => TerminalStream::Stderr,

@@ -8822,6 +8822,50 @@ pub(super) fn run_local_inference_action(
     }
 }
 
+/// Queues Apple FM bridge refresh or start when the Mission Control pane is opened.
+/// Call once when the GoOnline pane is created (e.g. at startup).
+pub(crate) fn ensure_mission_control_apple_fm_refresh(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    match crate::app_state::mission_control_local_runtime_lane(
+        state.desktop_shell_mode,
+        &state.ollama_execution,
+    ) {
+        Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            let bridge_starting = state.provider_runtime.apple_fm.bridge_status.as_deref()
+                == Some("starting");
+            if bridge_starting {
+                state
+                    .mission_control
+                    .record_action("Apple FM bridge start already in progress");
+                state.mission_control.last_error = None;
+                return true;
+            }
+            let handled = if state.provider_runtime.apple_fm.reachable {
+                run_apple_fm_workbench_action(state, AppleFmWorkbenchPaneAction::RefreshBridge)
+            } else {
+                run_apple_fm_workbench_action(state, AppleFmWorkbenchPaneAction::StartBridge)
+            };
+            if handled && state.apple_fm_workbench.last_error.is_none() {
+                state.mission_control.record_action(
+                    if state.provider_runtime.apple_fm.reachable {
+                        "Queued Apple FM bridge refresh"
+                    } else {
+                        "Queued Apple FM bridge start"
+                    },
+                );
+            } else if !handled {
+                state.mission_control.last_action =
+                    Some("Apple FM mission control action failed".to_string());
+                state.mission_control.last_error =
+                    state.apple_fm_workbench.last_error.clone();
+            }
+            handled
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn run_apple_fm_workbench_action(
     state: &mut crate::app_state::RenderState,
     action: AppleFmWorkbenchPaneAction,

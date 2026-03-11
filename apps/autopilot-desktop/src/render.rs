@@ -19,7 +19,7 @@ use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleF
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
-use crate::input::bootstrap_startup_cad_mesh;
+use crate::input::{bootstrap_startup_cad_mesh, ensure_mission_control_apple_fm_refresh};
 use crate::local_inference_runtime::{
     LocalInferenceExecutionSnapshot, LocalInferenceRuntimeCommand, default_local_inference_runtime,
 };
@@ -617,6 +617,7 @@ fn open_startup_panes(state: &mut RenderState) {
         match pane_kind {
             PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                let _ = ensure_mission_control_apple_fm_refresh(state);
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }
