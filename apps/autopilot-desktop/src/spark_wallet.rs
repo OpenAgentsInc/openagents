@@ -123,6 +123,7 @@ pub struct SparkPaneState {
     pub identity_path: Option<PathBuf>,
     pub network_status: Option<NetworkStatusReport>,
     pub balance: Option<Balance>,
+    pub pending_balance_confirmation_payment_id: Option<String>,
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
     pub recent_payments: Vec<PaymentSummary>,
@@ -143,6 +144,9 @@ impl Clone for SparkPaneState {
             identity_path: self.identity_path.clone(),
             network_status: self.network_status.clone(),
             balance: self.balance.clone(),
+            pending_balance_confirmation_payment_id: self
+                .pending_balance_confirmation_payment_id
+                .clone(),
             spark_address: self.spark_address.clone(),
             bitcoin_address: self.bitcoin_address.clone(),
             recent_payments: self.recent_payments.clone(),
@@ -171,6 +175,7 @@ impl SparkPaneState {
             identity_path: None,
             network_status: None,
             balance: None,
+            pending_balance_confirmation_payment_id: None,
             spark_address: None,
             bitcoin_address: None,
             recent_payments: Vec::new(),
@@ -489,13 +494,17 @@ impl SparkPaneState {
         ) {
             Ok(id) => id,
             Err(error) => {
+                self.last_action = Some("Payment send failed".to_string());
                 self.last_error = Some(format!("Failed to send payment: {error}"));
                 return None;
             }
         };
 
         self.last_payment_id = Some(payment_id.clone());
-        self.last_action = Some(format!("Payment sent ({payment_id})"));
+        self.pending_balance_confirmation_payment_id = Some(payment_id.clone());
+        self.last_action = Some(format!(
+            "Payment sent ({payment_id}); awaiting Spark confirmation for balance refresh"
+        ));
         self.refresh_balance_and_payments(runtime);
         Some(payment_id)
     }
@@ -553,19 +562,18 @@ impl SparkPaneState {
             return;
         };
 
-        match run_with_timeout(
+        let fetched_balance = match run_with_timeout(
             runtime,
             "Fetch Spark balance",
             SPARK_ACTION_TIMEOUT,
             wallet.get_balance(),
         ) {
-            Ok(balance) => {
-                self.balance = Some(balance);
-            }
+            Ok(balance) => Some(balance),
             Err(error) => {
                 self.last_error = Some(format!("Failed to fetch balance: {error}"));
+                None
             }
-        }
+        };
 
         match run_with_timeout(
             runtime,
@@ -574,13 +582,70 @@ impl SparkPaneState {
             wallet.list_payments(Some(25), None),
         ) {
             Ok(payments) => {
+                self.apply_balance_refresh_with_payment_confirmation(
+                    fetched_balance,
+                    payments.as_slice(),
+                );
                 self.recent_payments = payments.into_iter().take(10).collect();
             }
             Err(error) => {
                 self.last_error = Some(format!("Failed to list payments: {error}"));
+                if self.pending_balance_confirmation_payment_id.is_none()
+                    && let Some(balance) = fetched_balance
+                {
+                    self.balance = Some(balance);
+                }
             }
         }
     }
+
+    fn apply_balance_refresh_with_payment_confirmation(
+        &mut self,
+        fetched_balance: Option<Balance>,
+        payments: &[PaymentSummary],
+    ) {
+        let Some(balance) = fetched_balance else {
+            return;
+        };
+
+        let Some(payment_id) = self.pending_balance_confirmation_payment_id.as_deref() else {
+            self.balance = Some(balance);
+            return;
+        };
+
+        let Some(payment) = payments.iter().find(|payment| payment.id == payment_id) else {
+            self.last_action = Some(format!(
+                "Payment sent ({payment_id}); awaiting Spark confirmation for balance refresh"
+            ));
+            return;
+        };
+
+        if !is_terminal_wallet_payment_status(payment.status.as_str()) {
+            self.last_action = Some(format!(
+                "Payment sent ({payment_id}); Spark still reports {}",
+                payment.status
+            ));
+            return;
+        }
+
+        self.balance = Some(balance);
+        self.pending_balance_confirmation_payment_id = None;
+    }
+}
+
+pub(crate) fn is_settled_wallet_payment_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "succeeded" | "success" | "settled" | "completed" | "confirmed"
+    )
+}
+
+pub(crate) fn is_terminal_wallet_payment_status(status: &str) -> bool {
+    is_settled_wallet_payment_status(status)
+        || matches!(
+            status.to_ascii_lowercase().as_str(),
+            "failed" | "error" | "expired" | "cancelled" | "canceled" | "rejected"
+        )
 }
 
 fn timeout_message(action: &str, timeout: Duration) -> String {
@@ -676,11 +741,13 @@ mod tests {
     use super::{
         DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
         SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
-        SparkWalletWorker, configured_api_key, configured_network, run_with_timeout,
+        SparkWalletWorker, configured_api_key, configured_network,
+        is_settled_wallet_payment_status, is_terminal_wallet_payment_status, run_with_timeout,
         timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
+    use openagents_spark::{Balance, PaymentSummary};
     use std::collections::HashMap;
     use std::sync::Mutex;
     use std::time::Duration;
@@ -897,6 +964,75 @@ mod tests {
             assert!(error.contains("No identity mnemonic found"));
             assert!(state.last_payment_id.is_none());
         });
+    }
+
+    #[test]
+    fn balance_refresh_waits_for_terminal_payment_status() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        state.balance = Some(Balance {
+            spark_sats: 100,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        state.pending_balance_confirmation_payment_id = Some("pay-123".to_string());
+
+        state.apply_balance_refresh_with_payment_confirmation(
+            Some(Balance {
+                spark_sats: 80,
+                lightning_sats: 0,
+                onchain_sats: 0,
+            }),
+            &[PaymentSummary {
+                id: "pay-123".to_string(),
+                direction: "send".to_string(),
+                status: "pending".to_string(),
+                amount_sats: 20,
+                timestamp: 1,
+            }],
+        );
+
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(100));
+        assert_eq!(
+            state.pending_balance_confirmation_payment_id.as_deref(),
+            Some("pay-123")
+        );
+    }
+
+    #[test]
+    fn balance_refresh_applies_after_terminal_payment_status() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        state.balance = Some(Balance {
+            spark_sats: 100,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        state.pending_balance_confirmation_payment_id = Some("pay-123".to_string());
+
+        state.apply_balance_refresh_with_payment_confirmation(
+            Some(Balance {
+                spark_sats: 80,
+                lightning_sats: 0,
+                onchain_sats: 0,
+            }),
+            &[PaymentSummary {
+                id: "pay-123".to_string(),
+                direction: "send".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 20,
+                timestamp: 1,
+            }],
+        );
+
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
+        assert_eq!(state.pending_balance_confirmation_payment_id, None);
+    }
+
+    #[test]
+    fn payment_status_helpers_match_terminal_and_settled_states() {
+        assert!(is_settled_wallet_payment_status("completed"));
+        assert!(is_terminal_wallet_payment_status("completed"));
+        assert!(is_terminal_wallet_payment_status("failed"));
+        assert!(!is_terminal_wallet_payment_status("pending"));
     }
 
     fn with_missing_identity_env(test: impl FnOnce()) {

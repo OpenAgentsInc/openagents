@@ -1,5 +1,6 @@
 use crate::app_state::{EarnFailureClass, RenderState};
-use qrcode::{render::unicode::Dense1x2, QrCode};
+use crate::spark_wallet::{is_settled_wallet_payment_status, is_terminal_wallet_payment_status};
+use qrcode::{QrCode, render::unicode::Dense1x2};
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     let previous_invoice = state.spark_wallet.last_invoice.clone();
@@ -63,47 +64,11 @@ fn reconcile_spark_wallet_update(
         previous_error.as_deref(),
     );
 
-    if state.spark_wallet.last_payment_id != previous_payment_id
-        && let Some(request_id) = state
-            .network_requests
-            .pending_auto_payment_request_id
-            .clone()
-        && let Some(payment_pointer) = state.spark_wallet.last_payment_id.as_deref()
-        && state
-            .spark_wallet
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.starts_with("Payment sent"))
-    {
-        let now_epoch_seconds = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_secs());
-        state.network_requests.mark_auto_payment_sent(
-            request_id.as_str(),
-            payment_pointer,
-            now_epoch_seconds,
-        );
-        state.provider_runtime.last_result = Some(format!(
-            "buyer payment settled request={} pointer={}",
-            request_id, payment_pointer
-        ));
-    }
-
-    if let Some(request_id) = state
-        .network_requests
-        .pending_auto_payment_request_id
-        .clone()
-        && let Some(error) = state.spark_wallet.last_error.as_deref()
-    {
-        let now_epoch_seconds = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_secs());
-        state.network_requests.mark_auto_payment_failed(
-            request_id.as_str(),
-            error,
-            now_epoch_seconds,
-        );
-    }
+    reconcile_pending_buyer_payment_confirmation(
+        state,
+        previous_payment_id.as_deref(),
+        previous_error.as_deref(),
+    );
 
     if state.spark_wallet.last_error.is_some() {
         state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
@@ -126,6 +91,89 @@ fn lightning_invoice_uri(invoice: &str) -> String {
     } else {
         format!("lightning:{trimmed}")
     }
+}
+
+fn reconcile_pending_buyer_payment_confirmation(
+    state: &mut RenderState,
+    previous_payment_id: Option<&str>,
+    previous_error: Option<&str>,
+) {
+    let Some(request_id) = state
+        .network_requests
+        .pending_auto_payment_request_id
+        .clone()
+    else {
+        return;
+    };
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    if state.spark_wallet.last_error.as_deref() != previous_error
+        && let Some(error) = state.spark_wallet.last_error.as_deref()
+        && state
+            .spark_wallet
+            .last_action
+            .as_deref()
+            .is_some_and(|action| action.starts_with("Payment send failed"))
+    {
+        state.network_requests.mark_auto_payment_failed(
+            request_id.as_str(),
+            error,
+            now_epoch_seconds,
+        );
+        return;
+    }
+
+    let Some(payment_pointer) = state.spark_wallet.last_payment_id.as_deref() else {
+        return;
+    };
+    let Some(payment) = state
+        .spark_wallet
+        .recent_payments
+        .iter()
+        .find(|payment| payment.id == payment_pointer)
+    else {
+        if state.spark_wallet.last_payment_id.as_deref() != previous_payment_id {
+            state.provider_runtime.last_result = Some(format!(
+                "buyer payment pending Spark confirmation request={} pointer={}",
+                request_id, payment_pointer
+            ));
+        }
+        return;
+    };
+
+    if is_settled_wallet_payment_status(payment.status.as_str()) {
+        state.network_requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            payment_pointer,
+            now_epoch_seconds,
+        );
+        state.provider_runtime.last_result = Some(format!(
+            "buyer payment settled request={} pointer={}",
+            request_id, payment_pointer
+        ));
+        return;
+    }
+
+    if is_terminal_wallet_payment_status(payment.status.as_str()) {
+        state.network_requests.mark_auto_payment_failed(
+            request_id.as_str(),
+            format!(
+                "Spark payment {} for {} is {}",
+                payment_pointer, request_id, payment.status
+            )
+            .as_str(),
+            now_epoch_seconds,
+        );
+        return;
+    }
+
+    state.provider_runtime.last_result = Some(format!(
+        "buyer payment pending Spark confirmation request={} pointer={} status={}",
+        request_id, payment_pointer, payment.status
+    ));
 }
 
 fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {
@@ -159,8 +207,7 @@ fn reconcile_provider_settlement_invoice_state(
         active_job.pending_bolt11 = Some(invoice.to_string());
         active_job.append_event("generated Spark BOLT11 settlement invoice for provider payout");
         provider_runtime.last_result = Some(
-            "provider settlement invoice generated; queueing payment-required feedback"
-                .to_string(),
+            "provider settlement invoice generated; queueing payment-required feedback".to_string(),
         );
     }
 
@@ -223,10 +270,7 @@ mod tests {
     fn fixture_delivered_active_job(request_id: &str) -> ActiveJobState {
         let mut active_job = ActiveJobState::default();
         active_job.start_from_request(&fixture_request(request_id));
-        let job = active_job
-            .job
-            .as_mut()
-            .expect("active job should exist");
+        let job = active_job.job.as_mut().expect("active job should exist");
         job.stage = JobLifecycleStage::Delivered;
         active_job
     }
@@ -255,11 +299,14 @@ mod tests {
             Some("lnbc20n1providerready")
         );
         assert!(
-            active_job.job.as_ref().is_some_and(|job| job.events.iter().any(|event| {
-                event
-                    .message
-                    .contains("generated Spark BOLT11 settlement invoice")
-            }))
+            active_job
+                .job
+                .as_ref()
+                .is_some_and(|job| job.events.iter().any(|event| {
+                    event
+                        .message
+                        .contains("generated Spark BOLT11 settlement invoice")
+                }))
         );
     }
 
