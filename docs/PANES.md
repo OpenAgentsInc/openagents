@@ -46,8 +46,10 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
-  - Mission Control is FM-first on macOS: it shows Apple FM readiness, opens the Apple FM workbench, and keeps `GO ONLINE` disabled until the active local runtime is ready.
-  - GPT-OSS loading and troubleshooting are no longer owned by Mission Control; NVIDIA hosts use the separate `GPT-OSS Workbench` pane for that flow.
+  - `v0.1` production default is fullscreen Mission Control with no pane workspace chrome, hotbar, or command-palette dependency.
+  - Mission Control is Apple FM-only in the production path: it shows Apple FM readiness, starts or refreshes the bridge inline, and keeps `GO ONLINE` disabled until Apple FM, wallet, and provider readiness are honest.
+  - Mission Control now includes the inline Lightning withdraw entry point, so the first paid-job loop no longer requires opening the separate wallet pay-invoice pane.
+  - Dev mode still retains separate workbench/debug panes, including the NVIDIA `GPT-OSS Workbench` path on supported non-macOS hosts.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
   - Action: toggle online/offline.
