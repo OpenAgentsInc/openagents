@@ -1097,16 +1097,6 @@ fn paint_go_online_pane(
         }
         SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
     };
-    let bitcoin_target_text = spark_wallet
-        .bitcoin_address
-        .as_deref()
-        .filter(|address| !address.trim().is_empty())
-        .unwrap_or("Generate a Bitcoin address to fund this wallet on-chain.")
-        .to_string();
-    let bitcoin_target_ready = spark_wallet
-        .bitcoin_address
-        .as_deref()
-        .is_some_and(|address| !address.trim().is_empty());
     let load_funds_clip = mission_control_section_clip_bounds(layout.load_funds_panel);
     paint.scene.push_clip(load_funds_clip);
     paint.scene.draw_text(paint.text.layout_mono(
@@ -1160,20 +1150,6 @@ fn paint_go_online_pane(
         paint,
     );
     paint_mission_control_command_button(
-        load_funds_layout.bitcoin_button,
-        "BITCOIN ADDRESS",
-        mission_control_orange_color(),
-        true,
-        paint,
-    );
-    paint_mission_control_command_button(
-        load_funds_layout.copy_bitcoin_button,
-        "COPY BITCOIN",
-        mission_control_cyan_color(),
-        bitcoin_target_ready,
-        paint,
-    );
-    paint_mission_control_command_button(
         mission_control_copy_seed_button_bounds(content_bounds, buy_mode_enabled),
         "COPY SEED",
         mission_control_cyan_color(),
@@ -1215,36 +1191,12 @@ fn paint_go_online_pane(
         load_funds_layout.details_column.size.width,
         true,
     );
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Bitcoin",
-        if bitcoin_target_ready {
-            "READY"
-        } else {
-            "EMPTY"
-        },
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
     load_funds_y = paint_mission_control_body_block(
         paint,
         load_funds_layout.details_column.origin.x,
         load_funds_y,
         "Lightning target",
         &lightning_target_text,
-        load_funds_body_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_mission_control_body_block(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Bitcoin target",
-        &bitcoin_target_text,
         load_funds_body_chunk_len,
         load_funds_layout.details_column.size.width,
         true,

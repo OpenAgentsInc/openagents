@@ -339,8 +339,6 @@ pub enum MissionControlPaneAction {
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
     SendLightningPayment,
-    GenerateBitcoinReceiveAddress,
-    CopyBitcoinReceiveAddress,
     CopySeedPhrase,
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
@@ -2051,8 +2049,6 @@ pub struct MissionControlLoadFundsLayout {
     pub copy_lightning_button: Bounds,
     pub send_invoice_input: Bounds,
     pub send_lightning_button: Bounds,
-    pub bitcoin_button: Bounds,
-    pub copy_bitcoin_button: Bounds,
     pub copy_seed_button: Bounds,
 }
 
@@ -2301,8 +2297,8 @@ pub fn mission_control_load_funds_layout(
     );
     let control_gap = 4.0;
     let control_top_inset = 4.0;
-    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 4.0)
-        / 5.0)
+    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 3.0)
+        / 4.0)
         .clamp(14.0, 24.0);
     let amount_input = Bounds::new(
         controls_column.origin.x,
@@ -2341,18 +2337,6 @@ pub fn mission_control_load_funds_layout(
         half_width,
         control_height,
     );
-    let bitcoin_button = Bounds::new(
-        controls_column.origin.x,
-        send_lightning_button.max_y() + control_gap,
-        half_width,
-        control_height,
-    );
-    let copy_bitcoin_button = Bounds::new(
-        bitcoin_button.max_x() + control_gap,
-        bitcoin_button.origin.y,
-        half_width,
-        control_height,
-    );
 
     MissionControlLoadFundsLayout {
         panel,
@@ -2363,8 +2347,6 @@ pub fn mission_control_load_funds_layout(
         copy_lightning_button,
         send_invoice_input,
         send_lightning_button,
-        bitcoin_button,
-        copy_bitcoin_button,
         copy_seed_button,
     }
 }
@@ -2402,20 +2384,6 @@ pub fn mission_control_send_lightning_button_bounds(
     buy_mode_enabled: bool,
 ) -> Bounds {
     mission_control_load_funds_layout(content_bounds, buy_mode_enabled).send_lightning_button
-}
-
-pub fn mission_control_bitcoin_receive_button_bounds(
-    content_bounds: Bounds,
-    buy_mode_enabled: bool,
-) -> Bounds {
-    mission_control_load_funds_layout(content_bounds, buy_mode_enabled).bitcoin_button
-}
-
-pub fn mission_control_copy_bitcoin_button_bounds(
-    content_bounds: Bounds,
-    buy_mode_enabled: bool,
-) -> Bounds {
-    mission_control_load_funds_layout(content_bounds, buy_mode_enabled).copy_bitcoin_button
 }
 
 pub fn mission_control_copy_seed_button_bounds(
@@ -4700,11 +4668,6 @@ fn pane_hit_action_for_pane(
                 state.spark_wallet.last_invoice_state(now_epoch_seconds),
                 crate::spark_wallet::SparkInvoiceState::Ready
             );
-            let bitcoin_copy_enabled = state
-                .spark_wallet
-                .bitcoin_address
-                .as_deref()
-                .is_some_and(|address| !address.trim().is_empty());
             let lightning_send_enabled = !state.mission_control.send_invoice.get_value().trim().is_empty();
             let seed_copy_enabled = state
                 .nostr_identity
@@ -4747,22 +4710,6 @@ fn pane_hit_action_for_pane(
             {
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::SendLightningPayment,
-                ))
-            } else if mission_control_bitcoin_receive_button_bounds(
-                content_bounds,
-                buy_mode_enabled,
-            )
-            .contains(point)
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::GenerateBitcoinReceiveAddress,
-                ))
-            } else if mission_control_copy_bitcoin_button_bounds(content_bounds, buy_mode_enabled)
-                .contains(point)
-                && bitcoin_copy_enabled
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::CopyBitcoinReceiveAddress,
                 ))
             } else if mission_control_copy_seed_button_bounds(content_bounds, buy_mode_enabled)
                 .contains(point)
@@ -6464,8 +6411,6 @@ mod tests {
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
-        assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(load_funds.details_column.max_x() <= layout.load_funds_panel.max_x());
         assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
     }
@@ -6487,8 +6432,6 @@ mod tests {
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
-        assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
     }
 
@@ -6498,12 +6441,12 @@ mod tests {
         let send_input = mission_control_send_invoice_input_bounds(content_bounds, true);
         let send_button = mission_control_send_lightning_button_bounds(content_bounds, true);
         let copy_seed = mission_control_copy_seed_button_bounds(content_bounds, true);
-        let copy_bitcoin = super::mission_control_copy_bitcoin_button_bounds(content_bounds, true);
 
         assert!(send_input.max_y() <= send_button.origin.y);
         assert_eq!(send_button.origin.y, copy_seed.origin.y);
         assert!(send_button.max_x() <= copy_seed.origin.x);
-        assert!(copy_seed.max_y() <= copy_bitcoin.origin.y);
+        assert!(send_button.size.height >= 20.0);
+        assert!(copy_seed.size.height >= 20.0);
     }
 
     #[test]
