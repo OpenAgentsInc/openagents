@@ -384,8 +384,11 @@ impl AppleFmLocalBridge {
             }
         }
         if self.child.is_none() {
-            let binary = find_bridge_binary().ok_or_else(|| {
-                "Apple FM bridge binary not found. Build swift/foundation-bridge first.".to_string()
+            let binary = find_bridge_binary().or_else(|| {
+                try_build_bridge(snapshot);
+                find_bridge_binary()
+            }).ok_or_else(|| {
+                "Apple FM bridge binary not found and auto-build failed (need Xcode/Swift; see swift/foundation-bridge/README.md).".to_string()
             })?;
             let port = port_from_base_url(config.base_url.as_str()).unwrap_or(11435);
             let child = Command::new(binary)
@@ -1623,6 +1626,42 @@ fn port_from_base_url(base_url: &str) -> Option<u16> {
         .and_then(|url| url.port_or_known_default())
 }
 
+/// Walks up from the current executable path to find the repo root (directory
+/// containing swift/foundation-bridge or bin/foundation-bridge). Ensures the
+/// app finds the bridge regardless of current working directory.
+fn find_repo_root_from_exe() -> Option<PathBuf> {
+    let mut dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from))?;
+    loop {
+        if !dir.as_os_str().is_empty()
+            && (dir.join("swift/foundation-bridge").exists() || dir.join("bin/foundation-bridge").exists())
+        {
+            return Some(dir);
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+}
+
+/// Tries to build the foundation-bridge via build.sh. Returns true if build
+/// succeeded and the binary is now present. Updates snapshot.last_action for UI.
+fn try_build_bridge(snapshot: &mut AppleFmBridgeSnapshot) -> bool {
+    let root = match find_repo_root_from_exe() {
+        Some(r) => r,
+        None => return false,
+    };
+    let bridge_dir = root.join("swift/foundation-bridge");
+    if !bridge_dir.exists() {
+        return false;
+    }
+    snapshot.last_action = Some("Building Apple FM bridge...".to_string());
+    let status = Command::new("./build.sh")
+        .current_dir(&bridge_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status();
+    matches!(status, Ok(s) if s.success())
+}
+
 fn find_bridge_binary() -> Option<PathBuf> {
     if let Ok(path) = std::env::var(ENV_APPLE_FM_BRIDGE_BIN) {
         let candidate = PathBuf::from(path);
@@ -1631,22 +1670,39 @@ fn find_bridge_binary() -> Option<PathBuf> {
         }
     }
 
-    let candidates = [
+    // CWD-relative (e.g. when run from repo root).
+    let cwd_candidates = [
         PathBuf::from("bin/foundation-bridge"),
         PathBuf::from("swift/foundation-bridge/.build/release/foundation-bridge"),
         PathBuf::from(
             "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
         ),
     ];
-    for candidate in candidates {
+    for candidate in &cwd_candidates {
         if candidate.exists() {
-            return Some(candidate);
+            return Some(candidate.clone());
         }
     }
+
+    // Exe-relative repo root (works when run from target/debug or anywhere under repo).
+    if let Some(root) = find_repo_root_from_exe() {
+        let repo_candidates = [
+            root.join("bin/foundation-bridge"),
+            root.join("swift/foundation-bridge/.build/release/foundation-bridge"),
+            root.join("swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge"),
+        ];
+        for candidate in &repo_candidates {
+            if candidate.exists() {
+                return Some(candidate.clone());
+            }
+        }
+    }
+
+    // Bundled next to executable (e.g. packaged .app).
     std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|dir| dir.join("foundation-bridge")))
-        .filter(|candidate| candidate.exists())
+        .filter(|candidate: &PathBuf| candidate.exists())
 }
 
 #[cfg(test)]
