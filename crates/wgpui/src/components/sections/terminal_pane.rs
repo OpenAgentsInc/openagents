@@ -1,5 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
+use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,6 +120,44 @@ impl TerminalPane {
     }
 }
 
+fn wrap_terminal_text(text: &str, max_chars: usize) -> Vec<String> {
+    let max_chars = max_chars.max(1);
+    let mut wrapped = Vec::new();
+
+    for raw_line in text.split('\n') {
+        let chars: Vec<char> = raw_line.chars().collect();
+        if chars.is_empty() {
+            wrapped.push(String::new());
+            continue;
+        }
+
+        let mut start = 0usize;
+        while start < chars.len() {
+            let mut end = (start + max_chars).min(chars.len());
+            if end < chars.len()
+                && let Some(rel) = chars[start..end].iter().rposition(|ch| ch.is_whitespace())
+                && rel > 0
+            {
+                end = start + rel;
+            }
+
+            let chunk = chars[start..end]
+                .iter()
+                .collect::<String>()
+                .trim_end()
+                .to_string();
+            wrapped.push(chunk);
+
+            start = end;
+            while start < chars.len() && chars[start].is_whitespace() {
+                start += 1;
+            }
+        }
+    }
+
+    wrapped
+}
+
 impl Default for TerminalPane {
     fn default() -> Self {
         Self::new()
@@ -135,10 +174,19 @@ impl Component for TerminalPane {
             );
         }
 
-        let header_height = if self.title.trim().is_empty() { 0.0 } else { 24.0 };
+        let font_size = theme::font_size::XS;
+        let header_height = if self.title.trim().is_empty() {
+            0.0
+        } else {
+            24.0
+        };
         if header_height > 0.0 {
-            let header_bounds =
-                Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, header_height);
+            let header_bounds = Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bounds.size.width,
+                header_height,
+            );
             let header_text = cx.text.layout_mono(
                 &self.title,
                 Point::new(header_bounds.origin.x + 10.0, header_bounds.origin.y + 6.0),
@@ -176,23 +224,42 @@ impl Component for TerminalPane {
             );
         }
 
-        self.content_height = self.lines.len() as f32 * self.line_height;
+        let char_width = cx
+            .text
+            .measure_styled_mono("W", font_size, FontStyle::default())
+            .max(1.0);
+        let max_chars = ((text_bounds.size.width / char_width).floor() as usize).max(1);
+        let wrapped_lines = self
+            .lines
+            .iter()
+            .flat_map(|line| {
+                wrap_terminal_text(&line.text, max_chars)
+                    .into_iter()
+                    .map(move |text| TerminalLine::new(line.stream.clone(), text))
+            })
+            .collect::<Vec<_>>();
+
+        self.content_height = wrapped_lines.len() as f32 * self.line_height;
         let max_scroll = (self.content_height - text_bounds.size.height).max(0.0);
-        self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
+        self.scroll_offset = if self.auto_scroll {
+            max_scroll
+        } else {
+            self.scroll_offset.clamp(0.0, max_scroll)
+        };
 
         cx.scene.push_clip(text_bounds);
 
         let mut y = text_bounds.origin.y - self.scroll_offset;
         let line_x = text_bounds.origin.x;
 
-        for line in &self.lines {
+        for line in &wrapped_lines {
             if y > text_bounds.origin.y + text_bounds.size.height {
                 break;
             }
             let run = cx.text.layout_mono(
                 &line.text,
                 Point::new(line_x, y),
-                theme::font_size::XS,
+                font_size,
                 Self::line_color(&line.stream),
             );
             cx.scene.draw_text(run);
@@ -222,7 +289,11 @@ impl Component for TerminalPane {
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         if let InputEvent::Scroll { dy, .. } = event {
-            let header_height = if self.title.trim().is_empty() { 0.0 } else { 24.0 };
+            let header_height = if self.title.trim().is_empty() {
+                0.0
+            } else {
+                24.0
+            };
             let content_height = if self.code_block_style {
                 (bounds.size.height - header_height - 40.0).max(0.0)
             } else {
@@ -241,5 +312,26 @@ impl Component for TerminalPane {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         (None, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_terminal_text;
+
+    #[test]
+    fn wraps_long_terminal_lines() {
+        assert_eq!(
+            wrap_terminal_text("abcdefghij", 4),
+            vec!["abcd", "efgh", "ij"]
+        );
+    }
+
+    #[test]
+    fn prefers_whitespace_when_wrapping_terminal_lines() {
+        assert_eq!(
+            wrap_terminal_text("alpha beta gamma", 10),
+            vec!["alpha", "beta gamma"]
+        );
     }
 }

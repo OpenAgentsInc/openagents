@@ -918,7 +918,7 @@ fn paint_go_online_pane(
         layout.wallet_panel.size.width - 24.0,
         true,
     );
-    let _ = paint_wrapped_label_line_mission_control_label(
+    wallet_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
@@ -1091,9 +1091,9 @@ fn paint_go_online_pane(
     paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", alert_message.1, paint);
     let log_body_bounds = Bounds::new(
         layout.log_stream.origin.x,
-        layout.log_stream.origin.y + 24.0,
+        layout.log_stream.origin.y + 28.0,
         layout.log_stream.size.width,
-        (layout.log_stream.size.height - 24.0).max(0.0),
+        (layout.log_stream.size.height - 28.0).max(0.0),
     );
     mission_control.log_stream.set_title("");
     mission_control.log_stream.paint(log_body_bounds, paint);
@@ -1130,16 +1130,16 @@ fn paint_mission_control_section_panel(
             bounds.origin.x + 4.0,
             bounds.origin.y,
             (bounds.size.width - 4.0).max(0.0),
-            18.0,
+            22.0,
         ))
         .with_background(accent.with_alpha(0.12)),
     );
 
     if !title.is_empty() {
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("\\ {title}"),
-            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
-            12.0,
+            &format!("\\\\ {title}"),
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 6.0),
+            11.0,
             accent,
         ));
     }
@@ -1202,7 +1202,7 @@ fn paint_mission_control_alert_band(
     );
     paint.scene.draw_text(paint.text.layout_mono(
         text,
-        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 16.0),
+        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 8.0),
         11.0,
         mission_control_text_color(),
     ));
