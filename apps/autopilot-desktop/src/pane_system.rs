@@ -2078,7 +2078,7 @@ pub fn mission_control_layout_for_mode(
         content_bounds.origin.x + outer_pad,
         content_bounds.origin.y + outer_pad,
         (content_bounds.size.width - outer_pad * 2.0).max(0.0),
-        36.0,
+        42.0,
     );
     let alert_band = Bounds::new(
         status_row.origin.x,
@@ -2252,7 +2252,7 @@ pub fn mission_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bo
 
 fn mission_control_actions_row_bounds(content_bounds: Bounds, row: usize) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
-    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
+    let gap = ((panel.size.height * 0.08).clamp(6.0, 10.0) + 3.0).clamp(9.0, 13.0);
     let available_height = (panel.size.height - gap * 3.0).max(0.0);
     let height = (available_height / 4.0).min(28.0);
     let total_height = height * 4.0 + gap * 3.0;

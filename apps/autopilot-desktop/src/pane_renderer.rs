@@ -71,7 +71,7 @@ use crate::panes::{
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
-use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
 
@@ -625,6 +625,7 @@ fn paint_go_online_pane(
         "MODE",
         &status_label,
         status_color,
+        12.0,
         paint,
     );
     paint_mission_control_status_cell(
@@ -641,6 +642,7 @@ fn paint_go_online_pane(
             local_inference_runtime,
         ),
         mission_control_cyan_color(),
+        12.0,
         paint,
     );
     paint_mission_control_status_cell(
@@ -657,6 +659,7 @@ fn paint_go_online_pane(
         } else {
             mission_control_amber_color()
         },
+        12.0,
         paint,
     );
     paint_mission_control_status_cell(
@@ -673,6 +676,7 @@ fn paint_go_online_pane(
         } else {
             mission_control_orange_color()
         },
+        12.0,
         paint,
     );
     paint_mission_control_alert_band(
@@ -685,7 +689,7 @@ fn paint_go_online_pane(
     paint_mission_control_section_panel(
         layout.sell_panel,
         "SELL COMPUTE",
-        mission_control_orange_color(),
+        mission_control_green_color(),
         paint,
     );
     paint_mission_control_section_panel(
@@ -697,7 +701,7 @@ fn paint_go_online_pane(
     paint_mission_control_section_panel(
         layout.wallet_panel,
         "WALLET",
-        mission_control_cyan_color(),
+        mission_control_green_color(),
         paint,
     );
     paint_mission_control_command_button(
@@ -1247,6 +1251,73 @@ fn paint_go_online_pane(
         "ACTIVE" => ("ACTIVE", mission_control_green_color()),
         _ => ("SCANNING", mission_control_cyan_color()),
     };
+    if provider_runtime.mode == crate::app_state::ProviderMode::Online {
+        let anim_t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f32())
+            .unwrap_or(0.0);
+        let scan_bounds = Bounds::new(
+            layout.active_jobs_panel.origin.x + 10.0,
+            layout.active_jobs_panel.origin.y + 30.0,
+            (layout.active_jobs_panel.size.width - 20.0).max(0.0),
+            (layout.active_jobs_panel.size.height - 40.0).max(0.0),
+        );
+        if scan_bounds.size.width > 1.0 && scan_bounds.size.height > 1.0 {
+            let scan_width = 120.0;
+            let inner_width = 42.0;
+            let lead_width = 2.0;
+            let travel = scan_bounds.size.width + scan_width;
+            let phase = (anim_t * 260.0 + scan_bounds.origin.x * 0.2).rem_euclid(travel);
+            let scan_x = scan_bounds.origin.x - scan_width + phase;
+
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    scan_x,
+                    scan_bounds.origin.y,
+                    scan_width,
+                    scan_bounds.size.height,
+                ))
+                .with_background(mission_control_cyan_color().with_alpha(0.12)),
+            );
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    scan_x + (scan_width - inner_width) * 0.5,
+                    scan_bounds.origin.y,
+                    inner_width,
+                    scan_bounds.size.height,
+                ))
+                .with_background(mission_control_cyan_color().with_alpha(0.20)),
+            );
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    scan_x + scan_width - lead_width,
+                    scan_bounds.origin.y,
+                    lead_width,
+                    scan_bounds.size.height,
+                ))
+                .with_background(mission_control_cyan_color().with_alpha(0.56)),
+            );
+
+            let dot_blink = ((anim_t * 8.0).sin() * 0.5) + 0.5;
+            let dot_x = (scan_x + scan_width + 6.0).min(scan_bounds.max_x() - 4.0);
+            let dot_start_y = scan_bounds.origin.y + 8.0;
+            for idx in 0..3 {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        dot_x,
+                        dot_start_y + idx as f32 * 10.0,
+                        4.0,
+                        4.0,
+                    ))
+                    .with_background(
+                        mission_control_cyan_color()
+                            .with_alpha(0.26 + dot_blink * (0.34 - idx as f32 * 0.07)),
+                    )
+                    .with_corner_radius(2.0),
+                );
+            }
+        }
+    }
     paint.scene.draw_text(paint.text.layout_mono(
         active_state.0,
         Point::new(
@@ -1285,7 +1356,12 @@ fn paint_go_online_pane(
         );
     }
 
-    paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", alert_message.1, paint);
+    paint_mission_control_section_panel(
+        layout.log_stream,
+        "LOG STREAM",
+        mission_control_orange_color(),
+        paint,
+    );
     paint_action_button(
         mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled),
         "Copy log",
@@ -1296,6 +1372,11 @@ fn paint_go_online_pane(
         layout.log_stream.origin.y + 28.0,
         layout.log_stream.size.width,
         (layout.log_stream.size.height - 28.0).max(0.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(log_body_bounds)
+            .with_background(mission_control_background_color().with_alpha(0.75))
+            .with_corner_radius(4.0),
     );
     mission_control.log_stream.set_title("");
     mission_control.log_stream.paint(log_body_bounds, paint);
@@ -1312,37 +1393,82 @@ fn paint_mission_control_section_panel(
     if width <= 1.0 || height <= 1.0 {
         return;
     }
+    let anim_t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f32())
+        .unwrap_or(0.0);
+    let pulse = ((anim_t * 5.0 + bounds.origin.x * 0.015).sin() * 0.5) + 0.5;
 
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_color())
-            .with_border(mission_control_panel_border_color(), 1.0),
+            .with_border(mission_control_panel_border_color(), 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x - 1.0,
+            bounds.origin.y - 1.0,
+            bounds.size.width + 2.0,
+            bounds.size.height + 2.0,
+        ))
+        .with_border(accent.with_alpha(0.04 + pulse * 0.06), 1.0)
+        .with_corner_radius(7.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
-            4.0,
+            5.0,
             bounds.size.height,
         ))
-        .with_background(accent.with_alpha(0.85)),
+        .with_background(accent.with_alpha(0.74 + pulse * 0.18))
+        .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x + 4.0,
+            bounds.origin.x + 5.0,
             bounds.origin.y,
-            (bounds.size.width - 4.0).max(0.0),
-            22.0,
+            (bounds.size.width - 5.0).max(0.0),
+            28.0,
         ))
-        .with_background(accent.with_alpha(0.12)),
+        .with_background(mission_control_panel_header_color().with_alpha(0.95)),
     );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 5.0,
+            bounds.origin.y,
+            (bounds.size.width - 5.0).max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.35)),
+    );
+    let shimmer_track = (bounds.size.width - 30.0).max(1.0);
+    let shimmer_phase = (anim_t * 420.0 + bounds.origin.x * 0.07).rem_euclid(shimmer_track);
+    let shimmer_x = bounds.origin.x + 6.0 + shimmer_phase;
+    let shimmer_width = 22.0_f32.min((bounds.max_x() - 6.0 - shimmer_x).max(0.0));
+    if shimmer_width > 0.5 {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                shimmer_x,
+                bounds.origin.y + 1.0,
+                shimmer_width,
+                1.0,
+            ))
+            .with_background(accent.with_alpha(0.28)),
+        );
+    }
 
     if !title.is_empty() {
+        let marker_origin = Point::new(bounds.origin.x + 14.0, bounds.origin.y + 8.0);
+        let marker = paint.text.layout_mono("\\\\", marker_origin, 10.0, accent);
+        let marker_width = marker.bounds().size.width;
+        paint.scene.draw_text(marker);
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("\\\\ {title}"),
-            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 6.0),
-            11.0,
-            accent,
+            title,
+            Point::new(marker_origin.x + marker_width + 6.0, marker_origin.y),
+            10.0,
+            mission_control_text_color(),
         ));
     }
 }
@@ -1393,6 +1519,7 @@ fn paint_mission_control_buy_mode_panel(
             label,
             value.as_str(),
             mission_control_cyan_color(),
+            12.0,
             paint,
         );
     }
@@ -1684,36 +1811,66 @@ fn paint_mission_control_status_cell(
     label: &str,
     value: &str,
     value_color: Hsla,
+    value_font_size: f32,
     paint: &mut PaintContext,
 ) {
+    let anim_t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f32())
+        .unwrap_or(0.0);
+    let blink = ((anim_t * 9.6 + bounds.origin.x * 0.04).sin() * 0.5) + 0.5;
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_color())
-            .with_border(mission_control_panel_border_color(), 1.0),
+            .with_border(mission_control_panel_border_color(), 1.0)
+            .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
             bounds.size.width,
-            2.0,
+            18.0,
         ))
-        .with_background(value_color.with_alpha(0.85)),
+        .with_background(mission_control_panel_header_color().with_alpha(0.95)),
     );
-    let label_y = bounds.origin.y + 6.0;
-    let value_y = bounds.origin.y + 20.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 8.0,
+            bounds.origin.y + 5.0,
+            10.0,
+            10.0,
+        ))
+        .with_background(value_color.with_alpha(0.10 + blink * 0.12))
+        .with_corner_radius(5.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 10.0,
+            bounds.origin.y + 7.0,
+            6.0,
+            6.0,
+        ))
+        .with_background(value_color.with_alpha(0.55 + blink * 0.45))
+        .with_corner_radius(3.0),
+    );
+    let label_y = bounds.origin.y + 4.0;
+    let value_area_y = bounds.origin.y + 18.0;
+    let value_area_h = (bounds.size.height - 18.0).max(0.0);
+    let mut value_run = paint
+        .text
+        .layout_mono(value, Point::ZERO, value_font_size, value_color);
+    let value_bounds = value_run.bounds();
+    let value_y = value_area_y + ((value_area_h - value_bounds.size.height).max(0.0) * 0.5)
+        - value_bounds.origin.y;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
-        Point::new(bounds.origin.x + 10.0, label_y),
+        Point::new(bounds.origin.x + 22.0, label_y),
         9.0,
         mission_control_muted_color(),
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        value,
-        Point::new(bounds.origin.x + 10.0, value_y),
-        11.0,
-        value_color,
-    ));
+    value_run.origin = Point::new(bounds.origin.x + 14.0 - value_bounds.origin.x, value_y);
+    paint.scene.draw_text(value_run);
 }
 
 fn paint_mission_control_alert_band(
@@ -1722,30 +1879,58 @@ fn paint_mission_control_alert_band(
     accent: Hsla,
     paint: &mut PaintContext,
 ) {
+    let anim_t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f32())
+        .unwrap_or(0.0);
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(accent.with_alpha(0.10))
-            .with_border(accent.with_alpha(0.72), 1.0),
+            .with_border(accent.with_alpha(0.50), 1.0)
+            .with_corner_radius(4.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
-            10.0,
+            3.0,
             bounds.size.height,
         ))
-        .with_background(accent.with_alpha(0.85)),
+        .with_background(accent.with_alpha(0.95))
+        .with_corner_radius(4.0),
     );
     paint.scene.draw_text(paint.text.layout_mono(
+        "!",
+        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
+        12.0,
+        accent,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
         text,
-        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 8.0),
+        Point::new(bounds.origin.x + 28.0, bounds.origin.y + 8.0),
         11.0,
         mission_control_text_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
+        "X",
+        Point::new(bounds.max_x() - 14.0, bounds.origin.y + 7.0),
+        11.0,
+        accent.with_alpha(0.9),
+    ));
+    let sweep_track = (bounds.size.width - 52.0).max(1.0);
+    let sweep = (anim_t * 520.0 + bounds.origin.x * 0.08).rem_euclid(sweep_track);
+    let sweep_x = bounds.origin.x + 24.0 + sweep;
+    let sweep_width = 16.0_f32.min((bounds.max_x() - 16.0 - sweep_x).max(0.0));
+    if sweep_width > 0.5 {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(sweep_x, bounds.max_y() - 2.0, sweep_width, 1.0))
+                .with_background(accent.with_alpha(0.30)),
+        );
+    }
+    paint.scene.draw_text(paint.text.layout_mono(
         mission_control_truth_legend(),
         Point::new(bounds.origin.x + 16.0, bounds.origin.y + 22.0),
-        10.0,
+        9.0,
         mission_control_muted_color(),
     ));
 }
@@ -1810,43 +1995,47 @@ fn mission_control_alert_message(
 }
 
 fn mission_control_background_color() -> Hsla {
-    Hsla::from_hex(0x060606)
+    Hsla::from_hex(0x070C14)
 }
 
 fn mission_control_panel_color() -> Hsla {
-    Hsla::from_hex(0x101010)
+    Hsla::from_hex(0x0D121A)
+}
+
+fn mission_control_panel_header_color() -> Hsla {
+    Hsla::from_hex(0x121924)
 }
 
 fn mission_control_panel_border_color() -> Hsla {
-    Hsla::from_hex(0x3D3327)
+    Hsla::from_hex(0x263245)
 }
 
 fn mission_control_text_color() -> Hsla {
-    Hsla::from_hex(0xE8E3D7)
+    Hsla::from_hex(0xD8DFF0)
 }
 
 fn mission_control_muted_color() -> Hsla {
-    Hsla::from_hex(0x7F776D)
+    Hsla::from_hex(0x8A909E)
 }
 
 fn mission_control_orange_color() -> Hsla {
-    Hsla::from_hex(0xFF6A00)
+    Hsla::from_hex(0xFFA122)
 }
 
 fn mission_control_amber_color() -> Hsla {
-    Hsla::from_hex(0xFFB300)
+    Hsla::from_hex(0xF9B84D)
 }
 
 fn mission_control_green_color() -> Hsla {
-    Hsla::from_hex(0x7DFF4A)
+    Hsla::from_hex(0x52E06D)
 }
 
 fn mission_control_cyan_color() -> Hsla {
-    Hsla::from_hex(0x46D9D3)
+    Hsla::from_hex(0x2FB7F2)
 }
 
 fn mission_control_red_color() -> Hsla {
-    Hsla::from_hex(0xD71414)
+    Hsla::from_hex(0xF46060)
 }
 
 fn mission_control_mode_color(mode: crate::app_state::ProviderMode) -> Hsla {
@@ -5673,71 +5862,114 @@ fn paint_mission_control_go_online_button(
     _accent: Hsla,
     paint: &mut PaintContext,
 ) {
+    let is_go_online = label == "GO ONLINE";
     let border = if enabled {
-        if label == "GO ONLINE" {
-            mission_control_orange_color()
-        } else {
+        if is_go_online {
             mission_control_green_color()
+        } else {
+            mission_control_orange_color()
         }
     } else {
         mission_control_panel_border_color()
     };
-    let mut pulse_alpha = 0.22;
-    if enabled && label == "GO ONLINE" {
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs_f32())
-            .unwrap_or(0.0);
-        let pulse = ((now_secs * 2.4).sin() * 0.5) + 0.5;
-        pulse_alpha = 0.18 + pulse * 0.18;
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f32())
+        .unwrap_or(0.0);
+    let pulse = ((now_secs * 2.4).sin() * 0.5) + 0.5;
+    let glow_alpha = if enabled && is_go_online {
+        0.14 + pulse * 0.08
+    } else if enabled {
+        0.10
+    } else {
+        0.0
+    };
+    if glow_alpha > 0.0 {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x - 6.0,
+                bounds.origin.y - 6.0,
+                bounds.size.width + 12.0,
+                bounds.size.height + 12.0,
+            ))
+            .with_background(border.with_alpha(glow_alpha * 0.38))
+            .with_border(border.with_alpha(glow_alpha), 1.0)
+            .with_corner_radius(12.0),
+        );
     }
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x - 3.0,
-            bounds.origin.y - 3.0,
-            bounds.size.width + 6.0,
-            bounds.size.height + 6.0,
-        ))
-        .with_border(border.with_alpha(pulse_alpha), 1.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(if enabled {
-                mission_control_panel_color()
-            } else {
-                mission_control_panel_color()
-            })
-            .with_border(border, 1.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            10.0,
-            bounds.size.height,
-        ))
-        .with_background(border.with_alpha(if enabled { 0.9 } else { 0.35 })),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 10.0,
-            bounds.origin.y,
-            (bounds.size.width - 10.0).max(0.0),
-            18.0,
-        ))
-        .with_background(border.with_alpha(0.12)),
-    );
+
+    if is_go_online && enabled {
+        paint.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(Hsla::from_hex(0x142019))
+                .with_border(border, 1.0)
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + 1.0,
+                bounds.origin.y + 1.0,
+                (bounds.size.width - 2.0).max(0.0),
+                (bounds.size.height * 0.56).max(0.0),
+            ))
+            .with_background(border.with_alpha(0.24))
+            .with_corner_radius(3.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + 1.0,
+                bounds.origin.y + bounds.size.height * 0.42,
+                (bounds.size.width - 2.0).max(0.0),
+                (bounds.size.height * 0.58 - 1.0).max(0.0),
+            ))
+            .with_background(Hsla::from_hex(0x111A15).with_alpha(0.92))
+            .with_corner_radius(3.0),
+        );
+    } else if !is_go_online && enabled {
+        paint.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(Hsla::from_hex(0x251A17))
+                .with_border(border, 1.0)
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + 1.0,
+                bounds.origin.y + 1.0,
+                (bounds.size.width - 2.0).max(0.0),
+                (bounds.size.height * 0.56).max(0.0),
+            ))
+            .with_background(border.with_alpha(0.20))
+            .with_corner_radius(3.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + 1.0,
+                bounds.origin.y + bounds.size.height * 0.42,
+                (bounds.size.width - 2.0).max(0.0),
+                (bounds.size.height * 0.58 - 1.0).max(0.0),
+            ))
+            .with_background(Hsla::from_hex(0x2D1B15).with_alpha(0.92))
+            .with_corner_radius(3.0),
+        );
+    } else {
+        paint.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(if enabled {
+                    mission_control_panel_header_color()
+                } else {
+                    mission_control_panel_color()
+                })
+                .with_border(border, 1.0)
+                .with_corner_radius(4.0),
+        );
+    }
     paint_button_label_mono(
-        Bounds::new(
-            bounds.origin.x + 12.0,
-            bounds.origin.y,
-            (bounds.size.width - 24.0).max(0.0),
-            bounds.size.height,
-        ),
+        bounds,
         label,
-        22.0,
+        if is_go_online { 24.0 } else { 18.0 },
         if enabled {
-            mission_control_text_color()
+            Hsla::from_hex(0xFFFFFF)
         } else {
             mission_control_muted_color()
         },
@@ -5759,26 +5991,22 @@ fn paint_mission_control_command_button(
     };
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(mission_control_panel_color())
-            .with_border(border, 1.0),
+            .with_background(if enabled {
+                mission_control_panel_header_color().with_alpha(0.55)
+            } else {
+                mission_control_panel_color()
+            })
+            .with_border(border.with_alpha(if enabled { 0.85 } else { 0.5 }), 1.0)
+            .with_corner_radius(3.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
-            8.0,
-            bounds.size.height,
+            bounds.size.width,
+            1.0,
         ))
-        .with_background(border.with_alpha(if enabled { 0.85 } else { 0.28 })),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 8.0,
-            bounds.origin.y,
-            (bounds.size.width - 8.0).max(0.0),
-            12.0,
-        ))
-        .with_background(border.with_alpha(0.10)),
+        .with_background(border.with_alpha(if enabled { 0.2 } else { 0.08 })),
     );
     paint_button_label_mono(
         bounds,
@@ -5816,29 +6044,22 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
                 .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
                 .with_corner_radius(14.0),
             );
-            let w = bounds.size.width.max(0.0);
-            let h = bounds.size.height.max(0.0);
-            if w > 1.0 && h > 1.0 {
-                let svg = format!(
-                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-<defs>
-<radialGradient id="primaryButtonFill" cx="50%" cy="50%" r="50%">
-<stop offset="2.4%" stop-color="#03857F" stop-opacity="0.60"/>
-<stop offset="100%" stop-color="#121419" stop-opacity="0.20"/>
-</radialGradient>
-</defs>
-<rect x="0.5" y="0.5" width="{rw}" height="{rh}" rx="10" ry="10" fill="url(#primaryButtonFill)" stroke="#0891B2" stroke-width="1"/>
-</svg>"##,
-                    w = w,
-                    h = h,
-                    rw = (w - 1.0).max(0.0),
-                    rh = (h - 1.0).max(0.0),
-                );
-                paint.scene.draw_svg(SvgQuad::new(
-                    bounds,
-                    std::sync::Arc::<[u8]>::from(svg.into_bytes()),
-                ));
-            }
+            paint.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(Hsla::from_hex(0x121419).with_alpha(0.85))
+                    .with_border(Hsla::from_hex(0x0891B2), 1.0)
+                    .with_corner_radius(10.0),
+            );
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    bounds.origin.x + 1.0,
+                    bounds.origin.y + 1.0,
+                    (bounds.size.width - 2.0).max(0.0),
+                    (bounds.size.height * 0.62).max(0.0),
+                ))
+                .with_background(Hsla::from_hex(0x03857F).with_alpha(0.34))
+                .with_corner_radius(9.0),
+            );
             paint_button_label_mono(bounds, label, 18.0, Hsla::from_hex(0xFFFFFF), paint);
         }
         ButtonStyle::Secondary => {
@@ -6057,7 +6278,7 @@ fn paint_mission_control_row_divider(
     let divider_y = row_bottom + 10.0;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
-            .with_background(mission_control_panel_border_color().with_alpha(0.72)),
+            .with_background(mission_control_panel_border_color().with_alpha(0.36)),
     );
     divider_y + 1.0 + 10.0
 }
