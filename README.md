@@ -158,6 +158,14 @@ Planning and diagrams:
 * **[docs/kernel/prediction-markets.md](docs/kernel/prediction-markets.md)** — how prediction, coverage, and risk markets plug into the kernel
 * **[docs/kernel/diagram.md](docs/kernel/diagram.md)** — system diagrams and supporting visual framing
 
+## Agent Install Instructions
+
+If you are using a terminal coding agent, you can paste this prompt:
+
+```text
+Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available. From the repo root, run `cargo install --path .`, then start the desktop app with `cargo autopilot`. Note that `cargo autopilot` is a Cargo alias defined in `.cargo/config.toml`; if the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
+```
+
 ## Run Locally
 
 Requires the Rust toolchain (`cargo`/`rustc`) to be installed.
@@ -168,3 +176,5 @@ cd openagents
 cargo install --path .
 cargo autopilot
 ```
+
+`cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
