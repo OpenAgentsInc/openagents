@@ -349,6 +349,11 @@ pub enum MissionControlPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyModePaymentsPaneAction {
+    CopyAll,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionsPaneAction {
     AddRelay,
     RemoveSelected,
@@ -865,6 +870,7 @@ pub enum PaneHitAction {
     ChatSelectThread(usize),
     GoOnlineToggle,
     MissionControl(MissionControlPaneAction),
+    BuyModePayments(BuyModePaymentsPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
     CodexConfig(CodexConfigPaneAction),
@@ -2445,12 +2451,21 @@ pub fn mission_control_buy_mode_history_button_bounds(
     )
 }
 
+pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 8.0,
+        96.0,
+        22.0,
+    )
+}
+
 pub fn buy_mode_payments_ledger_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 58.0,
+        content_bounds.origin.y + 70.0,
         (content_bounds.size.width - 24.0).max(0.0),
-        (content_bounds.size.height - 70.0).max(0.0),
+        (content_bounds.size.height - 82.0).max(0.0),
     )
 }
 
@@ -6091,7 +6106,15 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::BuyModePayments => None,
+        PaneKind::BuyModePayments => {
+            if buy_mode_payments_copy_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::BuyModePayments(
+                    BuyModePaymentsPaneAction::CopyAll,
+                ))
+            } else {
+                None
+            }
+        }
         PaneKind::Empty => None,
     }
 }
@@ -6900,6 +6923,18 @@ mod tests {
         assert!(history.max_x() <= layout.buy_mode_panel.max_x());
         assert_eq!(primary.origin.y, history.origin.y);
         assert_eq!(primary.size.height, history.size.height);
+    }
+
+    #[test]
+    fn buy_mode_payments_copy_button_sits_above_ledger() {
+        let content_bounds = Bounds::new(0.0, 0.0, 920.0, 500.0);
+        let button = super::buy_mode_payments_copy_button_bounds(content_bounds);
+        let ledger = super::buy_mode_payments_ledger_bounds(content_bounds);
+
+        assert!(button.origin.x >= content_bounds.origin.x);
+        assert!(button.origin.y >= content_bounds.origin.y);
+        assert!(button.max_x() <= content_bounds.max_x());
+        assert!(button.max_y() <= ledger.origin.y);
     }
 
     #[test]

@@ -2745,6 +2745,7 @@ pub(super) fn run_pane_hit_action(
             "mission control toggle",
         ),
         PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
+        PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
         PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),

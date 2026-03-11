@@ -493,6 +493,7 @@ pub struct SubmittedNetworkRequest {
     pub payment_sent_at_epoch_seconds: Option<u64>,
     pub payment_failed_at_epoch_seconds: Option<u64>,
     pub payment_error: Option<String>,
+    pub payment_notice: Option<String>,
     pub pending_bolt11: Option<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
@@ -902,6 +903,7 @@ impl NetworkRequestsState {
                 payment_sent_at_epoch_seconds: None,
                 payment_failed_at_epoch_seconds: None,
                 payment_error: None,
+                payment_notice: None,
                 pending_bolt11: None,
                 skill_scope_id,
                 credit_envelope_ref,
@@ -1351,6 +1353,7 @@ impl NetworkRequestsState {
             .payment_required_at_epoch_seconds
             .get_or_insert(now_epoch_seconds);
         request.payment_error = None;
+        request.payment_notice = None;
         request.payment_failed_at_epoch_seconds = None;
         request.status = NetworkRequestStatus::PaymentRequired;
         self.pending_auto_payment_request_id = Some(request_id.to_string());
@@ -1389,6 +1392,7 @@ impl NetworkRequestsState {
             request.last_payment_pointer = Some(payment_pointer.to_string());
             request.payment_sent_at_epoch_seconds = Some(now_epoch_seconds);
             request.payment_error = None;
+            request.payment_notice = None;
             request.pending_bolt11 = None;
             request.status = NetworkRequestStatus::Paid;
         }
@@ -1417,6 +1421,39 @@ impl NetworkRequestsState {
         request.last_payment_pointer = Some(payment_pointer.to_string());
     }
 
+    pub fn record_auto_payment_notice(
+        &mut self,
+        request_id: &str,
+        notice: &str,
+        now_epoch_seconds: u64,
+    ) {
+        let notice = notice.trim();
+        if notice.is_empty() {
+            return;
+        }
+
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        if request.status.is_terminal() {
+            return;
+        }
+
+        request
+            .payment_required_at_epoch_seconds
+            .get_or_insert(now_epoch_seconds);
+        request.payment_notice = Some(notice.to_string());
+        request.status = NetworkRequestStatus::PaymentRequired;
+        self.pane_set_ready(format!(
+            "Request {} is waiting for a valid provider invoice",
+            request_id
+        ));
+    }
+
     pub fn mark_auto_payment_failed(
         &mut self,
         request_id: &str,
@@ -1437,6 +1474,7 @@ impl NetworkRequestsState {
         {
             request.status = NetworkRequestStatus::Failed;
             request.payment_error = Some(error.to_string());
+            request.payment_notice = None;
             request.payment_failed_at_epoch_seconds = Some(now_epoch_seconds);
             request.pending_bolt11 = None;
         }

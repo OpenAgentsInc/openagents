@@ -841,8 +841,12 @@ fn handle_buyer_response_event(
             if status.eq_ignore_ascii_case("payment-required") {
                 request.payment_feedback_event_id = Some(event.event_id.clone());
                 let Some(bolt11) = event.bolt11.as_deref() else {
-                    request.failed_reason = Some(
-                        "provider returned payment-required without bolt11 invoice".to_string(),
+                    warn!(
+                        target: "autopilot_desktop::headless_buyer",
+                        "buyer payment-required feedback missing bolt11 request_id={} provider={} event_id={}; waiting for a valid invoice event",
+                        event.request_id,
+                        event.provider_pubkey,
+                        event.event_id
                     );
                     return Ok(());
                 };

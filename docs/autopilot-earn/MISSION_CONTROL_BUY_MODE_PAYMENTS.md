@@ -16,6 +16,18 @@ For a single request, the desktop now tracks and shows:
 - terminal wallet success before showing buyer success
 - terminal wallet failure detail without discarding the original payment pointer
 
+The buyer payment-required path is also tolerant of malformed provider feedback:
+
+- canonical NIP-90 `amount` + embedded `bolt11`
+- standalone `bolt11` tag
+- fallback `invoice` or `payment_request` tags
+- JSON content carrying `bolt11`, `invoice`, or `payment_request`
+
+If a provider emits `payment-required` without any recoverable invoice, the
+desktop now records that as a nonterminal payment notice and keeps the request
+alive instead of falsely marking it paid or permanently failed. The request then
+waits for a valid invoice event or a normal timeout / wallet-terminal outcome.
+
 ## Payment State Semantics
 
 The inline Mission Control `PAY` cell and the buy-mode payment history pane use
@@ -61,6 +73,9 @@ The `Buy Mode Payments` pane now retains and renders, when available:
 
 The payment pointer is preserved even for failed buyer payments so operators can
 correlate wallet events and request outcomes after failure.
+
+The pane also exposes a `Copy all` action that copies the summary line and all
+rendered payment rows to the system clipboard for operator debugging.
 
 ## Breez 0.6.6 Limitation
 
