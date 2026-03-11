@@ -9026,6 +9026,31 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::SendLightningPayment => {
+            let command = match build_pay_invoice_command(
+                PayInvoicePaneAction::SendPayment,
+                state.mission_control.send_invoice.get_value(),
+                "",
+            ) {
+                Ok(command) => command,
+                Err(error) => {
+                    state.spark_wallet.last_error = Some(error.clone());
+                    state.mission_control.record_error(error);
+                    return true;
+                }
+            };
+
+            queue_spark_command(state, command);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state
+                    .mission_control
+                    .record_action("Queued Lightning send");
+                state.mission_control.send_invoice.set_value(String::new());
+            }
+            true
+        }
         MissionControlPaneAction::GenerateBitcoinReceiveAddress => {
             queue_spark_command(state, SparkWalletCommand::GenerateBitcoinAddress);
             if let Some(error) = state.spark_wallet.last_error.clone() {
@@ -9044,6 +9069,27 @@ pub(super) fn run_mission_control_action(
                     Err(error) => format!("Failed to copy Bitcoin receive address: {error}"),
                 },
                 _ => "No Bitcoin receive address available. Generate one first.".to_string(),
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
+        MissionControlPaneAction::CopySeedPhrase => {
+            let notice = match state.nostr_identity.as_ref() {
+                Some(identity) if !identity.mnemonic.trim().is_empty() => {
+                    match copy_to_clipboard(&identity.mnemonic) {
+                        Ok(()) => {
+                            "Copied 12-word wallet seed to clipboard. Treat it like cash."
+                                .to_string()
+                        }
+                        Err(error) => format!("Failed to copy wallet seed: {error}"),
+                    }
+                }
+                _ => "No wallet seed loaded yet.".to_string(),
             };
 
             if notice.starts_with("Copied") {

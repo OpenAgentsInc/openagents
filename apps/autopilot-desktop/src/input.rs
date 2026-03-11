@@ -58,6 +58,7 @@ use crate::pane_system::{
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     clamp_all_panes_to_window, dispatch_activity_feed_detail_scroll_event,
+    dispatch_active_job_scroll_event,
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
@@ -2181,6 +2182,9 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_active_job_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_chat_scroll_event(state, point, *dy);
             }
         }
@@ -3109,6 +3113,13 @@ fn handle_mission_control_keyboard_input(
                 let _ = run_mission_control_action(
                     s,
                     crate::pane_system::MissionControlPaneAction::CreateLightningReceiveTarget,
+                );
+                return true;
+            }
+            if s.mission_control.send_invoice.is_focused() {
+                let _ = run_mission_control_action(
+                    s,
+                    crate::pane_system::MissionControlPaneAction::SendLightningPayment,
                 );
                 return true;
             }

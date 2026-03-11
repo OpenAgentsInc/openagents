@@ -605,6 +605,7 @@ impl Default for CalculatorPaneInputs {
 pub struct MissionControlPaneState {
     pub log_stream: TerminalPane,
     pub load_funds_amount_sats: TextInput,
+    pub send_invoice: TextInput,
     pub withdraw_invoice: TextInput,
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
@@ -628,6 +629,14 @@ impl Default for MissionControlPaneState {
             load_funds_amount_sats: TextInput::new()
                 .value("1000")
                 .placeholder("Lightning sats")
+                .mono(true)
+                .background(wgpui::theme::bg::APP)
+                .border_color(wgpui::Hsla::from_hex(0x3A5D66))
+                .border_color_focused(wgpui::Hsla::from_hex(0x2DE2E6))
+                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
+                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
+            send_invoice: TextInput::new()
+                .placeholder("Paste Lightning invoice to send")
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
                 .border_color(wgpui::Hsla::from_hex(0x3A5D66))
@@ -6804,6 +6813,7 @@ pub struct ActiveJobState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub scroll_offset_px: f32,
     pub runtime_supports_abort: bool,
     pub execution_thread_id: Option<String>,
     pub execution_turn_id: Option<String>,
@@ -6829,6 +6839,7 @@ impl Default for ActiveJobState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for active job lane snapshot".to_string()),
+            scroll_offset_px: 0.0,
             runtime_supports_abort: false,
             execution_thread_id: None,
             execution_turn_id: None,
@@ -6920,6 +6931,7 @@ impl ActiveJobState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!("Selected {} as active job", request.request_id));
+        self.scroll_offset_px = 0.0;
     }
 
     pub fn append_event(&mut self, message: impl Into<String>) {
@@ -6931,6 +6943,10 @@ impl ActiveJobState {
             message: message.into(),
         });
         self.next_event_seq = self.next_event_seq.saturating_add(1);
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
     }
 
     pub fn advance_stage(&mut self) -> Result<JobLifecycleStage, String> {
