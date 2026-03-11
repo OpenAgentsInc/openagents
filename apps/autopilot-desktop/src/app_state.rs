@@ -18,7 +18,7 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
-use crate::bitcoin_display::{BitcoinAmountDisplayMode, format_mission_control_amount};
+use crate::bitcoin_display::format_mission_control_amount;
 use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
@@ -599,7 +599,6 @@ impl Default for CalculatorPaneInputs {
 }
 
 pub struct MissionControlPaneState {
-    pub amount_display_mode: BitcoinAmountDisplayMode,
     pub log_stream: TerminalPane,
     pub withdraw_invoice: TextInput,
     pub last_action: Option<String>,
@@ -610,12 +609,18 @@ pub struct MissionControlPaneState {
 impl Default for MissionControlPaneState {
     fn default() -> Self {
         Self {
-            amount_display_mode: BitcoinAmountDisplayMode::Integer,
             log_stream: TerminalPane::new()
                 .title("\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
-            withdraw_invoice: TextInput::new().placeholder("Paste Lightning invoice to withdraw"),
+            withdraw_invoice: TextInput::new()
+                .placeholder("Paste Lightning invoice to withdraw")
+                .mono(true)
+                .background(wgpui::theme::bg::APP)
+                .border_color(wgpui::Hsla::from_hex(0x5A4730))
+                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
+                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
+                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_lines: Vec::new(),
@@ -624,15 +629,6 @@ impl Default for MissionControlPaneState {
 }
 
 impl MissionControlPaneState {
-    pub fn toggle_amount_display_mode(&mut self) {
-        self.amount_display_mode = self.amount_display_mode.toggle();
-        self.last_error = None;
-        self.last_action = Some(format!(
-            "Amount display -> {}",
-            self.amount_display_mode.button_label()
-        ));
-    }
-
     pub fn record_action(&mut self, action: impl Into<String>) {
         self.last_action = Some(action.into());
         self.last_error = None;
@@ -654,7 +650,6 @@ impl MissionControlPaneState {
         active_job: &ActiveJobState,
     ) {
         let lines = build_mission_control_log_lines(
-            self.amount_display_mode,
             self.last_action.as_deref(),
             self.last_error.as_deref(),
             desktop_shell_mode,
@@ -679,7 +674,6 @@ impl MissionControlPaneState {
 }
 
 fn build_mission_control_log_lines(
-    amount_display_mode: BitcoinAmountDisplayMode,
     mission_action: Option<&str>,
     mission_error: Option<&str>,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -853,7 +847,7 @@ fn build_mission_control_log_lines(
                 job.job_id,
                 job.capability,
                 job.stage.label(),
-                format_mission_control_amount(job.quoted_price_sats, amount_display_mode)
+                format_mission_control_amount(job.quoted_price_sats)
             ),
         );
     }
@@ -876,7 +870,7 @@ fn build_mission_control_log_lines(
                 "[{source}] {} {} {}",
                 row.stage.label(),
                 row.job_id,
-                format_mission_control_amount(row.quoted_price_sats, amount_display_mode)
+                format_mission_control_amount(row.quoted_price_sats)
             ),
         );
     }
@@ -8155,7 +8149,6 @@ mod tests {
         StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
         SyncRecoveryPhase,
     };
-    use crate::bitcoin_display::BitcoinAmountDisplayMode;
     use chrono::TimeZone;
     use wgpui::components::sections::TerminalStream;
 
@@ -12728,7 +12721,7 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_log_lines_use_active_display_mode_for_projection_amounts() {
+    fn mission_control_log_lines_use_grouped_integer_projection_amounts() {
         let provider = ProviderRuntimeState::default();
         let projection = EarnJobLifecycleProjectionState {
             load_state: super::PaneLoadState::Ready,
@@ -12753,8 +12746,7 @@ mod tests {
         };
 
         let lines = super::build_mission_control_log_lines(
-            BitcoinAmountDisplayMode::LegacyBtc,
-            Some("Amount display -> LEGACY (BTC)"),
+            Some("Mission Control ready"),
             None,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
@@ -12766,9 +12758,12 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines.iter().any(|line| {
-            line.stream == TerminalStream::Stdout && line.text.contains("0.00001000 BTC")
-        }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.stream == TerminalStream::Stdout
+                    && line.text.contains("\u{20BF} 1 000"))
+        );
     }
 
     #[test]
@@ -12803,7 +12798,6 @@ mod tests {
         };
 
         let lines = super::build_mission_control_log_lines(
-            BitcoinAmountDisplayMode::Integer,
             None,
             None,
             crate::desktop_shell::DesktopShellMode::Production,
@@ -12817,7 +12811,9 @@ mod tests {
         );
 
         assert!(
-            lines.iter().any(|line| line.text.contains("Apple Foundation Models unavailable"))
+            lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
         );
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }

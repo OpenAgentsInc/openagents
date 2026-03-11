@@ -328,7 +328,6 @@ pub enum EarningsScoreboardPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
-    ToggleAmountDisplay,
     OpenLocalModelWorkbench,
     SendWithdrawal,
     OpenDocumentation,
@@ -1991,6 +1990,7 @@ pub fn chat_transcript_body_bounds_with_height(
 #[derive(Clone, Copy, Debug)]
 pub struct MissionControlPaneLayout {
     pub status_row: Bounds,
+    pub alert_band: Bounds,
     pub left_column: Bounds,
     pub right_column: Bounds,
     pub sell_panel: Bounds,
@@ -2002,19 +2002,25 @@ pub struct MissionControlPaneLayout {
 }
 
 pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayout {
-    let outer_pad = CHAT_PAD;
-    let column_gap = 14.0;
-    let panel_gap = 12.0;
+    let outer_pad = 16.0;
+    let column_gap = 18.0;
+    let panel_gap = 16.0;
     let status_row = Bounds::new(
         content_bounds.origin.x + outer_pad,
         content_bounds.origin.y + outer_pad,
         (content_bounds.size.width - outer_pad * 2.0).max(0.0),
-        22.0,
+        30.0,
     );
-    let body_top = status_row.max_y() + 12.0;
+    let alert_band = Bounds::new(
+        status_row.origin.x,
+        status_row.max_y() + 8.0,
+        status_row.size.width,
+        26.0,
+    );
+    let body_top = alert_band.max_y() + 14.0;
     let body_height = (content_bounds.max_y() - body_top - outer_pad).max(0.0);
     let available_width = (content_bounds.size.width - outer_pad * 2.0).max(0.0);
-    let tentative_left = (available_width * 0.34).clamp(220.0, 340.0);
+    let tentative_left = (available_width * 0.31).clamp(236.0, 320.0);
     let max_left = (available_width - column_gap - 180.0).max(140.0);
     let left_width = tentative_left.min(max_left).max(140.0);
     let right_width = (available_width - left_width - column_gap).max(140.0);
@@ -2031,10 +2037,10 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
         body_height,
     );
 
-    let preferred_sell = 126.0;
-    let preferred_earnings = 172.0;
-    let preferred_wallet = 126.0;
-    let preferred_actions = 88.0;
+    let preferred_sell = 132.0;
+    let preferred_earnings = 180.0;
+    let preferred_wallet = 132.0;
+    let preferred_actions = 104.0;
     let preferred_total = preferred_sell
         + preferred_earnings
         + preferred_wallet
@@ -2076,7 +2082,7 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
         actions_height,
     );
 
-    let active_jobs_height = (88.0 * scale).max(60.0_f32.min(body_height));
+    let active_jobs_height = (128.0 * scale).max(84.0_f32.min(body_height));
     let active_jobs_panel = Bounds::new(
         right_column.origin.x,
         right_column.origin.y,
@@ -2092,6 +2098,7 @@ pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayou
 
     MissionControlPaneLayout {
         status_row,
+        alert_band,
         left_column,
         right_column,
         sell_panel,
@@ -2113,23 +2120,11 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
-    let panel = mission_control_layout(content_bounds).earnings_panel;
-    let width = (panel.size.width * 0.42)
-        .clamp(116.0, 156.0)
-        .min((panel.size.width - 28.0).max(0.0));
-    Bounds::new(
-        panel.max_x() - width - 14.0,
-        panel.origin.y + 14.0,
-        width,
-        24.0,
-    )
-}
-
 pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
-    let height = (panel.size.height * 0.28).clamp(26.0, 30.0);
     let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
+    let available_height = (panel.size.height - gap * 2.0).max(0.0);
+    let height = (available_height / 3.0).min(30.0);
     let total_height = height * 3.0 + gap * 2.0;
     let top = panel.origin.y + ((panel.size.height - total_height).max(0.0) * 0.5);
     Bounds::new(
@@ -4399,10 +4394,6 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
-            } else if mission_control_amount_toggle_button_bounds(content_bounds).contains(point) {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::ToggleAmountDisplay,
-                ))
             } else if mission_control_local_model_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
@@ -5877,18 +5868,19 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
-        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-        network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
-        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, pane_content_bounds_for_presentation,
-        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-        reciprocal_loop_stop_button_bounds, relay_connections_add_button_bounds,
-        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-        relay_connections_row_bounds, relay_connections_url_input_bounds,
-        settings_provider_queue_input_bounds, settings_relay_input_bounds,
-        settings_reset_button_bounds, settings_save_button_bounds,
+        mission_control_local_model_button_bounds, mission_control_withdraw_button_bounds,
+        mission_control_withdraw_invoice_input_bounds, network_requests_budget_input_bounds,
+        network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
+        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
+        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
+        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+        pane_content_bounds_for_presentation, reciprocal_loop_reset_button_bounds,
+        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
+        relay_connections_retry_button_bounds, relay_connections_row_bounds,
+        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
+        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -5896,8 +5888,7 @@ mod tests {
         starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-        trajectory_verify_button_bounds, mission_control_local_model_button_bounds,
-        mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
+        trajectory_verify_button_bounds,
     };
     use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
