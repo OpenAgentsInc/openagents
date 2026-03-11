@@ -32,6 +32,9 @@ use nostr::{Event, EventTemplate, NostrIdentity};
 
 const MIN_PROVIDER_PRICE_SATS: u64 = 1;
 const MIN_PROVIDER_TTL_SECONDS: u64 = 30;
+const RESULT_PUBLISH_RETRY_INTERVAL_SECONDS: u64 = 5;
+const RESULT_PUBLISH_RETRY_GRACE_SECONDS: u64 = 15;
+const MAX_RESULT_PUBLISH_ATTEMPTS: u32 = 4;
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
     match action {
@@ -154,6 +157,37 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
     }
 
     let now_epoch_seconds = current_epoch_seconds();
+    if stage == JobLifecycleStage::Running
+        && state.active_job.execution_turn_completed
+        && !has_result_event
+        && result_publish_retry_due(
+            state.active_job.result_publish_last_queued_epoch_seconds,
+            now_epoch_seconds,
+        )
+        && state.active_job.result_publish_attempt_count < MAX_RESULT_PUBLISH_ATTEMPTS
+        && active_job_has_pending_result_publish(&state.active_job)
+    {
+        match retry_runtime_result_publish(state) {
+            Ok(()) => {
+                extend_active_job_phase_deadline_at_least(
+                    &mut state.active_job,
+                    RESULT_PUBLISH_RETRY_GRACE_SECONDS,
+                    now_epoch_seconds,
+                );
+                return true;
+            }
+            Err(error) => {
+                state
+                    .active_job
+                    .append_event(format!("result publish retry queue failed: {error}"));
+                state.active_job.last_action =
+                    Some("result publish retry queue failed".to_string());
+                state.provider_runtime.last_result = Some(format!(
+                    "provider result publish retry queue failed: {error}"
+                ));
+            }
+        }
+    }
     if state
         .active_job
         .execution_deadline_epoch_seconds
@@ -238,6 +272,7 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
         && state.active_job.execution_turn_completed
         && !has_result_event
         && !state.active_job.result_publish_in_flight
+        && !active_job_has_pending_result_publish(&state.active_job)
     {
         match queue_runtime_result_publish(state) {
             Ok(()) => return true,
@@ -488,10 +523,9 @@ pub(super) fn apply_active_job_publish_outcome(
         ProviderNip90PublishRole::Capability => {}
         ProviderNip90PublishRole::Result => {
             state.active_job.result_publish_in_flight = false;
-            state.active_job.pending_result_publish_event_id = None;
             if outcome.accepted_relays == 0 {
                 let message = format!(
-                    "result publish failed; waiting retry ({})",
+                    "result publish failed; retry pending ({})",
                     outcome
                         .first_error
                         .as_deref()
@@ -501,9 +535,10 @@ pub(super) fn apply_active_job_publish_outcome(
                 state.active_job.last_action = Some(message.clone());
                 tracing::error!(
                     target: "autopilot_desktop::provider",
-                    "Provider result publish failed request_id={} event_id={} error={}",
+                    "Provider result publish failed request_id={} event_id={} attempt={} error={}",
                     outcome.request_id,
                     outcome.event_id,
+                    state.active_job.result_publish_attempt_count,
                     outcome
                         .first_error
                         .as_deref()
@@ -511,6 +546,10 @@ pub(super) fn apply_active_job_publish_outcome(
                 );
                 return;
             }
+            state.active_job.pending_result_publish_event_id = None;
+            state.active_job.pending_result_publish_event = None;
+            state.active_job.result_publish_attempt_count = 0;
+            state.active_job.result_publish_last_queued_epoch_seconds = None;
             if let Some(job) = state.active_job.job.as_mut()
                 && job.sa_tick_result_event_id.is_none()
             {
@@ -768,6 +807,20 @@ fn set_active_job_phase_deadline_at(
         Some(now_epoch_seconds.saturating_add(ttl_seconds));
 }
 
+fn extend_active_job_phase_deadline_at_least(
+    active_job: &mut crate::app_state::ActiveJobState,
+    ttl_seconds: u64,
+    now_epoch_seconds: u64,
+) {
+    let extended_deadline = now_epoch_seconds.saturating_add(ttl_seconds);
+    active_job.execution_deadline_epoch_seconds = Some(
+        active_job
+            .execution_deadline_epoch_seconds
+            .unwrap_or(0)
+            .max(extended_deadline),
+    );
+}
+
 fn refresh_active_job_phase_deadline(state: &mut RenderState) {
     let Some(ttl_seconds) = state.active_job.job.as_ref().map(|job| job.ttl_seconds) else {
         return;
@@ -777,6 +830,20 @@ fn refresh_active_job_phase_deadline(state: &mut RenderState) {
 
 fn clear_active_job_phase_deadline(active_job: &mut crate::app_state::ActiveJobState) {
     active_job.execution_deadline_epoch_seconds = None;
+}
+
+fn result_publish_retry_due(
+    last_queued_epoch_seconds: Option<u64>,
+    now_epoch_seconds: u64,
+) -> bool {
+    last_queued_epoch_seconds.is_some_and(|queued_at| {
+        now_epoch_seconds.saturating_sub(queued_at) >= RESULT_PUBLISH_RETRY_INTERVAL_SECONDS
+    })
+}
+
+fn active_job_has_pending_result_publish(active_job: &crate::app_state::ActiveJobState) -> bool {
+    active_job.pending_result_publish_event.is_some()
+        || active_job.pending_result_publish_event_id.is_some()
 }
 
 fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90ComputeCapability {
@@ -879,12 +946,12 @@ pub(super) fn run_job_history_action(
     }
 }
 
-fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<String, String> {
+fn build_nip90_result_event_for_active_job(state: &mut RenderState) -> Result<Event, String> {
     let Some(identity) = state.nostr_identity.as_ref() else {
-        return Err("Cannot publish result: Nostr identity unavailable".to_string());
+        return Err("Cannot build result publish: Nostr identity unavailable".to_string());
     };
     let Some(job) = state.active_job.job.as_ref() else {
-        return Err("Cannot publish result: no active job selected".to_string());
+        return Err("Cannot build result publish: no active job selected".to_string());
     };
 
     let request_kind = job.request_kind;
@@ -906,9 +973,18 @@ fn queue_nip90_result_publish_for_active_job(state: &mut RenderState) -> Result<
         result = result.with_amount(quoted_price_sats.saturating_mul(1000), None);
     }
     let template = create_job_result_event(&result);
-    let event = sign_event_template(identity, &template)?;
-    let event_id = event.id.clone();
+    sign_event_template(identity, &template)
+}
 
+fn queue_signed_nip90_result_publish_for_active_job(
+    state: &mut RenderState,
+    event: Event,
+) -> Result<String, String> {
+    let Some(job) = state.active_job.job.as_ref() else {
+        return Err("Cannot publish result: no active job selected".to_string());
+    };
+    let request_id = job.request_id.clone();
+    let event_id = event.id.clone();
     state
         .queue_provider_nip90_lane_command(ProviderNip90LaneCommand::PublishEvent {
             request_id,
@@ -1627,25 +1703,56 @@ fn turn_completed_failed(status: Option<&str>, error_message: Option<&str>) -> b
 }
 
 fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
-    let result_event_id = queue_nip90_result_publish_for_active_job(state)?;
+    let event = state
+        .active_job
+        .pending_result_publish_event
+        .clone()
+        .unwrap_or(build_nip90_result_event_for_active_job(state)?);
+    let result_event_id = queue_signed_nip90_result_publish_for_active_job(state, event.clone())?;
     state.active_job.result_publish_in_flight = true;
     state.active_job.pending_result_publish_event_id = Some(result_event_id.clone());
-    let message = format!("queued canonical NIP-90 result publish {}", result_event_id);
+    state.active_job.pending_result_publish_event = Some(event);
+    state.active_job.result_publish_attempt_count = state
+        .active_job
+        .result_publish_attempt_count
+        .saturating_add(1);
+    state.active_job.result_publish_last_queued_epoch_seconds = Some(current_epoch_seconds());
+    let attempt = state.active_job.result_publish_attempt_count;
+    let message = if attempt == 1 {
+        format!("queued canonical NIP-90 result publish {}", result_event_id)
+    } else {
+        format!(
+            "retried canonical NIP-90 result publish {} attempt #{}",
+            result_event_id, attempt
+        )
+    };
     state.active_job.append_event(message.clone());
     state.active_job.last_action = Some(message);
-    state.provider_runtime.last_result = Some(format!(
-        "queued provider result publish {}",
-        result_event_id
-    ));
+    state.provider_runtime.last_result = Some(if attempt == 1 {
+        format!("queued provider result publish {}", result_event_id)
+    } else {
+        format!(
+            "retried provider result publish {} attempt #{}",
+            result_event_id, attempt
+        )
+    });
     if let Some(job) = state.active_job.job.as_ref() {
         tracing::info!(
             target: "autopilot_desktop::provider",
-            "Provider queued result publish request_id={} event_id={}",
+            "Provider queued result publish request_id={} event_id={} attempt={}",
             job.request_id,
-            result_event_id
+            result_event_id,
+            attempt
         );
     }
     Ok(())
+}
+
+fn retry_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
+    if !active_job_has_pending_result_publish(&state.active_job) {
+        return Err("no pending result publish is available for retry".to_string());
+    }
+    queue_runtime_result_publish(state)
 }
 
 fn transition_active_job_to_running(
@@ -1818,6 +1925,9 @@ pub(super) fn transition_active_job_to_paid(
     state.active_job.payment_required_failed = false;
     state.active_job.pending_bolt11 = None;
     state.active_job.pending_result_publish_event_id = None;
+    state.active_job.pending_result_publish_event = None;
+    state.active_job.result_publish_attempt_count = 0;
+    state.active_job.result_publish_last_queued_epoch_seconds = None;
     clear_active_job_phase_deadline(&mut state.active_job);
 
     sync_provider_runtime_queue_depth(state);
@@ -1883,6 +1993,9 @@ fn fail_active_job_execution(
 
     state.active_job.result_publish_in_flight = false;
     state.active_job.pending_result_publish_event_id = None;
+    state.active_job.pending_result_publish_event = None;
+    state.active_job.result_publish_attempt_count = 0;
+    state.active_job.result_publish_last_queued_epoch_seconds = None;
     state.active_job.execution_turn_completed = false;
     clear_active_job_phase_deadline(&mut state.active_job);
     state.active_job.execution_backend_request_id = None;
@@ -2549,8 +2662,9 @@ mod tests {
         ProviderExecutionBackend, active_job_matches_publish_outcome, active_job_timeout_reason,
         apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
         build_nip90_feedback_event, clear_active_job_phase_deadline,
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
-        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
+        extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
+        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
+        provider_execution_backend_for_kind, result_publish_retry_due,
         set_active_job_phase_deadline_at, turn_completed_failed,
         visible_result_content_for_job_kind,
     };
@@ -2777,6 +2891,28 @@ mod tests {
         clear_active_job_phase_deadline(&mut active_job);
 
         assert_eq!(active_job.execution_deadline_epoch_seconds, None);
+    }
+
+    #[test]
+    fn active_job_phase_deadline_extension_never_shrinks_existing_deadline() {
+        let mut active_job = ActiveJobState::default();
+        active_job.execution_deadline_epoch_seconds = Some(1_700_000_075);
+
+        extend_active_job_phase_deadline_at_least(&mut active_job, 15, 1_700_000_010);
+
+        assert_eq!(
+            active_job.execution_deadline_epoch_seconds,
+            Some(1_700_000_075)
+        );
+    }
+
+    #[test]
+    fn result_publish_retry_due_after_retry_interval() {
+        assert!(!result_publish_retry_due(
+            Some(1_700_000_000),
+            1_700_000_004
+        ));
+        assert!(result_publish_retry_due(Some(1_700_000_000), 1_700_000_005));
     }
 
     #[test]
