@@ -2296,8 +2296,12 @@ pub fn mission_control_load_funds_layout(
         inner_height,
     );
     let control_gap = 4.0;
+    let send_section_gap = 18.0;
     let control_top_inset = 4.0;
-    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 3.0)
+    let control_height = ((controls_column.size.height
+        - control_top_inset
+        - control_gap * 2.0
+        - send_section_gap)
         / 4.0)
         .clamp(14.0, 24.0);
     let amount_input = Bounds::new(
@@ -2321,7 +2325,7 @@ pub fn mission_control_load_funds_layout(
     );
     let send_invoice_input = Bounds::new(
         controls_column.origin.x,
-        lightning_button.max_y() + control_gap,
+        lightning_button.max_y() + send_section_gap,
         controls_column.size.width,
         control_height,
     );
@@ -6438,10 +6442,13 @@ mod tests {
     #[test]
     fn mission_control_load_funds_send_and_seed_controls_stay_non_overlapping() {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let receive_button =
+            super::mission_control_lightning_receive_button_bounds(content_bounds, true);
         let send_input = mission_control_send_invoice_input_bounds(content_bounds, true);
         let send_button = mission_control_send_lightning_button_bounds(content_bounds, true);
         let copy_seed = mission_control_copy_seed_button_bounds(content_bounds, true);
 
+        assert!(send_input.origin.y - receive_button.max_y() >= 18.0);
         assert!(send_input.max_y() <= send_button.origin.y);
         assert_eq!(send_button.origin.y, copy_seed.origin.y);
         assert!(send_button.max_x() <= copy_seed.origin.x);

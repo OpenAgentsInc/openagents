@@ -3823,6 +3823,36 @@ mod tests {
     }
 
     #[test]
+    fn build_pay_invoice_command_rejects_zero_amount_invoice_without_amount() {
+        let error = build_pay_invoice_command(
+            PayInvoicePaneAction::SendPayment,
+            "lightning:lnbc1zeroamountinvoice",
+            "",
+        )
+        .expect_err("zero-amount invoice should require explicit sats");
+
+        assert!(error.contains("zero-amount invoice"));
+    }
+
+    #[test]
+    fn build_pay_invoice_command_accepts_zero_amount_invoice_with_amount() {
+        let command = build_pay_invoice_command(
+            PayInvoicePaneAction::SendPayment,
+            "lightning:lnbc1zeroamountinvoice",
+            "250",
+        )
+        .expect("zero-amount invoice should accept explicit sats");
+
+        assert!(matches!(
+            command,
+            SparkWalletCommand::SendPayment {
+                payment_request,
+                amount_sats: Some(250)
+            } if payment_request == "lightning:lnbc1zeroamountinvoice"
+        ));
+    }
+
+    #[test]
     fn build_create_invoice_command_supports_optional_fields() {
         let command = build_create_invoice_command(
             CreateInvoicePaneAction::CreateInvoice,
