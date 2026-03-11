@@ -16,6 +16,8 @@ use crate::bitcoin_display::format_sats_amount;
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+// MVP release fallback so Spark boots on first run without requiring shell env injection.
+const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
 
 #[derive(Clone, Debug)]
 pub enum SparkWalletCommand {
@@ -527,19 +529,9 @@ impl SparkPaneState {
             )
         })?;
 
-        let api_key = self
-            .env_overrides
-            .get(ENV_SPARK_API_KEY)
-            .cloned()
-            .or_else(|| {
-                std::env::var(ENV_SPARK_API_KEY)
-                    .ok()
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            });
         let config = WalletConfig {
             network: self.network,
-            api_key,
+            api_key: Some(configured_api_key(&self.env_overrides)),
             storage_dir,
         };
         let wallet = run_with_timeout(
@@ -635,15 +627,30 @@ fn current_epoch_seconds() -> u64 {
 
 pub fn configured_network() -> Network {
     let configured = std::env::var(ENV_SPARK_NETWORK)
-        .unwrap_or_else(|_| "regtest".to_string())
+        .unwrap_or_else(|_| "mainnet".to_string())
         .to_ascii_lowercase();
 
     match configured.as_str() {
         "mainnet" => Network::Mainnet,
         "testnet" => Network::Testnet,
         "signet" => Network::Signet,
-        _ => Network::Regtest,
+        "regtest" => Network::Regtest,
+        _ => Network::Mainnet,
     }
+}
+
+fn configured_api_key(env_overrides: &HashMap<String, String>) -> String {
+    env_overrides
+        .get(ENV_SPARK_API_KEY)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var(ENV_SPARK_API_KEY)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| DEFAULT_OPENAGENTS_SPARK_API_KEY.to_string())
 }
 
 fn read_mnemonic(path: &Path) -> Result<String, String> {
@@ -667,11 +674,14 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Network, SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
-        SparkWalletWorker, run_with_timeout, timeout_message,
+        DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
+        SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
+        SparkWalletWorker, configured_api_key, configured_network, run_with_timeout,
+        timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
+    use std::collections::HashMap;
     use std::sync::Mutex;
     use std::time::Duration;
 
@@ -682,6 +692,91 @@ mod tests {
         let message = timeout_message("refresh", Duration::from_millis(250));
         assert!(message.contains("refresh timed out"));
         assert!(message.contains("250ms"));
+    }
+
+    #[test]
+    fn configured_network_defaults_to_mainnet_when_unset() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_NETWORK).ok();
+        unsafe {
+            std::env::remove_var(ENV_SPARK_NETWORK);
+        }
+
+        assert_eq!(configured_network(), Network::Mainnet);
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_NETWORK, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_NETWORK) },
+        }
+    }
+
+    #[test]
+    fn configured_network_accepts_explicit_regtest_override() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_NETWORK).ok();
+        unsafe {
+            std::env::set_var(ENV_SPARK_NETWORK, "regtest");
+        }
+
+        assert_eq!(configured_network(), Network::Regtest);
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_NETWORK, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_NETWORK) },
+        }
+    }
+
+    #[test]
+    fn configured_network_invalid_value_falls_back_to_mainnet() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_NETWORK).ok();
+        unsafe {
+            std::env::set_var(ENV_SPARK_NETWORK, "bitcoin");
+        }
+
+        assert_eq!(configured_network(), Network::Mainnet);
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_NETWORK, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_NETWORK) },
+        }
+    }
+
+    #[test]
+    fn configured_api_key_defaults_to_embedded_release_key() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_API_KEY).ok();
+        unsafe {
+            std::env::remove_var(ENV_SPARK_API_KEY);
+        }
+
+        assert_eq!(
+            configured_api_key(&HashMap::new()),
+            DEFAULT_OPENAGENTS_SPARK_API_KEY
+        );
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_API_KEY, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_API_KEY) },
+        }
+    }
+
+    #[test]
+    fn configured_api_key_prefers_explicit_override() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_API_KEY).ok();
+        unsafe {
+            std::env::set_var(ENV_SPARK_API_KEY, "env-key");
+        }
+        let mut overrides = HashMap::new();
+        overrides.insert(ENV_SPARK_API_KEY.to_string(), "override-key".to_string());
+
+        assert_eq!(configured_api_key(&overrides), "override-key");
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_API_KEY, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_API_KEY) },
+        }
     }
 
     #[test]
