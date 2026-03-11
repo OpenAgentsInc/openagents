@@ -48,8 +48,14 @@ fn build_filters(channel_id: &str) -> Vec<serde_json::Value> {
 fn run_nip28_chat_lane_loop(update_tx: Sender<Nip28ChatLaneUpdate>) {
     let config = DefaultNip28ChannelConfig::from_env_or_default();
     if !config.is_valid() {
+        tracing::info!("nip28: skipped, invalid config (relay_url or channel_id missing/invalid)");
         return;
     }
+    tracing::info!(
+        relay_url = %config.relay_url,
+        channel_id = %config.channel_id,
+        "nip28: lane starting"
+    );
 
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -105,17 +111,29 @@ fn ensure_connected(
         match new_pool.connect_relay(&config.relay_url).await {
             Ok(()) => {}
             Err(error) => {
+                let message = format!("connect failed: {error}");
+                tracing::warn!(
+                    relay_url = %config.relay_url,
+                    message = %message,
+                    "nip28: connection error"
+                );
                 let _ = update_tx.send(Nip28ChatLaneUpdate::ConnectionError {
                     relay_url: config.relay_url.clone(),
-                    message: format!("connect failed: {error}"),
+                    message,
                 });
                 return false;
             }
         }
         let Some(connection) = new_pool.relay(&config.relay_url).await else {
+            let message = "relay missing from pool after connect".to_string();
+            tracing::warn!(
+                relay_url = %config.relay_url,
+                message = %message,
+                "nip28: connection error"
+            );
             let _ = update_tx.send(Nip28ChatLaneUpdate::ConnectionError {
                 relay_url: config.relay_url.clone(),
-                message: "relay missing from pool after connect".to_string(),
+                message,
             });
             return false;
         };
@@ -123,9 +141,15 @@ fn ensure_connected(
             .subscribe_filters(SUBSCRIPTION_ID, filters)
             .await
         {
+            let message = format!("subscribe failed: {error}");
+            tracing::warn!(
+                relay_url = %config.relay_url,
+                message = %message,
+                "nip28: connection error"
+            );
             let _ = update_tx.send(Nip28ChatLaneUpdate::ConnectionError {
                 relay_url: config.relay_url.clone(),
-                message: format!("subscribe failed: {error}"),
+                message,
             });
             return false;
         }
@@ -133,6 +157,7 @@ fn ensure_connected(
     });
 
     if connected {
+        tracing::info!(relay_url = %config.relay_url, "nip28: connected");
         *pool = Some(new_pool);
     }
 }
@@ -148,9 +173,15 @@ async fn poll_events(
         for _ in 0..MAX_MESSAGES_PER_RELAY_POLL {
             match tokio::time::timeout(RELAY_RECV_TIMEOUT, relay.recv()).await {
                 Ok(Ok(Some(RelayMessage::Event(_, event)))) => {
+                    tracing::debug!(
+                        kind = event.kind,
+                        id = %event.id,
+                        "nip28: event"
+                    );
                     let _ = update_tx.send(Nip28ChatLaneUpdate::RelayEvent(event));
                 }
                 Ok(Ok(Some(RelayMessage::Eose(_)))) => {
+                    tracing::debug!(relay_url = %relay_url, "nip28: eose");
                     let _ = update_tx.send(Nip28ChatLaneUpdate::Eose {
                         relay_url: relay_url.clone(),
                     });
@@ -160,9 +191,15 @@ async fn poll_events(
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
+                    let message = format!("recv error: {error}");
+                    tracing::warn!(
+                        relay_url = %relay_url,
+                        message = %message,
+                        "nip28: connection error"
+                    );
                     let _ = update_tx.send(Nip28ChatLaneUpdate::ConnectionError {
                         relay_url: relay_url.clone(),
-                        message: format!("recv error: {error}"),
+                        message,
                     });
                     break;
                 }

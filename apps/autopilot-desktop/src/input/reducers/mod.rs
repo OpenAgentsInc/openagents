@@ -182,7 +182,11 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         }
     }
 
-    for update in state.nip28_chat_lane_worker.drain_updates() {
+    let nip28_updates = state.nip28_chat_lane_worker.drain_updates();
+    if !nip28_updates.is_empty() {
+        tracing::debug!(count = nip28_updates.len(), "nip28: drain");
+    }
+    for update in nip28_updates {
         use crate::nip28_chat_lane::Nip28ChatLaneUpdate;
         changed = true;
         match update {
@@ -194,6 +198,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     }
     // One-shot auto-select: fires once when projection first gains content.
     if state.autopilot_chat.maybe_auto_select_default_nip28_channel() {
+        tracing::info!("nip28: auto-selected default channel");
         changed = true;
     }
 
