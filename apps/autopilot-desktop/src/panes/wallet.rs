@@ -274,11 +274,7 @@ pub fn paint_create_invoice_pane(
         "Create Lightning invoice",
         paint,
     );
-    paint_action_button(
-        layout.copy_invoice_button,
-        "Copy Lightning invoice",
-        paint,
-    );
+    paint_action_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
 
     create_invoice_inputs
         .amount_sats

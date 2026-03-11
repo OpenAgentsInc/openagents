@@ -85,10 +85,26 @@ mod tests {
     #[test]
     fn foundation_models_error_maps_python_family_codes() {
         let cases = [
-            ("exceeded_context_window_size", AppleFmErrorCode::ExceededContextWindowSize, false),
-            ("assets_unavailable", AppleFmErrorCode::AssetsUnavailable, true),
-            ("guardrail_violation", AppleFmErrorCode::GuardrailViolation, false),
-            ("unsupported_guide", AppleFmErrorCode::UnsupportedGuide, false),
+            (
+                "exceeded_context_window_size",
+                AppleFmErrorCode::ExceededContextWindowSize,
+                false,
+            ),
+            (
+                "assets_unavailable",
+                AppleFmErrorCode::AssetsUnavailable,
+                true,
+            ),
+            (
+                "guardrail_violation",
+                AppleFmErrorCode::GuardrailViolation,
+                false,
+            ),
+            (
+                "unsupported_guide",
+                AppleFmErrorCode::UnsupportedGuide,
+                false,
+            ),
             (
                 "unsupported_language_or_locale",
                 AppleFmErrorCode::UnsupportedLanguageOrLocale,
@@ -96,7 +112,11 @@ mod tests {
             ),
             ("decoding_failure", AppleFmErrorCode::DecodingFailure, false),
             ("rate_limited", AppleFmErrorCode::RateLimited, true),
-            ("concurrent_requests", AppleFmErrorCode::ConcurrentRequests, true),
+            (
+                "concurrent_requests",
+                AppleFmErrorCode::ConcurrentRequests,
+                true,
+            ),
             ("refusal", AppleFmErrorCode::Refusal, false),
             (
                 "invalid_generation_schema",

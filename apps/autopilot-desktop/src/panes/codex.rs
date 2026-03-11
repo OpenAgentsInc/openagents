@@ -651,7 +651,11 @@ pub fn paint_labs_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Remote enabled",
-        if remote_state.enabled { "true" } else { "false" },
+        if remote_state.enabled {
+            "true"
+        } else {
+            "false"
+        },
     );
     y = paint_label_line(
         paint,

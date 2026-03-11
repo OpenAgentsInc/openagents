@@ -163,7 +163,10 @@ impl AppleFmBridgeClient {
         if !response.status().is_success() {
             return Err(map_status_response("create_session", response));
         }
-        Ok(decode_json_response::<AppleFmSessionCreateResponse>("create_session", response)?.session)
+        Ok(
+            decode_json_response::<AppleFmSessionCreateResponse>("create_session", response)?
+                .session,
+        )
     }
 
     /// Creates a session from a typed transcript snapshot.
@@ -1268,9 +1271,9 @@ mod tests {
         AppleFmErrorCode, AppleFmGenerationOptions, AppleFmSamplingMode,
         AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
         AppleFmSessionStructuredGenerationRequest, AppleFmStructuredGenerationRequest,
-        AppleFmSystemLanguageModel, AppleFmTextGenerationRequest,
-        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
-        AppleFmToolCallError, AppleFmToolCallRequest, AppleFmToolDefinition, AppleFmUsageTruth,
+        AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+        AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmToolCallError,
+        AppleFmToolCallRequest, AppleFmToolDefinition, AppleFmUsageTruth,
     };
     use crate::structured::AppleFmGenerationSchema;
     use crate::tool::AppleFmTool;
@@ -2439,7 +2442,10 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     error.failure_reason.as_deref(),
                     Some("Request was blocked by Apple FM safety guardrails")
                 );
-                assert_eq!(error.recovery_suggestion.as_deref(), Some("Try a safer prompt."));
+                assert_eq!(
+                    error.recovery_suggestion.as_deref(),
+                    Some("Try a safer prompt.")
+                );
                 assert_eq!(error.is_retryable(), false);
             }
             other => panic!("expected guardrail typed error, got {other:?}"),
@@ -2673,7 +2679,13 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             .foundation_models_error()
             .expect("typed Foundation Models error");
         assert_eq!(remote.kind, AppleFmErrorCode::ToolCallFailed);
-        assert!(remote.tool_name.as_deref().unwrap_or_default().contains("always_fail"));
+        assert!(
+            remote
+                .tool_name
+                .as_deref()
+                .unwrap_or_default()
+                .contains("always_fail")
+        );
     }
 
     #[cfg(target_os = "macos")]

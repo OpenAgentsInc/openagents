@@ -243,7 +243,8 @@ impl CommandPalette {
             return String::new();
         }
         let char_width = if self.mono {
-            cx.text.measure_styled_mono("W", font_size, FontStyle::default())
+            cx.text
+                .measure_styled_mono("W", font_size, FontStyle::default())
         } else {
             cx.text.measure("W", font_size)
         };
@@ -260,7 +261,10 @@ impl CommandPalette {
         if max_chars <= ELLIPSIS.len() {
             return ELLIPSIS.chars().take(max_chars).collect();
         }
-        let truncated = desc.chars().take(max_chars - ELLIPSIS.len()).collect::<String>();
+        let truncated = desc
+            .chars()
+            .take(max_chars - ELLIPSIS.len())
+            .collect::<String>();
         format!("{}{}", truncated, ELLIPSIS)
     }
 
@@ -409,7 +413,8 @@ impl Component for CommandPalette {
                 cx.scene.draw_text(label_run);
 
                 if let Some(desc) = &command.description {
-                    let desc_max_width = (item_bounds.size.width - 2.0 * theme::spacing::SM).max(0.0);
+                    let desc_max_width =
+                        (item_bounds.size.width - 2.0 * theme::spacing::SM).max(0.0);
                     let desc_truncated =
                         self.truncate_description(cx, desc, theme::font_size::XS, desc_max_width);
                     let desc_origin = Point::new(

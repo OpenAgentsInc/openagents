@@ -7,10 +7,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AskForApproval, ApprovalDecision, ClientInfo, CommandExecutionRequestApprovalResponse, DynamicToolCallResponse,
-    FileChangeRequestApprovalResponse, InitializeCapabilities, InitializeParams, Personality,
-    SandboxMode, SandboxPolicy, TextElement, ThreadResumeParams, ThreadStartParams,
-    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams, UserInput,
+    ApprovalDecision, AskForApproval, ClientInfo, CommandExecutionRequestApprovalResponse,
+    DynamicToolCallResponse, FileChangeRequestApprovalResponse, InitializeCapabilities,
+    InitializeParams, Personality, SandboxMode, SandboxPolicy, TextElement, ThreadResumeParams,
+    ThreadStartParams, ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    UserInput,
 };
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -73,19 +74,11 @@ pub struct Cli {
     output_schema: Option<PathBuf>,
 
     /// Path where the final assistant message should be written.
-    #[arg(
-        long = "output-last-message",
-        short = 'o',
-        value_name = "FILE"
-    )]
+    #[arg(long = "output-last-message", short = 'o', value_name = "FILE")]
     last_message_file: Option<PathBuf>,
 
     /// Print machine-readable events to stdout as JSONL.
-    #[arg(
-        long = "json",
-        alias = "experimental-json",
-        default_value_t = false
-    )]
+    #[arg(long = "json", alias = "experimental-json", default_value_t = false)]
     json: bool,
 
     /// Optional app-server wire log path for debugging automation runs.
@@ -187,14 +180,9 @@ struct ExecItem {
 #[serde(tag = "type")]
 enum ExecEvent {
     #[serde(rename = "thread.started")]
-    ThreadStarted {
-        thread_id: String,
-    },
+    ThreadStarted { thread_id: String },
     #[serde(rename = "turn.started")]
-    TurnStarted {
-        thread_id: String,
-        turn_id: String,
-    },
+    TurnStarted { thread_id: String, turn_id: String },
     #[serde(rename = "turn.completed")]
     TurnCompleted {
         thread_id: String,
@@ -631,8 +619,13 @@ async fn drain_post_turn_notifications<W: Write>(
     loop {
         match timeout(DRAIN_TIMEOUT, channels.notifications.recv()).await {
             Ok(Some(notification)) => {
-                let _ =
-                    projector.handle_notification(stdout, json_mode, thread_id, turn_id, notification)?;
+                let _ = projector.handle_notification(
+                    stdout,
+                    json_mode,
+                    thread_id,
+                    turn_id,
+                    notification,
+                )?;
             }
             Ok(None) | Err(_) => break,
         }
@@ -738,14 +731,19 @@ impl ExecEventProjector {
                     .and_then(|value| value.get("last").or(Some(value)))
                     .map(parse_usage)
                     .unwrap_or_default();
-                self.usage_by_turn.insert(expected_turn_id.to_string(), usage);
+                self.usage_by_turn
+                    .insert(expected_turn_id.to_string(), usage);
                 Ok(NotificationFlow::Continue)
             }
             "item/started" => {
                 if !matches_turn(&params, expected_thread_id, expected_turn_id) {
                     return Ok(NotificationFlow::Continue);
                 }
-                if let Some(item) = params.get("item").cloned().and_then(|raw| self.exec_item(raw)) {
+                if let Some(item) = params
+                    .get("item")
+                    .cloned()
+                    .and_then(|raw| self.exec_item(raw))
+                {
                     emit_event(
                         stdout,
                         json_mode,
@@ -762,8 +760,14 @@ impl ExecEventProjector {
                 if !matches_turn(&params, expected_thread_id, expected_turn_id) {
                     return Ok(NotificationFlow::Continue);
                 }
-                if let Some(item) = params.get("item").cloned().and_then(|raw| self.exec_item(raw)) {
-                    if item.kind == "agent_message" && let Some(text) = item.text.clone() {
+                if let Some(item) = params
+                    .get("item")
+                    .cloned()
+                    .and_then(|raw| self.exec_item(raw))
+                {
+                    if item.kind == "agent_message"
+                        && let Some(text) = item.text.clone()
+                    {
                         self.final_message = Some(text);
                     }
                     self.completed_item_ids.insert(item.id.clone());
@@ -1007,7 +1011,9 @@ impl ExecEventProjector {
                 continue;
             };
             let item = synthesized_item(&item_id, pending.kind, Some(pending.text), None);
-            if item.kind == "agent_message" && let Some(text) = item.text.clone() {
+            if item.kind == "agent_message"
+                && let Some(text) = item.text.clone()
+            {
                 self.final_message = Some(text);
             }
             self.completed_item_ids.insert(item.id.clone());
@@ -1022,7 +1028,11 @@ impl ExecEventProjector {
             )?;
         }
 
-        let mut output_ids = self.buffered_command_output.keys().cloned().collect::<Vec<_>>();
+        let mut output_ids = self
+            .buffered_command_output
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
         output_ids.sort();
         for item_id in output_ids {
             if self.completed_item_ids.contains(&item_id) {
@@ -1320,11 +1330,11 @@ fn camel_case(value: &str) -> String {
 )]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     };
-    use serde_json::json;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     #[test]
@@ -1685,12 +1695,27 @@ mod tests {
                 .lines()
                 .map(|line| serde_json::from_str::<Value>(line).expect("event json"))
                 .collect::<Vec<_>>();
-            assert_eq!(events[0]["type"], Value::String("thread.started".to_string()));
+            assert_eq!(
+                events[0]["type"],
+                Value::String("thread.started".to_string())
+            );
             assert_eq!(events[1]["type"], Value::String("turn.started".to_string()));
-            assert_eq!(events[2]["type"], Value::String("item.completed".to_string()));
-            assert_eq!(events[2]["item"]["type"], Value::String("agent_message".to_string()));
-            assert_eq!(events[2]["item"]["text"], Value::String("hello world".to_string()));
-            assert_eq!(events[3]["type"], Value::String("turn.completed".to_string()));
+            assert_eq!(
+                events[2]["type"],
+                Value::String("item.completed".to_string())
+            );
+            assert_eq!(
+                events[2]["item"]["type"],
+                Value::String("agent_message".to_string())
+            );
+            assert_eq!(
+                events[2]["item"]["text"],
+                Value::String("hello world".to_string())
+            );
+            assert_eq!(
+                events[3]["type"],
+                Value::String("turn.completed".to_string())
+            );
             assert_eq!(events[3]["usage"]["input_tokens"], Value::Number(11.into()));
 
             server.abort();
