@@ -856,8 +856,8 @@ fn build_nip90_feedback_event(
     include_amount: bool,
     bolt11: Option<&str>,
 ) -> Result<Event, String> {
-    let mut feedback = JobFeedback::new(status, request_id, requester)
-        .with_status_extra(status_extra.into());
+    let mut feedback =
+        JobFeedback::new(status, request_id, requester).with_status_extra(status_extra.into());
     if let Some(content) = content {
         let trimmed = content.trim();
         if !trimmed.is_empty() {
@@ -959,6 +959,13 @@ fn queue_active_job_payment_required_feedback(state: &mut RenderState) -> Result
             "queued provider payment-required feedback {} for request {}",
             feedback_event_id, request_id
         ));
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider queued payment-required feedback request_id={} feedback_event_id={} quoted_price_sats={}",
+            request_id,
+            feedback_event_id,
+            quoted_price_sats
+        );
         return Ok(true);
     }
 
@@ -975,7 +982,9 @@ fn queue_active_job_payment_required_feedback(state: &mut RenderState) -> Result
         },
     );
     if let Some(error) = state.spark_wallet.last_error.clone() {
-        return Err(format!("provider settlement invoice creation failed: {error}"));
+        return Err(format!(
+            "provider settlement invoice creation failed: {error}"
+        ));
     }
 
     state.active_job.payment_required_invoice_requested = true;
@@ -988,6 +997,12 @@ fn queue_active_job_payment_required_feedback(state: &mut RenderState) -> Result
         "queued provider settlement invoice for request {}",
         request_id
     ));
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider requested Spark invoice request_id={} quoted_price_sats={}",
+        request_id,
+        quoted_price_sats
+    );
     Ok(true)
 }
 
@@ -1444,6 +1459,13 @@ fn transition_active_job_to_running(
     state.provider_runtime.last_authoritative_status = Some("processing".to_string());
     if let Some(job) = state.active_job.job.as_ref().cloned() {
         record_active_job_stage_transition(state, &job, stage, source);
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider job running request_id={} capability={} backend={:?}",
+            job.request_id,
+            job.capability,
+            provider_execution_backend_for_active_job(state)
+        );
     }
     match queue_nip90_feedback_for_active_job(
         state,
@@ -1487,13 +1509,31 @@ fn transition_active_job_to_delivered(
         None => return Err("No active job selected".to_string()),
     };
     if let Some(job) = state.active_job.job.as_ref().cloned() {
+        let output_bytes = state
+            .active_job
+            .execution_output
+            .as_deref()
+            .map_or(0, str::len);
         record_active_job_stage_transition(state, &job, stage, source);
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider job delivered request_id={} capability={} output_bytes={}",
+            job.request_id,
+            job.capability,
+            output_bytes
+        );
         match crate::kernel_control::submit_active_job_output(state) {
             Ok(receipt_id) => {
-                state.active_job.append_event(format!(
-                    "submitted authoritative kernel output receipt {}",
-                    receipt_id
-                ));
+                let event =
+                    if crate::kernel_control::is_local_projection_receipt_id(receipt_id.as_str()) {
+                        format!("recorded local-only output submission {}", receipt_id)
+                    } else {
+                        format!(
+                            "submitted authoritative kernel output receipt {}",
+                            receipt_id
+                        )
+                    };
+                state.active_job.append_event(event);
             }
             Err(error) => {
                 state.active_job.append_event(format!(
@@ -1573,10 +1613,26 @@ pub(super) fn transition_active_job_to_paid(
     state.provider_runtime.last_authoritative_error_class = None;
     state.provider_runtime.last_completed_job_at = Some(now);
     if let Some(job) = state.active_job.job.as_ref().cloned() {
-        state.active_job.append_event(format!(
-            "finalized authoritative kernel verdict receipt {}",
-            verdict_receipt_id
-        ));
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider job paid request_id={} capability={} payment_id={}",
+            job.request_id,
+            job.capability,
+            job.payment_id.as_deref().unwrap_or("missing")
+        );
+        let event =
+            if crate::kernel_control::is_local_projection_receipt_id(verdict_receipt_id.as_str()) {
+                format!(
+                    "recorded local-only settlement verdict {}",
+                    verdict_receipt_id
+                )
+            } else {
+                format!(
+                    "finalized authoritative kernel verdict receipt {}",
+                    verdict_receipt_id
+                )
+            };
+        state.active_job.append_event(event);
         state
             .job_history
             .record_from_active_job(&job, JobHistoryStatus::Succeeded);
@@ -1620,6 +1676,15 @@ fn fail_active_job_execution(
     state.provider_runtime.last_error_detail = Some(reason.clone());
     state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
     state.provider_runtime.last_result = Some(format!("active job failed: {reason}"));
+    if let Some(job) = state.active_job.job.as_ref() {
+        tracing::error!(
+            target: "autopilot_desktop::provider",
+            "Provider job failed request_id={} capability={} reason={}",
+            job.request_id,
+            job.capability,
+            reason
+        );
+    }
 
     if let Some(request_id) = starter_request_id.as_deref() {
         release_hosted_starter_offer_if_configured(state, request_id, reason.as_str());
@@ -1841,6 +1906,16 @@ fn accept_request_by_id(
             "Accepted request no longer exists".to_string()
         })?;
 
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider accepting request_id={} capability={} price_sats={} ttl_seconds={} source={}",
+        selected_request.request_id,
+        selected_request.capability,
+        selected_request.price_sats,
+        selected_request.ttl_seconds,
+        source
+    );
+
     if let Err(error) =
         crate::kernel_control::register_accepted_request_with_kernel(state, &selected_request)
     {
@@ -1872,9 +1947,22 @@ fn accept_request_by_id(
     ));
     state.active_job.start_from_request(&selected_request);
     crate::kernel_control::attach_compute_linkage_to_active_job(state, &selected_request);
-    state
-        .active_job
-        .append_event("provisioned authoritative kernel work unit and contract");
+    state.active_job.append_event(
+        if crate::kernel_control::kernel_authority_available(state) {
+            "provisioned authoritative kernel work unit and contract"
+        } else {
+            "started local-only relay job without hosted kernel authority"
+        },
+    );
+    if let Some(job) = state.active_job.job.as_ref() {
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider active job started request_id={} capability={} backend={:?}",
+            job.request_id,
+            job.capability,
+            provider_execution_backend_for_active_job(state)
+        );
+    }
     if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand
         && let Some(starter_ack) = starter_ack.as_ref()
     {
@@ -2247,8 +2335,8 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
         ProviderExecutionBackend, apple_fm_request_accept_block_reason,
+        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
         next_auto_accept_request_id_for, next_invalid_request_rejection_for,
         ollama_request_accept_block_reason, provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
@@ -2257,11 +2345,10 @@ mod tests {
         ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
         JobInboxValidation, PaneLoadState,
     };
-    use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
+    use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
     use crate::state::provider_runtime::{
-        ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState,
-        ProviderRuntimeState,
+        ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState, ProviderRuntimeState,
     };
     use nostr::{NostrIdentity, nip90::KIND_JOB_TEXT_GENERATION};
     use std::path::PathBuf;
@@ -2352,10 +2439,7 @@ mod tests {
         );
         let mut active_job = ActiveJobState::default();
         active_job.start_from_request(&request);
-        let job = active_job
-            .job
-            .as_mut()
-            .expect("active job should exist");
+        let job = active_job.job.as_mut().expect("active job should exist");
         job.stage = crate::app_state::JobLifecycleStage::Delivered;
         job.invoice_id = None;
         job.payment_id = None;

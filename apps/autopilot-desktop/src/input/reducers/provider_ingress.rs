@@ -183,6 +183,18 @@ pub(super) fn apply_ingressed_request(
         request.request_id,
     ));
 
+    if is_new {
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider ingress request_id={} capability={} price_sats={} ttl_seconds={} preview_only={}",
+            request.request_id,
+            request.capability,
+            request.price_sats,
+            request.ttl_seconds,
+            preview_only
+        );
+    }
+
     if preview_only {
         state.provider_runtime.last_result = Some(format!(
             "preview observed request {} ({})",
