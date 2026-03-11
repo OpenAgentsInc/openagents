@@ -2625,6 +2625,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
         || handle_local_inference_keyboard_input(state, logical_key)
+        || handle_apple_fm_workbench_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
@@ -3262,6 +3263,19 @@ fn handle_local_inference_keyboard_input(
             }
             false
         },
+    )
+}
+
+fn handle_apple_fm_workbench_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        apple_fm_workbench_inputs_focused,
+        dispatch_apple_fm_workbench_input_event,
+        |_s| false,
     )
 }
 
