@@ -1930,11 +1930,11 @@ fn run_cuda_hybrid_generation_request(
         let mut prompt_logits = Vec::new();
         let mut last_logits = Vec::new();
         let mut execution_plan_digest = None;
-        let mut compile_path = None;
+        let compile_path = None;
         let mut kernel_count = 0usize;
         let mut bytes_moved = 0u64;
-        let mut plan_cache_hits = 0usize;
-        let mut plan_cache_misses = 0usize;
+        let plan_cache_hits = 0usize;
+        let plan_cache_misses = 0usize;
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
         let mut cache = if shared_prefix_eligible {
