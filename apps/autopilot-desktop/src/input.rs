@@ -2998,7 +2998,9 @@ fn provider_blocker_detail(
 
     lane_error
         .map(str::trim)
-        .filter(|entry| !entry.is_empty())
+        .filter(|entry| {
+            !entry.is_empty() && !entry.eq_ignore_ascii_case("Foundation Models is available")
+        })
         .map(ToString::to_string)
         .unwrap_or_else(|| match blocker {
             crate::app_state::ProviderBlocker::OllamaUnavailable => {
@@ -3045,12 +3047,13 @@ fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Op
     if !should_mirror_provider_preflight_error(state.provider_runtime.mode) {
         return None;
     }
+    let apple_fm_error = state.provider_runtime.apple_fm.availability_error_message();
     let blockers = state.provider_blockers();
     format_provider_blockers_for_display(
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
         state.provider_runtime.ollama.last_error.as_deref(),
-        state.provider_runtime.apple_fm.last_error.as_deref(),
+        apple_fm_error.as_deref(),
     )
     .map(|details| format!("Mission Control preflight blockers: {details}"))
 }
@@ -3063,11 +3066,12 @@ fn should_mirror_provider_preflight_error(
 
 fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Option<String> {
     let blockers = state.provider_blockers();
+    let apple_fm_error = state.provider_runtime.apple_fm.availability_error_message();
     format_provider_blockers_for_display(
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
         state.provider_runtime.ollama.last_error.as_deref(),
-        state.provider_runtime.apple_fm.last_error.as_deref(),
+        apple_fm_error.as_deref(),
     )
     .map(|details| format!("Cannot go online yet: {details}"))
 }
@@ -3629,6 +3633,15 @@ mod tests {
         assert_eq!(
             provider_blocker_detail(ProviderBlocker::IdentityMissing, None, None, None),
             "Nostr identity is not ready"
+        );
+        assert_eq!(
+            provider_blocker_detail(
+                ProviderBlocker::AppleFoundationModelsUnavailable,
+                None,
+                None,
+                Some("Foundation Models is available"),
+            ),
+            "Apple Foundation Models backend is unavailable"
         );
     }
 
