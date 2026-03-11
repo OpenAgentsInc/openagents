@@ -2477,9 +2477,9 @@ pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn buy_mode_payments_ledger_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 70.0,
+        content_bounds.origin.y + 90.0,
         (content_bounds.size.width - 24.0).max(0.0),
-        (content_bounds.size.height - 82.0).max(0.0),
+        (content_bounds.size.height - 102.0).max(0.0),
     )
 }
 
