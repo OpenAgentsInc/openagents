@@ -6479,6 +6479,8 @@ mod tests {
             "feedback-buy-render-001",
             Some("payment-required"),
             Some("pay invoice"),
+            Some(2_000),
+            Some("lnbc1buyrender"),
         );
         requests
             .prepare_auto_payment_attempt(
@@ -6568,6 +6570,8 @@ mod tests {
             "feedback-buy-render-002",
             Some("payment-required"),
             Some("pay invoice"),
+            Some(2_000),
+            Some("lnbc1buyrenderpending"),
         );
         requests
             .prepare_auto_payment_attempt(

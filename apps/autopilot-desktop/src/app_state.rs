@@ -666,6 +666,36 @@ impl Default for MissionControlPaneState {
 }
 
 impl MissionControlPaneState {
+    fn push_persisted_log_line(&mut self, line: TerminalLine) {
+        crate::runtime_log::record_mission_control_line(
+            line.stream.clone(),
+            line.text.clone(),
+            line.key.as_deref(),
+        );
+        self.log_stream.push_line(line);
+    }
+
+    fn build_runtime_terminal_line(
+        &self,
+        stream: TerminalStream,
+        text: impl Into<String>,
+        key: Option<String>,
+    ) -> TerminalLine {
+        let line = TerminalLine::new(
+            stream,
+            format!(
+                "{}  {}",
+                mission_control_log_timestamp(now_epoch_seconds()),
+                text.into()
+            ),
+        );
+        if let Some(key) = key {
+            line.with_key(key)
+        } else {
+            line
+        }
+    }
+
     pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
         self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
         if self.buy_mode_loop_enabled {
@@ -731,14 +761,7 @@ impl MissionControlPaneState {
     }
 
     pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
-        self.log_stream.push_line(TerminalLine::new(
-            stream,
-            format!(
-                "{}  {}",
-                mission_control_log_timestamp(now_epoch_seconds()),
-                text.into()
-            ),
-        ));
+        self.push_persisted_log_line(self.build_runtime_terminal_line(stream, text, None));
     }
 
     pub fn upsert_runtime_log_line(
@@ -747,17 +770,11 @@ impl MissionControlPaneState {
         stream: TerminalStream,
         text: impl Into<String>,
     ) {
-        self.log_stream.push_line(
-            TerminalLine::new(
-                stream,
-                format!(
-                    "{}  {}",
-                    mission_control_log_timestamp(now_epoch_seconds()),
-                    text.into()
-                ),
-            )
-            .with_key(key),
-        );
+        self.push_persisted_log_line(self.build_runtime_terminal_line(
+            stream,
+            text,
+            Some(key.into()),
+        ));
     }
 
     pub fn has_pending_mirrored_trace_logs(&self) -> bool {
@@ -791,7 +808,7 @@ impl MissionControlPaneState {
         );
         for (line, entry) in lines.into_iter().zip(content.into_iter()) {
             if !self.rendered_log_content.contains(&entry) {
-                self.log_stream.push_line(line);
+                self.push_persisted_log_line(line);
                 self.rendered_log_content.push(entry);
             }
         }
@@ -9517,6 +9534,7 @@ mod tests {
             duplicate_outcomes: Vec::new(),
             resolution_feedbacks: Vec::new(),
             observed_buyer_event_ids: Vec::new(),
+            provider_observations: Vec::new(),
         }
     }
 
@@ -12488,6 +12506,8 @@ mod tests {
             "feedback-001",
             Some("payment-required"),
             Some("pay invoice"),
+            Some(10_000),
+            Some("lnbc1feedback001"),
         );
         assert_eq!(feedback_action, None);
         let after_feedback = requests
@@ -12563,6 +12583,8 @@ mod tests {
             "feedback-pay-001",
             Some("payment-required"),
             Some("pay to continue"),
+            Some(10_000),
+            Some("lnbc1paymentrequired"),
         );
 
         let prepared = requests
@@ -12641,6 +12663,8 @@ mod tests {
             "feedback-buy-ledger-001",
             Some("payment-required"),
             Some("invoice required"),
+            Some(2_000),
+            Some("lnbc1buyledgerinvoice"),
         );
         requests.prepare_auto_payment_attempt(
             request_id.as_str(),
@@ -12706,6 +12730,8 @@ mod tests {
             "feedback-buy-fail-ledger-001",
             Some("payment-required"),
             Some("invoice required"),
+            Some(2_000),
+            Some("lnbc1buyfailinvoice"),
         );
         requests
             .prepare_auto_payment_attempt(
@@ -12943,6 +12969,8 @@ mod tests {
             "feedback-buy-smoke-001",
             Some("payment-required"),
             Some("pay invoice"),
+            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+            Some("lnbc1buysmoke"),
         );
         let prepared = requests
             .prepare_auto_payment_attempt(
@@ -13085,6 +13113,8 @@ mod tests {
             "feedback-pay-fail-001",
             Some("payment-required"),
             Some("pay invoice"),
+            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+            Some("lnbc1payfail"),
         );
         requests
             .prepare_auto_payment_attempt(
@@ -13148,6 +13178,18 @@ mod tests {
         let winner = "11".repeat(32);
         let loser = "22".repeat(32);
         assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                winner.as_str(),
+                "feedback-winner-001",
+                Some("payment-required"),
+                Some("invoice ready"),
+                Some(10_000),
+                Some("lnbc1winner001"),
+            ),
+            None
+        );
+        assert_eq!(
             requests.apply_nip90_buyer_result_event(
                 request_id.as_str(),
                 winner.as_str(),
@@ -13205,10 +13247,23 @@ mod tests {
             })
             .expect("request should queue");
 
+        let winner = "11".repeat(32);
+        assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                winner.as_str(),
+                "feedback-winner-002",
+                Some("payment-required"),
+                Some("invoice ready"),
+                Some(10_000),
+                Some("lnbc1winner002"),
+            ),
+            None
+        );
         assert_eq!(
             requests.apply_nip90_buyer_result_event(
                 request_id.as_str(),
-                "11".repeat(32).as_str(),
+                winner.as_str(),
                 "result-winner-002",
                 Some("success"),
             ),
@@ -13221,6 +13276,8 @@ mod tests {
             "feedback-loser-002",
             Some("processing"),
             Some("still working"),
+            None,
+            None,
         );
         assert_eq!(
             action,
@@ -13240,6 +13297,168 @@ mod tests {
         assert_eq!(
             request.duplicate_outcomes[0].reason_code,
             BuyerResolutionReason::LostRace.code()
+        );
+    }
+
+    #[test]
+    fn network_requests_race_mode_requires_matching_invoice_and_result_before_payment() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-buy-race-match-001", 28);
+        let result_only_provider = "66".repeat(32);
+        let payable_provider = "77".repeat(32);
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                result_only_provider.as_str(),
+                "result-race-match-001",
+                Some("success"),
+            ),
+            None
+        );
+        assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                "feedback-race-match-001",
+                Some("payment-required"),
+                Some("invoice ready"),
+                Some(2_000),
+                Some("lnbc1racematch001"),
+            ),
+            None
+        );
+        assert!(
+            requests
+                .prepare_auto_payment_attempt_for_provider(
+                    request_id.as_str(),
+                    payable_provider.as_str(),
+                    1_762_700_160,
+                )
+                .is_none(),
+            "buyer must not pay a provider until that same provider has delivered a result"
+        );
+
+        let after_invoice_only = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after invoice-only feedback");
+        assert_eq!(after_invoice_only.winning_provider_pubkey, None);
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                "result-race-match-002",
+                Some("success"),
+            ),
+            None
+        );
+        let prepared = requests
+            .prepare_auto_payment_attempt_for_provider(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                1_762_700_161,
+            )
+            .expect("matching provider invoice should become payable once the result arrives");
+        assert_eq!(prepared.0, "lnbc1racematch001");
+        assert_eq!(prepared.1, Some(2));
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(
+            request.winning_provider_pubkey.as_deref(),
+            Some(payable_provider.as_str())
+        );
+        assert_eq!(
+            request.winning_result_event_id.as_deref(),
+            Some("result-race-match-002")
+        );
+        assert_eq!(
+            requests.pending_auto_payment_request_id.as_deref(),
+            Some(request_id.as_str())
+        );
+    }
+
+    #[test]
+    fn network_requests_race_mode_ignores_nonwinner_error_when_payable_provider_exists() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-buy-race-safe-001", 29);
+        let noisy_provider = "88".repeat(32);
+        let payable_provider = "99".repeat(32);
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                noisy_provider.as_str(),
+                "result-race-safe-001",
+                Some("success"),
+            ),
+            None
+        );
+        assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                "feedback-race-safe-001",
+                Some("payment-required"),
+                Some("invoice ready"),
+                Some(2_000),
+                Some("lnbc1racesafe001"),
+            ),
+            None
+        );
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                "result-race-safe-002",
+                Some("success"),
+            ),
+            None
+        );
+        let prepared = requests
+            .prepare_auto_payment_attempt_for_provider(
+                request_id.as_str(),
+                payable_provider.as_str(),
+                1_762_700_171,
+            )
+            .expect("matching provider invoice should queue Spark payment");
+        assert_eq!(prepared.1, Some(2));
+
+        assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                noisy_provider.as_str(),
+                "feedback-race-safe-err-001",
+                Some("error"),
+                Some("job aborted"),
+                None,
+                None,
+            ),
+            None
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(request.status, NetworkRequestStatus::ResultReceived);
+        assert_eq!(request.payment_error, None);
+        assert_eq!(
+            request.winning_provider_pubkey.as_deref(),
+            Some(payable_provider.as_str())
+        );
+        assert_eq!(
+            requests.pending_auto_payment_request_id.as_deref(),
+            Some(request_id.as_str())
         );
     }
 
