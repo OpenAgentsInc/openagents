@@ -803,7 +803,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                     go_online_bounds.origin.y + 22.0,
                 ),
                 11.0,
-                theme::text::PRIMARY,
+                wgpui::Hsla::white(),
             ));
 
             y = go_online_bounds.max_y() + 18.0;
