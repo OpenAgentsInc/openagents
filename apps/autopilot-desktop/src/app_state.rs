@@ -6526,6 +6526,10 @@ pub struct ActiveJobState {
     pub execution_turn_interrupt_command_seq: Option<u64>,
     pub execution_deadline_epoch_seconds: Option<u64>,
     pub result_publish_in_flight: bool,
+    pub payment_required_invoice_requested: bool,
+    pub payment_required_feedback_in_flight: bool,
+    pub payment_required_failed: bool,
+    pub pending_bolt11: Option<String>,
     pub job: Option<ActiveJobRecord>,
     next_event_seq: u64,
 }
@@ -6547,6 +6551,10 @@ impl Default for ActiveJobState {
             execution_turn_interrupt_command_seq: None,
             execution_deadline_epoch_seconds: None,
             result_publish_in_flight: false,
+            payment_required_invoice_requested: false,
+            payment_required_feedback_in_flight: false,
+            payment_required_failed: false,
+            pending_bolt11: None,
             job: None,
             next_event_seq: 1,
         }
@@ -6614,6 +6622,10 @@ impl ActiveJobState {
         self.execution_turn_interrupt_command_seq = None;
         self.execution_deadline_epoch_seconds = None;
         self.result_publish_in_flight = false;
+        self.payment_required_invoice_requested = false;
+        self.payment_required_feedback_in_flight = false;
+        self.payment_required_failed = false;
+        self.pending_bolt11 = None;
         self.append_event("received request from inbox");
         self.append_event("accepted request and queued runtime execution");
         self.load_state = PaneLoadState::Ready;
@@ -6736,6 +6748,10 @@ impl ActiveJobState {
         self.load_state = PaneLoadState::Ready;
         self.runtime_supports_abort = false;
         self.execution_turn_interrupt_command_seq = None;
+        self.payment_required_invoice_requested = false;
+        self.payment_required_feedback_in_flight = false;
+        self.payment_required_failed = false;
+        self.pending_bolt11 = None;
         self.last_action = Some(action_label.to_string());
         Ok(())
     }
