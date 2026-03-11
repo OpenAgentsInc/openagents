@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -26,6 +26,7 @@ use crate::app_state::{
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 
 const REMOTE_SYNC_INTERVAL: Duration = Duration::from_millis(250);
+const REMOTE_WORKTREE_CACHE_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexRemoteRuntimeConfig {
@@ -202,6 +203,7 @@ pub struct CodexRemoteWorkspaceContext {
     pub path: Option<String>,
     pub git_branch: Option<String>,
     pub git_dirty: Option<bool>,
+    pub worktree_entries: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -997,9 +999,58 @@ pub fn snapshot_for_state(state: &RenderState) -> CodexRemoteSnapshot {
         artifacts: CodexRemoteArtifacts { plan, latest_diff },
         wallet,
         provider,
-        workspace: None,
-        terminal: None,
+        workspace: workspace_context_for_state(state),
+        terminal: terminal_snapshot_for_state(state),
     }
+}
+
+fn workspace_context_for_state(state: &RenderState) -> Option<CodexRemoteWorkspaceContext> {
+    let thread_id = state.autopilot_chat.active_thread_id.as_deref()?;
+    let metadata = state.autopilot_chat.thread_metadata.get(thread_id)?;
+    let workspace_root = metadata.workspace_root.clone();
+    let worktree_entries = workspace_root
+        .as_deref()
+        .map(cached_git_worktree_entries)
+        .unwrap_or_default();
+    Some(CodexRemoteWorkspaceContext {
+        project_id: metadata.project_id.clone(),
+        project_name: metadata.project_name.clone(),
+        workspace_root,
+        cwd: metadata.cwd.clone(),
+        path: metadata.path.clone(),
+        git_branch: metadata.git_branch.clone(),
+        git_dirty: metadata.git_dirty,
+        worktree_entries,
+    })
+}
+
+fn terminal_snapshot_for_state(state: &RenderState) -> Option<CodexRemoteTerminalSnapshot> {
+    let session = state.autopilot_chat.active_terminal_session()?;
+    let lines = session
+        .lines
+        .iter()
+        .rev()
+        .take(120)
+        .map(|line| {
+            let prefix = match line.stream {
+                wgpui::components::sections::TerminalStream::Stdout => "stdout",
+                wgpui::components::sections::TerminalStream::Stderr => "stderr",
+            };
+            format!("[{prefix}] {}", line.text)
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
+    Some(CodexRemoteTerminalSnapshot {
+        thread_id: session.thread_id.clone(),
+        workspace_root: session.workspace_root.clone(),
+        shell: session.shell.clone(),
+        status: session.status.label().to_string(),
+        exit_code: session.exit_code,
+        line_count: session.lines.len(),
+        lines,
+    })
 }
 
 fn run_remote_runtime_loop(
@@ -1080,6 +1131,120 @@ fn run_remote_runtime_loop(
         let _ = shutdown_tx.send(());
         let _ = server.await;
     });
+}
+
+fn cached_git_worktree_entries(workspace_root: &str) -> Vec<String> {
+    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Vec<String>)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock()
+        && let Some((captured_at, entries)) = guard.get(workspace_root)
+        && captured_at.elapsed() < REMOTE_WORKTREE_CACHE_TTL
+    {
+        return entries.clone();
+    }
+    let entries = git_worktree_entries(workspace_root);
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(workspace_root.to_string(), (Instant::now(), entries.clone()));
+    }
+    entries
+}
+
+fn git_worktree_entries(workspace_root: &str) -> Vec<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(workspace_root)
+        .args(["worktree", "list", "--porcelain"])
+        .output();
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    parse_git_worktree_output(String::from_utf8_lossy(&output.stdout).as_ref())
+}
+
+fn parse_git_worktree_output(raw: &str) -> Vec<String> {
+    let mut entries = Vec::new();
+    let mut path = None::<String>;
+    let mut branch = None::<String>;
+    let mut detached = false;
+    let mut locked = false;
+
+    let flush = |entries: &mut Vec<String>,
+                 path: &mut Option<String>,
+                 branch: &mut Option<String>,
+                 detached: &mut bool,
+                 locked: &mut bool| {
+        let Some(current_path) = path.take() else {
+            *branch = None;
+            *detached = false;
+            *locked = false;
+            return;
+        };
+        let branch_label = if let Some(branch) = branch.take() {
+            branch
+        } else if *detached {
+            "detached".to_string()
+        } else {
+            "unknown".to_string()
+        };
+        let mut summary = format!("{current_path} ({branch_label})");
+        if *locked {
+            summary.push_str(" locked");
+        }
+        entries.push(summary);
+        *detached = false;
+        *locked = false;
+    };
+
+    for line in raw.lines() {
+        if let Some(next_path) = line.strip_prefix("worktree ") {
+            flush(
+                &mut entries,
+                &mut path,
+                &mut branch,
+                &mut detached,
+                &mut locked,
+            );
+            path = Some(next_path.trim().to_string());
+            continue;
+        }
+        if let Some(next_branch) = line.strip_prefix("branch ") {
+            branch = Some(
+                next_branch
+                    .trim()
+                    .trim_start_matches("refs/heads/")
+                    .to_string(),
+            );
+            continue;
+        }
+        if line.trim() == "detached" {
+            detached = true;
+            continue;
+        }
+        if line.starts_with("locked") {
+            locked = true;
+            continue;
+        }
+        if line.trim().is_empty() {
+            flush(
+                &mut entries,
+                &mut path,
+                &mut branch,
+                &mut detached,
+                &mut locked,
+            );
+        }
+    }
+    flush(
+        &mut entries,
+        &mut path,
+        &mut branch,
+        &mut detached,
+        &mut locked,
+    );
+    entries
 }
 
 async fn remote_index() -> Html<&'static str> {
@@ -1900,6 +2065,16 @@ const REMOTE_HTML: &str = r#"<!doctype html>
         row.textContent = `${label}: ${value}`;
         els.workspace.appendChild(row);
       });
+      if ((workspace.worktree_entries || []).length) {
+        const heading = document.createElement("div");
+        heading.textContent = "Worktrees:";
+        els.workspace.appendChild(heading);
+        workspace.worktree_entries.forEach((entry) => {
+          const row = document.createElement("div");
+          row.textContent = `- ${entry}`;
+          els.workspace.appendChild(row);
+        });
+      }
     }
 
     function renderTerminal() {
@@ -2060,6 +2235,20 @@ mod tests {
     fn remote_pairing_url_uses_hash_token() {
         let url = remote_pairing_url("127.0.0.1:4848".parse().unwrap(), "secret");
         assert_eq!(url, "http://127.0.0.1:4848/#token=secret");
+    }
+
+    #[test]
+    fn parse_git_worktree_output_summarizes_branches_and_detached_entries() {
+        let raw = "worktree /repo\nHEAD abcdef\nbranch refs/heads/main\n\nworktree /repo-feature\nHEAD fedcba\nbranch refs/heads/feature/cx-13\nlocked reason\n\nworktree /repo-detached\nHEAD 012345\ndetached\n";
+        let entries = parse_git_worktree_output(raw);
+        assert_eq!(
+            entries,
+            vec![
+                "/repo (main)".to_string(),
+                "/repo-feature (feature/cx-13) locked".to_string(),
+                "/repo-detached (detached)".to_string(),
+            ]
+        );
     }
 
     #[test]
