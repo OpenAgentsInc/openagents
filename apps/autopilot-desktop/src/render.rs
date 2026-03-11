@@ -310,6 +310,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ac_lane_worker,
             provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
+            nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker::spawn(),
             apple_fm_execution: AppleFmBridgeSnapshot::default(),
             apple_fm_execution_worker,
             ollama_execution: LocalInferenceExecutionSnapshot::default(),

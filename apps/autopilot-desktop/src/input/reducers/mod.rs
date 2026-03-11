@@ -182,6 +182,17 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         }
     }
 
+    for update in state.nip28_chat_lane_worker.drain_updates() {
+        use crate::nip28_chat_lane::Nip28ChatLaneUpdate;
+        changed = true;
+        match update {
+            Nip28ChatLaneUpdate::RelayEvent(event) => {
+                state.autopilot_chat.managed_chat_projection.record_relay_event(event);
+            }
+            Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+        }
+    }
+
     changed
 }
 

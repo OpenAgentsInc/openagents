@@ -32,6 +32,7 @@ mod kernel_control;
 mod labor_orchestrator;
 mod local_inference_runtime;
 pub mod logging;
+mod nip28_chat_lane;
 mod nip_sa_wallet_bridge;
 #[cfg(test)]
 mod ollama_execution;

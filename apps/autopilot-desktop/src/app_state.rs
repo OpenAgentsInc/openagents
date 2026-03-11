@@ -8831,6 +8831,7 @@ pub struct RenderState {
     pub ac_lane_worker: AcLaneWorker,
     pub provider_nip90_lane: ProviderNip90LaneSnapshot,
     pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
+    pub nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
     pub ollama_execution: LocalInferenceExecutionSnapshot,
