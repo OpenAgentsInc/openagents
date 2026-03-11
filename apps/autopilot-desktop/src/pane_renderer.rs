@@ -15,6 +15,7 @@ use crate::app_state::{
     SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
     StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
+    mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -837,13 +838,14 @@ fn paint_go_online_pane(
 
     let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
     paint.scene.push_clip(earnings_clip);
+    const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
     paint.scene.draw_text(paint.text.layout_mono(
         "BIP-177 SATS",
         Point::new(
             layout.earnings_panel.max_x() - 110.0,
             layout.earnings_panel.origin.y + 12.0,
         ),
-        10.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         mission_control_muted_color(),
     ));
     let mut earnings_y = layout.earnings_panel.origin.y + 48.0;
@@ -854,7 +856,7 @@ fn paint_go_online_pane(
         "Today",
         &format_mission_control_amount(earnings_scoreboard.sats_today),
         mission_control_green_color(),
-        18.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
     );
@@ -865,7 +867,7 @@ fn paint_go_online_pane(
         "This Month",
         &format_mission_control_amount(earnings_scoreboard.sats_this_month),
         mission_control_text_color(),
-        14.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
     );
@@ -876,7 +878,7 @@ fn paint_go_online_pane(
         "All Time",
         &format_mission_control_amount(earnings_scoreboard.lifetime_sats),
         mission_control_cyan_color(),
-        16.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         false,
     );
@@ -914,7 +916,7 @@ fn paint_go_online_pane(
         "Balance",
         &wallet_balance,
         mission_control_green_color(),
-        17.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.wallet_panel.size.width - 24.0,
         true,
     );
@@ -941,31 +943,37 @@ fn paint_go_online_pane(
     paint.scene.pop_clip();
 
     let download_bounds = mission_control_local_model_button_bounds(content_bounds);
-    let download_label = mission_control_local_model_button_label(
-        desktop_shell_mode,
-        provider_runtime,
-        local_inference_runtime,
-    );
-    if mission_control_local_action_enabled(
+    if mission_control_show_local_model_button(
         desktop_shell_mode,
         provider_runtime,
         local_inference_runtime,
     ) {
-        paint_mission_control_command_button(
-            download_bounds,
-            &download_label,
-            mission_control_orange_color(),
-            true,
-            paint,
+        let download_label = mission_control_local_model_button_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
         );
-    } else {
-        paint_mission_control_command_button(
-            download_bounds,
-            &download_label,
-            mission_control_muted_color(),
-            false,
-            paint,
-        );
+        if mission_control_local_action_enabled(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ) {
+            paint_mission_control_command_button(
+                download_bounds,
+                &download_label,
+                mission_control_orange_color(),
+                true,
+                paint,
+            );
+        } else {
+            paint_mission_control_command_button(
+                download_bounds,
+                &download_label,
+                mission_control_muted_color(),
+                false,
+                paint,
+            );
+        }
     }
     let withdraw_input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
     paint.scene.draw_text(paint.text.layout_mono(
@@ -974,7 +982,7 @@ fn paint_go_online_pane(
             withdraw_input_bounds.origin.x,
             withdraw_input_bounds.origin.y - 12.0,
         ),
-        10.0,
+        MISSION_CONTROL_PANEL_FONT_SIZE,
         mission_control_muted_color(),
     ));
     mission_control
@@ -1166,16 +1174,18 @@ fn paint_mission_control_status_cell(
         ))
         .with_background(value_color.with_alpha(0.85)),
     );
+    let label_y = bounds.origin.y + 6.0;
+    let value_y = bounds.origin.y + 20.0;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 9.0),
+        Point::new(bounds.origin.x + 10.0, label_y),
         9.0,
         mission_control_muted_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         value,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 21.0),
-        12.0,
+        Point::new(bounds.origin.x + 10.0, value_y),
+        11.0,
         value_color,
     ));
 }
@@ -1370,18 +1380,10 @@ fn mission_control_local_model_button_label(
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
                 String::from("STARTING APPLE FM")
-            } else if !desktop_shell_mode.is_dev() {
-                if provider_runtime.apple_fm.reachable {
-                    String::from("REFRESH APPLE FM")
-                } else {
-                    String::from("START APPLE FM")
-                }
-            } else if provider_runtime.apple_fm.is_ready() {
+            } else if desktop_shell_mode.is_dev() && provider_runtime.apple_fm.is_ready() {
                 String::from("OPEN APPLE FM")
-            } else if provider_runtime.apple_fm.reachable {
-                String::from("REFRESH APPLE FM")
             } else {
-                String::from("START APPLE FM")
+                String::from("NO LOCAL MODEL")
             }
         }
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
@@ -4689,7 +4691,7 @@ fn paint_mission_control_go_online_button(
     bounds: Bounds,
     label: &str,
     enabled: bool,
-    accent: Hsla,
+    _accent: Hsla,
     paint: &mut PaintContext,
 ) {
     let base_layer = paint.scene.layer();
@@ -4753,9 +4755,9 @@ fn paint_mission_control_go_online_button(
     paint_button_label_mono(
         Bounds::new(
             bounds.origin.x + 12.0,
-            bounds.origin.y + 8.0,
+            bounds.origin.y,
             (bounds.size.width - 24.0).max(0.0),
-            32.0,
+            bounds.size.height,
         ),
         label,
         22.0,
@@ -4766,16 +4768,6 @@ fn paint_mission_control_go_online_button(
         },
         paint,
     );
-    paint.scene.draw_text(paint.text.layout_mono(
-        if label == "GO ONLINE" {
-            "COMPUTE MARKET ARM"
-        } else {
-            "COMPUTE MARKET LIVE"
-        },
-        Point::new(bounds.origin.x + 22.0, bounds.max_y() - 12.0),
-        9.0,
-        accent.with_alpha(if enabled { 0.88 } else { 0.5 }),
-    ));
 
     paint.scene.set_layer(base_layer);
 }
@@ -5375,7 +5367,7 @@ mod tests {
                 &provider,
                 &local
             ),
-            "REFRESH APPLE FM"
+            "NO LOCAL MODEL"
         );
         assert_eq!(
             mission_control_go_online_hint(
@@ -5403,7 +5395,7 @@ mod tests {
                 &provider,
                 &local
             ),
-            "START APPLE FM"
+            "NO LOCAL MODEL"
         );
         assert_eq!(
             mission_control_go_online_hint(
