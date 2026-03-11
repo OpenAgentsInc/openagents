@@ -1,6 +1,10 @@
 Drop project fonts in this directory.
 
 Recommended files:
+- BerkeleyMono-Regular.ttf
+- BerkeleyMono-Italic.ttf
+- BerkeleyMono-Bold.ttf
+- BerkeleyMono-BoldItalic.ttf
 - Inter-Regular.ttf
 - Inter-Medium.ttf
 - Inter-SemiBold.ttf
