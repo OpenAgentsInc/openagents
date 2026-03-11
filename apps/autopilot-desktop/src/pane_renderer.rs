@@ -1385,9 +1385,9 @@ fn paint_mission_control_buy_mode_panel(
     let values = [
         ("MODE", panel_state.mode.clone()),
         ("NEXT", panel_state.next.clone()),
-        ("KIND", "5050".to_string()),
-        ("PRICE", panel_state.price.clone()),
-        ("STATE", panel_state.state.clone()),
+        ("PROV", panel_state.provider.clone()),
+        ("WORK", panel_state.work.clone()),
+        ("PAY", panel_state.payment.clone()),
     ];
     for (index, (label, value)) in values.iter().enumerate() {
         let x = panel_bounds.origin.x + 12.0 + index as f32 * (cell_width + cell_gap);
@@ -1423,8 +1423,9 @@ struct MissionControlBuyModePanelState {
     summary: String,
     mode: String,
     next: String,
-    state: String,
-    price: String,
+    provider: String,
+    work: String,
+    payment: String,
     button_label: String,
     button_active: bool,
     button_enabled: bool,
@@ -1463,14 +1464,18 @@ fn mission_control_buy_mode_panel_state(
             })
             .unwrap_or_else(|| "now".to_string())
     };
-    let result = mission_control_buy_mode_result_label(request);
-    let settle = mission_control_buy_mode_settlement_label(request, spark_wallet);
+    let provider = mission_control_buy_mode_provider_label(request);
+    let work = mission_control_buy_mode_work_label(request);
+    let payment = mission_control_buy_mode_payment_label(request, spark_wallet);
     Some(MissionControlBuyModePanelState {
         summary: request
             .map(|request| {
                 format!(
-                    "{} // result {} // settle {}",
-                    request.request_id, result, settle
+                    "req {} // {} // {} // payment {}",
+                    compact_mission_control_id(request.request_id.as_str()),
+                    mission_control_buy_mode_provider_summary(request),
+                    mission_control_buy_mode_work_summary(request),
+                    payment
                 )
             })
             .or_else(|| {
@@ -1499,18 +1504,17 @@ fn mission_control_buy_mode_panel_state(
             "off".to_string()
         },
         next,
-        state: request
-            .map(|request| request.status.label().to_string())
-            .unwrap_or_else(|| {
-                if blocked_while_idle {
-                    "blocked".to_string()
-                } else {
-                    "idle".to_string()
-                }
-            }),
-        price: format_mission_control_amount(
-            crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-        ),
+        provider,
+        work: request.map(|_| work).unwrap_or_else(|| {
+            if blocked_while_idle {
+                "blocked".to_string()
+            } else {
+                "idle".to_string()
+            }
+        }),
+        payment: request
+            .map(|_| payment)
+            .unwrap_or_else(|| "idle".to_string()),
         button_label: if mission_control.buy_mode_loop_enabled {
             "STOP BUY MODE".to_string()
         } else {
@@ -1701,20 +1705,108 @@ fn mission_control_buy_mode_result_label(
     }
 }
 
-fn mission_control_buy_mode_settlement_label(
+fn mission_control_buy_mode_payment_label(
     request: Option<&crate::app_state::SubmittedNetworkRequest>,
     spark_wallet: &SparkPaneState,
 ) -> String {
     match request {
-        Some(request) if request.last_payment_pointer.is_some() => "paid".to_string(),
-        Some(request) if request.pending_bolt11.is_some() => "paying".to_string(),
+        Some(request) if request.last_payment_pointer.is_some() => "sent".to_string(),
+        Some(request) if request.pending_bolt11.is_some() => "queued".to_string(),
         Some(request) => request
             .payment_error
             .clone()
-            .or_else(|| spark_wallet.last_error.clone())
-            .unwrap_or_else(|| "pending".to_string()),
+            .or_else(|| {
+                request
+                    .payment_required_at_epoch_seconds
+                    .and(spark_wallet.last_error.clone())
+            })
+            .map(|_| "failed".to_string())
+            .unwrap_or_else(|| {
+                if request.payment_required_at_epoch_seconds.is_some() {
+                    "invoice".to_string()
+                } else {
+                    "idle".to_string()
+                }
+            }),
         None => "idle".to_string(),
     }
+}
+
+fn mission_control_buy_mode_provider_label(
+    request: Option<&crate::app_state::SubmittedNetworkRequest>,
+) -> String {
+    request
+        .and_then(|request| {
+            request
+                .winning_provider_pubkey
+                .as_deref()
+                .or(request.last_provider_pubkey.as_deref())
+        })
+        .map(compact_mission_control_id)
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn mission_control_buy_mode_provider_summary(
+    request: &crate::app_state::SubmittedNetworkRequest,
+) -> String {
+    request
+        .winning_provider_pubkey
+        .as_deref()
+        .or(request.last_provider_pubkey.as_deref())
+        .map(|provider| format!("provider {}", compact_mission_control_id(provider)))
+        .unwrap_or_else(|| "awaiting provider".to_string())
+}
+
+fn mission_control_buy_mode_work_label(
+    request: Option<&crate::app_state::SubmittedNetworkRequest>,
+) -> String {
+    let Some(request) = request else {
+        return "idle".to_string();
+    };
+    if request.status == crate::state::operations::NetworkRequestStatus::Failed {
+        return "fault".to_string();
+    }
+    if request.last_result_event_id.is_some() {
+        return "done".to_string();
+    }
+    match request.last_feedback_status.as_deref() {
+        Some(status) if status.eq_ignore_ascii_case("processing") => "working".to_string(),
+        Some(status) if status.eq_ignore_ascii_case("payment-required") => "invoice".to_string(),
+        Some(_) => "feedback".to_string(),
+        None if request.published_request_event_id.is_some() => "searching".to_string(),
+        None => "queued".to_string(),
+    }
+}
+
+fn mission_control_buy_mode_work_summary(
+    request: &crate::app_state::SubmittedNetworkRequest,
+) -> String {
+    if request.status == crate::state::operations::NetworkRequestStatus::Failed {
+        return "request failed".to_string();
+    }
+    if request.last_result_event_id.is_some() {
+        return "result received".to_string();
+    }
+    match request.last_feedback_status.as_deref() {
+        Some(status) if status.eq_ignore_ascii_case("processing") => "provider working".to_string(),
+        Some(status) if status.eq_ignore_ascii_case("payment-required") => {
+            "invoice received".to_string()
+        }
+        Some(_) => format!(
+            "feedback {}",
+            mission_control_buy_mode_result_label(Some(request))
+        ),
+        None if request.published_request_event_id.is_some() => "request published".to_string(),
+        None => "queued locally".to_string(),
+    }
+}
+
+fn compact_mission_control_id(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 12 {
+        return trimmed.to_string();
+    }
+    format!("{}..{}", &trimmed[..6], &trimmed[trimmed.len() - 4..])
 }
 
 fn mission_control_section_clip_bounds(bounds: Bounds) -> Bounds {
@@ -5763,7 +5855,7 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 mod tests {
     use super::{
         create_invoice_view_state, mission_control_body_chunk_len,
-        mission_control_buy_mode_panel_state, mission_control_buy_mode_settlement_label,
+        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
         mission_control_go_online_hint, mission_control_lightning_receive_state_label,
         mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
         mission_control_local_model_button_label, mission_control_value_chunk_len,
@@ -6066,8 +6158,9 @@ mod tests {
         assert!(panel.summary.contains("Buy Mode blocked"));
         assert_eq!(panel.mode, "off");
         assert_eq!(panel.next, "off");
-        assert_eq!(panel.state, "blocked");
-        assert_eq!(panel.price, "₿ 2");
+        assert_eq!(panel.provider, "none");
+        assert_eq!(panel.work, "blocked");
+        assert_eq!(panel.payment, "idle");
         assert_eq!(panel.button_label, "START BUY MODE");
         assert!(!panel.button_enabled);
 
@@ -6086,7 +6179,9 @@ mod tests {
         )
         .expect("funded buy mode should expose panel state");
         assert!(funded_panel.summary.contains("Buy Mode off"));
-        assert_eq!(funded_panel.state, "idle");
+        assert_eq!(funded_panel.provider, "none");
+        assert_eq!(funded_panel.work, "idle");
+        assert_eq!(funded_panel.payment, "idle");
         assert!(funded_panel.button_enabled);
 
         let mut armed = fixture_mission_control();
@@ -6096,6 +6191,7 @@ mod tests {
                 .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
         assert_eq!(armed_panel.next, "now");
+        assert_eq!(armed_panel.work, "blocked");
         assert_eq!(armed_panel.button_label, "STOP BUY MODE");
         assert!(armed_panel.button_enabled);
     }
@@ -6140,7 +6236,12 @@ mod tests {
         .expect("enabled buy mode should expose panel state");
         assert_eq!(paying.mode, "on");
         assert_eq!(paying.next, "in-flight");
-        assert_eq!(paying.state, "payment-required");
+        assert_eq!(paying.provider, "444444..4444");
+        assert_eq!(paying.work, "invoice");
+        assert_eq!(paying.payment, "queued");
+        assert!(paying.summary.contains("provider 444444..4444"));
+        assert!(paying.summary.contains("invoice received"));
+        assert!(paying.summary.contains("payment queued"));
         assert_eq!(paying.button_label, "STOP BUY MODE");
         assert!(paying.button_enabled);
 
@@ -6158,17 +6259,18 @@ mod tests {
             now,
         )
         .expect("enabled buy mode should expose panel state");
-        assert_eq!(before_payment.state, "result-received");
+        assert_eq!(before_payment.work, "done");
+        assert_eq!(before_payment.payment, "queued");
         assert!(before_payment.summary.contains("result received"));
-        assert!(before_payment.summary.contains("settle paying"));
+        assert!(before_payment.summary.contains("payment queued"));
         assert_eq!(
-            mission_control_buy_mode_settlement_label(
+            mission_control_buy_mode_payment_label(
                 requests.latest_request_by_type(
                     crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
                 ),
                 &SparkPaneState::default()
             ),
-            "paying".to_string()
+            "queued".to_string()
         );
 
         requests.mark_auto_payment_sent(
@@ -6184,8 +6286,9 @@ mod tests {
             now,
         )
         .expect("enabled buy mode should expose panel state");
-        assert_eq!(settled.state, "paid");
-        assert!(settled.summary.contains("settle paid"));
+        assert_eq!(settled.work, "done");
+        assert_eq!(settled.payment, "sent");
+        assert!(settled.summary.contains("payment sent"));
         assert!(settled.button_enabled);
     }
 }
