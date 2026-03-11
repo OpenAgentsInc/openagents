@@ -300,7 +300,8 @@ impl Component for TerminalPane {
                 bounds.size.height - header_height
             };
             let max_scroll = (self.content_height - content_height).max(0.0);
-            self.scroll_offset = (self.scroll_offset - dy).clamp(0.0, max_scroll);
+            // Match thread/chat panes: positive dy means scroll down to newer lines below.
+            self.scroll_offset = (self.scroll_offset + dy).clamp(0.0, max_scroll);
             // User scrolled: stick to bottom only when at bottom, so scroll-up is preserved
             let at_bottom = max_scroll <= 0.0 || self.scroll_offset >= max_scroll - 0.5;
             self.auto_scroll = at_bottom;
@@ -320,7 +321,9 @@ impl Component for TerminalPane {
 
 #[cfg(test)]
 mod tests {
-    use super::wrap_terminal_text;
+    use super::{TerminalPane, wrap_terminal_text};
+    use crate::components::{Component, EventContext, EventResult};
+    use crate::{Bounds, InputEvent};
 
     #[test]
     fn wraps_long_terminal_lines() {
@@ -336,5 +339,37 @@ mod tests {
             wrap_terminal_text("alpha beta gamma", 10),
             vec!["alpha", "beta gamma"]
         );
+    }
+
+    #[test]
+    fn positive_scroll_delta_moves_terminal_downward() {
+        let mut pane = TerminalPane::new().title("");
+        pane.content_height = 500.0;
+        pane.scroll_offset = 100.0;
+        pane.auto_scroll = false;
+        let bounds = Bounds::new(0.0, 0.0, 240.0, 200.0);
+        let mut cx = EventContext::new();
+
+        let result = pane.event(&InputEvent::Scroll { dx: 0.0, dy: 24.0 }, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(pane.scroll_offset, 124.0);
+        assert!(!pane.auto_scroll);
+    }
+
+    #[test]
+    fn negative_scroll_delta_moves_terminal_upward() {
+        let mut pane = TerminalPane::new().title("");
+        pane.content_height = 500.0;
+        pane.scroll_offset = 100.0;
+        pane.auto_scroll = false;
+        let bounds = Bounds::new(0.0, 0.0, 240.0, 200.0);
+        let mut cx = EventContext::new();
+
+        let result = pane.event(&InputEvent::Scroll { dx: 0.0, dy: -24.0 }, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(pane.scroll_offset, 76.0);
+        assert!(!pane.auto_scroll);
     }
 }
