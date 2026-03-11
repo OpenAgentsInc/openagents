@@ -124,7 +124,11 @@ pub(crate) fn remote_select_codex_thread(
     };
     actions::restore_chat_composer_draft(state);
     let experimental_api = state.codex_lane_config.experimental_api;
-    let resume_path = if experimental_api { target.path.clone() } else { None };
+    let resume_path = if experimental_api {
+        target.path.clone()
+    } else {
+        None
+    };
     state
         .autopilot_chat
         .restore_session_preferences_from_thread(&target.thread_id);
@@ -134,7 +138,9 @@ pub(crate) fn remote_select_codex_thread(
             model: state.autopilot_chat.selected_model_override(),
             model_provider: None,
             service_tier: actions::chat_session_service_tier(state),
-            cwd: target.cwd.or_else(|| actions::current_chat_session_cwd(state)),
+            cwd: target
+                .cwd
+                .or_else(|| actions::current_chat_session_cwd(state)),
             approval_policy: actions::chat_session_approval_policy(state),
             sandbox: actions::chat_session_thread_sandbox_mode(state),
             personality: actions::chat_session_personality(state),
@@ -219,6 +225,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             state.config.width = new_size.width.max(1);
             state.config.height = new_size.height.max(1);
             state.surface.configure(&state.device, &state.config);
+            clamp_all_panes_to_window(state);
             state.window.request_redraw();
         }
         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -233,7 +240,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             let scale = state.scale_factor.max(0.1);
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
 
-            if state.command_palette.is_open() {
+            if state.dev_mode_enabled() && state.command_palette.is_open() {
                 let event = InputEvent::MouseMove {
                     x: app.cursor_position.x,
                     y: app.cursor_position.y,
@@ -288,7 +295,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 },
             };
 
-            if state.command_palette.is_open() {
+            if state.dev_mode_enabled() && state.command_palette.is_open() {
                 let mut handled = state
                     .command_palette
                     .event(
@@ -335,7 +342,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
             };
             let scroll_event = InputEvent::Scroll { dx, dy };
-            if state.command_palette.is_open() {
+            if state.dev_mode_enabled() && state.command_palette.is_open() {
                 if state
                     .command_palette
                     .event(
@@ -368,8 +375,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     &event.logical_key,
                     state.input_modifiers,
                     text_input_focused,
-                    state.command_palette.is_open(),
+                    state.dev_mode_enabled() && state.command_palette.is_open(),
                 )
+                && state.dev_mode_enabled()
             {
                 toggle_command_palette(state);
                 state.window.request_redraw();
@@ -380,7 +388,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if state.command_palette.is_open() {
+            if state.dev_mode_enabled() && state.command_palette.is_open() {
                 if let Some(key) = map_winit_key(&event.logical_key) {
                     let palette_event = InputEvent::KeyDown {
                         key,
@@ -431,7 +439,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     }
                 }
                 key => {
-                    if let Some(slot) = hotbar_slot_for_key(key) {
+                    if state.dev_mode_enabled()
+                        && let Some(slot) = hotbar_slot_for_key(key)
+                    {
                         activate_hotbar_slot(state, slot);
                         state.window.request_redraw();
                     }
@@ -451,14 +461,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 state.provider_runtime.mode,
                 ProviderMode::Connecting | ProviderMode::Online
             );
-            if flashing_now
-                || state.hotbar_flash_was_active
+            if (state.dev_mode_enabled() && flashing_now)
+                || (state.dev_mode_enabled() && state.hotbar_flash_was_active)
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
             {
                 state.window.request_redraw();
             }
-            state.hotbar_flash_was_active = flashing_now;
+            state.hotbar_flash_was_active = state.dev_mode_enabled() && flashing_now;
         }
         _ => {}
     }
@@ -1734,10 +1744,12 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
 
     handled |= PaneInput::dispatch_frame_event(state, &event);
     handled |= dispatch_text_inputs(state, &event);
-    handled |= state
-        .hotbar
-        .event(&event, state.hotbar_bounds, &mut state.event_context)
-        .is_handled();
+    if state.dev_mode_enabled() {
+        handled |= state
+            .hotbar
+            .event(&event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+    }
     handled
 }
 
@@ -1772,7 +1784,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if button == MouseButton::Left {
+    if state.dev_mode_enabled() && button == MouseButton::Left {
         let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
         if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
@@ -1781,7 +1793,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if state.hotbar_bounds.contains(point) {
+    if state.dev_mode_enabled() && state.hotbar_bounds.contains(point) {
         handled |= state
             .hotbar
             .event(event, state.hotbar_bounds, &mut state.event_context)
@@ -1794,11 +1806,13 @@ fn dispatch_mouse_down(
     } else {
         handled |= PaneInput::handle_mouse_down(state, point, button);
         handled |= dispatch_text_inputs(state, event);
-        handled |= state
-            .hotbar
-            .event(event, state.hotbar_bounds, &mut state.event_context)
-            .is_handled();
-        handled |= process_hotbar_clicks(state);
+        if state.dev_mode_enabled() {
+            handled |= state
+                .hotbar
+                .event(event, state.hotbar_bounds, &mut state.event_context)
+                .is_handled();
+            handled |= process_hotbar_clicks(state);
+        }
     }
 
     handled |= begin_cad_camera_drag(state, point, button);
@@ -1833,11 +1847,13 @@ fn dispatch_mouse_up(
             }
         }
     }
-    handled |= state
-        .hotbar
-        .event(event, state.hotbar_bounds, &mut state.event_context)
-        .is_handled();
-    handled |= process_hotbar_clicks(state);
+    if state.dev_mode_enabled() {
+        handled |= state
+            .hotbar
+            .event(event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+        handled |= process_hotbar_clicks(state);
+    }
     handled
 }
 

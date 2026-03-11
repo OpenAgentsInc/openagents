@@ -171,6 +171,19 @@ pub struct DesktopPane {
     pub bounds: Bounds,
     pub z_index: i32,
     pub frame: PaneFrame,
+    pub presentation: PanePresentation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PanePresentation {
+    Windowed,
+    Fullscreen,
+}
+
+impl PanePresentation {
+    pub const fn uses_window_chrome(self) -> bool {
+        matches!(self, Self::Windowed)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -7756,6 +7769,7 @@ pub struct RenderState {
     pub renderer: Renderer,
     pub text_system: TextSystem,
     pub scale_factor: f32,
+    pub desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     pub hotbar: Hotbar,
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
@@ -7879,6 +7893,10 @@ pub struct RenderState {
 }
 
 impl RenderState {
+    pub const fn dev_mode_enabled(&self) -> bool {
+        self.desktop_shell_mode.is_dev()
+    }
+
     fn allocate_runtime_command_seq(&mut self) -> u64 {
         let seq = self.next_runtime_command_seq;
         self.next_runtime_command_seq = self.next_runtime_command_seq.saturating_add(1);

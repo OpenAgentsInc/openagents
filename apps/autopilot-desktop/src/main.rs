@@ -16,6 +16,7 @@ mod chat_terminal;
 mod codex_lane;
 mod codex_remote;
 mod credentials;
+mod desktop_shell;
 mod economy_kernel_receipts;
 mod hotbar;
 mod input;
