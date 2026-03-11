@@ -1,19 +1,19 @@
-use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, PaneKind, RenderState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::pane_renderer::{
-    paint_action_button, paint_label_line, paint_multiline_phrase, paint_secondary_button,
-    paint_source_badge, paint_state_summary,
+    paint_action_button, paint_secondary_button, paint_wrapped_label_line, split_text_for_display,
 };
 use crate::pane_system::{
     apple_fm_workbench_create_session_button_bounds,
     apple_fm_workbench_delete_session_button_bounds, apple_fm_workbench_event_log_bounds,
     apple_fm_workbench_export_transcript_button_bounds,
     apple_fm_workbench_inspect_session_button_bounds, apple_fm_workbench_instructions_input_bounds,
-    apple_fm_workbench_max_tokens_input_bounds, apple_fm_workbench_model_input_bounds,
+    apple_fm_workbench_layout, apple_fm_workbench_max_tokens_input_bounds,
+    apple_fm_workbench_model_input_bounds, apple_fm_workbench_options_details_bounds,
     apple_fm_workbench_output_bounds, apple_fm_workbench_probability_threshold_input_bounds,
     apple_fm_workbench_prompt_input_bounds, apple_fm_workbench_refresh_button_bounds,
     apple_fm_workbench_reset_session_button_bounds,
@@ -38,8 +38,7 @@ pub fn paint(
     inputs: &mut AppleFmWorkbenchPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "swift bridge", paint);
-
+    let layout = apple_fm_workbench_layout(content_bounds);
     let refresh_bounds = apple_fm_workbench_refresh_button_bounds(content_bounds);
     let start_bounds = apple_fm_workbench_start_bridge_button_bounds(content_bounds);
     let create_bounds = apple_fm_workbench_create_session_button_bounds(content_bounds);
@@ -70,6 +69,139 @@ pub fn paint(
     let output_bounds = apple_fm_workbench_output_bounds(content_bounds);
     let event_log_bounds = apple_fm_workbench_event_log_bounds(content_bounds);
 
+    let bridge_status = bridge_status_label(pane_state, runtime);
+    let bridge_accent = bridge_status_accent(pane_state, runtime);
+    let active_model = compact_workbench_value(
+        pane_state
+            .last_model
+            .as_deref()
+            .or(runtime.ready_model.as_deref())
+            .unwrap_or("-"),
+        24,
+    );
+    let summary_session = pane_state
+        .active_session_id
+        .clone()
+        .or_else(|| normalize_field(inputs.session_id.get_value()))
+        .unwrap_or_else(|| "-".to_string());
+    let operation_summary =
+        compact_workbench_value(pane_state.last_operation.as_deref().unwrap_or("idle"), 24);
+    let use_cases_summary = compact_workbench_value(
+        join_labels(
+            runtime
+                .supported_use_cases
+                .iter()
+                .map(|value| value.label()),
+        )
+        .as_str(),
+        28,
+    );
+    let guardrails_summary = compact_workbench_value(
+        join_labels(
+            runtime
+                .supported_guardrails
+                .iter()
+                .map(|value| value.label()),
+        )
+        .as_str(),
+        28,
+    );
+    let status_gap = 8.0;
+    let status_cell_width = ((layout.status_row.size.width - status_gap * 3.0) / 4.0).max(0.0);
+    for (index, (label, value, accent)) in [
+        ("BRIDGE", bridge_status, bridge_accent),
+        ("MODEL", active_model.as_str(), workbench_green_color()),
+        (
+            "USE CASES",
+            use_cases_summary.as_str(),
+            workbench_cyan_color(),
+        ),
+        (
+            "GUARDRAILS",
+            guardrails_summary.as_str(),
+            workbench_amber_color(),
+        ),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let x = layout.status_row.origin.x + index as f32 * (status_cell_width + status_gap);
+        let width = if index == 3 {
+            (layout.status_row.max_x() - x).max(0.0)
+        } else {
+            status_cell_width
+        };
+        paint_workbench_status_cell(
+            Bounds::new(
+                x,
+                layout.status_row.origin.y,
+                width,
+                layout.status_row.size.height,
+            ),
+            label,
+            value,
+            *accent,
+            paint,
+        );
+    }
+    let summary_text = workbench_summary_text(
+        pane_state,
+        runtime,
+        operation_summary.as_str(),
+        summary_session.as_str(),
+    );
+    paint_workbench_summary_band(
+        layout.summary_band,
+        summary_text.as_str(),
+        bridge_accent,
+        paint,
+    );
+    paint_workbench_section_panel(
+        layout.management_panel,
+        "BRIDGE CONTROL",
+        workbench_orange_color(),
+        paint,
+    );
+    paint_workbench_section_panel(
+        layout.execution_panel,
+        "RUN WORKFLOWS",
+        workbench_green_color(),
+        paint,
+    );
+    paint_workbench_section_panel(layout.mode_panel, "TOOLING", workbench_cyan_color(), paint);
+    paint_workbench_section_panel(
+        layout.text_panel,
+        "TEXT INPUTS",
+        workbench_orange_color(),
+        paint,
+    );
+    paint_workbench_section_panel(
+        layout.payload_panel,
+        "STRUCTURED PAYLOADS",
+        workbench_cyan_color(),
+        paint,
+    );
+    paint_workbench_section_panel(
+        layout.options_panel,
+        "REQUEST OPTIONS",
+        workbench_amber_color(),
+        paint,
+    );
+    paint_workbench_section_panel(
+        layout.output_panel,
+        "LATEST OUTPUT",
+        workbench_green_color(),
+        paint,
+    );
+    if layout.event_log_panel.size.height > 0.0 {
+        paint_workbench_section_panel(
+            layout.event_log_panel,
+            "EVENT LOG",
+            workbench_cyan_color(),
+            paint,
+        );
+    }
+
     paint_action_button(refresh_bounds, "Refresh bridge", paint);
     paint_action_button(start_bounds, "Start bridge", paint);
     paint_action_button(create_bounds, "Create session", paint);
@@ -88,42 +220,6 @@ pub fn paint(
         sampling_mode_bounds,
         pane_state.sampling_mode.label(),
         paint,
-    );
-
-    let title_x = sampling_mode_bounds.max_x() + 16.0;
-    paint.scene.draw_text(paint.text.layout(
-        "Apple FM workbench",
-        Point::new(title_x, content_bounds.origin.y + 16.0),
-        16.0,
-        theme::text::PRIMARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Swift bridge controls for sessions, streaming, tools, transcripts, and schemas.",
-        Point::new(title_x, content_bounds.origin.y + 34.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-
-    let status = if pane_state.pending_request_id.is_some() {
-        "running"
-    } else if runtime.is_ready() {
-        "ready"
-    } else if runtime.reachable {
-        "reachable"
-    } else if runtime.last_error.is_some() {
-        "error"
-    } else {
-        "waiting"
-    };
-    let summary = format!("Bridge: {status}");
-    let _ = paint_state_summary(
-        paint,
-        content_bounds.origin.x + 12.0,
-        restore_bounds.max_y() + 12.0,
-        pane_state.load_state,
-        summary.as_str(),
-        pane_state.last_action.as_deref(),
-        pane_state.last_error.as_deref(),
     );
 
     inputs
@@ -182,84 +278,69 @@ pub fn paint(
     paint_input_label(paint, probability_threshold_bounds, "Top-p");
     paint_input_label(paint, seed_bounds, "Seed");
 
-    let mut line_y = model_bounds.max_y() + 20.0;
-    line_y = paint_label_line(
+    let mode_clip = workbench_section_clip_bounds(layout.mode_panel);
+    paint.scene.push_clip(mode_clip);
+    let mode_chunk_len = workbench_value_chunk_len(layout.mode_panel);
+    let mut mode_y = sampling_mode_bounds.max_y() + 14.0;
+    mode_y = paint_wrapped_label_line(
         paint,
-        model_bounds.origin.x,
-        line_y,
-        "Bridge",
-        runtime.bridge_status.as_deref().unwrap_or("-"),
-    );
-    line_y = paint_label_line(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Ready model",
-        runtime.ready_model.as_deref().unwrap_or("-"),
-    );
-    line_y = paint_multiline_phrase(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Available",
-        join_models(runtime.available_models.as_slice()).as_str(),
-    );
-    line_y = paint_multiline_phrase(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Use cases",
-        join_labels(
-            runtime
-                .supported_use_cases
-                .iter()
-                .map(|value| value.label()),
-        )
-        .as_str(),
-    );
-    line_y = paint_multiline_phrase(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Guardrails",
-        join_labels(
-            runtime
-                .supported_guardrails
-                .iter()
-                .map(|value| value.label()),
-        )
-        .as_str(),
-    );
-    line_y = paint_label_line(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Pending",
-        pane_state.pending_request_id.as_deref().unwrap_or("-"),
-    );
-    line_y = paint_label_line(
-        paint,
-        model_bounds.origin.x,
-        line_y,
-        "Last request",
-        pane_state.last_request_id.as_deref().unwrap_or("-"),
-    );
-    line_y = paint_label_line(
-        paint,
-        model_bounds.origin.x,
-        line_y,
+        tool_profile_bounds.origin.x,
+        mode_y,
         "Operation",
         pane_state.last_operation.as_deref().unwrap_or("-"),
+        mode_chunk_len,
     );
-    let _ = paint_label_line(
+    let _ = paint_wrapped_label_line(
         paint,
-        model_bounds.origin.x,
-        line_y,
+        tool_profile_bounds.origin.x,
+        mode_y,
         "Session",
-        pane_state.active_session_id.as_deref().unwrap_or("-"),
+        summary_session.as_str(),
+        mode_chunk_len,
     );
+    paint.scene.pop_clip();
+
+    let options_details_bounds = apple_fm_workbench_options_details_bounds(content_bounds);
+    let options_clip = workbench_section_clip_bounds(layout.options_panel);
+    paint.scene.push_clip(options_clip);
+    let options_chunk_len = workbench_value_chunk_len(layout.options_panel);
+    let mut options_y = options_details_bounds.origin.y + 6.0;
+    options_y = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Bridge",
+        runtime.bridge_status.as_deref().unwrap_or("-"),
+        options_chunk_len,
+    );
+    options_y = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Available",
+        join_models(runtime.available_models.as_slice()).as_str(),
+        options_chunk_len,
+    );
+    options_y = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Pending",
+        pane_state.pending_request_id.as_deref().unwrap_or("-"),
+        options_chunk_len,
+    );
+    let _ = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Last request",
+        pane_state.last_request_id.as_deref().unwrap_or("-"),
+        options_chunk_len,
+    );
+    paint.scene.pop_clip();
 
     paint_output_panel(output_bounds, pane_state, paint);
+    pane_state.event_log.set_title("");
     pane_state.event_log.paint(event_log_bounds, paint);
 }
 
@@ -387,25 +468,265 @@ fn paint_input_label(paint: &mut PaintContext, bounds: Bounds, label: &str) {
     ));
 }
 
+fn paint_workbench_section_panel(
+    bounds: Bounds,
+    title: &str,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    if bounds.size.width <= 1.0 || bounds.size.height <= 1.0 {
+        return;
+    }
+
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(workbench_panel_color())
+            .with_border(workbench_panel_border_color(), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            4.0,
+            bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.85)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 4.0,
+            bounds.origin.y,
+            (bounds.size.width - 4.0).max(0.0),
+            22.0,
+        ))
+        .with_background(accent.with_alpha(0.12)),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("\\\\ {title}"),
+        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 6.0),
+        11.0,
+        accent,
+    ));
+}
+
+fn paint_workbench_status_cell(
+    bounds: Bounds,
+    label: &str,
+    value: &str,
+    value_color: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(workbench_panel_color())
+            .with_border(workbench_panel_border_color(), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            2.0,
+        ))
+        .with_background(value_color.with_alpha(0.85)),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 6.0),
+        9.0,
+        workbench_muted_color(),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        value,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 20.0),
+        11.0,
+        value_color,
+    ));
+}
+
+fn paint_workbench_summary_band(
+    bounds: Bounds,
+    text: &str,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(accent.with_alpha(0.10))
+            .with_border(accent.with_alpha(0.72), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            10.0,
+            bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.85)),
+    );
+    let chunk_len = ((bounds.size.width - 30.0) / 6.4).floor().max(14.0) as usize;
+    let line = split_text_for_display(text, chunk_len)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "SWIFT BRIDGE".to_string());
+    paint.scene.draw_text(paint.text.layout_mono(
+        &line,
+        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 9.0),
+        11.0,
+        workbench_text_color(),
+    ));
+}
+
+fn workbench_section_clip_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x + 6.0,
+        bounds.origin.y + 22.0,
+        (bounds.size.width - 12.0).max(0.0),
+        (bounds.size.height - 28.0).max(0.0),
+    )
+}
+
+fn workbench_value_chunk_len(panel: Bounds) -> usize {
+    let width = (panel.size.width - 150.0).max(48.0);
+    ((width / 6.2).floor() as usize).max(8)
+}
+
+fn bridge_status_label(
+    pane_state: &AppleFmWorkbenchPaneState,
+    runtime: &AppleFmBridgeSnapshot,
+) -> &'static str {
+    if pane_state.pending_request_id.is_some() {
+        "RUNNING"
+    } else if runtime.is_ready() {
+        "READY"
+    } else if runtime.reachable {
+        "REACHABLE"
+    } else if pane_state.last_error.is_some() || runtime.last_error.is_some() {
+        "ERROR"
+    } else {
+        "WAITING"
+    }
+}
+
+fn bridge_status_accent(
+    pane_state: &AppleFmWorkbenchPaneState,
+    runtime: &AppleFmBridgeSnapshot,
+) -> Hsla {
+    match bridge_status_label(pane_state, runtime) {
+        "RUNNING" => workbench_green_color(),
+        "READY" => workbench_green_color(),
+        "REACHABLE" => workbench_cyan_color(),
+        "ERROR" => workbench_red_color(),
+        _ => workbench_amber_color(),
+    }
+}
+
+fn workbench_summary_text(
+    pane_state: &AppleFmWorkbenchPaneState,
+    runtime: &AppleFmBridgeSnapshot,
+    operation: &str,
+    session: &str,
+) -> String {
+    let headline = if let Some(error) = pane_state
+        .last_error
+        .as_deref()
+        .or(runtime.last_error.as_deref())
+    {
+        format!("FAULT {}", compact_workbench_value(error, 48))
+    } else if let Some(action) = pane_state.last_action.as_deref() {
+        compact_workbench_value(action, 52)
+    } else {
+        "Waiting for Apple FM bridge snapshot".to_string()
+    };
+    let request = pane_state
+        .pending_request_id
+        .as_deref()
+        .map(|value| format!("REQUEST {}", compact_workbench_value(value, 24)))
+        .or_else(|| {
+            pane_state
+                .last_request_id
+                .as_deref()
+                .map(|value| format!("LAST {}", compact_workbench_value(value, 24)))
+        })
+        .unwrap_or_else(|| "REQUEST idle".to_string());
+    format!(
+        "SWIFT BRIDGE // {headline} // OP {} // SESSION {} // {request}",
+        compact_workbench_value(operation, 18),
+        compact_workbench_value(session, 18),
+    )
+}
+
+fn normalize_field(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn compact_workbench_value(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars.max(1) {
+        return if trimmed.is_empty() {
+            "-".to_string()
+        } else {
+            trimmed.to_string()
+        };
+    }
+    let head = max_chars.saturating_sub(9).max(4);
+    let tail = 8.min(chars.len().saturating_sub(head));
+    format!(
+        "{}...{}",
+        chars[..head].iter().collect::<String>(),
+        chars[chars.len().saturating_sub(tail)..]
+            .iter()
+            .collect::<String>()
+    )
+}
+
+fn workbench_panel_color() -> Hsla {
+    Hsla::from_hex(0x101010)
+}
+
+fn workbench_panel_border_color() -> Hsla {
+    Hsla::from_hex(0x3D3327)
+}
+
+fn workbench_text_color() -> Hsla {
+    Hsla::from_hex(0xE8E3D7)
+}
+
+fn workbench_muted_color() -> Hsla {
+    Hsla::from_hex(0x7F776D)
+}
+
+fn workbench_orange_color() -> Hsla {
+    Hsla::from_hex(0xFF6A00)
+}
+
+fn workbench_amber_color() -> Hsla {
+    Hsla::from_hex(0xFFB300)
+}
+
+fn workbench_green_color() -> Hsla {
+    Hsla::from_hex(0x7DFF4A)
+}
+
+fn workbench_cyan_color() -> Hsla {
+    Hsla::from_hex(0x46D9D3)
+}
+
+fn workbench_red_color() -> Hsla {
+    Hsla::from_hex(0xD71414)
+}
+
 fn paint_output_panel(
     bounds: Bounds,
     pane_state: &AppleFmWorkbenchPaneState,
     paint: &mut PaintContext,
 ) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.72))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(6.0),
-    );
-
-    paint.scene.draw_text(paint.text.layout(
-        "Latest output",
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-
     let sections = [
         (
             "Response",
@@ -428,16 +749,16 @@ fn paint_output_panel(
         ),
     ];
 
-    let mut y = bounds.origin.y + 28.0;
+    let mut y = bounds.origin.y + 6.0;
     for (label, value) in sections {
         if y + OUTPUT_SECTION_LABEL_GAP >= bounds.max_y() {
             break;
         }
-        paint.scene.draw_text(paint.text.layout(
+        paint.scene.draw_text(paint.text.layout_mono(
             label,
             Point::new(bounds.origin.x + 10.0, y),
             10.0,
-            theme::text::MUTED,
+            workbench_muted_color(),
         ));
         y += OUTPUT_SECTION_LABEL_GAP;
         for line in wrap_preview_lines(value.as_str(), OUTPUT_SECTION_MAX_LINES) {
@@ -448,7 +769,7 @@ fn paint_output_panel(
                 line.as_str(),
                 Point::new(bounds.origin.x + 10.0, y),
                 10.0,
-                theme::text::PRIMARY,
+                workbench_text_color(),
             ));
             y += OUTPUT_SECTION_LINE_HEIGHT;
         }

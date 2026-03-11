@@ -683,14 +683,12 @@ fn sync_provider_publish_continuity(state: &mut RenderState) {
         .filter(|job| !job.stage.is_terminal())
         .map(|job| vec![job.request_id.clone()])
         .unwrap_or_default();
-    if let Err(error) =
-        state.queue_provider_nip90_lane_command(
-            ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids },
-        )
-    {
-        state
-            .active_job
-            .append_event(format!("failed to sync provider publish continuity: {error}"));
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids },
+    ) {
+        state.active_job.append_event(format!(
+            "failed to sync provider publish continuity: {error}"
+        ));
         tracing::warn!(
             target: "autopilot_desktop::provider",
             "Failed syncing provider publish continuity request_ids={} error={}",
@@ -714,12 +712,11 @@ fn finalize_deferred_provider_runtime_shutdown_if_idle(state: &mut RenderState) 
     state.provider_runtime.defer_runtime_shutdown_until_idle = false;
     state.provider_runtime.inventory_session_started_at_ms = None;
     let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
-    let _ = state.queue_local_inference_runtime_command(
-        LocalInferenceRuntimeCommand::UnloadConfiguredModel,
-    );
-    state.active_job.append_event(
-        "provider runtime drain complete; shutting down local execution runtimes",
-    );
+    let _ = state
+        .queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::UnloadConfiguredModel);
+    state
+        .active_job
+        .append_event("provider runtime drain complete; shutting down local execution runtimes");
     tracing::info!(
         target: "autopilot_desktop::provider",
         "Provider runtime drain complete; stopped local execution runtimes after offline request"
@@ -2495,11 +2492,10 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderExecutionBackend, active_job_timeout_reason,
-        apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
-        build_nip90_feedback_event, next_auto_accept_request_id_for,
-        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
-        provider_execution_backend_for_kind,
+        ProviderExecutionBackend, active_job_timeout_reason, apple_fm_request_accept_block_reason,
+        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
+        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
+        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{

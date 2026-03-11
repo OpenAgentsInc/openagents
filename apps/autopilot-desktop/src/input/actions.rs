@@ -9044,9 +9044,7 @@ pub(super) fn run_mission_control_action(
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
             } else {
-                state
-                    .mission_control
-                    .record_action("Queued Lightning send");
+                state.mission_control.record_action("Queued Lightning send");
                 state.mission_control.send_invoice.set_value(String::new());
             }
             true
@@ -9055,10 +9053,8 @@ pub(super) fn run_mission_control_action(
             let notice = match state.nostr_identity.as_ref() {
                 Some(identity) if !identity.mnemonic.trim().is_empty() => {
                     match copy_to_clipboard(&identity.mnemonic) {
-                        Ok(()) => {
-                            "Copied 12-word wallet seed to clipboard. Treat it like cash."
-                                .to_string()
-                        }
+                        Ok(()) => "Copied 12-word wallet seed to clipboard. Treat it like cash."
+                            .to_string(),
                         Err(error) => format!("Failed to copy wallet seed: {error}"),
                     }
                 }
