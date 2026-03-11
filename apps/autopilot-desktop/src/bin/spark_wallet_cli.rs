@@ -75,12 +75,23 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    ensure_rustls_crypto_provider().context("failed to initialize rustls crypto provider")?;
     let cli = parse_args(std::env::args().skip(1).collect())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("failed to initialize tokio runtime")?;
     runtime.block_on(run(cli))
+}
+
+fn ensure_rustls_crypto_provider() -> Result<()> {
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|error| anyhow!("failed to install rustls crypto provider: {error:?}"))
 }
 
 async fn run(cli: Cli) -> Result<()> {
