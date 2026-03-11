@@ -161,7 +161,11 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
     {
         fail_active_job_execution(
             state,
-            format!("job execution timed out after {}s", ttl_seconds),
+            active_job_timeout_reason(
+                stage,
+                state.active_job.execution_turn_completed,
+                ttl_seconds,
+            ),
             "active_job.execution_timeout",
             true,
         );
@@ -669,6 +673,75 @@ fn sync_provider_nip90_compute_capability(state: &mut RenderState) {
     let _ = state.queue_provider_nip90_lane_command(
         ProviderNip90LaneCommand::ConfigureComputeCapability { capability },
     );
+}
+
+fn sync_provider_publish_continuity(state: &mut RenderState) {
+    let request_ids = state
+        .active_job
+        .job
+        .as_ref()
+        .filter(|job| !job.stage.is_terminal())
+        .map(|job| vec![job.request_id.clone()])
+        .unwrap_or_default();
+    if let Err(error) =
+        state.queue_provider_nip90_lane_command(
+            ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids },
+        )
+    {
+        state
+            .active_job
+            .append_event(format!("failed to sync provider publish continuity: {error}"));
+        tracing::warn!(
+            target: "autopilot_desktop::provider",
+            "Failed syncing provider publish continuity request_ids={} error={}",
+            state
+                .active_job
+                .job
+                .as_ref()
+                .map(|job| job.request_id.as_str())
+                .unwrap_or("none"),
+            error
+        );
+    }
+}
+
+fn finalize_deferred_provider_runtime_shutdown_if_idle(state: &mut RenderState) {
+    if !state.provider_runtime.defer_runtime_shutdown_until_idle
+        || state.active_job.inflight_job_count() > 0
+    {
+        return;
+    }
+    state.provider_runtime.defer_runtime_shutdown_until_idle = false;
+    state.provider_runtime.inventory_session_started_at_ms = None;
+    let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
+    let _ = state.queue_local_inference_runtime_command(
+        LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+    );
+    state.active_job.append_event(
+        "provider runtime drain complete; shutting down local execution runtimes",
+    );
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider runtime drain complete; stopped local execution runtimes after offline request"
+    );
+}
+
+fn active_job_timeout_reason(
+    stage: JobLifecycleStage,
+    execution_turn_completed: bool,
+    ttl_seconds: u64,
+) -> String {
+    match stage {
+        JobLifecycleStage::Running if execution_turn_completed => format!(
+            "job delivery timed out after {}s after local execution completed",
+            ttl_seconds
+        ),
+        JobLifecycleStage::Delivered => format!(
+            "job settlement timed out after {}s while awaiting payment flow",
+            ttl_seconds
+        ),
+        _ => format!("job execution timed out after {}s", ttl_seconds),
+    }
 }
 
 fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90ComputeCapability {
@@ -1720,6 +1793,8 @@ pub(super) fn transition_active_job_to_paid(
             .record_from_active_job(&job, JobHistoryStatus::Succeeded);
         record_active_job_stage_transition(state, &job, stage, source);
     }
+    sync_provider_publish_continuity(state);
+    finalize_deferred_provider_runtime_shutdown_if_idle(state);
     Ok(stage)
 }
 
@@ -1806,6 +1881,8 @@ fn fail_active_job_execution(
             .record_from_active_job(&job, JobHistoryStatus::Failed);
         record_active_job_stage_transition(state, &job, JobLifecycleStage::Failed, source);
     }
+    sync_provider_publish_continuity(state);
+    finalize_deferred_provider_runtime_shutdown_if_idle(state);
 }
 
 fn record_active_job_stage_transition(
@@ -2028,6 +2105,7 @@ fn accept_request_by_id(
         request_id
     ));
     state.active_job.start_from_request(&selected_request);
+    sync_provider_publish_continuity(state);
     crate::kernel_control::attach_compute_linkage_to_active_job(state, &selected_request);
     state.active_job.append_event(
         if crate::kernel_control::kernel_authority_available(state) {
@@ -2417,15 +2495,16 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderExecutionBackend, apple_fm_request_accept_block_reason,
-        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
-        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
+        ProviderExecutionBackend, active_job_timeout_reason,
+        apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
+        build_nip90_feedback_event, next_auto_accept_request_id_for,
+        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
+        provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
-        JobInboxValidation, PaneLoadState,
+        JobInboxValidation, JobLifecycleStage, PaneLoadState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
@@ -2591,6 +2670,22 @@ mod tests {
         assert!(turn_completed_failed(Some("interrupted"), None));
         assert!(!turn_completed_failed(Some("completed"), None));
         assert!(!turn_completed_failed(None, None));
+    }
+
+    #[test]
+    fn timeout_reason_uses_delivery_wording_after_local_completion() {
+        assert_eq!(
+            active_job_timeout_reason(JobLifecycleStage::Running, true, 75),
+            "job delivery timed out after 75s after local execution completed"
+        );
+    }
+
+    #[test]
+    fn timeout_reason_uses_settlement_wording_after_delivery() {
+        assert_eq!(
+            active_job_timeout_reason(JobLifecycleStage::Delivered, true, 75),
+            "job settlement timed out after 75s while awaiting payment flow"
+        );
     }
 
     #[test]
