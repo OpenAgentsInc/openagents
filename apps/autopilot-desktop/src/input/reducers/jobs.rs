@@ -674,6 +674,19 @@ fn sync_provider_nip90_compute_capability(state: &mut RenderState) {
     ) {
         return;
     }
+    if matches!(
+        crate::app_state::mission_control_local_runtime_lane(
+            state.desktop_shell_mode,
+            &state.ollama_execution
+        ),
+        Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
+    ) && !state
+        .provider_runtime
+        .apple_fm
+        .has_authoritative_capability_state()
+    {
+        return;
+    }
     let capability = preferred_provider_compute_capability(state);
     let _ = state.queue_provider_nip90_lane_command(
         ProviderNip90LaneCommand::ConfigureComputeCapability { capability },
@@ -805,7 +818,7 @@ fn provider_compute_capability_from_apple_fm(
         ready_model: apple_fm.ready_model.clone(),
         available_models: apple_fm.available_models.clone(),
         loaded_models: Vec::new(),
-        last_error: apple_fm.readiness_block_reason(),
+        last_error: apple_fm.availability_error_message(),
     }
 }
 
