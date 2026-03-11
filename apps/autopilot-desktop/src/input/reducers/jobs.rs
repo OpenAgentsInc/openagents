@@ -486,15 +486,35 @@ pub(super) fn apply_active_job_publish_outcome(
         ProviderNip90PublishRole::Result => {
             state.active_job.result_publish_in_flight = false;
             if outcome.accepted_relays == 0 {
-                state.active_job.append_event(format!(
+                let message = format!(
                     "result publish failed; waiting retry ({})",
                     outcome
                         .first_error
                         .as_deref()
                         .unwrap_or("all relays rejected publish")
-                ));
+                );
+                state.active_job.append_event(message.clone());
+                state.active_job.last_action = Some(message.clone());
+                tracing::error!(
+                    target: "autopilot_desktop::provider",
+                    "Provider result publish failed request_id={} event_id={} error={}",
+                    outcome.request_id,
+                    outcome.event_id,
+                    outcome
+                        .first_error
+                        .as_deref()
+                        .unwrap_or("all relays rejected publish")
+                );
                 return;
             }
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Provider result published request_id={} event_id={} accepted_relays={} rejected_relays={}",
+                outcome.request_id,
+                outcome.event_id,
+                outcome.accepted_relays,
+                outcome.rejected_relays
+            );
             if let Ok(JobLifecycleStage::Delivered) =
                 transition_active_job_to_delivered(state, "active_job.result_published")
             {
@@ -1107,7 +1127,9 @@ fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), 
         .execution_prompt
         .clone()
         .ok_or_else(|| "Active job is missing normalized prompt input".to_string())?;
+    let prompt_chars = prompt.chars().count();
     let requested_model = job.requested_model.clone();
+    let requested_model_label = requested_model.as_deref().unwrap_or("default").to_string();
     let params = job.execution_params.clone();
     let ttl_seconds = job.ttl_seconds;
     state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Generate(
@@ -1121,10 +1143,16 @@ fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), 
     state.active_job.execution_backend_request_id = Some(request_id.clone());
     state.active_job.execution_deadline_epoch_seconds =
         Some(current_epoch_seconds().saturating_add(ttl_seconds));
-    state.active_job.append_event(format!(
-        "queued local inference generation for {}",
-        request_id
-    ));
+    let message = format!("queued local inference generation for {request_id}");
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider queued local inference execution request_id={} requested_model={} prompt_chars={}",
+        request_id,
+        requested_model_label,
+        prompt_chars
+    );
     Ok(())
 }
 
@@ -1137,7 +1165,9 @@ fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<()
         .execution_prompt
         .clone()
         .ok_or_else(|| "Active job is missing normalized prompt input".to_string())?;
+    let prompt_chars = prompt.chars().count();
     let requested_model = job.requested_model.clone();
+    let requested_model_label = requested_model.as_deref().unwrap_or("default").to_string();
     let ttl_seconds = job.ttl_seconds;
     state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Generate(AppleFmGenerateJob {
         request_id: request_id.clone(),
@@ -1147,9 +1177,16 @@ fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<()
     state.active_job.execution_backend_request_id = Some(request_id.clone());
     state.active_job.execution_deadline_epoch_seconds =
         Some(current_epoch_seconds().saturating_add(ttl_seconds));
-    state.active_job.append_event(format!(
-        "queued Apple Foundation Models generation for {request_id}"
-    ));
+    let message = format!("queued Apple Foundation Models generation for {request_id}");
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider queued Apple FM execution request_id={} requested_model={} prompt_chars={}",
+        request_id,
+        requested_model_label,
+        prompt_chars
+    );
     Ok(())
 }
 
@@ -1264,10 +1301,18 @@ fn store_execution_output(state: &mut RenderState, output: &str) {
         return;
     }
     state.active_job.execution_output = Some(trimmed.to_string());
-    state.active_job.append_event(format!(
-        "captured provider execution output (chars={})",
-        trimmed.chars().count()
-    ));
+    let chars = trimmed.chars().count();
+    let message = format!("captured provider execution output (chars={chars})");
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
+    if let Some(job) = state.active_job.job.as_ref() {
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider captured execution output request_id={} chars={}",
+            job.request_id,
+            chars
+        );
+    }
 }
 
 fn apply_ollama_execution_started(
@@ -1352,10 +1397,18 @@ fn apply_apple_fm_execution_started(
         "Apple Foundation Models execution started request={} model={}",
         started.request_id, started.model
     ));
-    state.active_job.append_event(format!(
+    let message = format!(
         "Apple Foundation Models generation started with model {}",
         started.model
-    ));
+    );
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider observed Apple FM execution start request_id={} model={}",
+        started.request_id,
+        started.model
+    );
     if let Err(error) =
         transition_active_job_to_running(state, "active_job.apple_fm_execution_started")
     {
@@ -1386,12 +1439,22 @@ fn apply_apple_fm_execution_completed(
         "Apple Foundation Models execution completed request={} model={}",
         completed.request_id, completed.model
     ));
-    state.active_job.append_event(format!(
+    let message = format!(
         "Apple Foundation Models generation completed model={} prompt_eval={} eval={}",
         completed.model,
         completed.metrics.prompt_eval_count.unwrap_or(0),
         completed.metrics.eval_count.unwrap_or(0)
-    ));
+    );
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
+    tracing::info!(
+        target: "autopilot_desktop::provider",
+        "Provider observed Apple FM execution completion request_id={} model={} prompt_eval={} eval={}",
+        completed.request_id,
+        completed.model,
+        completed.metrics.prompt_eval_count.unwrap_or(0),
+        completed.metrics.eval_count.unwrap_or(0)
+    );
     true
 }
 
@@ -1403,6 +1466,12 @@ fn apply_apple_fm_execution_failed(
         return false;
     }
     state.active_job.execution_backend_request_id = None;
+    tracing::error!(
+        target: "autopilot_desktop::provider",
+        "Provider observed Apple FM execution failure request_id={} error={}",
+        failed.request_id,
+        failed.error
+    );
     fail_active_job_execution(
         state,
         format!("Apple Foundation Models execution failed: {}", failed.error),
@@ -1428,14 +1497,21 @@ fn turn_completed_failed(status: Option<&str>, error_message: Option<&str>) -> b
 fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
     let result_event_id = queue_nip90_result_publish_for_active_job(state)?;
     state.active_job.result_publish_in_flight = true;
-    state.active_job.append_event(format!(
-        "queued canonical NIP-90 result publish {}",
-        result_event_id
-    ));
+    let message = format!("queued canonical NIP-90 result publish {}", result_event_id);
+    state.active_job.append_event(message.clone());
+    state.active_job.last_action = Some(message);
     state.provider_runtime.last_result = Some(format!(
         "queued provider result publish {}",
         result_event_id
     ));
+    if let Some(job) = state.active_job.job.as_ref() {
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider queued result publish request_id={} event_id={}",
+            job.request_id,
+            result_event_id
+        );
+    }
     Ok(())
 }
 
