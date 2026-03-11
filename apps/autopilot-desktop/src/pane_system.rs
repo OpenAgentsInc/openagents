@@ -4,7 +4,9 @@ use wgpui::components::hud::{PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
-use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
+use crate::app_state::{
+    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
+};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
@@ -888,6 +890,7 @@ pub struct PaneDescriptor {
     pub width: f32,
     pub height: f32,
     pub singleton: bool,
+    pub presentation: PanePresentation,
 }
 
 impl PaneDescriptor {
@@ -898,8 +901,51 @@ impl PaneDescriptor {
             width: spec.default_width,
             height: spec.default_height,
             singleton: spec.singleton,
+            presentation: default_pane_presentation(kind),
         }
     }
+}
+
+pub const fn default_pane_presentation(kind: PaneKind) -> PanePresentation {
+    match kind {
+        PaneKind::GoOnline => PanePresentation::Fullscreen,
+        _ => PanePresentation::Windowed,
+    }
+}
+
+fn effective_pane_presentation(
+    state: &RenderState,
+    presentation: PanePresentation,
+) -> PanePresentation {
+    if state.dev_mode_enabled() {
+        PanePresentation::Windowed
+    } else {
+        presentation
+    }
+}
+
+fn fullscreen_pane_bounds(logical: Size, sidebar_width: f32) -> Bounds {
+    Bounds::new(
+        0.0,
+        0.0,
+        (logical.width - sidebar_width).max(0.0),
+        logical.height.max(0.0),
+    )
+}
+
+pub fn pane_content_bounds_for_presentation(
+    bounds: Bounds,
+    presentation: PanePresentation,
+) -> Bounds {
+    if presentation.uses_window_chrome() {
+        pane_content_bounds(bounds)
+    } else {
+        bounds
+    }
+}
+
+pub fn pane_content_bounds_for_pane(pane: &DesktopPane) -> Bounds {
+    pane_content_bounds_for_presentation(pane.bounds, pane.presentation)
 }
 
 fn initial_pane_size(
@@ -975,17 +1021,22 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
 
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
+    let presentation = effective_pane_presentation(state, descriptor.presentation);
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
     let min_size = pane_minimum_size(descriptor.kind);
     let initial_size = initial_pane_size(&state.pane_size_memory, descriptor);
-    let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, initial_size.width, initial_size.height),
-        logical,
-        sidebar_width,
-        min_size,
-    );
+    let bounds = if presentation.uses_window_chrome() {
+        clamp_bounds_to_window(
+            Bounds::new(x, y, initial_size.width, initial_size.height),
+            logical,
+            sidebar_width,
+            min_size,
+        )
+    } else {
+        fullscreen_pane_bounds(logical, sidebar_width)
+    };
 
     let title = pane_title(descriptor.kind, id);
     let pane = DesktopPane {
@@ -999,6 +1050,7 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
             .active(true)
             .dismissable(true)
             .title_height(PANE_TITLE_HEIGHT),
+        presentation,
     };
 
     state.next_z_index = state.next_z_index.saturating_add(1);
@@ -1066,6 +1118,15 @@ pub fn handle_pane_mouse_down(state: &mut RenderState, point: Point, button: Mou
     for pane_idx in pane_indices_by_z_desc(state) {
         let pane_id = state.panes[pane_idx].id;
         let bounds = state.panes[pane_idx].bounds;
+        let presentation = state.panes[pane_idx].presentation;
+
+        if !presentation.uses_window_chrome() {
+            if bounds.contains(point) {
+                bring_pane_to_front(state, pane_id);
+                return true;
+            }
+            continue;
+        }
 
         let down_event = InputEvent::MouseDown {
             button,
@@ -1119,6 +1180,9 @@ pub fn handle_pane_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool
 
     for pane_idx in pane_indices_by_z_desc(state) {
         let bounds = state.panes[pane_idx].bounds;
+        if !state.panes[pane_idx].presentation.uses_window_chrome() {
+            continue;
+        }
         if state.panes[pane_idx]
             .frame
             .event(event, bounds, &mut state.event_context)
@@ -1149,6 +1213,9 @@ pub fn handle_pane_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool
 pub fn dispatch_pane_frame_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let mut handled = false;
     for pane_idx in pane_indices_by_z_desc(state) {
+        if !state.panes[pane_idx].presentation.uses_window_chrome() {
+            continue;
+        }
         let bounds = state.panes[pane_idx].bounds;
         if state.panes[pane_idx]
             .frame
@@ -1179,6 +1246,10 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             let dy = current_mouse.y - start_mouse.y;
 
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
+                if !pane.presentation.uses_window_chrome() {
+                    pane.bounds = fullscreen_pane_bounds(logical, sidebar_width);
+                    return true;
+                }
                 let min_size = pane_minimum_size(pane.kind);
                 let next = Bounds::new(
                     start_bounds.origin.x + dx,
@@ -1197,6 +1268,10 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             start_bounds,
         } => {
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
+                if !pane.presentation.uses_window_chrome() {
+                    pane.bounds = fullscreen_pane_bounds(logical, sidebar_width);
+                    return true;
+                }
                 let min_size = pane_minimum_size(pane.kind);
                 let next = ResizablePane::new()
                     .min_size(min_size.width, min_size.height)
@@ -1212,6 +1287,14 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
 }
 
 pub fn close_pane(state: &mut RenderState, pane_id: u64) {
+    if state
+        .panes
+        .iter()
+        .find(|pane| pane.id == pane_id)
+        .is_some_and(|pane| !pane.presentation.uses_window_chrome())
+    {
+        return;
+    }
     state.panes.retain(|pane| pane.id != pane_id);
 }
 
@@ -1255,11 +1338,14 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
     }
 
     let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
-    if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
+    if state.dev_mode_enabled()
+        && wallet_label_bounds.size.width > 0.0
+        && wallet_label_bounds.contains(point)
+    {
         return CursorIcon::Pointer;
     }
 
-    if state.hotbar_bounds.contains(point) {
+    if state.dev_mode_enabled() && state.hotbar_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 
@@ -1268,6 +1354,23 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         let bounds = state.panes[pane_idx].bounds;
         if !bounds.contains(point) {
             continue;
+        }
+
+        if !state.panes[pane_idx].presentation.uses_window_chrome() {
+            let pane = &state.panes[pane_idx];
+            let content_bounds = pane_content_bounds_for_pane(pane);
+            if !content_bounds.contains(point) {
+                return CursorIcon::Default;
+            }
+            if let Some(action) = pane_hit_action_for_pane(state, pane, point) {
+                if let PaneHitAction::CadDemo(cad_action) = action
+                    && cad_action_uses_dense_row_hot_zone(cad_action)
+                {
+                    return CursorIcon::Default;
+                }
+                return CursorIcon::Pointer;
+            }
+            return CursorIcon::Default;
         }
 
         let edge = state.pane_resizer.edge_at(bounds, point);
@@ -4081,7 +4184,7 @@ fn pane_hit_action_for_pane(
         return None;
     }
 
-    let content_bounds = pane_content_bounds(pane.bounds);
+    let content_bounds = pane_content_bounds_for_pane(pane);
     match pane.kind {
         PaneKind::NostrIdentity => {
             if nostr_regenerate_button_bounds(content_bounds).contains(point) {
@@ -5289,7 +5392,7 @@ pub fn dispatch_mission_control_log_scroll_event(
         return false;
     }
 
-    let content_bounds = pane_content_bounds(pane.bounds);
+    let content_bounds = pane_content_bounds_for_pane(pane);
     let log_bounds = mission_control_log_stream_bounds(content_bounds);
     if !log_bounds.contains(cursor_position) {
         return false;
@@ -5318,7 +5421,7 @@ pub fn dispatch_apple_fm_workbench_log_scroll_event(
         return false;
     }
 
-    let content_bounds = pane_content_bounds(pane.bounds);
+    let content_bounds = pane_content_bounds_for_pane(pane);
     let log_bounds = apple_fm_workbench_event_log_bounds(content_bounds);
     if !log_bounds.contains(cursor_position) {
         return false;
@@ -5617,12 +5720,16 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
     for pane in state.panes.iter_mut() {
-        pane.bounds = clamp_bounds_to_window(
-            pane.bounds,
-            logical,
-            sidebar_width,
-            pane_minimum_size(pane.kind),
-        );
+        pane.bounds = if pane.presentation.uses_window_chrome() {
+            clamp_bounds_to_window(
+                pane.bounds,
+                logical,
+                sidebar_width,
+                pane_minimum_size(pane.kind),
+            )
+        } else {
+            fullscreen_pane_bounds(logical, sidebar_width)
+        };
     }
 }
 
@@ -5707,12 +5814,13 @@ mod tests {
         network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
         network_requests_timeout_input_bounds, network_requests_type_input_bounds,
         nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, reciprocal_loop_reset_button_bounds,
-        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
-        relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
-        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, pane_content_bounds_for_presentation,
+        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+        reciprocal_loop_stop_button_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
+        settings_provider_queue_input_bounds, settings_relay_input_bounds,
+        settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -5722,7 +5830,7 @@ mod tests {
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
         trajectory_verify_button_bounds,
     };
-    use crate::pane_registry::pane_specs;
+    use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
 
     #[test]
@@ -5775,6 +5883,25 @@ mod tests {
         assert!(min_size.height > super::PANE_MIN_HEIGHT);
         assert!(min_size.width < spec.default_width);
         assert!(min_size.height < spec.default_height);
+    }
+
+    #[test]
+    fn mission_control_descriptor_defaults_to_fullscreen_presentation() {
+        let descriptor = PaneDescriptor::for_kind(crate::app_state::PaneKind::GoOnline);
+        assert_eq!(descriptor.presentation, PanePresentation::Fullscreen);
+    }
+
+    #[test]
+    fn fullscreen_presentation_uses_full_bounds_as_content() {
+        let bounds = Bounds::new(10.0, 20.0, 300.0, 200.0);
+        assert_eq!(
+            pane_content_bounds_for_presentation(bounds, PanePresentation::Fullscreen),
+            bounds
+        );
+        assert_ne!(
+            pane_content_bounds_for_presentation(bounds, PanePresentation::Windowed),
+            bounds
+        );
     }
 
     #[test]

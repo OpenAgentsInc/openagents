@@ -257,6 +257,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             renderer,
             text_system,
             scale_factor,
+            desktop_shell_mode: crate::desktop_shell::DesktopShellMode::from_env(),
             hotbar,
             hotbar_bounds: initial_hotbar_bounds,
             event_context,
@@ -640,6 +641,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     let width = logical.width;
     let height = logical.height;
     let active_pane = PaneController::active(state);
+    let dev_mode = state.dev_mode_enabled();
 
     let mut scene = Scene::new();
     scene
@@ -705,22 +707,24 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     {
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
 
-        let mut dots_grid = DotsGrid::new()
-            .color(theme::text::MUTED.with_alpha(0.26))
-            .shape(DotShape::Cross)
-            .distance(GRID_DOT_DISTANCE)
-            .size(5.0)
-            .cross_thickness(1.0)
-            .origin(DotsOrigin::Center)
-            .easing(Easing::EaseOut);
-        // Use fixed full-window bounds for the grid so dot positions don't shift when the sidebar is dragged.
-        // Clip to the main canvas so we don't draw under the sidebar.
-        let main_canvas_width = (width - panel_width).max(0.0);
-        paint
-            .scene
-            .push_clip(Bounds::new(0.0, 0.0, main_canvas_width, height));
-        dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
-        paint.scene.pop_clip();
+        if dev_mode {
+            let mut dots_grid = DotsGrid::new()
+                .color(theme::text::MUTED.with_alpha(0.26))
+                .shape(DotShape::Cross)
+                .distance(GRID_DOT_DISTANCE)
+                .size(5.0)
+                .cross_thickness(1.0)
+                .origin(DotsOrigin::Center)
+                .easing(Easing::EaseOut);
+            // Use fixed full-window bounds for the grid so dot positions don't shift when the sidebar is dragged.
+            // Clip to the main canvas so we don't draw under the sidebar.
+            let main_canvas_width = (width - panel_width).max(0.0);
+            paint
+                .scene
+                .push_clip(Bounds::new(0.0, 0.0, main_canvas_width, height));
+            dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
+            paint.scene.pop_clip();
+        }
 
         if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
             let left = sidebar_x + 12.0;
@@ -1053,49 +1057,54 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         );
         paint.scene.set_layer(hotbar_layer);
 
-        let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
-        let total_sats = state
-            .spark_wallet
-            .balance
-            .as_ref()
-            .map_or(0, spark_total_balance_sats);
-        let wallet_chip_label = format_sats_amount(total_sats);
-        let wallet_label_font_size = 11.0;
-        let icon_text_gap = 8.0;
-        let label_width = paint
-            .text
-            .measure(&wallet_chip_label, wallet_label_font_size);
-        let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
-        let group_x = wallet_chip_bounds.origin.x + 6.0;
-        let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
-        let wallet_icon_bounds = Bounds::new(
-            group_x,
-            center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
-            OPENAGENTS_BRAND_ICON_SIZE,
-            OPENAGENTS_BRAND_ICON_SIZE,
-        );
-        paint.scene.draw_svg(
-            SvgQuad::new(
-                wallet_icon_bounds,
-                std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
-            )
-            .with_tint(theme::accent::PRIMARY),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &wallet_chip_label,
-            Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
-            wallet_label_font_size,
-            theme::text::PRIMARY,
-        ));
+        if dev_mode {
+            let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
+            let total_sats = state
+                .spark_wallet
+                .balance
+                .as_ref()
+                .map_or(0, spark_total_balance_sats);
+            let wallet_chip_label = format_sats_amount(total_sats);
+            let wallet_label_font_size = 11.0;
+            let icon_text_gap = 8.0;
+            let label_width = paint
+                .text
+                .measure(&wallet_chip_label, wallet_label_font_size);
+            let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
+            let group_x = wallet_chip_bounds.origin.x + 6.0;
+            let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
+            let wallet_icon_bounds = Bounds::new(
+                group_x,
+                center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
+                OPENAGENTS_BRAND_ICON_SIZE,
+                OPENAGENTS_BRAND_ICON_SIZE,
+            );
+            paint.scene.draw_svg(
+                SvgQuad::new(
+                    wallet_icon_bounds,
+                    std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+                )
+                .with_tint(theme::accent::PRIMARY),
+            );
+            paint.scene.draw_text(paint.text.layout_mono(
+                &wallet_chip_label,
+                Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
+                wallet_label_font_size,
+                theme::text::PRIMARY,
+            ));
 
-        let bar_bounds = hotbar_bounds(logical);
-        state.hotbar_bounds = bar_bounds;
-        configure_hotbar(&mut state.hotbar);
-        state.hotbar.paint(bar_bounds, &mut paint);
+            let bar_bounds = hotbar_bounds(logical);
+            state.hotbar_bounds = bar_bounds;
+            configure_hotbar(&mut state.hotbar);
+            state.hotbar.paint(bar_bounds, &mut paint);
 
-        state
-            .command_palette
-            .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
+            state
+                .command_palette
+                .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
+        } else {
+            state.hotbar_bounds = Bounds::new(0.0, 0.0, 0.0, 0.0);
+            state.command_palette.close();
+        }
 
         // Sidebar tooltip for the settings icon.
         if RIGHT_SIDEBAR_ENABLED && state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
@@ -1234,10 +1243,16 @@ pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
 }
 
 pub fn wallet_balance_chip_bounds(state: &RenderState) -> Bounds {
+    if !state.dev_mode_enabled() {
+        return Bounds::new(0.0, 0.0, 0.0, 0.0);
+    }
     wallet_balance_chip_bounds_for_logical(logical_size(&state.config, state.scale_factor))
 }
 
 pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
+    if !state.dev_mode_enabled() {
+        return Bounds::new(0.0, 0.0, 0.0, 0.0);
+    }
     let logical = logical_size(&state.config, state.scale_factor);
     let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
     let total_sats = state

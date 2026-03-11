@@ -49,7 +49,7 @@ use crate::pane_system::{
     network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
     network_requests_type_input_bounds, network_requests_visible_quote_count,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds, provider_inventory_toggle_button_bounds,
+    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
     reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
     reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
     settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
@@ -159,17 +159,23 @@ impl PaneRenderer {
                 .scene
                 .draw_quad(Quad::new(pane.bounds).with_background(theme::bg::APP));
 
-            pane.frame.set_title(&pane.title);
-            pane.frame.set_active(active_id == Some(pane.id));
-            pane.frame.set_title_height(PANE_TITLE_HEIGHT);
-            pane.frame.paint(pane.bounds, paint);
+            let content_bounds = pane_content_bounds_for_pane(pane);
+            if pane.presentation.uses_window_chrome() {
+                pane.frame.set_title(&pane.title);
+                pane.frame.set_active(active_id == Some(pane.id));
+                pane.frame.set_title_height(PANE_TITLE_HEIGHT);
+                pane.frame.paint(pane.bounds, paint);
 
-            let content_bounds = pane_content_bounds(pane.bounds);
-            paint.scene.draw_quad(
-                Quad::new(content_bounds)
-                    .with_background(theme::bg::SURFACE)
-                    .with_corner_radius(6.0),
-            );
+                paint.scene.draw_quad(
+                    Quad::new(content_bounds)
+                        .with_background(theme::bg::SURFACE)
+                        .with_corner_radius(6.0),
+                );
+            } else {
+                paint
+                    .scene
+                    .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
+            }
 
             match pane.kind {
                 PaneKind::Empty => paint_empty_pane(content_bounds, paint),
@@ -930,7 +936,12 @@ fn paint_go_online_pane(
     }
     paint.scene.pop_clip();
 
-    paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", theme::border::DEFAULT, paint);
+    paint_mission_control_section_panel(
+        layout.log_stream,
+        "LOG STREAM",
+        theme::border::DEFAULT,
+        paint,
+    );
     let log_body_bounds = Bounds::new(
         layout.log_stream.origin.x,
         layout.log_stream.origin.y + 24.0,
@@ -1018,15 +1029,12 @@ fn paint_mission_control_amount_line(
         .size
         .width;
     let target_x = (value_right - value_width).max(value_x);
-    paint.scene.draw_text(
-        paint.text
-            .layout_mono(
-                value,
-                Point::new(target_x, y - 1.0),
-                value_font_size,
-                value_color,
-            ),
-    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        value,
+        Point::new(target_x, y - 1.0),
+        value_font_size,
+        value_color,
+    ));
     let row_bottom = y + 20.0;
     if show_divider {
         paint_mission_control_row_divider(paint, x, row_bottom, row_width)
@@ -4435,9 +4443,19 @@ fn paint_mission_control_amount_toggle(
     let outer = bounds;
     let segment_width = (outer.size.width / 2.0).max(0.0);
     let active_segment = if integer_active {
-        Bounds::new(outer.origin.x + 1.0, outer.origin.y + 1.0, (segment_width - 2.0).max(0.0), (outer.size.height - 2.0).max(0.0))
+        Bounds::new(
+            outer.origin.x + 1.0,
+            outer.origin.y + 1.0,
+            (segment_width - 2.0).max(0.0),
+            (outer.size.height - 2.0).max(0.0),
+        )
     } else {
-        Bounds::new(outer.origin.x + segment_width + 1.0, outer.origin.y + 1.0, (segment_width - 2.0).max(0.0), (outer.size.height - 2.0).max(0.0))
+        Bounds::new(
+            outer.origin.x + segment_width + 1.0,
+            outer.origin.y + 1.0,
+            (segment_width - 2.0).max(0.0),
+            (outer.size.height - 2.0).max(0.0),
+        )
     };
 
     paint.scene.draw_quad(
@@ -4465,7 +4483,12 @@ fn paint_mission_control_amount_toggle(
         Hsla::from_hex(0xFFFFFF)
     };
     paint_button_label_mono(
-        Bounds::new(outer.origin.x, outer.origin.y, segment_width, outer.size.height),
+        Bounds::new(
+            outer.origin.x,
+            outer.origin.y,
+            segment_width,
+            outer.size.height,
+        ),
         left_label,
         10.0,
         left_color,
