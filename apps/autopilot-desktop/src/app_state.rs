@@ -748,42 +748,23 @@ fn build_mission_control_log_lines(
             )
         }
     } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
-        if local_inference_runtime.busy {
+        if local_inference_runtime.is_ready() {
             (
                 TerminalStream::Stdout,
-                "Local GPT-OSS CUDA is loading.".to_string(),
-            )
-        } else if local_inference_runtime.is_ready() {
-            (
-                TerminalStream::Stdout,
-                format!(
-                    "Local GPT-OSS ready on Psionic {}.",
-                    if local_inference_runtime.backend_label.trim().is_empty() {
-                        "cuda"
-                    } else {
-                        local_inference_runtime.backend_label.as_str()
-                    }
-                ),
-            )
-        } else if !local_inference_runtime.artifact_present {
-            (
-                TerminalStream::Stderr,
-                local_inference_runtime
-                    .configured_model_path
-                    .as_deref()
-                    .map(|path| format!("Local GPT-OSS artifact missing at {}.", path))
-                    .unwrap_or_else(|| "Local GPT-OSS artifact missing.".to_string()),
+                "NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane."
+                    .to_string(),
             )
         } else {
             (
                 TerminalStream::Stdout,
-                "Local GPT-OSS CUDA is present but not loaded.".to_string(),
+                "Open the separate GPT-OSS workbench to load and validate the NVIDIA local model."
+                    .to_string(),
             )
         }
     } else {
         (
             TerminalStream::Stderr,
-            "Mission Control needs Apple Foundation Models on macOS or GPT-OSS on NVIDIA CUDA."
+            "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts."
                 .to_string(),
         )
     };
@@ -2729,10 +2710,7 @@ impl AutopilotChatState {
         self.last_error = None;
     }
 
-    pub fn set_collaboration_mode(
-        &mut self,
-        collaboration_mode: AutopilotChatCollaborationMode,
-    ) {
+    pub fn set_collaboration_mode(&mut self, collaboration_mode: AutopilotChatCollaborationMode) {
         self.collaboration_mode = collaboration_mode;
         self.record_active_session_preferences();
         self.last_error = None;

@@ -324,7 +324,7 @@ pub enum EarningsScoreboardPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
     ToggleAmountDisplay,
-    WarmLocalModel,
+    OpenLocalModelWorkbench,
     OpenDocumentation,
 }
 
@@ -2010,7 +2010,7 @@ pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bo
     )
 }
 
-pub fn mission_control_download_model_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
     Bounds::new(
         panel.origin.x + 14.0,
@@ -2021,7 +2021,7 @@ pub fn mission_control_download_model_button_bounds(content_bounds: Bounds) -> B
 }
 
 pub fn mission_control_documentation_button_bounds(content_bounds: Bounds) -> Bounds {
-    let download = mission_control_download_model_button_bounds(content_bounds);
+    let download = mission_control_local_model_button_bounds(content_bounds);
     Bounds::new(
         download.origin.x,
         download.max_y() + 10.0,
@@ -4259,9 +4259,9 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::ToggleAmountDisplay,
                 ))
-            } else if mission_control_download_model_button_bounds(content_bounds).contains(point) {
+            } else if mission_control_local_model_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::WarmLocalModel,
+                    MissionControlPaneAction::OpenLocalModelWorkbench,
                 ))
             } else if mission_control_documentation_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::MissionControl(

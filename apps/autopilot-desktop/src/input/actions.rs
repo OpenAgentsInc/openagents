@@ -8908,7 +8908,7 @@ pub(super) fn run_mission_control_action(
             state.mission_control.toggle_amount_display_mode();
             true
         }
-        MissionControlPaneAction::WarmLocalModel => {
+        MissionControlPaneAction::OpenLocalModelWorkbench => {
             match crate::app_state::mission_control_local_runtime_lane(&state.ollama_execution) {
                 Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                     crate::pane_system::PaneController::create_for_kind(
@@ -8967,32 +8967,17 @@ pub(super) fn run_mission_control_action(
                         crate::app_state::PaneKind::LocalInference,
                     );
 
-                    if state.ollama_execution.is_ready() {
-                        state
-                            .mission_control
-                            .record_action("Opened GPT-OSS CUDA workbench");
-                        state.mission_control.last_error = None;
-                        return true;
-                    }
-
-                    let handled =
-                        run_local_inference_action(state, LocalInferencePaneAction::WarmModel);
-                    if state.local_inference.last_error.is_none() {
-                        state
-                            .mission_control
-                            .record_action("Queued GPT-OSS CUDA load");
-                    } else {
-                        state.mission_control.last_action =
-                            Some("Local model warm failed".to_string());
-                        state.mission_control.last_error = state.local_inference.last_error.clone();
-                    }
-                    handled
+                    state
+                        .mission_control
+                        .record_action("Opened GPT-OSS workbench");
+                    state.mission_control.last_error = None;
+                    true
                 }
                 None => {
                     state.mission_control.last_action =
                         Some("No supported local runtime".to_string());
                     state.mission_control.last_error = Some(
-                        "Mission Control needs Apple FM on macOS or GPT-OSS on NVIDIA CUDA."
+                        "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts."
                             .to_string(),
                     );
                     true
@@ -12427,10 +12412,9 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 mod tests {
     use super::{
         ChatAppsComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
-        ChatRemoteComposerIntent,
-        ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
-        ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
-        DirectMessageComposerIntent, ManagedChatComposerIntent,
+        ChatRemoteComposerIntent, ChatRequestComposerIntent, ChatSkillsComposerIntent,
+        ChatSpacetimeComposerIntent, ChatTerminalComposerIntent, ChatWalletComposerIntent,
+        ChatWalletMessagePayload, DirectMessageComposerIntent, ManagedChatComposerIntent,
         build_direct_message_outbound_message, build_managed_chat_join_request_event,
         build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
         build_managed_chat_outbound_message, build_managed_chat_reaction_event,
@@ -12440,9 +12424,8 @@ mod tests {
         git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
         loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_apps_intent,
         parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_remote_intent,
-        parse_chat_request_intent,
-        parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
-        parse_chat_wallet_intent, parse_direct_message_creation_intent,
+        parse_chat_request_intent, parse_chat_skills_intent, parse_chat_spacetime_intent,
+        parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
         parse_managed_chat_mention_prefix, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,

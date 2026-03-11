@@ -272,14 +272,14 @@ const PANE_SPECS: [PaneSpec; 41] = [
     },
     PaneSpec {
         kind: PaneKind::LocalInference,
-        title: "Local Inference",
+        title: "GPT-OSS Workbench",
         default_width: 960.0,
         default_height: 560.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.local_inference",
-            label: "Local Inference",
+            label: "GPT-OSS Workbench",
             description: "Open the GPT-OSS local inference workbench and runtime controls",
             keybinding: None,
         }),
