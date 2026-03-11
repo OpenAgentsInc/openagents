@@ -863,30 +863,269 @@ fn buy_mode_payment_history_requests(
         .collect()
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BuyModePaymentLedgerEntry {
+    timestamp: Option<u64>,
+    sort_epoch_seconds: u64,
+    stream: TerminalStream,
+    status: String,
+    amount_sats: u64,
+    wallet_status: String,
+    wallet_method: String,
+    provider_pubkey: String,
+    request_id: String,
+    payment_pointer: String,
+    request_event_id: String,
+    result_event_id: String,
+    payment_hash: String,
+    destination_pubkey: String,
+    htlc_status: String,
+    htlc_expiry_epoch_seconds: Option<u64>,
+    wallet_detail: Option<String>,
+    wallet_description: Option<String>,
+    wallet_invoice: Option<String>,
+    pending_bolt11: Option<String>,
+    payment_error: Option<String>,
+    payment_notice: Option<String>,
+    source: &'static str,
+}
+
+fn buy_mode_payment_ledger_entries(
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> Vec<BuyModePaymentLedgerEntry> {
+    let mut matched_payment_pointers = HashSet::<String>::new();
+    let mut entries = Vec::<BuyModePaymentLedgerEntry>::new();
+
+    for (index, request) in buy_mode_payment_history_requests(network_requests)
+        .into_iter()
+        .enumerate()
+    {
+        let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
+        if let Some(payment) = wallet_payment {
+            matched_payment_pointers.insert(payment.id.clone());
+        }
+        entries.push(buy_mode_request_ledger_entry(
+            index,
+            request,
+            wallet_payment,
+        ));
+    }
+
+    for payment in &spark_wallet.recent_payments {
+        if matched_payment_pointers.contains(payment.id.as_str()) {
+            continue;
+        }
+        if let Some(entry) = buy_mode_wallet_backfill_entry(payment) {
+            entries.push(entry);
+        }
+    }
+
+    entries.sort_by(|left, right| {
+        right
+            .sort_epoch_seconds
+            .cmp(&left.sort_epoch_seconds)
+            .then_with(|| right.payment_pointer.cmp(&left.payment_pointer))
+    });
+    entries
+}
+
+fn buy_mode_request_ledger_entry(
+    index: usize,
+    request: &crate::state::operations::SubmittedNetworkRequest,
+    wallet_payment: Option<&openagents_spark::PaymentSummary>,
+) -> BuyModePaymentLedgerEntry {
+    let timestamp = wallet_payment
+        .map(|payment| payment.timestamp)
+        .or(request.payment_sent_at_epoch_seconds)
+        .or(request.payment_failed_at_epoch_seconds)
+        .or(request.payment_required_at_epoch_seconds);
+    let amount_sats = wallet_payment
+        .map(|payment| payment.amount_sats)
+        .unwrap_or(request.budget_sats);
+    let provider_pubkey = request
+        .winning_provider_pubkey
+        .as_deref()
+        .or(request.last_provider_pubkey.as_deref())
+        .unwrap_or("-")
+        .to_string();
+    let wallet_status = wallet_payment
+        .map(|payment| buy_mode_wallet_state_label(request, Some(payment)))
+        .unwrap_or_else(|| buy_mode_wallet_state_label(request, None));
+    let request_event_id = request
+        .published_request_event_id
+        .as_deref()
+        .unwrap_or("-")
+        .to_string();
+    let result_event_id = request
+        .winning_result_event_id
+        .as_deref()
+        .or(request.last_result_event_id.as_deref())
+        .unwrap_or("-")
+        .to_string();
+    let payment_pointer = request
+        .last_payment_pointer
+        .as_deref()
+        .unwrap_or("-")
+        .to_string();
+    let stream = if request.status == crate::state::operations::NetworkRequestStatus::Failed
+        || request.payment_failed_at_epoch_seconds.is_some()
+        || request.payment_error.is_some()
+    {
+        TerminalStream::Stderr
+    } else {
+        TerminalStream::Stdout
+    };
+    BuyModePaymentLedgerEntry {
+        timestamp,
+        sort_epoch_seconds: timestamp.unwrap_or(u64::MAX.saturating_sub(index as u64)),
+        stream,
+        status: request.status.label().to_string(),
+        amount_sats,
+        wallet_status,
+        wallet_method: wallet_payment
+            .map(|payment| payment.method.clone())
+            .unwrap_or_else(|| "-".to_string()),
+        provider_pubkey,
+        request_id: request.request_id.clone(),
+        payment_pointer,
+        request_event_id,
+        result_event_id,
+        payment_hash: wallet_payment
+            .and_then(|payment| payment.payment_hash.clone())
+            .unwrap_or_else(|| "-".to_string()),
+        destination_pubkey: wallet_payment
+            .and_then(|payment| payment.destination_pubkey.clone())
+            .unwrap_or_else(|| "-".to_string()),
+        htlc_status: wallet_payment
+            .and_then(|payment| payment.htlc_status.clone())
+            .unwrap_or_else(|| "-".to_string()),
+        htlc_expiry_epoch_seconds: wallet_payment
+            .and_then(|payment| payment.htlc_expiry_epoch_seconds),
+        wallet_detail: wallet_payment.and_then(|payment| payment.status_detail.clone()),
+        wallet_description: wallet_payment.and_then(|payment| payment.description.clone()),
+        wallet_invoice: wallet_payment
+            .and_then(|payment| payment.invoice.as_deref().map(compact_payment_invoice)),
+        pending_bolt11: request
+            .pending_bolt11
+            .as_deref()
+            .map(compact_payment_invoice),
+        payment_error: request.payment_error.clone(),
+        payment_notice: request.payment_notice.clone(),
+        source: "request",
+    }
+}
+
+fn buy_mode_wallet_backfill_entry(
+    payment: &openagents_spark::PaymentSummary,
+) -> Option<BuyModePaymentLedgerEntry> {
+    if !buy_mode_wallet_backfill_candidate(payment) {
+        return None;
+    }
+
+    let wallet_status = buy_mode_wallet_status_for_wallet_backfill(payment).to_string();
+    let stream = if matches!(wallet_status.as_str(), "failed" | "returned") {
+        TerminalStream::Stderr
+    } else {
+        TerminalStream::Stdout
+    };
+    let request_hint = buy_mode_wallet_request_hint(payment)
+        .map(|hint| format!("wallet-inferred:{hint}"))
+        .unwrap_or_else(|| "wallet-inferred".to_string());
+
+    Some(BuyModePaymentLedgerEntry {
+        timestamp: Some(payment.timestamp),
+        sort_epoch_seconds: payment.timestamp,
+        stream,
+        status: "wallet-backfill".to_string(),
+        amount_sats: payment.amount_sats,
+        wallet_status,
+        wallet_method: payment.method.clone(),
+        provider_pubkey: payment
+            .destination_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        request_id: request_hint,
+        payment_pointer: payment.id.clone(),
+        request_event_id: "-".to_string(),
+        result_event_id: "-".to_string(),
+        payment_hash: payment
+            .payment_hash
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        destination_pubkey: payment
+            .destination_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        htlc_status: payment
+            .htlc_status
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        htlc_expiry_epoch_seconds: payment.htlc_expiry_epoch_seconds,
+        wallet_detail: payment.status_detail.clone(),
+        wallet_description: payment.description.clone(),
+        wallet_invoice: payment.invoice.as_deref().map(compact_payment_invoice),
+        pending_bolt11: None,
+        payment_error: None,
+        payment_notice: None,
+        source: "wallet-backfill",
+    })
+}
+
+fn buy_mode_wallet_backfill_candidate(payment: &openagents_spark::PaymentSummary) -> bool {
+    payment.direction.eq_ignore_ascii_case("send")
+        && payment.description.as_deref().is_some_and(|description| {
+            description
+                .trim()
+                .to_ascii_lowercase()
+                .starts_with("dvm textgen")
+        })
+}
+
+fn buy_mode_wallet_request_hint(payment: &openagents_spark::PaymentSummary) -> Option<String> {
+    let description = payment.description.as_deref()?.trim();
+    let candidate = description.split_whitespace().last()?;
+    if candidate.eq_ignore_ascii_case("textgen") {
+        return None;
+    }
+    let trimmed = candidate.trim_matches(|ch: char| !ch.is_ascii_hexdigit());
+    if trimmed.is_empty() || !trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn buy_mode_wallet_status_for_wallet_backfill(
+    payment: &openagents_spark::PaymentSummary,
+) -> &'static str {
+    if payment.is_returned_htlc_failure() {
+        "returned"
+    } else if crate::spark_wallet::is_settled_wallet_payment_status(payment.status.as_str()) {
+        "sent"
+    } else if crate::spark_wallet::is_terminal_wallet_payment_status(payment.status.as_str()) {
+        "failed"
+    } else {
+        "pending"
+    }
+}
+
 pub(crate) fn buy_mode_payments_summary_text(
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
-    let requests = buy_mode_payment_history_requests(network_requests);
+    let entries = buy_mode_payment_ledger_entries(network_requests, spark_wallet);
     let mut paid = 0usize;
     let mut pending = 0usize;
     let mut returned = 0usize;
     let mut failed = 0usize;
     let mut sats_sent = 0u64;
-    for request in &requests {
-        let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
-        let wallet_amount = wallet_payment.map(|payment| payment.amount_sats);
-        if request.payment_sent_at_epoch_seconds.is_some()
-            || request.status == crate::state::operations::NetworkRequestStatus::Paid
-        {
+    for entry in &entries {
+        if entry.wallet_status == "sent" {
             paid = paid.saturating_add(1);
-            sats_sent = sats_sent.saturating_add(wallet_amount.unwrap_or(request.budget_sats));
-        } else if wallet_payment.is_some_and(|payment| payment.is_returned_htlc_failure()) {
+            sats_sent = sats_sent.saturating_add(entry.amount_sats);
+        } else if entry.wallet_status == "returned" {
             returned = returned.saturating_add(1);
-        } else if request.status == crate::state::operations::NetworkRequestStatus::Failed
-            || request.payment_failed_at_epoch_seconds.is_some()
-            || request.payment_error.is_some()
-        {
+        } else if entry.wallet_status == "failed" {
             failed = failed.saturating_add(1);
         } else {
             pending = pending.saturating_add(1);
@@ -895,7 +1134,7 @@ pub(crate) fn buy_mode_payments_summary_text(
 
     format!(
         "{} rows  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
-        requests.len(),
+        entries.len(),
         paid,
         pending,
         returned,
@@ -911,7 +1150,7 @@ pub(crate) fn buy_mode_payments_clipboard_text(
     let mut sections = vec![
         "Buy Mode Payments".to_string(),
         buy_mode_payments_summary_text(network_requests, spark_wallet),
-        "Rows are sourced from buy-mode requests. When wallet evidence exists, rows are matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.".to_string(),
+        "Rows are sourced from buy-mode requests plus wallet-backed Spark send history. Live requests stay linked by wallet pointer; older buy-mode sends are backfilled from Spark payment metadata.".to_string(),
         String::new(),
     ];
     for (_, text) in build_buy_mode_payment_rows(network_requests, spark_wallet) {
@@ -929,91 +1168,64 @@ fn build_buy_mode_payment_rows(
     spark_wallet: &SparkPaneState,
 ) -> Vec<(TerminalStream, String)> {
     let mut rows = Vec::<(TerminalStream, String)>::new();
-    for request in buy_mode_payment_history_requests(network_requests) {
-        let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
-        let timestamp = wallet_payment
-            .map(|payment| payment.timestamp)
-            .or(request.payment_sent_at_epoch_seconds)
-            .or(request.payment_failed_at_epoch_seconds)
-            .or(request.payment_required_at_epoch_seconds);
-        let amount_sats = wallet_payment
-            .map(|payment| payment.amount_sats)
-            .unwrap_or(request.budget_sats);
-        let provider_pubkey = request
-            .winning_provider_pubkey
-            .as_deref()
-            .or(request.last_provider_pubkey.as_deref())
-            .unwrap_or("-");
-        let wallet_status = wallet_payment
-            .map(|payment| buy_mode_wallet_state_label(request, Some(payment)))
-            .unwrap_or_else(|| buy_mode_wallet_state_label(request, None));
-        let request_event_id = request.published_request_event_id.as_deref().unwrap_or("-");
-        let result_event_id = request
-            .winning_result_event_id
-            .as_deref()
-            .or(request.last_result_event_id.as_deref())
-            .unwrap_or("-");
-        let payment_pointer = request.last_payment_pointer.as_deref().unwrap_or("-");
-        let summary_stream = if request.status
-            == crate::state::operations::NetworkRequestStatus::Failed
-            || request.payment_failed_at_epoch_seconds.is_some()
-            || request.payment_error.is_some()
-        {
-            TerminalStream::Stderr
-        } else {
-            TerminalStream::Stdout
-        };
+    for entry in buy_mode_payment_ledger_entries(network_requests, spark_wallet) {
         rows.push((
-            summary_stream.clone(),
+            entry.stream.clone(),
             format!(
                 "{}  status={}  amount={} sats  wallet_status={}  wallet_method={}  provider_pubkey={}",
-                buy_mode_payment_timestamp_label(timestamp),
-                request.status.label(),
-                amount_sats,
-                wallet_status,
-                wallet_payment.map(|payment| payment.method.as_str()).unwrap_or("-"),
-                provider_pubkey,
+                buy_mode_payment_timestamp_label(entry.timestamp),
+                entry.status,
+                entry.amount_sats,
+                entry.wallet_status,
+                entry.wallet_method,
+                entry.provider_pubkey,
             ),
         ));
         rows.push((
-            summary_stream.clone(),
+            entry.stream.clone(),
             format!(
-                "request_id={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}",
-                request.request_id, payment_pointer, request_event_id, result_event_id,
-                wallet_payment
-                    .and_then(|payment| payment.payment_hash.as_deref())
-                    .unwrap_or("-"),
+                "request_id={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}  source={}",
+                entry.request_id,
+                entry.payment_pointer,
+                entry.request_event_id,
+                entry.result_event_id,
+                entry.payment_hash,
+                entry.source,
             ),
         ));
-        if let Some(wallet_payment) = wallet_payment {
+        if entry.destination_pubkey != "-"
+            || entry.htlc_status != "-"
+            || entry.htlc_expiry_epoch_seconds.is_some()
+        {
             rows.push((
-                summary_stream.clone(),
+                entry.stream.clone(),
                 format!(
                     "destination_pubkey={}  htlc_status={}  htlc_expiry={}",
-                    wallet_payment.destination_pubkey.as_deref().unwrap_or("-"),
-                    wallet_payment.htlc_status.as_deref().unwrap_or("-"),
-                    buy_mode_payment_timestamp_label(wallet_payment.htlc_expiry_epoch_seconds),
+                    entry.destination_pubkey,
+                    entry.htlc_status,
+                    buy_mode_payment_timestamp_label(entry.htlc_expiry_epoch_seconds),
                 ),
             ));
-            if let Some(detail) = wallet_payment.status_detail.as_deref() {
-                rows.push((summary_stream.clone(), format!("wallet_detail={detail}")));
-            }
-            if let Some(invoice) = wallet_payment.invoice.as_deref() {
-                rows.push((
-                    TerminalStream::Stdout,
-                    format!("wallet_invoice={}", compact_payment_invoice(invoice)),
-                ));
-            }
-        } else if let Some(invoice) = request.pending_bolt11.as_deref() {
+        }
+        if let Some(detail) = entry.wallet_detail.as_deref() {
+            rows.push((entry.stream.clone(), format!("wallet_detail={detail}")));
+        }
+        if let Some(description) = entry.wallet_description.as_deref() {
             rows.push((
                 TerminalStream::Stdout,
-                format!("pending_bolt11={}", compact_payment_invoice(invoice)),
+                format!("wallet_description={description}"),
             ));
         }
-        if let Some(error) = request.payment_error.as_deref() {
+        if let Some(invoice) = entry.wallet_invoice.as_deref() {
+            rows.push((TerminalStream::Stdout, format!("wallet_invoice={invoice}")));
+        }
+        if let Some(invoice) = entry.pending_bolt11.as_deref() {
+            rows.push((TerminalStream::Stdout, format!("pending_bolt11={invoice}")));
+        }
+        if let Some(error) = entry.payment_error.as_deref() {
             rows.push((TerminalStream::Stderr, format!("payment_error={error}")));
         }
-        if let Some(notice) = request.payment_notice.as_deref() {
+        if let Some(notice) = entry.payment_notice.as_deref() {
             rows.push((TerminalStream::Stderr, format!("payment_notice={notice}")));
         }
         rows.push((TerminalStream::Stdout, String::new()));
@@ -12456,6 +12668,74 @@ mod tests {
             line.text.contains(request_id.as_str())
                 && line.text.contains("event-buy-pending-ledger-001")
         }));
+    }
+
+    #[test]
+    fn buy_mode_payments_pane_backfills_wallet_only_buy_mode_sends() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-live-001", 26);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-live-001",
+            3,
+            1,
+            None,
+        );
+
+        let provider_pubkey = "25".repeat(32);
+        let mut wallet = SparkPaneState::default();
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-history-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                method: "lightning".to_string(),
+                description: Some("DVM textgen 6872f65774d7e233".to_string()),
+                destination_pubkey: Some(provider_pubkey.clone()),
+                payment_hash: Some("hash-wallet-history-001".to_string()),
+                timestamp: 1_762_700_200,
+                ..Default::default()
+            });
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-non-buy-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 1000,
+                method: "lightning".to_string(),
+                description: Some("Mission Control load funds".to_string()),
+                destination_pubkey: Some("99".repeat(32)),
+                payment_hash: Some("hash-wallet-non-buy-001".to_string()),
+                timestamp: 1_762_700_199,
+                ..Default::default()
+            });
+
+        let mut pane = super::BuyModePaymentsPaneState::default();
+        pane.sync_rows(&requests, &wallet);
+        let lines = pane.ledger.recent_lines(12);
+        let summary = super::buy_mode_payments_summary_text(&requests, &wallet);
+
+        assert_eq!(
+            summary,
+            "2 rows  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats"
+        );
+        assert!(lines.iter().any(|line| {
+            line.text
+                .contains("request_id=wallet-inferred:6872f65774d7e233")
+                && line.text.contains("wallet-payment-history-001")
+                && line.text.contains("source=wallet-backfill")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
+        }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| { line.text.contains("wallet-payment-non-buy-001") })
+        );
     }
 
     #[test]

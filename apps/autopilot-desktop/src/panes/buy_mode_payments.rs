@@ -33,7 +33,7 @@ pub fn paint(
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Rows are sourced from buy-mode requests. When wallet evidence exists, rows are matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.",
+        "Rows are sourced from buy-mode requests plus wallet-backed Spark send history. Live requests stay linked by wallet pointer; older buy-mode sends are backfilled from Spark payment metadata.",
         Point::new(content_bounds.origin.x + 12.0, content_bounds.origin.y + 48.0),
         10.0,
         theme::text::MUTED,
