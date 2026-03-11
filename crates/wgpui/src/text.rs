@@ -83,14 +83,29 @@ impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
         let mut font_system = FontSystem::new();
 
-        // UI family: Inter
+        // Default product family: Berkeley Mono
+        let berkeley_regular = include_bytes!("../assets/fonts/BerkeleyMono-Regular.ttf");
+        let berkeley_italic = include_bytes!("../assets/fonts/BerkeleyMono-Italic.ttf");
+        let berkeley_bold = include_bytes!("../assets/fonts/BerkeleyMono-Bold.ttf");
+        let berkeley_bold_italic = include_bytes!("../assets/fonts/BerkeleyMono-BoldItalic.ttf");
+        // Alternate UI family: Inter
         let inter_regular = include_bytes!("../assets/fonts/Inter-Regular.ttf");
         let inter_medium = include_bytes!("../assets/fonts/Inter-Medium.ttf");
         let inter_semibold = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
-        // Monospace family: JetBrains Mono
+        // Alternate monospace family: JetBrains Mono
         let jbmono_regular = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
         let jbmono_medium = include_bytes!("../assets/fonts/JetBrainsMono-Medium.ttf");
 
+        font_system
+            .db_mut()
+            .load_font_data(berkeley_regular.to_vec());
+        font_system
+            .db_mut()
+            .load_font_data(berkeley_italic.to_vec());
+        font_system.db_mut().load_font_data(berkeley_bold.to_vec());
+        font_system
+            .db_mut()
+            .load_font_data(berkeley_bold_italic.to_vec());
         font_system.db_mut().load_font_data(inter_regular.to_vec());
         font_system.db_mut().load_font_data(inter_medium.to_vec());
         font_system.db_mut().load_font_data(inter_semibold.to_vec());
@@ -331,7 +346,7 @@ impl TextSystem {
         (logical_width, glyph_data)
     }
 
-    /// Shape text using monospace font (Vera Mono)
+    /// Shape text using the configured monospace family.
     fn shape_text_mono(
         &mut self,
         text: &str,
@@ -386,7 +401,7 @@ impl TextSystem {
         (logical_width, glyph_data)
     }
 
-    /// Layout styled text using monospace font (Vera Mono)
+    /// Layout styled text using the configured monospace family.
     pub fn layout_styled_mono(
         &mut self,
         text: &str,
@@ -453,7 +468,7 @@ impl TextSystem {
         text_run
     }
 
-    /// Measure styled text width using monospace font (Vera Mono)
+    /// Measure styled text width using the configured monospace family.
     pub fn measure_styled_mono(&mut self, text: &str, font_size: f32, style: FontStyle) -> f32 {
         let (width, _) = self.shape_text_mono(text, font_size, style);
         width
@@ -735,7 +750,7 @@ mod tests {
     }
 
     /// Test that measure_styled with a font style returns consistent width.
-    /// For monospace fonts like Vera Mono, bold/normal have same width,
+    /// For monospace fonts like Berkeley Mono, bold/normal have same width,
     /// but we must use measure_styled consistently with layout_styled.
     #[test]
     fn test_measure_styled_consistency() {

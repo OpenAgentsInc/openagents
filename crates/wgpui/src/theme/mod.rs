@@ -147,10 +147,16 @@ pub fn set_theme(theme: &'static Theme) {
 
 /// Font sizes in logical pixels.
 pub mod font {
+    /// Default product font family for all UI copy in Autopilot.
+    pub const BERKELEY_MONO: &str = "Berkeley Mono";
+    /// Alternate proportional UI family kept registered for explicit use.
+    pub const INTER: &str = "Inter";
+    /// Alternate monospace family kept registered for explicit use.
+    pub const JETBRAINS_MONO: &str = "JetBrains Mono";
     /// Primary UI font family.
-    pub const UI: &str = "Inter";
+    pub const UI: &str = BERKELEY_MONO;
     /// Monospace font family for code/log/path text.
-    pub const MONO: &str = "JetBrains Mono";
+    pub const MONO: &str = BERKELEY_MONO;
 }
 
 /// Font sizes in logical pixels.
