@@ -477,6 +477,18 @@ pub struct BuyerResolutionAction {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestProviderObservation {
+    pub provider_pubkey: String,
+    pub last_feedback_event_id: Option<String>,
+    pub last_feedback_status: Option<String>,
+    pub last_feedback_status_extra: Option<String>,
+    pub last_feedback_amount_msats: Option<u64>,
+    pub last_feedback_bolt11: Option<String>,
+    pub last_result_event_id: Option<String>,
+    pub last_result_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubmittedNetworkRequest {
     pub request_id: String,
     pub published_request_event_id: Option<String>,
@@ -511,6 +523,7 @@ pub struct SubmittedNetworkRequest {
     pub duplicate_outcomes: Vec<NetworkRequestDuplicateOutcome>,
     pub resolution_feedbacks: Vec<NetworkRequestResolutionFeedback>,
     pub observed_buyer_event_ids: Vec<String>,
+    pub provider_observations: Vec<NetworkRequestProviderObservation>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -921,6 +934,7 @@ impl NetworkRequestsState {
                 duplicate_outcomes: Vec::new(),
                 resolution_feedbacks: Vec::new(),
                 observed_buyer_event_ids: Vec::new(),
+                provider_observations: Vec::new(),
             },
         );
         self.pane_set_ready(format!(
@@ -1162,6 +1176,8 @@ impl NetworkRequestsState {
         event_id: &str,
         status: Option<&str>,
         status_extra: Option<&str>,
+        amount_msats: Option<u64>,
+        bolt11: Option<&str>,
     ) -> Option<BuyerResolutionAction> {
         let Some(request) = self
             .submitted
@@ -1182,20 +1198,26 @@ impl NetworkRequestsState {
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
 
+        let provider = observed_provider_mut(request, provider_pubkey);
+        provider.last_feedback_event_id = Some(event_id.to_string());
+        provider.last_feedback_status = status.map(ToString::to_string);
+        provider.last_feedback_status_extra = status_extra.map(ToString::to_string);
+        if let Some(amount_msats) = amount_msats {
+            provider.last_feedback_amount_msats = Some(amount_msats);
+        }
+        if let Some(bolt11) = bolt11
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+        {
+            provider.last_feedback_bolt11 = Some(bolt11);
+        }
+
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_feedback_event_id = Some(event_id.to_string());
         request.last_feedback_status = status.map(ToString::to_string);
-        request.status = match status
-            .map(str::trim)
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("processing") => NetworkRequestStatus::Processing,
-            Some("payment-required") => NetworkRequestStatus::PaymentRequired,
-            Some("success") | Some("partial") => NetworkRequestStatus::Streaming,
-            Some("error") => NetworkRequestStatus::Failed,
-            _ => NetworkRequestStatus::Streaming,
-        };
+        select_payable_winner(request, Some(provider_pubkey));
+        request.status = compute_request_status(request);
         let resolution_action = maybe_race_resolution_action_for_feedback(
             request,
             provider_pubkey,
@@ -1239,16 +1261,14 @@ impl NetworkRequestsState {
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
 
+        let provider = observed_provider_mut(request, provider_pubkey);
+        provider.last_result_event_id = Some(event_id.to_string());
+        provider.last_result_status = status.map(ToString::to_string);
+
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_result_event_id = Some(event_id.to_string());
-        request.status = match status
-            .map(str::trim)
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("error") => NetworkRequestStatus::Failed,
-            _ => NetworkRequestStatus::ResultReceived,
-        };
+        select_payable_winner(request, Some(provider_pubkey));
+        request.status = compute_request_status(request);
         let resolution_action =
             maybe_race_resolution_action_for_result(request, provider_pubkey, event_id, status);
         self.pane_set_ready(format!(
@@ -1309,6 +1329,64 @@ impl NetworkRequestsState {
     }
 
     pub fn prepare_auto_payment_attempt(
+        &mut self,
+        request_id: &str,
+        bolt11: &str,
+        amount_msats: Option<u64>,
+        now_epoch_seconds: u64,
+    ) -> Option<(String, Option<u64>)> {
+        self.prepare_auto_payment_attempt_internal(
+            request_id,
+            bolt11,
+            amount_msats,
+            now_epoch_seconds,
+        )
+    }
+
+    pub fn prepare_auto_payment_attempt_for_provider(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        now_epoch_seconds: u64,
+    ) -> Option<(String, Option<u64>)> {
+        let (bolt11, amount_msats) = {
+            let request = self
+                .submitted
+                .iter_mut()
+                .find(|request| request.request_id == request_id)?;
+            if request.status.is_terminal() {
+                return None;
+            }
+            select_payable_winner(request, Some(provider_pubkey));
+
+            let winner = request.winning_provider_pubkey.as_deref()?;
+            if normalize_pubkey(winner) != normalize_pubkey(provider_pubkey) {
+                return None;
+            }
+
+            let observation = request.provider_observations.iter().find(|observation| {
+                normalize_pubkey(observation.provider_pubkey.as_str())
+                    == normalize_pubkey(provider_pubkey)
+            })?;
+            if !provider_has_payable_result(observation) {
+                return None;
+            }
+
+            (
+                observation.last_feedback_bolt11.clone()?,
+                observation.last_feedback_amount_msats,
+            )
+        };
+
+        self.prepare_auto_payment_attempt_internal(
+            request_id,
+            bolt11.as_str(),
+            amount_msats,
+            now_epoch_seconds,
+        )
+    }
+
+    fn prepare_auto_payment_attempt_internal(
         &mut self,
         request_id: &str,
         bolt11: &str,
@@ -1447,7 +1525,7 @@ impl NetworkRequestsState {
             .payment_required_at_epoch_seconds
             .get_or_insert(now_epoch_seconds);
         request.payment_notice = Some(notice.to_string());
-        request.status = NetworkRequestStatus::PaymentRequired;
+        request.status = compute_request_status(request);
         self.pane_set_ready(format!(
             "Request {} is waiting for a valid provider invoice",
             request_id
@@ -1609,15 +1687,6 @@ fn maybe_race_resolution_action_for_result(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_ascii_lowercase);
-    if request.winning_result_event_id.is_none() {
-        if normalized_status.as_deref() != Some("error") {
-            request.winning_provider_pubkey = Some(provider_pubkey.to_string());
-            request.winning_result_event_id = Some(event_id.to_string());
-            request.resolution_reason_code =
-                Some(BuyerResolutionReason::FirstValidResult.code().to_string());
-        }
-        return None;
-    }
     let Some(winner) = request.winning_provider_pubkey.as_deref() else {
         return None;
     };
@@ -1653,6 +1722,219 @@ fn maybe_race_resolution_action_for_result(
 
 fn normalize_pubkey(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+fn observed_provider_mut<'a>(
+    request: &'a mut SubmittedNetworkRequest,
+    provider_pubkey: &str,
+) -> &'a mut NetworkRequestProviderObservation {
+    let normalized_provider = normalize_pubkey(provider_pubkey);
+    if let Some(index) = request
+        .provider_observations
+        .iter()
+        .position(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str()) == normalized_provider
+        })
+    {
+        return request
+            .provider_observations
+            .get_mut(index)
+            .expect("observation index should remain valid");
+    }
+
+    request
+        .provider_observations
+        .push(NetworkRequestProviderObservation {
+            provider_pubkey: provider_pubkey.to_string(),
+            last_feedback_event_id: None,
+            last_feedback_status: None,
+            last_feedback_status_extra: None,
+            last_feedback_amount_msats: None,
+            last_feedback_bolt11: None,
+            last_result_event_id: None,
+            last_result_status: None,
+        });
+    request
+        .provider_observations
+        .last_mut()
+        .expect("new observation should be present")
+}
+
+fn provider_has_non_error_result(observation: &NetworkRequestProviderObservation) -> bool {
+    observation.last_result_event_id.is_some()
+        && !matches!(
+            observation
+                .last_result_status
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("error")
+        )
+}
+
+fn provider_has_valid_invoice(observation: &NetworkRequestProviderObservation) -> bool {
+    observation
+        .last_feedback_bolt11
+        .as_deref()
+        .is_some_and(|bolt11| !bolt11.trim().is_empty())
+}
+
+fn provider_has_payable_result(observation: &NetworkRequestProviderObservation) -> bool {
+    provider_has_non_error_result(observation) && provider_has_valid_invoice(observation)
+}
+
+fn provider_has_processing_feedback(observation: &NetworkRequestProviderObservation) -> bool {
+    matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("processing")
+    )
+}
+
+fn provider_has_payment_feedback(observation: &NetworkRequestProviderObservation) -> bool {
+    matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("payment-required")
+    )
+}
+
+fn provider_has_error_only_signal(observation: &NetworkRequestProviderObservation) -> bool {
+    let feedback_error = matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("error")
+    );
+    let result_error = matches!(
+        observation
+            .last_result_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("error")
+    );
+
+    (feedback_error || result_error)
+        && !provider_has_non_error_result(observation)
+        && !provider_has_payment_feedback(observation)
+        && !provider_has_processing_feedback(observation)
+}
+
+fn select_payable_winner(
+    request: &mut SubmittedNetworkRequest,
+    preferred_provider_pubkey: Option<&str>,
+) {
+    if request.last_payment_pointer.is_some() {
+        return;
+    }
+
+    let preferred_provider = preferred_provider_pubkey.map(normalize_pubkey);
+    let current_winner = request
+        .winning_provider_pubkey
+        .as_deref()
+        .map(normalize_pubkey);
+
+    let preferred_candidate = preferred_provider.as_deref().and_then(|preferred| {
+        request.provider_observations.iter().find(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str()) == *preferred
+                && provider_has_payable_result(observation)
+        })
+    });
+    let current_candidate = current_winner.as_deref().and_then(|winner| {
+        request.provider_observations.iter().find(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str()) == *winner
+                && provider_has_payable_result(observation)
+        })
+    });
+    let first_candidate = request
+        .provider_observations
+        .iter()
+        .find(|observation| provider_has_payable_result(observation));
+
+    let selected = current_candidate
+        .or(preferred_candidate)
+        .or(first_candidate);
+
+    if let Some(observation) = selected {
+        request.winning_provider_pubkey = Some(observation.provider_pubkey.clone());
+        request.winning_result_event_id = observation.last_result_event_id.clone();
+        request.resolution_reason_code =
+            Some(BuyerResolutionReason::FirstValidResult.code().to_string());
+        return;
+    }
+
+    request.winning_provider_pubkey = None;
+    request.winning_result_event_id = None;
+    request.resolution_reason_code = None;
+}
+
+fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestStatus {
+    if request.payment_error.is_some() {
+        return NetworkRequestStatus::Failed;
+    }
+    if request.last_payment_pointer.is_some() {
+        return NetworkRequestStatus::Paid;
+    }
+
+    let has_non_error_result = request
+        .provider_observations
+        .iter()
+        .any(provider_has_non_error_result);
+    if has_non_error_result {
+        return NetworkRequestStatus::ResultReceived;
+    }
+
+    if request.pending_bolt11.is_some()
+        || request.payment_notice.is_some()
+        || request
+            .provider_observations
+            .iter()
+            .any(provider_has_payment_feedback)
+    {
+        return NetworkRequestStatus::PaymentRequired;
+    }
+
+    if request
+        .provider_observations
+        .iter()
+        .any(provider_has_processing_feedback)
+    {
+        return NetworkRequestStatus::Processing;
+    }
+
+    if !request.provider_observations.is_empty()
+        && request
+            .provider_observations
+            .iter()
+            .all(provider_has_error_only_signal)
+    {
+        return NetworkRequestStatus::Failed;
+    }
+
+    if request.published_request_event_id.is_some() {
+        return NetworkRequestStatus::Streaming;
+    }
+
+    NetworkRequestStatus::Submitted
 }
 
 fn msats_to_sats_ceil(msats: u64) -> u64 {

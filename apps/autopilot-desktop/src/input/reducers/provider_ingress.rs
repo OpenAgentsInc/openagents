@@ -649,6 +649,8 @@ pub(super) fn apply_buyer_response_event(
                 event.event_id.as_str(),
                 event.status.as_deref(),
                 event.status_extra.as_deref(),
+                event.amount_msats,
+                event.bolt11.as_deref(),
             )
         }
         ProviderNip90BuyerResponseKind::Result => {
@@ -660,13 +662,8 @@ pub(super) fn apply_buyer_response_event(
             )
         }
     };
-    match event.kind {
-        ProviderNip90BuyerResponseKind::Feedback => {
-            if resolution_action.is_none() {
-                queue_auto_payment_for_feedback(state, &event, now_epoch_seconds);
-            }
-        }
-        ProviderNip90BuyerResponseKind::Result => {}
+    if resolution_action.is_none() {
+        queue_auto_payment_for_buyer_event(state, &event, now_epoch_seconds);
     }
 
     state.provider_runtime.last_result = Some(format!(
@@ -727,21 +724,25 @@ pub(super) fn apply_buyer_response_event(
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
 }
 
-fn queue_auto_payment_for_feedback(
+fn queue_auto_payment_for_buyer_event(
     state: &mut RenderState,
     event: &ProviderNip90BuyerResponseEvent,
     now_epoch_seconds: u64,
 ) {
-    let status = event
-        .status
-        .as_deref()
-        .map(str::trim)
-        .map(str::to_ascii_lowercase);
-    if status.as_deref() != Some("payment-required") {
-        return;
-    }
-
-    let Some(bolt11) = event.bolt11.as_deref() else {
+    if matches!(event.kind, ProviderNip90BuyerResponseKind::Feedback)
+        && event
+            .status
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+            == Some("payment-required")
+        && event
+            .bolt11
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    {
         tracing::error!(
             target: "autopilot_desktop::buyer",
             "Buyer payment-required feedback missing bolt11 request_id={} event_id={}",
@@ -758,14 +759,16 @@ fn queue_auto_payment_for_feedback(
             event.request_id
         ));
         return;
-    };
+    }
 
-    let Some((payment_request, amount_sats)) = state.network_requests.prepare_auto_payment_attempt(
-        event.request_id.as_str(),
-        bolt11,
-        event.amount_msats,
-        now_epoch_seconds,
-    ) else {
+    let Some((payment_request, amount_sats)) = state
+        .network_requests
+        .prepare_auto_payment_attempt_for_provider(
+            event.request_id.as_str(),
+            event.provider_pubkey.as_str(),
+            now_epoch_seconds,
+        )
+    else {
         return;
     };
     tracing::info!(
