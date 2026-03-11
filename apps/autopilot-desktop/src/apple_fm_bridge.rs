@@ -408,7 +408,21 @@ fn hydrate_snapshot_from_health(
     snapshot.supported_use_cases = system_model_status.supported_use_cases.clone();
     snapshot.supported_guardrails = system_model_status.supported_guardrails.clone();
     snapshot.availability_message = system_model_status.availability_message.clone();
-    if !system_model_status.available {
+    if system_model_status.available {
+        let model = if snapshot.system_model.id.trim().is_empty() {
+            DEFAULT_APPLE_FM_MODEL_ID.to_string()
+        } else {
+            snapshot.system_model.id.clone()
+        };
+        if !snapshot
+            .available_models
+            .iter()
+            .any(|candidate| candidate == &model)
+        {
+            snapshot.available_models.push(model.clone());
+        }
+        snapshot.ready_model = Some(model);
+    } else {
         snapshot.ready_model = None;
     }
 }
@@ -2514,6 +2528,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut saw_ready_snapshot = false;
         let mut saw_local_spawn_attempt = false;
+        let mut saw_pending_inventory_snapshot = false;
         while Instant::now() < deadline {
             for update in worker.drain_updates() {
                 if let AppleFmBridgeUpdate::Snapshot(snapshot) = update {
@@ -2523,6 +2538,12 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                         .is_some_and(|action| action.contains("starting process"))
                     {
                         saw_local_spawn_attempt = true;
+                    }
+                    if snapshot.reachable
+                        && snapshot.model_available
+                        && snapshot.ready_model.is_none()
+                    {
+                        saw_pending_inventory_snapshot = true;
                     }
                     if snapshot.is_ready()
                         || snapshot.last_action.as_deref()
@@ -2546,6 +2567,10 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         assert!(
             !saw_local_spawn_attempt,
             "ensure-running should not spawn a second bridge when one is already healthy"
+        );
+        assert!(
+            !saw_pending_inventory_snapshot,
+            "ensure-running should not publish a fake waiting-for-model-inventory snapshot when health is already ready"
         );
 
         server_handle.join().expect("mock bridge thread");

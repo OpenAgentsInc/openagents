@@ -85,6 +85,12 @@ impl ProviderAppleFmRuntimeState {
         self.reachable && self.model_available && self.ready_model.is_some()
     }
 
+    pub fn has_authoritative_capability_state(&self) -> bool {
+        self.is_ready()
+            || self.availability_error_message().is_some()
+            || matches!(self.bridge_status.as_deref(), Some("failed"))
+    }
+
     pub fn availability_error_message(&self) -> Option<String> {
         self.last_error.clone().or_else(|| {
             (!self.model_available)
@@ -424,5 +430,37 @@ mod tests {
             runtime.availability_error_message().as_deref(),
             Some("bridge request timed out")
         );
+    }
+
+    #[test]
+    fn apple_fm_capability_state_is_not_authoritative_before_first_health_result() {
+        let runtime = super::ProviderAppleFmRuntimeState::default();
+        assert!(!runtime.has_authoritative_capability_state());
+    }
+
+    #[test]
+    fn apple_fm_capability_state_is_authoritative_once_ready() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: true,
+            ready_model: Some("apple-foundation-model".to_string()),
+            bridge_status: Some("running".to_string()),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+        assert!(runtime.has_authoritative_capability_state());
+    }
+
+    #[test]
+    fn apple_fm_capability_state_is_authoritative_once_unavailable_reason_is_known() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: false,
+            unavailable_reason: Some(
+                AppleFmSystemLanguageModelUnavailableReason::AppleIntelligenceNotEnabled,
+            ),
+            bridge_status: Some("running".to_string()),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+        assert!(runtime.has_authoritative_capability_state());
     }
 }
