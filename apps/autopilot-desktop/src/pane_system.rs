@@ -2145,7 +2145,7 @@ pub fn mission_control_layout_for_mode(
     );
 
     let active_jobs_height = if buy_mode_enabled {
-        (right_column.size.height * 0.24).clamp(84.0, 128.0)
+        (right_column.size.height * 0.20).clamp(88.0, 112.0)
     } else {
         (128.0 * scale).max(84.0_f32.min(body_height))
     };
@@ -2156,7 +2156,7 @@ pub fn mission_control_layout_for_mode(
         active_jobs_height,
     );
     let buy_mode_panel = if buy_mode_enabled {
-        let buy_mode_height = (right_column.size.height * 0.24).clamp(122.0, 144.0);
+        let buy_mode_height = (right_column.size.height * 0.21).clamp(104.0, 128.0);
         Bounds::new(
             right_column.origin.x,
             active_jobs_panel.max_y() + panel_gap,
@@ -2179,9 +2179,9 @@ pub fn mission_control_layout_for_mode(
     let remaining_after_top =
         (right_column.size.height - active_jobs_height - buy_mode_panel.size.height - top_gaps)
             .max(0.0);
-    let min_log_stream_height: f32 = if buy_mode_enabled { 88.0 } else { 108.0 };
-    let preferred_load_funds_height: f32 = if buy_mode_enabled { 150.0 } else { 178.0 };
-    let min_load_funds_height: f32 = 124.0;
+    let min_log_stream_height: f32 = if buy_mode_enabled { 80.0 } else { 108.0 };
+    let preferred_load_funds_height: f32 = if buy_mode_enabled { 168.0 } else { 178.0 };
+    let min_load_funds_height: f32 = if buy_mode_enabled { 148.0 } else { 124.0 };
     let max_load_funds_height = (remaining_after_top - min_log_stream_height).max(0.0);
     let load_funds_height = if max_load_funds_height <= 0.0 {
         0.0
@@ -6504,6 +6504,16 @@ mod tests {
         assert_eq!(send_button.origin.y, copy_seed.origin.y);
         assert!(send_button.max_x() <= copy_seed.origin.x);
         assert!(copy_seed.max_y() <= copy_bitcoin.origin.y);
+    }
+
+    #[test]
+    fn mission_control_load_funds_inputs_keep_readable_height_with_buy_mode() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let load_funds = super::mission_control_load_funds_layout(content_bounds, true);
+
+        assert!(load_funds.amount_input.size.height >= 20.0);
+        assert!(load_funds.send_invoice_input.size.height >= 20.0);
+        assert_eq!(load_funds.amount_input.size.height, load_funds.send_invoice_input.size.height);
     }
 
     #[test]
