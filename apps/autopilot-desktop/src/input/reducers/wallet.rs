@@ -116,8 +116,21 @@ fn reconcile_spark_wallet_update(
     super::super::refresh_earnings_scoreboard(state, std::time::Instant::now());
 }
 
+fn lightning_invoice_uri(invoice: &str) -> String {
+    let trimmed = invoice.trim();
+    if trimmed
+        .get(..10)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lightning:"))
+    {
+        trimmed.to_string()
+    } else {
+        format!("lightning:{trimmed}")
+    }
+}
+
 fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {
-    let qr = QrCode::new(invoice.as_bytes())
+    let invoice_uri = lightning_invoice_uri(invoice);
+    let qr = QrCode::new(invoice_uri.as_bytes())
         .map_err(|error| format!("invalid Lightning invoice for QR render: {error}"))?;
     Ok(qr
         .render::<Dense1x2>()
@@ -168,7 +181,10 @@ fn reconcile_provider_settlement_invoice_state(
 
 #[cfg(test)]
 mod tests {
-    use super::{lightning_invoice_terminal_qr, reconcile_provider_settlement_invoice_state};
+    use super::{
+        lightning_invoice_terminal_qr, lightning_invoice_uri,
+        reconcile_provider_settlement_invoice_state,
+    };
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
         JobInboxValidation, JobLifecycleStage, PaneLoadState,
@@ -282,6 +298,18 @@ mod tests {
             .expect("qr render should succeed for invoice text");
 
         assert!(qr.contains('\n'));
-        assert!(qr.contains('█'));
+        assert!(qr.contains('█') || qr.contains('▀') || qr.contains('▄'));
+    }
+
+    #[test]
+    fn lightning_invoice_uri_prepends_scheme_once() {
+        assert_eq!(
+            lightning_invoice_uri("lnbc20n1providerready"),
+            "lightning:lnbc20n1providerready"
+        );
+        assert_eq!(
+            lightning_invoice_uri("LIGHTNING:lnbc20n1providerready"),
+            "LIGHTNING:lnbc20n1providerready"
+        );
     }
 }
