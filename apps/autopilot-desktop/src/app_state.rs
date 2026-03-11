@@ -810,20 +810,32 @@ fn build_mission_control_log_lines(
         push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
-        push_entry(TerminalStream::Stderr, format!("Provider error: {error}"), None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("Provider error: {error}"),
+            None,
+        );
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
         push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None);
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
-        push_entry(TerminalStream::Stderr, format!("Inventory error: {error}"), None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("Inventory error: {error}"),
+            None,
+        );
     }
 
     if let Some(action) = spark_wallet.last_action.as_deref() {
         push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None);
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
-        push_entry(TerminalStream::Stderr, format!("Wallet error: {error}"), None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("Wallet error: {error}"),
+            None,
+        );
     }
 
     if job_inbox.requests.is_empty() {
@@ -867,10 +879,18 @@ fn build_mission_control_log_lines(
         );
     }
     if let Some(action) = active_job.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Active job: {action}"), None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Active job: {action}"),
+            None,
+        );
     }
     if let Some(error) = active_job.last_error.as_deref() {
-        push_entry(TerminalStream::Stderr, format!("Active job error: {error}"), None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("Active job error: {error}"),
+            None,
+        );
     }
 
     const LOG_STREAM_EARN_WINDOW_SECS: u64 = 900;
@@ -900,8 +920,10 @@ fn build_mission_control_log_lines(
     }
 
     entries.sort_by_key(|e| e.0);
-    let content: Vec<(TerminalStream, String)> =
-        entries.iter().map(|(_, stream, text)| (stream.clone(), text.clone())).collect();
+    let content: Vec<(TerminalStream, String)> = entries
+        .iter()
+        .map(|(_, stream, text)| (stream.clone(), text.clone()))
+        .collect();
     let lines: Vec<TerminalLine> = entries
         .into_iter()
         .map(|(epoch, stream, text)| {
@@ -929,6 +951,12 @@ pub(crate) enum MissionControlLocalRuntimeLane {
     AppleFoundationModels,
     NvidiaGptOss,
 }
+
+pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_TYPE: &str = "mission_control.buy_mode.5050";
+pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_KIND: u16 =
+    nostr::nip90::KIND_JOB_TEXT_GENERATION;
+pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
+pub(crate) const MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
 
 pub(crate) const fn mission_control_uses_apple_fm() -> bool {
     cfg!(target_os = "macos")
@@ -7828,6 +7856,7 @@ pub struct RenderState {
     pub text_system: TextSystem,
     pub scale_factor: f32,
     pub desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    pub buy_mode_enabled: bool,
     pub hotbar: Hotbar,
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
@@ -7953,6 +7982,10 @@ pub struct RenderState {
 impl RenderState {
     pub const fn dev_mode_enabled(&self) -> bool {
         self.desktop_shell_mode.is_dev()
+    }
+
+    pub const fn mission_control_buy_mode_enabled(&self) -> bool {
+        self.buy_mode_enabled
     }
 
     fn allocate_runtime_command_seq(&mut self) -> u64 {

@@ -399,6 +399,10 @@ impl NetworkRequestStatus {
             Self::Failed => "failed",
         }
     }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Paid | Self::Completed | Self::Failed)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -817,6 +821,18 @@ impl Default for NetworkRequestsState {
 }
 
 impl NetworkRequestsState {
+    pub fn latest_request_by_type(&self, request_type: &str) -> Option<&SubmittedNetworkRequest> {
+        self.submitted
+            .iter()
+            .find(|request| request.request_type == request_type)
+    }
+
+    pub fn has_in_flight_request_by_type(&self, request_type: &str) -> bool {
+        self.submitted
+            .iter()
+            .any(|request| request.request_type == request_type && !request.status.is_terminal())
+    }
+
     pub fn queue_request_submission(
         &mut self,
         submission: NetworkRequestSubmission,

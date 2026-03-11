@@ -39,7 +39,8 @@ use crate::pane_system::{
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, mission_control_layout, mission_control_local_model_button_bounds,
+    job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
+    mission_control_layout_for_mode, mission_control_local_model_button_bounds,
     mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
@@ -81,6 +82,7 @@ impl PaneRenderer {
         canvas_bounds: Bounds,
         active_id: Option<u64>,
         desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+        buy_mode_enabled: bool,
         backend_kernel_authority: bool,
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
@@ -220,6 +222,7 @@ impl PaneRenderer {
                     paint_go_online_pane(
                         content_bounds,
                         desktop_shell_mode,
+                        buy_mode_enabled,
                         mission_control,
                         provider_runtime,
                         local_inference_runtime,
@@ -231,6 +234,7 @@ impl PaneRenderer {
                         provider_blockers,
                         earnings_scoreboard,
                         spark_wallet,
+                        network_requests,
                         job_inbox,
                         active_job,
                         paint,
@@ -534,6 +538,7 @@ fn paint_autopilot_chat_pane(
 fn paint_go_online_pane(
     content_bounds: Bounds,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    buy_mode_enabled: bool,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
@@ -545,6 +550,7 @@ fn paint_go_online_pane(
     provider_blockers: &[ProviderBlocker],
     earnings_scoreboard: &EarningsScoreboardState,
     spark_wallet: &SparkPaneState,
+    network_requests: &NetworkRequestsState,
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
@@ -560,7 +566,7 @@ fn paint_go_online_pane(
         active_job,
     );
 
-    let layout = mission_control_layout(content_bounds);
+    let layout = mission_control_layout_for_mode(content_bounds, buy_mode_enabled);
     let now = std::time::Instant::now();
     let status_label = provider_runtime.mode.label().to_ascii_uppercase();
     let status_color = mission_control_mode_color(provider_runtime.mode);
@@ -685,6 +691,14 @@ fn paint_go_online_pane(
         status_color,
         paint,
     );
+    if buy_mode_enabled {
+        paint_mission_control_section_panel(
+            layout.buy_mode_panel,
+            "BUY MODE",
+            mission_control_cyan_color(),
+            paint,
+        );
+    }
 
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let wants_online = matches!(
@@ -1066,6 +1080,16 @@ fn paint_go_online_pane(
     }
     paint.scene.pop_clip();
 
+    if buy_mode_enabled {
+        paint_mission_control_buy_mode_panel(
+            content_bounds,
+            layout.buy_mode_panel,
+            network_requests,
+            spark_wallet,
+            paint,
+        );
+    }
+
     paint_mission_control_section_panel(layout.log_stream, "LOG STREAM", alert_message.1, paint);
     let log_body_bounds = Bounds::new(
         layout.log_stream.origin.x,
@@ -1121,6 +1145,80 @@ fn paint_mission_control_section_panel(
             accent,
         ));
     }
+}
+
+fn paint_mission_control_buy_mode_panel(
+    content_bounds: Bounds,
+    panel_bounds: Bounds,
+    network_requests: &NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+    paint: &mut PaintContext,
+) {
+    let clip = mission_control_section_clip_bounds(panel_bounds);
+    paint.scene.push_clip(clip);
+
+    let request = network_requests
+        .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
+    let summary = request
+        .map(|request| format!("{} // {}", request.request_id, request.status.label()))
+        .unwrap_or_else(|| "No smoke-test request yet.".to_string());
+    paint.scene.draw_text(paint.text.layout_mono(
+        &summary,
+        Point::new(panel_bounds.origin.x + 12.0, panel_bounds.origin.y + 34.0),
+        11.0,
+        mission_control_text_color(),
+    ));
+
+    let cell_gap = 8.0;
+    let cell_width = ((panel_bounds.size.width - 24.0 - cell_gap * 4.0) / 5.0).max(0.0);
+    let cell_y = panel_bounds.origin.y + 48.0;
+    let cell_height = 24.0;
+    let values = [
+        (
+            "STATE",
+            request
+                .map(|request| request.status.label().to_string())
+                .unwrap_or_else(|| "idle".to_string()),
+        ),
+        ("KIND", "5050".to_string()),
+        (
+            "BUDGET",
+            format_mission_control_amount(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS),
+        ),
+        (
+            "RESULT",
+            mission_control_buy_mode_result_label(request).to_string(),
+        ),
+        (
+            "SETTLE",
+            mission_control_buy_mode_settlement_label(request, spark_wallet),
+        ),
+    ];
+    for (index, (label, value)) in values.iter().enumerate() {
+        let x = panel_bounds.origin.x + 12.0 + index as f32 * (cell_width + cell_gap);
+        paint_mission_control_status_cell(
+            Bounds::new(x, cell_y, cell_width, cell_height),
+            label,
+            value.as_str(),
+            mission_control_cyan_color(),
+            paint,
+        );
+    }
+    paint.scene.pop_clip();
+
+    let button_enabled = !network_requests
+        .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
+    paint_mission_control_command_button(
+        mission_control_buy_mode_button_bounds(content_bounds, true),
+        "BUY 5050 TEST JOB",
+        if button_enabled {
+            mission_control_cyan_color()
+        } else {
+            mission_control_muted_color()
+        },
+        button_enabled,
+        paint,
+    );
 }
 
 fn paint_mission_control_status_cell(
@@ -1289,6 +1387,33 @@ fn mission_control_mode_color(mode: crate::app_state::ProviderMode) -> Hsla {
         crate::app_state::ProviderMode::Connecting => mission_control_cyan_color(),
         crate::app_state::ProviderMode::Online => mission_control_green_color(),
         crate::app_state::ProviderMode::Degraded => mission_control_red_color(),
+    }
+}
+
+fn mission_control_buy_mode_result_label(
+    request: Option<&crate::app_state::SubmittedNetworkRequest>,
+) -> &str {
+    match request {
+        Some(request) if request.last_result_event_id.is_some() => "received",
+        Some(request) if request.last_feedback_event_id.is_some() => "feedback",
+        Some(_) => "pending",
+        None => "waiting",
+    }
+}
+
+fn mission_control_buy_mode_settlement_label(
+    request: Option<&crate::app_state::SubmittedNetworkRequest>,
+    spark_wallet: &SparkPaneState,
+) -> String {
+    match request {
+        Some(request) if request.last_payment_pointer.is_some() => "paid".to_string(),
+        Some(request) if request.pending_bolt11.is_some() => "paying".to_string(),
+        Some(request) => request
+            .payment_error
+            .clone()
+            .or_else(|| spark_wallet.last_error.clone())
+            .unwrap_or_else(|| "pending".to_string()),
+        None => "idle".to_string(),
     }
 }
 

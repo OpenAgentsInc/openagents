@@ -258,6 +258,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             text_system,
             scale_factor,
             desktop_shell_mode: crate::desktop_shell::DesktopShellMode::from_env(),
+            buy_mode_enabled: crate::desktop_shell::buy_mode_enabled_from_env(),
             hotbar,
             hotbar_bounds: initial_hotbar_bounds,
             event_context,
@@ -706,6 +707,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
     let provider_blockers = state.provider_blockers();
     {
+        let buy_mode_enabled = state.mission_control_buy_mode_enabled();
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
 
         if dev_mode {
@@ -994,6 +996,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             Bounds::new(0.0, 0.0, width, height),
             active_pane,
             state.desktop_shell_mode,
+            buy_mode_enabled,
             state.kernel_projection_worker.uses_remote_authority(),
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
