@@ -789,8 +789,8 @@ fn active_job_timeout_reason(
 ) -> String {
     match stage {
         JobLifecycleStage::Running if execution_turn_completed => format!(
-            "job delivery timed out after {}s after local execution completed",
-            ttl_seconds
+            "job result publish continuity timed out after {}s while awaiting relay delivery confirmation",
+            active_job_result_publish_continuity_timeout_seconds(ttl_seconds)
         ),
         JobLifecycleStage::Delivered => format!(
             "job settlement timed out after {}s while awaiting payment flow",
@@ -800,10 +800,32 @@ fn active_job_timeout_reason(
     }
 }
 
-fn active_job_settlement_timeout_seconds(ttl_seconds: u64) -> u64 {
+fn provider_grace_timeout_seconds(ttl_seconds: u64) -> u64 {
     ttl_seconds
         .saturating_add(PROVIDER_SETTLEMENT_GRACE_SECONDS)
         .max(MIN_PROVIDER_SETTLEMENT_TIMEOUT_SECONDS)
+}
+
+fn active_job_result_publish_continuity_timeout_seconds(ttl_seconds: u64) -> u64 {
+    provider_grace_timeout_seconds(ttl_seconds)
+}
+
+fn active_job_settlement_timeout_seconds(ttl_seconds: u64) -> u64 {
+    provider_grace_timeout_seconds(ttl_seconds)
+}
+
+fn active_job_phase_timeout_seconds(
+    stage: JobLifecycleStage,
+    execution_turn_completed: bool,
+    ttl_seconds: u64,
+) -> u64 {
+    match stage {
+        JobLifecycleStage::Running if execution_turn_completed => {
+            active_job_result_publish_continuity_timeout_seconds(ttl_seconds)
+        }
+        JobLifecycleStage::Delivered => active_job_settlement_timeout_seconds(ttl_seconds),
+        _ => ttl_seconds,
+    }
 }
 
 fn set_active_job_phase_deadline_at(
@@ -838,10 +860,11 @@ fn refresh_active_job_phase_deadline(state: &mut RenderState) {
     else {
         return;
     };
-    let timeout_seconds = match stage {
-        JobLifecycleStage::Delivered => active_job_settlement_timeout_seconds(ttl_seconds),
-        _ => ttl_seconds,
-    };
+    let timeout_seconds = active_job_phase_timeout_seconds(
+        stage,
+        state.active_job.execution_turn_completed,
+        ttl_seconds,
+    );
     set_active_job_phase_deadline_at(
         &mut state.active_job,
         timeout_seconds,
@@ -1752,8 +1775,26 @@ fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
         .saturating_add(1);
     state.active_job.result_publish_last_queued_epoch_seconds = Some(current_epoch_seconds());
     let attempt = state.active_job.result_publish_attempt_count;
+    let continuity_timeout_seconds = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| active_job_result_publish_continuity_timeout_seconds(job.ttl_seconds));
+    if attempt == 1
+        && let Some(timeout_seconds) = continuity_timeout_seconds
+    {
+        extend_active_job_phase_deadline_at_least(
+            &mut state.active_job,
+            timeout_seconds,
+            current_epoch_seconds(),
+        );
+    }
     let message = if attempt == 1 {
-        format!("queued canonical NIP-90 result publish {}", result_event_id)
+        format!(
+            "queued canonical NIP-90 result publish {} (awaiting relay confirmation; window={}s)",
+            result_event_id,
+            continuity_timeout_seconds.unwrap_or_default()
+        )
     } else {
         format!(
             "retried canonical NIP-90 result publish {} attempt #{}",
@@ -1763,7 +1804,11 @@ fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
     state.active_job.append_event(message.clone());
     state.active_job.last_action = Some(message);
     state.provider_runtime.last_result = Some(if attempt == 1 {
-        format!("queued provider result publish {}", result_event_id)
+        format!(
+            "queued provider result publish {} (awaiting relay confirmation; window={}s)",
+            result_event_id,
+            continuity_timeout_seconds.unwrap_or_default()
+        )
     } else {
         format!(
             "retried provider result publish {} attempt #{}",
@@ -2694,6 +2739,7 @@ fn next_auto_accept_request_id_for(
 mod tests {
     use super::{
         ProviderExecutionBackend, active_job_matches_publish_outcome,
+        active_job_phase_timeout_seconds, active_job_result_publish_continuity_timeout_seconds,
         active_job_settlement_timeout_seconds, active_job_timeout_reason,
         apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
         build_nip90_feedback_event, clear_active_job_phase_deadline,
@@ -2890,10 +2936,10 @@ mod tests {
     }
 
     #[test]
-    fn timeout_reason_uses_delivery_wording_after_local_completion() {
+    fn timeout_reason_uses_publish_continuity_wording_after_local_completion() {
         assert_eq!(
             active_job_timeout_reason(JobLifecycleStage::Running, true, 75),
-            "job delivery timed out after 75s after local execution completed"
+            "job result publish continuity timed out after 195s while awaiting relay delivery confirmation"
         );
     }
 
@@ -2902,6 +2948,34 @@ mod tests {
         assert_eq!(
             active_job_timeout_reason(JobLifecycleStage::Delivered, true, 75),
             "job settlement timed out after 195s while awaiting payment flow"
+        );
+    }
+
+    #[test]
+    fn result_publish_continuity_timeout_adds_relay_grace_window() {
+        assert_eq!(
+            active_job_result_publish_continuity_timeout_seconds(60),
+            180
+        );
+        assert_eq!(
+            active_job_result_publish_continuity_timeout_seconds(75),
+            195
+        );
+        assert_eq!(
+            active_job_result_publish_continuity_timeout_seconds(300),
+            420
+        );
+    }
+
+    #[test]
+    fn phase_timeout_uses_publish_continuity_after_local_completion() {
+        assert_eq!(
+            active_job_phase_timeout_seconds(JobLifecycleStage::Running, true, 75),
+            195
+        );
+        assert_eq!(
+            active_job_phase_timeout_seconds(JobLifecycleStage::Running, false, 75),
+            75
         );
     }
 
