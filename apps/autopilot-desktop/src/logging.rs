@@ -109,6 +109,9 @@ where
         let metadata = event.metadata();
         let mut visitor = MirroredLogVisitor::default();
         event.record(&mut visitor);
+        if !should_mirror_to_mission_control(*metadata.level(), metadata.target()) {
+            return;
+        }
         push_mirrored_log(
             *metadata.level(),
             format_mirrored_log_line(
@@ -193,9 +196,22 @@ fn format_mirrored_log_line(
     format!("{level} {target}: {content}")
 }
 
+fn should_mirror_to_mission_control(level: Level, target: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() {
+        return false;
+    }
+    if matches!(level, Level::WARN | Level::ERROR) {
+        return target.starts_with("autopilot_desktop::buyer")
+            || target.starts_with("autopilot_desktop::buy_mode");
+    }
+    target.starts_with("autopilot_desktop::buyer")
+        || target.starts_with("autopilot_desktop::buy_mode")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::format_mirrored_log_line;
+    use super::{format_mirrored_log_line, should_mirror_to_mission_control};
 
     #[test]
     fn mirrored_log_line_includes_message_and_fields() {
@@ -213,5 +229,29 @@ mod tests {
             line,
             "INFO autopilot_desktop::buy_mode: Queued buy mode request request_id=req-123 budget_sats=2"
         );
+    }
+
+    #[test]
+    fn mission_control_mirror_filters_to_buyer_targets() {
+        assert!(should_mirror_to_mission_control(
+            tracing::Level::INFO,
+            "autopilot_desktop::buyer"
+        ));
+        assert!(should_mirror_to_mission_control(
+            tracing::Level::ERROR,
+            "autopilot_desktop::buy_mode"
+        ));
+        assert!(!should_mirror_to_mission_control(
+            tracing::Level::INFO,
+            "breez_sdk_spark::sdk"
+        ));
+        assert!(!should_mirror_to_mission_control(
+            tracing::Level::INFO,
+            "autopilot_desktop::input"
+        ));
+        assert!(!should_mirror_to_mission_control(
+            tracing::Level::WARN,
+            "spark::events::server_stream"
+        ));
     }
 }
