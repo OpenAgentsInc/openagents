@@ -63,10 +63,10 @@ use crate::pane_system::{
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
-    dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -3584,7 +3584,7 @@ mod tests {
 
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::CreateInvoice, "1500", "", ""),
-            Ok(SparkWalletCommand::CreateInvoice {
+            Ok(SparkWalletCommand::CreateBolt11Invoice {
                 amount_sats: 1500,
                 description: Some(_),
                 expiry_seconds: Some(3600)
@@ -3630,7 +3630,7 @@ mod tests {
             .expect("command dispatch should succeed");
         assert!(matches!(
             command,
-            SparkWalletCommand::CreateInvoice {
+            SparkWalletCommand::CreateBolt11Invoice {
                 amount_sats: 2100,
                 description: Some(_),
                 expiry_seconds: Some(3600)
@@ -3785,7 +3785,7 @@ mod tests {
         .expect("create invoice command should be built");
         assert!(matches!(
             command,
-            SparkWalletCommand::CreateInvoice {
+            SparkWalletCommand::CreateBolt11Invoice {
                 amount_sats: 1200,
                 description: Some(description),
                 expiry_seconds: Some(900)

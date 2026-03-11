@@ -545,7 +545,7 @@ const PANE_SPECS: [PaneSpec; 41] = [
         command: Some(PaneCommandSpec {
             id: "pane.create_invoice",
             label: "Create Lightning Invoice",
-            description: "Open dedicated pane for creating Lightning invoices",
+            description: "Open dedicated pane for creating BOLT11 Lightning invoices",
             keybinding: None,
         }),
         hotbar: None,

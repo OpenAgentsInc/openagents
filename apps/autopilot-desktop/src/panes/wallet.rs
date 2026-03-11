@@ -32,7 +32,7 @@ pub fn paint_wallet_pane(
     paint_action_button(layout.spark_address_button, "Spark receive", paint);
     paint_action_button(layout.bitcoin_address_button, "Bitcoin receive", paint);
     paint_action_button(layout.copy_spark_address_button, "Copy Spark", paint);
-    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
+    paint_action_button(layout.create_invoice_button, "Create Lightning", paint);
     paint_action_button(layout.send_payment_button, "Send payment", paint);
 
     spark_inputs
@@ -56,7 +56,7 @@ pub fn paint_wallet_pane(
         .paint(layout.send_amount_input, paint);
 
     paint.scene.draw_text(paint.text.layout(
-        "Invoice sats",
+        "Lightning invoice sats",
         Point::new(
             layout.invoice_amount_input.origin.x,
             layout.invoice_amount_input.origin.y - 12.0,
@@ -187,7 +187,7 @@ pub fn paint_wallet_pane(
             paint,
             content_bounds.origin.x + 12.0,
             y,
-            "Last invoice",
+            "Last Lightning invoice",
             invoice,
         );
     }
@@ -269,8 +269,16 @@ pub fn paint_create_invoice_pane(
         PaneLoadState::Error => theme::status::ERROR,
     };
 
-    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
-    paint_action_button(layout.copy_invoice_button, "Copy invoice", paint);
+    paint_action_button(
+        layout.create_invoice_button,
+        "Create Lightning invoice",
+        paint,
+    );
+    paint_action_button(
+        layout.copy_invoice_button,
+        "Copy Lightning invoice",
+        paint,
+    );
 
     create_invoice_inputs
         .amount_sats
@@ -293,7 +301,7 @@ pub fn paint_create_invoice_pane(
         .paint(layout.expiry_input, paint);
 
     paint.scene.draw_text(paint.text.layout(
-        "Invoice sats",
+        "Lightning invoice sats",
         Point::new(
             layout.amount_input.origin.x,
             layout.amount_input.origin.y - 12.0,
@@ -330,7 +338,7 @@ pub fn paint_create_invoice_pane(
     y += 16.0;
     if state == PaneLoadState::Loading {
         paint.scene.draw_text(paint.text.layout(
-            "No invoice generated yet. Submit amount/description/expiry to create one.",
+            "No Lightning invoice generated yet. Submit amount, description, and expiry to create one.",
             Point::new(content_bounds.origin.x + 12.0, y),
             10.0,
             theme::text::MUTED,
@@ -343,14 +351,14 @@ pub fn paint_create_invoice_pane(
             paint,
             content_bounds.origin.x + 12.0,
             y,
-            "Generated invoice",
+            "Generated Lightning invoice",
             invoice,
         );
         y = paint_multiline_phrase(
             paint,
             content_bounds.origin.x + 12.0,
             y,
-            "QR payload",
+            "Lightning invoice QR",
             invoice,
         );
     }
