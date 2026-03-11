@@ -9051,33 +9051,6 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
-        MissionControlPaneAction::GenerateBitcoinReceiveAddress => {
-            queue_spark_command(state, SparkWalletCommand::GenerateBitcoinAddress);
-            if let Some(error) = state.spark_wallet.last_error.clone() {
-                state.mission_control.record_error(error);
-            } else {
-                state
-                    .mission_control
-                    .record_action("Queued Bitcoin receive address");
-            }
-            true
-        }
-        MissionControlPaneAction::CopyBitcoinReceiveAddress => {
-            let notice = match state.spark_wallet.bitcoin_address.as_deref() {
-                Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
-                    Ok(()) => "Copied Bitcoin receive address to clipboard".to_string(),
-                    Err(error) => format!("Failed to copy Bitcoin receive address: {error}"),
-                },
-                _ => "No Bitcoin receive address available. Generate one first.".to_string(),
-            };
-
-            if notice.starts_with("Copied") {
-                state.mission_control.record_action(notice);
-            } else {
-                state.mission_control.record_error(notice);
-            }
-            true
-        }
         MissionControlPaneAction::CopySeedPhrase => {
             let notice = match state.nostr_identity.as_ref() {
                 Some(identity) if !identity.mnemonic.trim().is_empty() => {
