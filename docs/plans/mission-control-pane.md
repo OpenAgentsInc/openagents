@@ -96,6 +96,37 @@ unload, or debug GPT-OSS directly from Mission Control.
 If neither supported lane is available, the action is disabled and Mission
 Control says so plainly.
 
+## Provider mode and relay failures
+
+When you click **GO ONLINE**, the app:
+
+1. Starts the NIP-90 provider ingress lane (relay connections).
+2. **Provider mode** is derived from that lane and local inference in
+   `openagents-provider-substrate::derive_provider_lifecycle`.
+
+**Current behaviour:**
+
+- If **any** configured relay fails to connect (e.g. `Network is unreachable`),
+  the lane sets `last_error` and mode **Degraded**. The same error is then
+  passed into the lifecycle as `relay_error`, so **provider mode becomes
+  Degraded** and the UI shows DEGRADED and the error under `provider.runtime`.
+- So “first time I connected it went to degraded state cuz it got an error from
+  a relay” is **by design**: one relay failure is enough to mark provider
+  ingress as degraded.
+- Logs can look noisy because:
+  - `relay.connections` gets the relay error (e.g. `Failed connecting relay
+    wss://relay.nostr.band: ...`).
+  - `provider.runtime` then gets the same error (and sometimes an additional
+    “kernel authority unavailable” when hosted control is not configured).
+  - Both are cleared when the lane later succeeds (e.g. relay connects or
+    lane is retried).
+
+**Implemented (relaxed policy):** Degraded only when **no** relays are
+connected (`connected_relays == 0`). If at least one relay is up, provider
+mode is Online (or Preview) and `last_error` is cleared so the lifecycle
+does not see a relay error. Per-relay failures remain visible in the relay
+pane health rows.
+
 ## GO ONLINE Gate
 
 `GO ONLINE` only unlocks when the active local backend is ready:
