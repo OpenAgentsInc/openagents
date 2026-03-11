@@ -8909,7 +8909,10 @@ pub(super) fn run_mission_control_action(
             true
         }
         MissionControlPaneAction::OpenLocalModelWorkbench => {
-            match crate::app_state::mission_control_local_runtime_lane(&state.ollama_execution) {
+            match crate::app_state::mission_control_local_runtime_lane(
+                state.desktop_shell_mode,
+                &state.ollama_execution,
+            ) {
                 Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                     crate::pane_system::PaneController::create_for_kind(
                         state,
@@ -8977,7 +8980,7 @@ pub(super) fn run_mission_control_action(
                     state.mission_control.last_action =
                         Some("No supported local runtime".to_string());
                     state.mission_control.last_error = Some(
-                        "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts."
+                        "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path."
                             .to_string(),
                     );
                     true

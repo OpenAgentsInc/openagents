@@ -642,6 +642,7 @@ impl MissionControlPaneState {
 
     pub fn sync_log_stream(
         &mut self,
+        desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
         provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
         local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
         provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
@@ -654,6 +655,7 @@ impl MissionControlPaneState {
             self.amount_display_mode,
             self.last_action.as_deref(),
             self.last_error.as_deref(),
+            desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
             provider_blockers,
@@ -678,6 +680,7 @@ fn build_mission_control_log_lines(
     amount_display_mode: BitcoinAmountDisplayMode,
     mission_action: Option<&str>,
     mission_error: Option<&str>,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
     provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
@@ -729,61 +732,64 @@ fn build_mission_control_log_lines(
         }
     }
 
-    let (model_status_stream, model_status) = if mission_control_uses_apple_fm() {
-        if provider_runtime.apple_fm.is_ready() {
-            (
-                TerminalStream::Stdout,
-                format!(
-                    "Apple Foundation Models ready via Swift bridge ({}).",
-                    provider_runtime
-                        .apple_fm
-                        .ready_model
-                        .as_deref()
-                        .unwrap_or("apple-foundation-model")
-                ),
-            )
-        } else if let Some(message) = provider_runtime
-            .apple_fm
-            .availability_message
-            .as_deref()
-            .or(provider_runtime.apple_fm.last_error.as_deref())
-        {
-            (
+    let (model_status_stream, model_status) =
+        match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
+            Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+                if provider_runtime.apple_fm.is_ready() {
+                    (
+                        TerminalStream::Stdout,
+                        format!(
+                            "Apple Foundation Models ready via Swift bridge ({}).",
+                            provider_runtime
+                                .apple_fm
+                                .ready_model
+                                .as_deref()
+                                .unwrap_or("apple-foundation-model")
+                        ),
+                    )
+                } else if let Some(message) = provider_runtime
+                    .apple_fm
+                    .availability_message
+                    .as_deref()
+                    .or(provider_runtime.apple_fm.last_error.as_deref())
+                {
+                    (
+                        TerminalStream::Stderr,
+                        format!("Apple Foundation Models unavailable: {message}"),
+                    )
+                } else if provider_runtime.apple_fm.reachable {
+                    (
+                        TerminalStream::Stdout,
+                        "Apple Foundation Models bridge reachable but not ready yet.".to_string(),
+                    )
+                } else {
+                    (
+                        TerminalStream::Stderr,
+                        "Apple Foundation Models bridge is not running.".to_string(),
+                    )
+                }
+            }
+            Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
+                if local_inference_runtime.is_ready() {
+                    (
+                        TerminalStream::Stdout,
+                        "NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane."
+                            .to_string(),
+                    )
+                } else {
+                    (
+                        TerminalStream::Stdout,
+                        "Open the separate GPT-OSS workbench to load and validate the NVIDIA local model."
+                            .to_string(),
+                    )
+                }
+            }
+            None => (
                 TerminalStream::Stderr,
-                format!("Apple Foundation Models unavailable: {message}"),
-            )
-        } else if provider_runtime.apple_fm.reachable {
-            (
-                TerminalStream::Stdout,
-                "Apple Foundation Models bridge reachable but not ready yet.".to_string(),
-            )
-        } else {
-            (
-                TerminalStream::Stderr,
-                "Apple Foundation Models bridge is not running.".to_string(),
-            )
-        }
-    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
-        if local_inference_runtime.is_ready() {
-            (
-                TerminalStream::Stdout,
-                "NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane."
+                "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path."
                     .to_string(),
-            )
-        } else {
-            (
-                TerminalStream::Stdout,
-                "Open the separate GPT-OSS workbench to load and validate the NVIDIA local model."
-                    .to_string(),
-            )
-        }
-    } else {
-        (
-            TerminalStream::Stderr,
-            "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts."
-                .to_string(),
-        )
-    };
+            ),
+        };
     push_line(model_status_stream, model_status);
 
     if let Some(action) = mission_action {
@@ -904,9 +910,10 @@ pub(crate) fn mission_control_supports_cuda_gpt_oss(
 }
 
 pub(crate) fn mission_control_local_runtime_lane(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> Option<MissionControlLocalRuntimeLane> {
-    if mission_control_uses_apple_fm() {
+    if !desktop_shell_mode.is_dev() || mission_control_uses_apple_fm() {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
     } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::NvidiaGptOss)
@@ -916,10 +923,11 @@ pub(crate) fn mission_control_local_runtime_lane(
 }
 
 pub(crate) fn mission_control_local_runtime_is_ready(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> bool {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             provider_runtime.apple_fm.is_ready()
         }
@@ -8023,7 +8031,11 @@ impl RenderState {
     }
 
     pub fn mission_control_local_runtime_ready(&self) -> bool {
-        mission_control_local_runtime_is_ready(&self.provider_runtime, &self.ollama_execution)
+        mission_control_local_runtime_is_ready(
+            self.desktop_shell_mode,
+            &self.provider_runtime,
+            &self.ollama_execution,
+        )
     }
 
     pub fn mission_control_go_online_enabled(&self) -> bool {
@@ -8096,7 +8108,7 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        match mission_control_local_runtime_lane(&self.ollama_execution) {
+        match mission_control_local_runtime_lane(self.desktop_shell_mode, &self.ollama_execution) {
             Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                 if !self.provider_runtime.apple_fm.reachable {
                     blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
@@ -8112,7 +8124,7 @@ impl RenderState {
                 }
             }
             None => {
-                blockers.push(ProviderBlocker::OllamaUnavailable);
+                blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
             }
         }
         blockers
@@ -12742,6 +12754,7 @@ mod tests {
             BitcoinAmountDisplayMode::LegacyBtc,
             Some("Amount display -> LEGACY (BTC)"),
             None,
+            crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &super::LocalInferenceExecutionSnapshot::default(),
             &[],
@@ -12754,6 +12767,57 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.stream == TerminalStream::Stdout && line.text.contains("0.00001000 BTC")
         }));
+    }
+
+    #[test]
+    fn mission_control_production_lane_stays_apple_fm_only() {
+        let local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            super::mission_control_local_runtime_lane(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &local
+            ),
+            Some(super::MissionControlLocalRuntimeLane::AppleFoundationModels)
+        );
+    }
+
+    #[test]
+    fn mission_control_production_log_lines_do_not_fall_back_to_gpt_oss() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.apple_fm.last_error =
+            Some("Apple Foundation Models requires macOS 26+ on Apple Silicon".to_string());
+
+        let local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        let lines = super::build_mission_control_log_lines(
+            BitcoinAmountDisplayMode::Integer,
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(
+            lines.iter().any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
+        assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }
 
     #[test]

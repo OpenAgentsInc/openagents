@@ -81,6 +81,7 @@ impl PaneRenderer {
         panes: &mut [DesktopPane],
         canvas_bounds: Bounds,
         active_id: Option<u64>,
+        desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
         backend_kernel_authority: bool,
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
@@ -219,6 +220,7 @@ impl PaneRenderer {
                 PaneKind::GoOnline => {
                     paint_go_online_pane(
                         content_bounds,
+                        desktop_shell_mode,
                         mission_control,
                         provider_runtime,
                         local_inference_runtime,
@@ -532,6 +534,7 @@ fn paint_autopilot_chat_pane(
 
 fn paint_go_online_pane(
     content_bounds: Bounds,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
@@ -548,6 +551,7 @@ fn paint_go_online_pane(
     paint: &mut PaintContext,
 ) {
     mission_control.sync_log_stream(
+        desktop_shell_mode,
         provider_runtime,
         local_inference_runtime,
         provider_blockers,
@@ -631,7 +635,11 @@ fn paint_go_online_pane(
         crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
     );
     let go_online_enabled = !wants_online
-        || mission_control_local_runtime_is_ready(provider_runtime, local_inference_runtime);
+        || mission_control_local_runtime_is_ready(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
     let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
@@ -656,7 +664,11 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Model",
-        &mission_control_primary_model_label(provider_runtime, local_inference_runtime),
+        &mission_control_primary_model_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ),
         sell_value_chunk_len,
     );
     sell_y = paint_wrapped_label_line(
@@ -664,7 +676,11 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Backend",
-        &mission_control_backend_label(provider_runtime, local_inference_runtime),
+        &mission_control_backend_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ),
         sell_value_chunk_len,
     );
     sell_y = paint_wrapped_label_line(
@@ -672,7 +688,11 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Load",
-        &mission_control_model_load_status(provider_runtime, local_inference_runtime),
+        &mission_control_model_load_status(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ),
         sell_value_chunk_len,
     );
     sell_y = paint_wrapped_label_line(
@@ -736,7 +756,11 @@ fn paint_go_online_pane(
             sell_value_chunk_len,
         );
     }
-    let load_hint = mission_control_go_online_hint(provider_runtime, local_inference_runtime);
+    let load_hint = mission_control_go_online_hint(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
     if !load_hint.is_empty() {
         for (index, line) in split_text_for_display(&load_hint, sell_value_chunk_len)
             .into_iter()
@@ -872,9 +896,16 @@ fn paint_go_online_pane(
     paint.scene.pop_clip();
 
     let download_bounds = mission_control_local_model_button_bounds(content_bounds);
-    let download_label =
-        mission_control_local_model_button_label(provider_runtime, local_inference_runtime);
-    if mission_control_local_action_enabled(provider_runtime, local_inference_runtime) {
+    let download_label = mission_control_local_model_button_label(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    if mission_control_local_action_enabled(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    ) {
         paint_secondary_button(download_bounds, &download_label, paint);
     } else {
         paint_disabled_button(download_bounds, &download_label, paint);
@@ -1044,10 +1075,11 @@ fn paint_mission_control_amount_line(
 }
 
 fn mission_control_local_model_button_label(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if provider_runtime.apple_fm.is_ready() {
                 String::from("OPEN APPLE FM")
@@ -1067,10 +1099,11 @@ fn mission_control_local_model_button_label(
 }
 
 fn mission_control_local_action_enabled(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> bool {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             provider_runtime.apple_fm.bridge_status.as_deref() != Some("starting")
         }
@@ -1089,10 +1122,11 @@ fn mission_control_short_model_label(model: &str) -> String {
 }
 
 fn mission_control_primary_model_label(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => provider_runtime
             .apple_fm
             .ready_model
@@ -1110,10 +1144,11 @@ fn mission_control_primary_model_label(
 }
 
 fn mission_control_backend_label(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if let Some(status) = provider_runtime.apple_fm.bridge_status.as_deref() {
                 format!("Apple FM bridge ({status})")
@@ -1134,10 +1169,11 @@ fn mission_control_backend_label(
 }
 
 fn mission_control_model_load_status(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if provider_runtime.apple_fm.is_ready() {
                 String::from("ready")
@@ -1165,6 +1201,7 @@ fn mission_control_model_load_status(
 }
 
 fn mission_control_go_online_hint(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
@@ -1174,7 +1211,7 @@ fn mission_control_go_online_hint(
     ) {
         return String::new();
     }
-    match mission_control_local_runtime_lane(local_inference_runtime) {
+    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             if provider_runtime.apple_fm.is_ready() {
                 String::new()
@@ -1205,7 +1242,7 @@ fn mission_control_go_online_hint(
             }
         }
         None => String::from(
-            "Mission Control is FM-first. Use Apple FM on macOS or the separate GPT-OSS workbench on NVIDIA CUDA hosts.",
+            "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path.",
         ),
     }
 }
@@ -5049,18 +5086,22 @@ mod tests {
             ..LocalInferenceExecutionSnapshot::default()
         };
 
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                mission_control_local_model_button_label(&provider, &local),
-                "OPEN APPLE FM"
-            );
-            assert_eq!(mission_control_go_online_hint(&provider, &local), "");
-        } else {
-            assert_eq!(
-                mission_control_local_model_button_label(&provider, &local),
-                "OPEN GPT-OSS WORKBENCH"
-            );
-        }
+        assert_eq!(
+            mission_control_local_model_button_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "OPEN APPLE FM"
+        );
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            ""
+        );
     }
 
     #[test]
@@ -5073,17 +5114,21 @@ mod tests {
             ..LocalInferenceExecutionSnapshot::default()
         };
 
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                mission_control_local_model_button_label(&provider, &local),
-                "START APPLE FM"
-            );
-        } else {
-            assert_eq!(
-                mission_control_local_model_button_label(&provider, &local),
-                "NO LOCAL MODEL"
-            );
-            assert!(mission_control_go_online_hint(&provider, &local).contains("FM-first"));
-        }
+        assert_eq!(
+            mission_control_local_model_button_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "START APPLE FM"
+        );
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "Start Apple FM before you go online."
+        );
     }
 }
