@@ -89,7 +89,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 41] = [
+const PANE_SPECS: [PaneSpec; 42] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -491,6 +491,21 @@ const PANE_SPECS: [PaneSpec; 41] = [
             id: "pane.job_history",
             label: "Job History",
             description: "Open immutable receipts with SA/SKL/AC proof links",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::BuyModePayments,
+        title: "Buy Mode Payments",
+        default_width: 920.0,
+        default_height: 500.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.buy_mode_payments",
+            label: "Buy Mode Payments",
+            description: "Open buyer-side payment history with request IDs, pubkeys, and wallet pointers",
             keybinding: None,
         }),
         hotbar: None,

@@ -9178,6 +9178,16 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::OpenBuyModePayments => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::BuyModePayments,
+            );
+            state
+                .mission_control
+                .record_action("Opened Buy Mode payment history");
+            true
+        }
         MissionControlPaneAction::SendWithdrawal => {
             let command = match build_pay_invoice_command(
                 PayInvoicePaneAction::SendPayment,

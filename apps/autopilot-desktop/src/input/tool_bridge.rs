@@ -2003,7 +2003,7 @@ fn pane_action_to_hit_action(
     };
 
     match kind {
-        PaneKind::ProjectOps => unsupported(),
+        PaneKind::ProjectOps | PaneKind::BuyModePayments => unsupported(),
         PaneKind::AutopilotChat => match action {
             "send" | "submit" => Ok(PaneHitAction::ChatSend),
             "refresh_threads" => Ok(PaneHitAction::ChatRefreshThreads),
@@ -5732,6 +5732,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
         PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
+        PaneKind::BuyModePayments => &["buy_mode_payments", "buy_payments", "payment_history"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -5768,6 +5769,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
+        PaneKind::BuyModePayments => "buy_mode_payments",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",

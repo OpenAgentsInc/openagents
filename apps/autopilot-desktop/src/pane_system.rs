@@ -343,6 +343,7 @@ pub enum MissionControlPaneAction {
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
     ToggleBuyModeLoop,
+    OpenBuyModePayments,
     SendWithdrawal,
     OpenDocumentation,
 }
@@ -1006,9 +1007,10 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ReciprocalLoop | PaneKind::AgentProfileState | PaneKind::AgentScheduleTick => {
             pane_size_for_content(860.0, 440.0)
         }
-        PaneKind::ActivityFeed | PaneKind::AlertsRecovery | PaneKind::JobHistory => {
-            pane_size_for_content(900.0, 460.0)
-        }
+        PaneKind::ActivityFeed
+        | PaneKind::AlertsRecovery
+        | PaneKind::JobHistory
+        | PaneKind::BuyModePayments => pane_size_for_content(900.0, 460.0),
         PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
         PaneKind::TrajectoryAudit
         | PaneKind::CastControl
@@ -1550,6 +1552,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ReciprocalLoop
             | PaneKind::ActivityFeed
             | PaneKind::AlertsRecovery
+            | PaneKind::BuyModePayments
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
             | PaneKind::ActiveJob
@@ -2421,11 +2424,33 @@ pub fn mission_control_buy_mode_button_bounds(
     buy_mode_enabled: bool,
 ) -> Bounds {
     let panel = mission_control_layout_for_mode(content_bounds, buy_mode_enabled).buy_mode_panel;
+    let row_x = panel.origin.x + 14.0;
+    let row_y = panel.max_y() - 30.0;
+    let row_width = (panel.size.width - 28.0).max(0.0);
+    let gap = 8.0;
+    let button_width = ((row_width - gap) / 2.0).max(0.0);
+    Bounds::new(row_x, row_y, button_width, 22.0)
+}
+
+pub fn mission_control_buy_mode_history_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    let primary = mission_control_buy_mode_button_bounds(content_bounds, buy_mode_enabled);
     Bounds::new(
-        panel.origin.x + 14.0,
-        panel.max_y() - 30.0,
-        (panel.size.width - 28.0).max(0.0),
+        primary.max_x() + 8.0,
+        primary.origin.y,
+        primary.size.width,
         22.0,
+    )
+}
+
+pub fn buy_mode_payments_ledger_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 58.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        (content_bounds.size.height - 70.0).max(0.0),
     )
 }
 
@@ -5052,6 +5077,13 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::ToggleBuyModeLoop,
                 ))
+            } else if state.mission_control_buy_mode_enabled()
+                && mission_control_buy_mode_history_button_bounds(content_bounds, true)
+                    .contains(point)
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenBuyModePayments,
+                ))
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
@@ -6059,6 +6091,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
+        PaneKind::BuyModePayments => None,
         PaneKind::Empty => None,
     }
 }
@@ -6163,6 +6196,35 @@ pub fn dispatch_mission_control_log_scroll_event(
         .mission_control
         .log_stream
         .event(event, log_bounds, &mut state.event_context)
+        .is_handled()
+}
+
+pub fn dispatch_buy_mode_payments_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    event: &InputEvent,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::BuyModePayments {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let ledger_bounds = buy_mode_payments_ledger_bounds(content_bounds);
+    if !ledger_bounds.contains(cursor_position) {
+        return false;
+    }
+
+    state
+        .buy_mode_payments
+        .ledger
+        .event(event, ledger_bounds, &mut state.event_context)
         .is_handled()
 }
 
@@ -6823,6 +6885,21 @@ mod tests {
         let status_row_bottom = layout.buy_mode_panel.origin.y + 48.0 + 34.0;
 
         assert!(status_row_bottom <= button.origin.y);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_history_button_fits_beside_primary_button() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout_for_mode(content_bounds, true);
+        let primary = super::mission_control_buy_mode_button_bounds(content_bounds, true);
+        let history = super::mission_control_buy_mode_history_button_bounds(content_bounds, true);
+
+        assert!(layout.buy_mode_panel.contains(primary.origin));
+        assert!(layout.buy_mode_panel.contains(history.origin));
+        assert!(primary.max_x() < history.origin.x);
+        assert!(history.max_x() <= layout.buy_mode_panel.max_x());
+        assert_eq!(primary.origin.y, history.origin.y);
+        assert_eq!(primary.size.height, history.size.height);
     }
 
     #[test]

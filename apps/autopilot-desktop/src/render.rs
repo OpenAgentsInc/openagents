@@ -284,6 +284,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
             mission_control: crate::app_state::MissionControlPaneState::default(),
+            buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
             chat_transcript_selection_drag: None,
@@ -1057,6 +1058,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.chat_inputs,
             &mut state.calculator_inputs,
             &mut state.mission_control,
+            &mut state.buy_mode_payments,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);
