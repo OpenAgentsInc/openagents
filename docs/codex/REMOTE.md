@@ -68,6 +68,13 @@ Remote v1 supports:
 - wallet balance and provider online/offline truth
 - a narrow follow-up composer
 
+Remote v2 extends that with:
+
+- active workspace and project identity
+- git branch and dirty/clean truth
+- cached worktree inventory for the active repo
+- read-only visibility into the active thread terminal session
+
 Remote v1 intentionally does not support:
 
 - wallet send or withdraw actions

@@ -3,7 +3,7 @@
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-6` on `main`.
+> turn-input surfaces on `main`, and after landing `CX-13` on `main`.
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -619,6 +619,24 @@ Implementation note:
   client over desktop-owned truth
 
 ### CX-13. Personal Remote Companion V2 ([#3370](https://github.com/OpenAgentsInc/openagents/issues/3370))
+
+Status:
+
+- shipped on `main`
+- the remote snapshot now exposes active workspace/project identity, git branch
+  and dirty truth, and cached `git worktree list --porcelain` summaries for the
+  active thread context
+- the remote UI now renders that workspace/git context directly and adds
+  read-only visibility into the active thread-scoped terminal session, including
+  shell identity, terminal status, and recent stdout/stderr lines
+- remote remains a thin control layer over desktop-owned truth: no remote
+  wallet custody actions, no config writes, and no browser-owned terminal or
+  workspace state
+
+Next:
+
+- the remote-companion phase is complete enough for away-from-desk supervision
+  and light continuation without pretending to be a hosted IDE
 
 Scope:
 
