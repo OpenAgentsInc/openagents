@@ -112,11 +112,108 @@ impl TerminalPane {
         self.scroll_offset = self.content_height;
     }
 
-    fn line_color(stream: &TerminalStream) -> crate::Hsla {
+    fn base_stream_color(stream: &TerminalStream) -> crate::Hsla {
         match stream {
             TerminalStream::Stdout => theme::text::PRIMARY,
             TerminalStream::Stderr => theme::status::ERROR,
         }
+    }
+
+    fn line_color(line: &TerminalLine) -> crate::Hsla {
+        let lowered = line.text.trim().to_ascii_lowercase();
+        if lowered.is_empty() {
+            return Self::base_stream_color(&line.stream);
+        }
+
+        if matches!(line.stream, TerminalStream::Stderr)
+            || contains_any(
+                &lowered,
+                &[
+                    "error",
+                    "failed",
+                    "unavailable",
+                    "rejected",
+                    "timed out",
+                    "timeout",
+                    "panic",
+                    "fatal",
+                ],
+            )
+        {
+            return theme::status::ERROR;
+        }
+
+        if contains_any(
+            &lowered,
+            &[
+                "warn",
+                "warning",
+                "blocked",
+                "blocker",
+                "payment-required",
+                "payment required",
+                "pending",
+                "degraded",
+                "retry",
+                "offline",
+            ],
+        ) {
+            return theme::status::WARNING;
+        }
+
+        if contains_any(
+            &lowered,
+            &[
+                "wallet:",
+                "lightning",
+                "bolt11",
+                "invoice",
+                "payment:",
+                "balance",
+                "settlement",
+            ],
+        ) {
+            return theme::status::SUCCESS;
+        }
+
+        if contains_any(
+            &lowered,
+            &[
+                "buy mode",
+                "buyer ",
+                "buyer:",
+                "[buy_mode]",
+                "nip-90",
+                "request ",
+                " req-",
+                "job ",
+            ],
+        ) {
+            return theme::accent::PRIMARY;
+        }
+
+        if contains_any(
+            &lowered,
+            &[
+                "relay",
+                "provider:",
+                "network:",
+                "connected",
+                "connection",
+                "bridge",
+            ],
+        ) {
+            return theme::status::INFO;
+        }
+
+        if contains_any(
+            &lowered,
+            &["mode:", "preflight", "watching", "observed requests"],
+        ) {
+            return theme::text::MUTED;
+        }
+
+        Self::base_stream_color(&line.stream)
     }
 }
 
@@ -156,6 +253,10 @@ fn wrap_terminal_text(text: &str, max_chars: usize) -> Vec<String> {
     }
 
     wrapped
+}
+
+fn contains_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
 }
 
 impl Default for TerminalPane {
@@ -233,9 +334,10 @@ impl Component for TerminalPane {
             .lines
             .iter()
             .flat_map(|line| {
+                let color = Self::line_color(line);
                 wrap_terminal_text(&line.text, max_chars)
                     .into_iter()
-                    .map(move |text| TerminalLine::new(line.stream.clone(), text))
+                    .map(move |text| (color, text))
             })
             .collect::<Vec<_>>();
 
@@ -252,16 +354,13 @@ impl Component for TerminalPane {
         let mut y = text_bounds.origin.y - self.scroll_offset;
         let line_x = text_bounds.origin.x;
 
-        for line in &wrapped_lines {
+        for (color, text) in &wrapped_lines {
             if y > text_bounds.origin.y + text_bounds.size.height {
                 break;
             }
-            let run = cx.text.layout_mono(
-                &line.text,
-                Point::new(line_x, y),
-                font_size,
-                Self::line_color(&line.stream),
-            );
+            let run = cx
+                .text
+                .layout_mono(text, Point::new(line_x, y), font_size, *color);
             cx.scene.draw_text(run);
             y += self.line_height;
         }
@@ -321,9 +420,9 @@ impl Component for TerminalPane {
 
 #[cfg(test)]
 mod tests {
-    use super::{TerminalPane, wrap_terminal_text};
+    use super::{TerminalLine, TerminalPane, TerminalStream, wrap_terminal_text};
     use crate::components::{Component, EventContext, EventResult};
-    use crate::{Bounds, InputEvent};
+    use crate::{Bounds, InputEvent, theme};
 
     #[test]
     fn wraps_long_terminal_lines() {
@@ -371,5 +470,55 @@ mod tests {
         assert_eq!(result, EventResult::Handled);
         assert_eq!(pane.scroll_offset, 76.0);
         assert!(!pane.auto_scroll);
+    }
+
+    #[test]
+    fn colors_wallet_lines_green() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "Wallet: created lightning invoice for 2 sats",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::status::SUCCESS);
+    }
+
+    #[test]
+    fn colors_buyer_lines_accent() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "Buyer req-123 [buy_mode] awaiting provider result",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::accent::PRIMARY);
+    }
+
+    #[test]
+    fn colors_relay_lines_info() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "Relay: connected to wss://relay.openagents.com",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::status::INFO);
+    }
+
+    #[test]
+    fn colors_warning_lines_amber() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "Buy Mode blocked / requires at least 2 sats",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::status::WARNING);
+    }
+
+    #[test]
+    fn colors_error_lines_red() {
+        let line = TerminalLine::new(
+            TerminalStream::Stdout,
+            "UI error: failed to publish request",
+        );
+
+        assert_eq!(TerminalPane::line_color(&line), theme::status::ERROR);
     }
 }

@@ -266,11 +266,32 @@ pub(crate) fn should_compute_local_snapshots(state: &RenderState) -> bool {
     false
 }
 
+pub(crate) fn kernel_authority_available(state: &RenderState) -> bool {
+    !matches!(
+        current_authority_mode(state),
+        KernelAuthorityMode::Unavailable
+    )
+}
+
 pub(crate) fn register_accepted_request_with_kernel(
     state: &mut RenderState,
     request: &JobInboxRequest,
 ) -> Result<(), String> {
-    let client = remote_authority_client_for_state(state)?;
+    let client = match current_authority_mode(state) {
+        KernelAuthorityMode::Unavailable => {
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Kernel authority unavailable; accepting request_id={} capability={} via local-only relay flow",
+                request.request_id,
+                request.capability
+            );
+            return Ok(());
+        }
+        KernelAuthorityMode::Remote {
+            ref base_url,
+            ref bearer_auth,
+        } => build_remote_authority_client(base_url, bearer_auth)?,
+    };
     let binding = selected_launch_compute_binding_for_request(state, request).ok_or_else(|| {
         format!(
             "unsupported compute capability for canonicalization: {}",
@@ -311,7 +332,20 @@ pub(crate) fn register_online_compute_inventory_with_kernel(
         return Ok(());
     }
     ensure_inventory_session_started(state);
-    let client = remote_authority_client_for_state(state)?;
+    let client = match current_authority_mode(state) {
+        KernelAuthorityMode::Unavailable => {
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Kernel authority unavailable; provider inventory remains local-only bindings={}",
+                bindings.len()
+            );
+            return Ok(());
+        }
+        KernelAuthorityMode::Remote {
+            ref base_url,
+            ref bearer_auth,
+        } => build_remote_authority_client(base_url, bearer_auth)?,
+    };
     for binding in bindings {
         ensure_launch_compute_product_registered(state, &client, binding)?;
         ensure_online_capacity_lot_registered(state, &client, binding)?;
@@ -344,7 +378,22 @@ pub(crate) fn submit_active_job_output(state: &mut RenderState) -> Result<String
     let Some(job) = state.active_job.job.as_ref().cloned() else {
         return Err("no active job selected".to_string());
     };
-    let client = remote_authority_client_for_state(state)?;
+    let client = match current_authority_mode(state) {
+        KernelAuthorityMode::Unavailable => {
+            let receipt_id = local_projection_receipt_id("submission", job.request_id.as_str());
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Kernel authority unavailable; recorded local-only output submission request_id={} receipt_id={}",
+                job.request_id,
+                receipt_id
+            );
+            return Ok(receipt_id);
+        }
+        KernelAuthorityMode::Remote {
+            ref base_url,
+            ref bearer_auth,
+        } => build_remote_authority_client(base_url, bearer_auth)?,
+    };
     let submit_request = build_submit_output_request(state, &job);
     let receipt = run_kernel_call(client.submit_output(submit_request))?.receipt;
     let receipt_id = receipt.receipt_id.clone();
@@ -358,7 +407,22 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     let Some(job) = state.active_job.job.as_ref().cloned() else {
         return Err("no active job selected".to_string());
     };
-    let client = remote_authority_client_for_state(state)?;
+    let client = match current_authority_mode(state) {
+        KernelAuthorityMode::Unavailable => {
+            let receipt_id = local_projection_receipt_id("verdict", job.request_id.as_str());
+            tracing::info!(
+                target: "autopilot_desktop::provider",
+                "Kernel authority unavailable; finalized local-only payout request_id={} receipt_id={}",
+                job.request_id,
+                receipt_id
+            );
+            return Ok(receipt_id);
+        }
+        KernelAuthorityMode::Remote {
+            ref base_url,
+            ref bearer_auth,
+        } => build_remote_authority_client(base_url, bearer_auth)?,
+    };
 
     let (delivery_proof_request, delivery_evaluation) = build_delivery_proof_request(state, &job)?;
     let delivery_proof_receipt =
@@ -3352,6 +3416,18 @@ fn canonical_kernel_id_component(value: &str) -> String {
         .collect()
 }
 
+fn local_projection_receipt_id(kind: &str, request_id: &str) -> String {
+    format!(
+        "projection.{}.{}",
+        canonical_kernel_id_component(kind),
+        canonical_kernel_id_component(request_id)
+    )
+}
+
+pub(crate) fn is_local_projection_receipt_id(receipt_id: &str) -> bool {
+    receipt_id.starts_with("projection.")
+}
+
 fn current_epoch_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -3389,7 +3465,8 @@ mod tests {
         build_spot_compute_quotes_from_market, compute_binding_for_backend_and_capability,
         compute_linkage_for_active_job, consume_sse_buffer, current_epoch_ms,
         delivery_proof_id_for_request, evaluate_delivery_proof, flush_pending_sse_event,
-        forward_capacity_lot_id_for_binding, online_capacity_lot_id_for_binding,
+        forward_capacity_lot_id_for_binding, is_local_projection_receipt_id,
+        local_projection_receipt_id, online_capacity_lot_id_for_binding,
         resolve_kernel_authority_mode, submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
@@ -3594,6 +3671,21 @@ mod tests {
                 bearer_auth: "token-123".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn local_projection_receipt_ids_are_tagged_and_sanitized() {
+        let receipt_id = local_projection_receipt_id("verdict", "req:alpha/beta");
+
+        assert_eq!(receipt_id, "projection.verdict.req_alpha_beta");
+        assert!(is_local_projection_receipt_id(receipt_id.as_str()));
+    }
+
+    #[test]
+    fn authoritative_receipt_ids_are_not_marked_local_projection() {
+        assert!(!is_local_projection_receipt_id(
+            "receipt.kernel.authority.verdict:123"
+        ));
     }
 
     #[test]
