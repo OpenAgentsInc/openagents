@@ -6166,7 +6166,10 @@ mod tests {
         let job = active_job.job.as_mut().expect("active job");
         job.stage = JobLifecycleStage::Failed;
         job.failure_reason =
-            Some("job delivery timed out after 75s after local execution completed".to_string());
+            Some(
+                "job result publish continuity timed out after 195s while awaiting relay delivery confirmation"
+                    .to_string(),
+            );
 
         let lines = build_active_job_scroll_lines(
             &active_job,
