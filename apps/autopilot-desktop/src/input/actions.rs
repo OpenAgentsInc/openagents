@@ -9030,7 +9030,7 @@ pub(super) fn run_mission_control_action(
             let command = match build_pay_invoice_command(
                 PayInvoicePaneAction::SendPayment,
                 state.mission_control.send_invoice.get_value(),
-                "",
+                state.mission_control.load_funds_amount_sats.get_value(),
             ) {
                 Ok(command) => command,
                 Err(error) => {
@@ -12738,12 +12738,7 @@ pub(super) fn build_spark_command_for_action(
         }),
         SparkPaneAction::SendPayment => {
             let request = validate_lightning_payment_request(send_request)?;
-
-            let amount = if send_amount.trim().is_empty() {
-                None
-            } else {
-                Some(parse_positive_amount_str(send_amount, "Send amount")?)
-            };
+            let amount = resolve_lightning_send_amount(send_amount, &request)?;
 
             Ok(SparkWalletCommand::SendPayment {
                 payment_request: request,
@@ -12761,12 +12756,7 @@ pub(super) fn build_pay_invoice_command(
     match action {
         PayInvoicePaneAction::SendPayment => {
             let request = validate_lightning_payment_request(payment_request)?;
-
-            let amount = if amount_sats.trim().is_empty() {
-                None
-            } else {
-                Some(parse_positive_amount_str(amount_sats, "Send amount")?)
-            };
+            let amount = resolve_lightning_send_amount(amount_sats, &request)?;
 
             Ok(SparkWalletCommand::SendPayment {
                 payment_request: request,
@@ -12792,6 +12782,38 @@ pub(super) fn build_create_invoice_command(
             Err("Copy Lightning invoice action is handled directly in UI".to_string())
         }
     }
+}
+
+fn resolve_lightning_send_amount(
+    amount_sats: &str,
+    payment_request: &str,
+) -> Result<Option<u64>, String> {
+    if amount_sats.trim().is_empty() {
+        if lightning_invoice_requires_amount(payment_request) {
+            Err("Send amount is required for zero-amount invoice".to_string())
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(Some(parse_positive_amount_str(amount_sats, "Send amount")?))
+    }
+}
+
+fn lightning_invoice_requires_amount(payment_request: &str) -> bool {
+    let normalized = payment_request.trim().to_ascii_lowercase();
+    let normalized = normalized
+        .strip_prefix("lightning://")
+        .or_else(|| normalized.strip_prefix("lightning:"))
+        .unwrap_or(normalized.as_str());
+    let Some(separator_index) = normalized.rfind('1') else {
+        return false;
+    };
+    let hrp = &normalized[..separator_index];
+
+    ["lnbcrt", "lnbc", "lntb", "lntbs", "lnsb"]
+        .iter()
+        .find_map(|prefix| hrp.strip_prefix(prefix))
+        .is_some_and(str::is_empty)
 }
 
 pub(super) fn validate_lightning_payment_request(raw: &str) -> Result<String, String> {
