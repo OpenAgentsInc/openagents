@@ -659,6 +659,12 @@ fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
 }
 
 fn sync_provider_nip90_compute_capability(state: &mut RenderState) {
+    if !crate::app_state::mission_control_sell_compute_supported(
+        state.desktop_shell_mode,
+        &state.ollama_execution,
+    ) {
+        return;
+    }
     let capability = preferred_provider_compute_capability(state);
     let _ = state.queue_provider_nip90_lane_command(
         ProviderNip90LaneCommand::ConfigureComputeCapability { capability },
