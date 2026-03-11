@@ -22,6 +22,7 @@ use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
+    active_job_scroll_viewport_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
     activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
@@ -40,7 +41,9 @@ use crate::pane_system::{
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
-    mission_control_layout_for_mode, mission_control_load_funds_layout,
+    mission_control_copy_seed_button_bounds, mission_control_layout_for_mode,
+    mission_control_load_funds_layout, mission_control_send_invoice_input_bounds,
+    mission_control_send_lightning_button_bounds,
     mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
     mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
     mission_control_withdraw_invoice_input_bounds, network_requests_accept_button_bounds,
@@ -224,6 +227,7 @@ impl PaneRenderer {
                         content_bounds,
                         desktop_shell_mode,
                         buy_mode_enabled,
+                        nostr_identity,
                         mission_control,
                         provider_runtime,
                         local_inference_runtime,
@@ -540,6 +544,7 @@ fn paint_go_online_pane(
     content_bounds: Bounds,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
+    nostr_identity: Option<&nostr::NostrIdentity>,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
@@ -934,7 +939,7 @@ fn paint_go_online_pane(
         paint,
         layout.wallet_panel.origin.x + 12.0,
         wallet_y,
-        "Balance",
+        "Balance (₿)",
         &wallet_balance,
         mission_control_green_color(),
         MISSION_CONTROL_PANEL_FONT_SIZE,
@@ -1105,7 +1110,7 @@ fn paint_go_online_pane(
     let load_funds_clip = mission_control_section_clip_bounds(layout.load_funds_panel);
     paint.scene.push_clip(load_funds_clip);
     paint.scene.draw_text(paint.text.layout_mono(
-        "LIGHTNING SATS",
+        "LIGHTNING SATS (₿)",
         Point::new(
             load_funds_layout.amount_input.origin.x,
             load_funds_layout.amount_input.origin.y - 12.0,
@@ -1133,6 +1138,27 @@ fn paint_go_online_pane(
         lightning_state == SparkInvoiceState::Ready,
         paint,
     );
+    let send_invoice_bounds = mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled);
+    paint.scene.draw_text(paint.text.layout_mono(
+        "LIGHTNING SEND",
+        Point::new(
+            send_invoice_bounds.origin.x,
+            send_invoice_bounds.origin.y - 12.0,
+        ),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        mission_control_muted_color(),
+    ));
+    mission_control
+        .send_invoice
+        .set_max_width(send_invoice_bounds.size.width);
+    mission_control.send_invoice.paint(send_invoice_bounds, paint);
+    paint_mission_control_command_button(
+        mission_control_send_lightning_button_bounds(content_bounds, buy_mode_enabled),
+        "LIGHTNING SEND",
+        mission_control_orange_color(),
+        !mission_control.send_invoice.get_value().trim().is_empty(),
+        paint,
+    );
     paint_mission_control_command_button(
         load_funds_layout.bitcoin_button,
         "BITCOIN ADDRESS",
@@ -1145,6 +1171,13 @@ fn paint_go_online_pane(
         "COPY BITCOIN",
         mission_control_cyan_color(),
         bitcoin_target_ready,
+        paint,
+    );
+    paint_mission_control_command_button(
+        mission_control_copy_seed_button_bounds(content_bounds, buy_mode_enabled),
+        "COPY SEED",
+        mission_control_cyan_color(),
+        nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
         paint,
     );
     let load_funds_value_chunk_len =
@@ -4578,93 +4611,176 @@ fn paint_active_job_pane(
         paint_action_button(abort_bounds, "Abort job", paint);
     } else {
         paint_disabled_button(abort_bounds, "Abort unsupported", paint);
-        paint.scene.draw_text(paint.text.layout(
-            "Abort disabled: runtime lane does not support cancel.",
-            Point::new(content_bounds.origin.x + 12.0, abort_bounds.max_y() + 8.0),
+    }
+    let viewport = active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
+    paint.scene.push_clip(viewport);
+    let chunk_len = (((viewport.size.width - 8.0).max(48.0) / 6.2).floor() as usize).max(12);
+    let lines = build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, chunk_len);
+    let line_height = 14.0;
+    let content_height = (lines.len() as f32 * line_height).max(viewport.size.height);
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = active_job.scroll_offset_px.clamp(0.0, max_offset);
+    let mut line_y = viewport.origin.y - scroll_offset;
+    for line in lines.iter() {
+        if line_y + line_height < viewport.origin.y {
+            line_y += line_height;
+            continue;
+        }
+        if line_y > viewport.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            &line.text,
+            Point::new(viewport.origin.x, line_y),
             10.0,
-            theme::text::MUTED,
+            line.color,
         ));
+        line_y += line_height;
+    }
+    paint.scene.pop_clip();
+
+    if max_offset > 0.0 {
+        let track = Bounds::new(content_bounds.max_x() - 8.0, viewport.origin.y, 4.0, viewport.size.height);
+        let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+            .clamp(18.0, viewport.size.height);
+        let thumb_y = viewport.origin.y
+            + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+        paint.scene.draw_quad(
+            Quad::new(track).with_background(theme::bg::APP.with_alpha(0.45)),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(track.origin.x, thumb_y, track.size.width, thumb_height))
+                .with_background(theme::accent::PRIMARY.with_alpha(0.75)),
+        );
+    }
+}
+
+struct ActiveJobRenderLine {
+    text: String,
+    color: Hsla,
+}
+
+fn push_active_job_wrapped_line(
+    lines: &mut Vec<ActiveJobRenderLine>,
+    prefix: &str,
+    value: &str,
+    chunk_len: usize,
+    color: Hsla,
+) {
+    let prefix = prefix.to_string();
+    let indent = " ".repeat(prefix.chars().count());
+    let available = chunk_len.saturating_sub(prefix.chars().count()).max(8);
+    let wrapped = split_text_for_display(value, available);
+    for (index, chunk) in wrapped.into_iter().enumerate() {
+        let text = if index == 0 {
+            format!("{prefix}{chunk}")
+        } else {
+            format!("{indent}{chunk}")
+        };
+        lines.push(ActiveJobRenderLine { text, color });
+    }
+}
+
+fn build_active_job_scroll_lines(
+    active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    chunk_len: usize,
+) -> Vec<ActiveJobRenderLine> {
+    let mut lines = Vec::new();
+    let state_color = match active_job.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    lines.push(ActiveJobRenderLine {
+        text: format!("State: {}", active_job.load_state.label()),
+        color: state_color,
+    });
+    if !active_job.runtime_supports_abort {
+        lines.push(ActiveJobRenderLine {
+            text: "Abort disabled: runtime lane does not support cancel.".to_string(),
+            color: theme::text::MUTED,
+        });
+    }
+    if let Some(action) = active_job.last_action.as_deref() {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Action: ",
+            action,
+            chunk_len,
+            theme::text::MUTED,
+        );
+    }
+    if let Some(error) = active_job.last_error.as_deref() {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Error: ",
+            error,
+            chunk_len,
+            theme::status::ERROR,
+        );
     }
 
-    let mut y = advance_bounds.max_y()
-        + if active_job.runtime_supports_abort {
-            12.0
-        } else {
-            24.0
-        };
-    y = paint_state_summary(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        active_job.load_state,
-        &format!("State: {}", active_job.load_state.label()),
-        active_job.last_action.as_deref(),
-        active_job.last_error.as_deref(),
-    );
-
     if active_job.load_state == PaneLoadState::Loading {
-        paint.scene.draw_text(paint.text.layout(
-            "Waiting for active-job replay frame...",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::text::MUTED,
-        ));
-        return;
+        lines.push(ActiveJobRenderLine {
+            text: "Waiting for active-job replay frame...".to_string(),
+            color: theme::text::MUTED,
+        });
+        return lines;
     }
 
     let Some(job) = active_job.job.as_ref() else {
-        paint.scene.draw_text(paint.text.layout(
-            "No active job selected.",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::text::MUTED,
-        ));
-        return;
+        lines.push(ActiveJobRenderLine {
+            text: "No active job selected.".to_string(),
+            color: theme::text::MUTED,
+        });
+        return lines;
     };
 
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Job ID",
-        &job.job_id,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Requester",
-        &job.requester,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Capability",
-        &job.capability,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Demand source",
-        job.demand_source.label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Stage",
-        job.stage.label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Projection authority",
-        &earn_job_lifecycle_projection.authority,
-    );
+    let metadata_rows = [
+        ("Job ID", job.job_id.as_str()),
+        ("Requester", job.requester.as_str()),
+        ("Capability", job.capability.as_str()),
+        ("Demand source", job.demand_source.label()),
+        ("Stage", job.stage.label()),
+        ("Projection authority", earn_job_lifecycle_projection.authority.as_str()),
+        ("Skill scope", job.skill_scope_id.as_deref().unwrap_or("none")),
+        ("SKL manifest", job.skl_manifest_a.as_deref().unwrap_or("none")),
+        (
+            "SA tick request",
+            job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
+        ),
+        (
+            "SA tick result",
+            job.sa_tick_result_event_id.as_deref().unwrap_or("none"),
+        ),
+        (
+            "Trajectory session",
+            job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
+        ),
+        ("AC envelope", job.ac_envelope_event_id.as_deref().unwrap_or("none")),
+        (
+            "AC settlement",
+            job.ac_settlement_event_id.as_deref().unwrap_or("none"),
+        ),
+        ("AC default", job.ac_default_event_id.as_deref().unwrap_or("none")),
+        ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
+        ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
+    ];
+    for (label, value) in metadata_rows {
+        push_active_job_wrapped_line(
+            &mut lines,
+            &format!("{label}: "),
+            value,
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
 
+    lines.push(ActiveJobRenderLine {
+        text: "Timeline".to_string(),
+        color: theme::text::MUTED,
+    });
     let stage_flow = [
         JobLifecycleStage::Received,
         JobLifecycleStage::Accepted,
@@ -4672,129 +4788,46 @@ fn paint_active_job_pane(
         JobLifecycleStage::Delivered,
         JobLifecycleStage::Paid,
     ];
-    paint.scene.draw_text(paint.text.layout(
-        "Timeline",
-        Point::new(content_bounds.origin.x + 12.0, y + 4.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-    let mut timeline_y = y + 20.0;
     let current_idx = stage_flow
         .iter()
         .position(|stage| *stage == job.stage)
         .unwrap_or(stage_flow.len().saturating_sub(1));
     for (idx, stage) in stage_flow.iter().enumerate() {
-        let marker = if idx <= current_idx { "x" } else { " " };
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("[{marker}] {}", stage.label()),
-            Point::new(content_bounds.origin.x + 12.0, timeline_y),
-            10.0,
-            if idx <= current_idx {
+        lines.push(ActiveJobRenderLine {
+            text: format!("[{}] {}", if idx <= current_idx { "x" } else { " " }, stage.label()),
+            color: if idx <= current_idx {
                 theme::status::SUCCESS
             } else {
                 theme::text::MUTED
             },
-        ));
-        timeline_y += 14.0;
+        });
     }
 
-    let mut metadata_y = timeline_y + 6.0;
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "Skill scope",
-        job.skill_scope_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "SKL manifest",
-        job.skl_manifest_a.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "SA tick request",
-        job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "SA tick result",
-        job.sa_tick_result_event_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "Trajectory session",
-        job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "AC envelope",
-        job.ac_envelope_event_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "AC settlement",
-        job.ac_settlement_event_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "AC default",
-        job.ac_default_event_id.as_deref().unwrap_or("none"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "Invoice ID",
-        job.invoice_id.as_deref().unwrap_or("n/a"),
-    );
-    metadata_y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        metadata_y,
-        "Payment ID",
-        job.payment_id.as_deref().unwrap_or("n/a"),
-    );
     if let Some(reason) = job.failure_reason.as_deref() {
-        metadata_y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            metadata_y,
-            "Failure reason",
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Failure reason: ",
             reason,
+            chunk_len,
+            theme::status::ERROR,
         );
     }
 
-    paint.scene.draw_text(paint.text.layout(
-        "Execution log",
-        Point::new(content_bounds.origin.x + 12.0, metadata_y + 4.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-    let mut log_y = metadata_y + 20.0;
-    for event in job.events.iter().take(10) {
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("[#{:03}] {}", event.seq, event.message),
-            Point::new(content_bounds.origin.x + 12.0, log_y),
-            10.0,
+    lines.push(ActiveJobRenderLine {
+        text: "Execution log".to_string(),
+        color: theme::text::MUTED,
+    });
+    for event in job.events.iter() {
+        push_active_job_wrapped_line(
+            &mut lines,
+            &format!("[#{:03}] ", event.seq),
+            &event.message,
+            chunk_len,
             theme::text::PRIMARY,
-        ));
-        log_y += 14.0;
+        );
     }
+
+    lines
 }
 
 fn paint_job_history_pane(
@@ -5147,10 +5180,6 @@ fn paint_mission_control_go_online_button(
     _accent: Hsla,
     paint: &mut PaintContext,
 ) {
-    let base_layer = paint.scene.layer();
-    let button_layer = base_layer.saturating_add(1);
-    paint.scene.set_layer(button_layer);
-
     let border = if enabled {
         if label == "GO ONLINE" {
             mission_control_orange_color()
@@ -5222,7 +5251,6 @@ fn paint_mission_control_go_online_button(
         paint,
     );
 
-    paint.scene.set_layer(base_layer);
 }
 
 fn paint_mission_control_command_button(

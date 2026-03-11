@@ -128,6 +128,7 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
     state.mission_control.load_funds_amount_sats.blur();
+    state.mission_control.send_invoice.blur();
     state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
@@ -173,6 +174,7 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
     state.mission_control.load_funds_amount_sats.blur();
+    state.mission_control.send_invoice.blur();
     state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
@@ -213,6 +215,7 @@ fn focus_apple_fm_workbench_prompt_for_pane_open(state: &mut RenderState) {
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
     state.mission_control.load_funds_amount_sats.blur();
+    state.mission_control.send_invoice.blur();
     state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
@@ -335,8 +338,10 @@ pub enum MissionControlPaneAction {
     RefreshWallet,
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
+    SendLightningPayment,
     GenerateBitcoinReceiveAddress,
     CopyBitcoinReceiveAddress,
+    CopySeedPhrase,
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
     ToggleBuyModeLoop,
@@ -1382,6 +1387,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     state.mission_control_buy_mode_enabled(),
                 )
                 .contains(point)
+                    || mission_control_send_invoice_input_bounds(
+                        content_bounds,
+                        state.mission_control_buy_mode_enabled(),
+                    )
+                    .contains(point)
                     || mission_control_withdraw_invoice_input_bounds(content_bounds)
                         .contains(point))
             {
@@ -1516,6 +1526,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     state.mission_control_buy_mode_enabled(),
                 )
                 .contains(point)
+                    || mission_control_send_invoice_input_bounds(
+                        content_bounds,
+                        state.mission_control_buy_mode_enabled(),
+                    )
+                    .contains(point)
                     || mission_control_withdraw_invoice_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
@@ -2034,8 +2049,11 @@ pub struct MissionControlLoadFundsLayout {
     pub amount_input: Bounds,
     pub lightning_button: Bounds,
     pub copy_lightning_button: Bounds,
+    pub send_invoice_input: Bounds,
+    pub send_lightning_button: Bounds,
     pub bitcoin_button: Bounds,
     pub copy_bitcoin_button: Bounds,
+    pub copy_seed_button: Bounds,
 }
 
 pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayout {
@@ -2268,7 +2286,7 @@ pub fn mission_control_load_funds_layout(
     let inner_y = panel.origin.y + 34.0;
     let inner_width = (panel.size.width - 28.0).max(0.0);
     let inner_height = (panel.size.height - 46.0).max(0.0);
-    let controls_width = (inner_width * 0.34).clamp(210.0, 280.0).min(inner_width);
+    let controls_width = (inner_width * 0.46).clamp(280.0, 420.0).min(inner_width);
     let details_gap = if inner_width > controls_width {
         14.0
     } else {
@@ -2281,11 +2299,11 @@ pub fn mission_control_load_funds_layout(
         (inner_width - controls_width - details_gap).max(0.0),
         inner_height,
     );
-    let control_gap = 6.0;
-    let control_top_inset = 14.0;
-    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 2.0)
-        / 3.0)
-        .clamp(20.0, 28.0);
+    let control_gap = 4.0;
+    let control_top_inset = 4.0;
+    let control_height = ((controls_column.size.height - control_top_inset - control_gap * 4.0)
+        / 5.0)
+        .clamp(14.0, 24.0);
     let amount_input = Bounds::new(
         controls_column.origin.x,
         controls_column.origin.y + control_top_inset,
@@ -2305,9 +2323,27 @@ pub fn mission_control_load_funds_layout(
         half_width,
         control_height,
     );
-    let bitcoin_button = Bounds::new(
+    let send_invoice_input = Bounds::new(
         controls_column.origin.x,
         lightning_button.max_y() + control_gap,
+        controls_column.size.width,
+        control_height,
+    );
+    let send_lightning_button = Bounds::new(
+        controls_column.origin.x,
+        send_invoice_input.max_y() + control_gap,
+        half_width,
+        control_height,
+    );
+    let copy_seed_button = Bounds::new(
+        send_lightning_button.max_x() + control_gap,
+        send_lightning_button.origin.y,
+        half_width,
+        control_height,
+    );
+    let bitcoin_button = Bounds::new(
+        controls_column.origin.x,
+        send_lightning_button.max_y() + control_gap,
         half_width,
         control_height,
     );
@@ -2325,8 +2361,11 @@ pub fn mission_control_load_funds_layout(
         amount_input,
         lightning_button,
         copy_lightning_button,
+        send_invoice_input,
+        send_lightning_button,
         bitcoin_button,
         copy_bitcoin_button,
+        copy_seed_button,
     }
 }
 
@@ -2351,6 +2390,20 @@ pub fn mission_control_copy_lightning_button_bounds(
     mission_control_load_funds_layout(content_bounds, buy_mode_enabled).copy_lightning_button
 }
 
+pub fn mission_control_send_invoice_input_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    mission_control_load_funds_layout(content_bounds, buy_mode_enabled).send_invoice_input
+}
+
+pub fn mission_control_send_lightning_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    mission_control_load_funds_layout(content_bounds, buy_mode_enabled).send_lightning_button
+}
+
 pub fn mission_control_bitcoin_receive_button_bounds(
     content_bounds: Bounds,
     buy_mode_enabled: bool,
@@ -2363,6 +2416,13 @@ pub fn mission_control_copy_bitcoin_button_bounds(
     buy_mode_enabled: bool,
 ) -> Bounds {
     mission_control_load_funds_layout(content_bounds, buy_mode_enabled).copy_bitcoin_button
+}
+
+pub fn mission_control_copy_seed_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    mission_control_load_funds_layout(content_bounds, buy_mode_enabled).copy_seed_button
 }
 
 pub fn mission_control_documentation_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3469,6 +3529,20 @@ pub fn active_job_abort_button_bounds(content_bounds: Bounds) -> Bounds {
         advance.origin.y,
         advance.size.width,
         advance.size.height,
+    )
+}
+
+pub fn active_job_scroll_viewport_bounds(
+    content_bounds: Bounds,
+    runtime_supports_abort: bool,
+) -> Bounds {
+    let buttons = active_job_abort_button_bounds(content_bounds);
+    let top = buttons.max_y() + if runtime_supports_abort { 12.0 } else { 24.0 };
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
+        (content_bounds.max_y() - top - CHAT_PAD).max(0.0),
     )
 }
 
@@ -4631,6 +4705,11 @@ fn pane_hit_action_for_pane(
                 .bitcoin_address
                 .as_deref()
                 .is_some_and(|address| !address.trim().is_empty());
+            let lightning_send_enabled = !state.mission_control.send_invoice.get_value().trim().is_empty();
+            let seed_copy_enabled = state
+                .nostr_identity
+                .as_ref()
+                .is_some_and(|identity| !identity.mnemonic.trim().is_empty());
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 if matches!(
                     state.provider_runtime.mode,
@@ -4662,6 +4741,13 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLightningReceiveTarget,
                 ))
+            } else if mission_control_send_lightning_button_bounds(content_bounds, buy_mode_enabled)
+                .contains(point)
+                && lightning_send_enabled
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::SendLightningPayment,
+                ))
             } else if mission_control_bitcoin_receive_button_bounds(
                 content_bounds,
                 buy_mode_enabled,
@@ -4677,6 +4763,13 @@ fn pane_hit_action_for_pane(
             {
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyBitcoinReceiveAddress,
+                ))
+            } else if mission_control_copy_seed_button_bounds(content_bounds, buy_mode_enabled)
+                .contains(point)
+                && seed_copy_enabled
+            {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::CopySeedPhrase,
                 ))
             } else if state.mission_control_buy_mode_enabled()
                 && mission_control_buy_mode_button_bounds(content_bounds, true).contains(point)
@@ -5729,6 +5822,15 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
             &mut state.event_context,
         )
         .is_handled();
+    let send_handled = state
+        .mission_control
+        .send_invoice
+        .event(
+            event,
+            mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled),
+            &mut state.event_context,
+        )
+        .is_handled();
     let withdraw_handled = state
         .mission_control
         .withdraw_invoice
@@ -5739,7 +5841,7 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
         )
         .is_handled();
 
-    amount_handled || withdraw_handled
+    amount_handled || send_handled || withdraw_handled
 }
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -5788,6 +5890,31 @@ pub fn dispatch_mission_control_log_scroll_event(
         .log_stream
         .event(event, log_bounds, &mut state.event_context)
         .is_handled()
+}
+
+pub fn dispatch_active_job_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let target = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::ActiveJob)
+        .max_by_key(|pane| pane.z_index);
+    let Some(pane) = target else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport =
+        active_job_scroll_viewport_bounds(content_bounds, state.active_job.runtime_supports_abort);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.active_job.scroll_by(scroll_dy);
+    true
 }
 
 pub fn dispatch_apple_fm_workbench_log_scroll_event(
@@ -6122,6 +6249,7 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
 mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
+        active_job_scroll_viewport_bounds,
         activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
         activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
         activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
@@ -6195,8 +6323,10 @@ mod tests {
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
         mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
+        mission_control_send_invoice_input_bounds, mission_control_send_lightning_button_bounds,
         mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds,
-        mission_control_withdraw_invoice_input_bounds, network_requests_budget_input_bounds,
+        mission_control_withdraw_invoice_input_bounds, mission_control_copy_seed_button_bounds,
+        network_requests_budget_input_bounds,
         network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
         network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
         network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
@@ -6330,6 +6460,10 @@ mod tests {
                 .load_funds_panel
                 .contains(load_funds.amount_input.origin)
         );
+        assert!(layout.load_funds_panel.contains(load_funds.send_invoice_input.origin));
+        assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
+        assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
+        assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(load_funds.details_column.max_x() <= layout.load_funds_panel.max_x());
@@ -6349,9 +6483,27 @@ mod tests {
                 .load_funds_panel
                 .contains(load_funds.amount_input.origin)
         );
+        assert!(layout.load_funds_panel.contains(load_funds.send_invoice_input.origin));
+        assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
+        assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
+        assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(load_funds.copy_bitcoin_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_bitcoin_button.max_y() <= layout.load_funds_panel.max_y());
         assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
+    }
+
+    #[test]
+    fn mission_control_load_funds_send_and_seed_controls_stay_non_overlapping() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let send_input = mission_control_send_invoice_input_bounds(content_bounds, true);
+        let send_button = mission_control_send_lightning_button_bounds(content_bounds, true);
+        let copy_seed = mission_control_copy_seed_button_bounds(content_bounds, true);
+        let copy_bitcoin = super::mission_control_copy_bitcoin_button_bounds(content_bounds, true);
+
+        assert!(send_input.max_y() <= send_button.origin.y);
+        assert_eq!(send_button.origin.y, copy_seed.origin.y);
+        assert!(send_button.max_x() <= copy_seed.origin.x);
+        assert!(copy_seed.max_y() <= copy_bitcoin.origin.y);
     }
 
     #[test]
@@ -6744,6 +6896,18 @@ mod tests {
 
         assert!(advance.max_x() < abort.min_x());
         assert!((advance.origin.y - abort.origin.y).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn active_job_scroll_viewport_stays_below_controls() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let abort = active_job_abort_button_bounds(content);
+        let viewport = active_job_scroll_viewport_bounds(content, false);
+
+        assert!(abort.max_y() <= viewport.origin.y);
+        assert!(content.contains(viewport.origin));
+        assert!(viewport.max_x() <= content.max_x());
+        assert!(viewport.max_y() <= content.max_y());
     }
 
     #[test]
