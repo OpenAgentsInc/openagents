@@ -9789,6 +9789,13 @@ pub(super) fn run_mission_control_buy_mode_tick(
     match submit_mission_control_buy_mode_request(state) {
         Ok(request_id) => {
             state.mission_control.schedule_next_buy_mode_dispatch(now);
+            tracing::info!(
+                target: "autopilot_desktop::buy_mode",
+                "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={}",
+                request_id,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS
+            );
             state
                 .mission_control
                 .record_action(format!("Buy Mode dispatched {request_id}"));
@@ -9797,6 +9804,11 @@ pub(super) fn run_mission_control_buy_mode_tick(
         Err(error) => {
             state.mission_control.schedule_buy_mode_retry(now);
             state.provider_runtime.last_error_detail = Some(error.clone());
+            tracing::error!(
+                target: "autopilot_desktop::buy_mode",
+                "Buy Mode dispatch failed: {}",
+                error
+            );
             state
                 .mission_control
                 .record_error(format!("Buy Mode dispatch failed: {error}"));
@@ -9818,6 +9830,7 @@ fn submit_signed_network_request_with_event(
 ) -> Result<String, String> {
     let published_request_id = request_event.id.clone();
     let command_seq = state.reserve_runtime_command_seq();
+    let request_type_for_log = request_type.clone();
     let request_id = state
         .network_requests
         .queue_request_submission(NetworkRequestSubmission {
@@ -9881,6 +9894,16 @@ fn submit_signed_network_request_with_event(
         "Queued NIP-90 request {} -> AC cmd#{}",
         request_id, command_seq
     ));
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Queued NIP-90 request request_id={} request_type={} budget_sats={} timeout_seconds={} command_seq={} published_event_id={}",
+        request_id,
+        request_type_for_log,
+        budget_sats,
+        timeout_seconds,
+        command_seq,
+        published_request_id
+    );
 
     if local_network_request_inject_enabled() {
         state

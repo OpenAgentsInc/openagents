@@ -613,6 +613,7 @@ pub struct MissionControlPaneState {
     pub last_error: Option<String>,
     /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
     rendered_log_content: Vec<(TerminalStream, String)>,
+    last_mirrored_trace_id: u64,
 }
 
 impl Default for MissionControlPaneState {
@@ -645,6 +646,7 @@ impl Default for MissionControlPaneState {
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_content: Vec::new(),
+            last_mirrored_trace_id: 0,
         }
     }
 }
@@ -702,6 +704,10 @@ impl MissionControlPaneState {
         self.last_error = Some(error.into());
     }
 
+    pub fn has_pending_mirrored_trace_logs(&self) -> bool {
+        crate::logging::latest_mirrored_log_id() > self.last_mirrored_trace_id
+    }
+
     pub fn sync_log_stream(
         &mut self,
         desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -710,6 +716,7 @@ impl MissionControlPaneState {
         provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
         earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
         spark_wallet: &SparkPaneState,
+        network_requests: &NetworkRequestsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
     ) {
@@ -722,6 +729,7 @@ impl MissionControlPaneState {
             provider_blockers,
             earn_job_lifecycle_projection,
             spark_wallet,
+            network_requests,
             job_inbox,
             active_job,
         );
@@ -730,6 +738,23 @@ impl MissionControlPaneState {
                 self.log_stream.push_line(line);
                 self.rendered_log_content.push(entry);
             }
+        }
+        for entry in crate::logging::mirrored_logs_after(self.last_mirrored_trace_id) {
+            let stream = match entry.level {
+                tracing::Level::ERROR | tracing::Level::WARN => TerminalStream::Stderr,
+                tracing::Level::INFO | tracing::Level::DEBUG | tracing::Level::TRACE => {
+                    TerminalStream::Stdout
+                }
+            };
+            self.log_stream.push_line(TerminalLine::new(
+                stream,
+                format!(
+                    "{}  {}",
+                    mission_control_log_timestamp(entry.at_epoch_seconds),
+                    entry.line
+                ),
+            ));
+            self.last_mirrored_trace_id = entry.id;
         }
     }
 }
@@ -751,6 +776,7 @@ fn build_mission_control_log_lines(
     provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     spark_wallet: &SparkPaneState,
+    network_requests: &NetworkRequestsState,
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
 ) -> (Vec<TerminalLine>, Vec<(TerminalStream, String)>) {
@@ -901,6 +927,14 @@ fn build_mission_control_log_lines(
         push_entry(
             TerminalStream::Stderr,
             format!("Wallet error: {error}"),
+            None,
+        );
+    }
+
+    for request in network_requests.submitted.iter().take(4).rev() {
+        push_entry(
+            mission_control_log_stream_for_request_status(request.status),
+            mission_control_network_request_log_line(request),
             None,
         );
     }
@@ -1144,6 +1178,63 @@ fn mission_control_log_stream_for_stage(stage: JobLifecycleStage) -> TerminalStr
         | JobLifecycleStage::Delivered
         | JobLifecycleStage::Paid => TerminalStream::Stdout,
     }
+}
+
+fn mission_control_log_stream_for_request_status(
+    status: crate::state::operations::NetworkRequestStatus,
+) -> TerminalStream {
+    if status == crate::state::operations::NetworkRequestStatus::Failed {
+        TerminalStream::Stderr
+    } else {
+        TerminalStream::Stdout
+    }
+}
+
+fn mission_control_log_short_id(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!("{}..", &trimmed[..12])
+    }
+}
+
+fn mission_control_network_request_log_line(
+    request: &crate::state::operations::SubmittedNetworkRequest,
+) -> String {
+    let mut line = format!(
+        "Buyer {} [{}] {} {}",
+        mission_control_log_short_id(request.request_id.as_str()),
+        request.request_type,
+        request.status.label(),
+        format_mission_control_amount(request.budget_sats)
+    );
+    if let Some(event_id) = request.published_request_event_id.as_deref() {
+        line.push_str(" event=");
+        line.push_str(mission_control_log_short_id(event_id).as_str());
+    }
+    if let Some(provider) = request.last_provider_pubkey.as_deref() {
+        line.push_str(" provider=");
+        line.push_str(mission_control_log_short_id(provider).as_str());
+    }
+    if let Some(status) = request.last_feedback_status.as_deref() {
+        line.push_str(" feedback=");
+        line.push_str(status);
+    }
+    if request.last_result_event_id.is_some() {
+        line.push_str(" result=received");
+    }
+    if request.pending_bolt11.is_some() {
+        line.push_str(" payment=invoice");
+    }
+    if request.last_payment_pointer.is_some() {
+        line.push_str(" payment=settled");
+    }
+    if let Some(error) = request.payment_error.as_deref() {
+        line.push_str(" error=");
+        line.push_str(error);
+    }
+    line
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13177,6 +13268,7 @@ mod tests {
             &[],
             &projection,
             &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
@@ -13229,6 +13321,7 @@ mod tests {
             &[],
             &EarnJobLifecycleProjectionState::default(),
             &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
@@ -13239,6 +13332,52 @@ mod tests {
                 .any(|line| line.text.contains("Apple Foundation Models unavailable"))
         );
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
+    }
+
+    #[test]
+    fn mission_control_log_lines_include_recent_buyer_request_status() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-buy-mode-1234567890".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Buy Mode test payload".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 7,
+            })
+            .expect("queue buyer request");
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-mode-abcdef123456",
+            1,
+            0,
+            None,
+        );
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &ProviderRuntimeState::default(),
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &requests,
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("Buyer req-buy-mode")
+                && line.text.contains("buy_mode")
+                && line.text.contains("streaming")
+        }));
     }
 
     #[test]

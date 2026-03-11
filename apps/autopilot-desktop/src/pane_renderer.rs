@@ -563,6 +563,7 @@ fn paint_go_online_pane(
         provider_blockers,
         earn_job_lifecycle_projection,
         spark_wallet,
+        network_requests,
         job_inbox,
         active_job,
     );

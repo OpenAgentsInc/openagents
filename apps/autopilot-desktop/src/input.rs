@@ -630,6 +630,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if state.spacetime_presence.tick(state.provider_runtime.mode) {
         changed = true;
     }
+    if state.mission_control.has_pending_mirrored_trace_logs() {
+        changed = true;
+    }
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
     refresh_network_aggregate_counters(state, now);
     refresh_earnings_scoreboard(state, now);
