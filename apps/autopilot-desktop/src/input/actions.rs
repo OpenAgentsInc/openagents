@@ -11544,6 +11544,53 @@ fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
         || normalized.starts_with("pay-req-")
 }
 
+fn note_active_job_waiting_for_payment_evidence(
+    active_job: &mut crate::app_state::ActiveJobState,
+    provider_runtime: &mut crate::state::provider_runtime::ProviderRuntimeState,
+    demand_source: crate::app_state::JobDemandSource,
+    request_id: &str,
+) {
+    let waiting_detail = format!(
+        "{} delivered job {} is awaiting wallet-authoritative payment evidence",
+        demand_source.label(),
+        request_id
+    );
+    let legacy_waiting_error = format!(
+        "{} delivered job {} is waiting for wallet-authoritative payment evidence",
+        demand_source.label(),
+        request_id
+    );
+    let waiting_runtime_error = format!("execution: {waiting_detail}");
+    let legacy_waiting_runtime_error = format!("execution: {legacy_waiting_error}");
+    if active_job.last_action.as_deref() != Some(waiting_detail.as_str()) {
+        active_job.append_event("awaiting wallet-authoritative payment evidence");
+    }
+    active_job.last_action = Some(waiting_detail.clone());
+    if matches!(
+        active_job.last_error.as_deref(),
+        Some(error)
+            if error == waiting_detail.as_str() || error == legacy_waiting_error.as_str()
+    ) {
+        active_job.last_error = None;
+        active_job.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+    provider_runtime.last_result = Some(waiting_detail.clone());
+    let cleared_waiting_runtime_error = matches!(
+        provider_runtime.last_error_detail.as_deref(),
+        Some(error)
+            if error == waiting_runtime_error.as_str()
+                || error == legacy_waiting_runtime_error.as_str()
+    );
+    if cleared_waiting_runtime_error {
+        provider_runtime.last_error_detail = None;
+    }
+    if provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Payment)
+        && (cleared_waiting_runtime_error || provider_runtime.last_error_detail.is_none())
+    {
+        provider_runtime.last_authoritative_error_class = None;
+    }
+}
+
 pub(super) fn run_open_network_paid_transition_reconciliation(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
@@ -11579,16 +11626,13 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
     });
 
     let Some(wallet_pointer) = wallet_pointer else {
-        let missing_detail = format!(
-            "{} delivered job {} is waiting for wallet-authoritative payment evidence",
-            demand_source.label(),
-            request_id
-        );
-        if state.active_job.last_error.as_deref() != Some(missing_detail.as_str()) {
-            state.active_job.last_error = Some(missing_detail.clone());
-            state.active_job.load_state = crate::app_state::PaneLoadState::Error;
-            state.provider_runtime.last_result = Some(missing_detail);
-            state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        if !state.active_job.payment_required_failed {
+            note_active_job_waiting_for_payment_evidence(
+                &mut state.active_job,
+                &mut state.provider_runtime,
+                demand_source,
+                request_id.as_str(),
+            );
         }
         return false;
     };
@@ -13066,7 +13110,8 @@ mod tests {
         classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
         extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
         git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
-        loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_apps_intent,
+        loop_integrity_alert_specs, nip90_request_kind_for_request_type,
+        note_active_job_waiting_for_payment_evidence, parse_chat_apps_intent,
         parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_remote_intent,
         parse_chat_request_intent, parse_chat_skills_intent, parse_chat_spacetime_intent,
         parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
@@ -14201,6 +14246,80 @@ mod tests {
         .expect("status summary");
         assert!(summary.contains("needs a wallet payment id"));
         assert!(!summary.contains("Spark confirms"));
+    }
+
+    #[test]
+    fn waiting_for_wallet_payment_evidence_is_not_treated_as_an_error() {
+        let mut active_job = crate::app_state::ActiveJobState::default();
+        active_job.job = Some(fixture_open_network_delivered_job(2));
+        active_job.last_error = Some(
+            "open-network delivered job req-open-network-001 is waiting for wallet-authoritative payment evidence"
+                .to_string(),
+        );
+        active_job.load_state = crate::app_state::PaneLoadState::Error;
+
+        let mut provider_runtime = crate::state::provider_runtime::ProviderRuntimeState::default();
+        provider_runtime.last_error_detail = Some(
+            "execution: open-network delivered job req-open-network-001 is waiting for wallet-authoritative payment evidence"
+                .to_string(),
+        );
+        provider_runtime.last_authoritative_error_class =
+            Some(crate::app_state::EarnFailureClass::Payment);
+
+        note_active_job_waiting_for_payment_evidence(
+            &mut active_job,
+            &mut provider_runtime,
+            crate::app_state::JobDemandSource::OpenNetwork,
+            "req-open-network-001",
+        );
+
+        assert_eq!(active_job.last_error, None);
+        assert_eq!(
+            active_job.load_state,
+            crate::app_state::PaneLoadState::Ready
+        );
+        assert_eq!(
+            active_job.last_action.as_deref(),
+            Some(
+                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+            )
+        );
+        assert_eq!(
+            provider_runtime.last_result.as_deref(),
+            Some(
+                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+            )
+        );
+        assert_eq!(provider_runtime.last_error_detail, None);
+        assert_eq!(provider_runtime.last_authoritative_error_class, None);
+    }
+
+    #[test]
+    fn waiting_for_wallet_payment_evidence_does_not_clear_real_payment_errors() {
+        let mut active_job = crate::app_state::ActiveJobState::default();
+        active_job.job = Some(fixture_open_network_delivered_job(2));
+
+        let mut provider_runtime = crate::state::provider_runtime::ProviderRuntimeState::default();
+        provider_runtime.last_error_detail =
+            Some("payment: provider settlement invoice creation failed".to_string());
+        provider_runtime.last_authoritative_error_class =
+            Some(crate::app_state::EarnFailureClass::Payment);
+
+        note_active_job_waiting_for_payment_evidence(
+            &mut active_job,
+            &mut provider_runtime,
+            crate::app_state::JobDemandSource::OpenNetwork,
+            "req-open-network-001",
+        );
+
+        assert_eq!(
+            provider_runtime.last_error_detail.as_deref(),
+            Some("payment: provider settlement invoice creation failed")
+        );
+        assert_eq!(
+            provider_runtime.last_authoritative_error_class,
+            Some(crate::app_state::EarnFailureClass::Payment)
+        );
     }
 
     #[test]

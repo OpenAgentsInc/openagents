@@ -35,6 +35,8 @@ const MIN_PROVIDER_TTL_SECONDS: u64 = 30;
 const RESULT_PUBLISH_RETRY_INTERVAL_SECONDS: u64 = 5;
 const RESULT_PUBLISH_RETRY_GRACE_SECONDS: u64 = 15;
 const MAX_RESULT_PUBLISH_ATTEMPTS: u32 = 4;
+const PROVIDER_SETTLEMENT_GRACE_SECONDS: u64 = 120;
+const MIN_PROVIDER_SETTLEMENT_TIMEOUT_SECONDS: u64 = 180;
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
     match action {
@@ -792,10 +794,16 @@ fn active_job_timeout_reason(
         ),
         JobLifecycleStage::Delivered => format!(
             "job settlement timed out after {}s while awaiting payment flow",
-            ttl_seconds
+            active_job_settlement_timeout_seconds(ttl_seconds)
         ),
         _ => format!("job execution timed out after {}s", ttl_seconds),
     }
+}
+
+fn active_job_settlement_timeout_seconds(ttl_seconds: u64) -> u64 {
+    ttl_seconds
+        .saturating_add(PROVIDER_SETTLEMENT_GRACE_SECONDS)
+        .max(MIN_PROVIDER_SETTLEMENT_TIMEOUT_SECONDS)
 }
 
 fn set_active_job_phase_deadline_at(
@@ -822,10 +830,23 @@ fn extend_active_job_phase_deadline_at_least(
 }
 
 fn refresh_active_job_phase_deadline(state: &mut RenderState) {
-    let Some(ttl_seconds) = state.active_job.job.as_ref().map(|job| job.ttl_seconds) else {
+    let Some((stage, ttl_seconds)) = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| (job.stage, job.ttl_seconds))
+    else {
         return;
     };
-    set_active_job_phase_deadline_at(&mut state.active_job, ttl_seconds, current_epoch_seconds());
+    let timeout_seconds = match stage {
+        JobLifecycleStage::Delivered => active_job_settlement_timeout_seconds(ttl_seconds),
+        _ => ttl_seconds,
+    };
+    set_active_job_phase_deadline_at(
+        &mut state.active_job,
+        timeout_seconds,
+        current_epoch_seconds(),
+    );
 }
 
 fn clear_active_job_phase_deadline(active_job: &mut crate::app_state::ActiveJobState) {
@@ -1106,8 +1127,21 @@ fn apply_payment_required_feedback_publish_outcome(
     }
 
     active_job.payment_required_failed = false;
+    active_job.last_error = None;
+    active_job.load_state = PaneLoadState::Ready;
+    if let Some(ttl_seconds) = active_job.job.as_ref().map(|job| job.ttl_seconds) {
+        extend_active_job_phase_deadline_at_least(
+            active_job,
+            active_job_settlement_timeout_seconds(ttl_seconds),
+            current_epoch_seconds(),
+        );
+    }
     active_job.append_event(format!(
         "payment-required feedback published {}",
+        outcome.event_id
+    ));
+    active_job.last_action = Some(format!(
+        "Awaiting Lightning settlement after publishing {}",
         outcome.event_id
     ));
     provider_runtime.last_result = Some(format!(
@@ -2659,7 +2693,8 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderExecutionBackend, active_job_matches_publish_outcome, active_job_timeout_reason,
+        ProviderExecutionBackend, active_job_matches_publish_outcome,
+        active_job_settlement_timeout_seconds, active_job_timeout_reason,
         apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
         build_nip90_feedback_event, clear_active_job_phase_deadline,
         extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
@@ -2866,8 +2901,15 @@ mod tests {
     fn timeout_reason_uses_settlement_wording_after_delivery() {
         assert_eq!(
             active_job_timeout_reason(JobLifecycleStage::Delivered, true, 75),
-            "job settlement timed out after 75s while awaiting payment flow"
+            "job settlement timed out after 195s while awaiting payment flow"
         );
+    }
+
+    #[test]
+    fn settlement_timeout_adds_payment_grace_window() {
+        assert_eq!(active_job_settlement_timeout_seconds(60), 180);
+        assert_eq!(active_job_settlement_timeout_seconds(75), 195);
+        assert_eq!(active_job_settlement_timeout_seconds(300), 420);
     }
 
     #[test]
@@ -3099,6 +3141,49 @@ mod tests {
         assert_eq!(
             provider_runtime.last_authoritative_error_class,
             Some(EarnFailureClass::Payment)
+        );
+    }
+
+    #[test]
+    fn payment_required_feedback_publish_success_extends_settlement_deadline() {
+        let mut active_job = fixture_delivered_active_job("req-pay-required-ok");
+        let mut provider_runtime = ProviderRuntimeState::default();
+        active_job.payment_required_feedback_in_flight = true;
+        active_job.execution_deadline_epoch_seconds = Some(1_700_000_100);
+        active_job.last_error = Some("stale wait error".to_string());
+        active_job.load_state = PaneLoadState::Error;
+        if let Some(job) = active_job.job.as_mut() {
+            job.invoice_id = Some("feedback-event-002".to_string());
+            job.ttl_seconds = 75;
+        }
+
+        assert!(apply_payment_required_feedback_publish_outcome(
+            &mut active_job,
+            &mut provider_runtime,
+            &ProviderNip90PublishOutcome {
+                request_id: "req-pay-required-ok".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event_id: "feedback-event-002".to_string(),
+                accepted_relays: 3,
+                rejected_relays: 1,
+                first_error: None,
+                parsed_event_shape: None,
+                raw_event_json: None,
+            },
+        ));
+
+        assert!(!active_job.payment_required_feedback_in_flight);
+        assert!(!active_job.payment_required_failed);
+        assert_eq!(active_job.last_error, None);
+        assert_eq!(active_job.load_state, PaneLoadState::Ready);
+        assert_eq!(
+            active_job.last_action.as_deref(),
+            Some("Awaiting Lightning settlement after publishing feedback-event-002")
+        );
+        assert!(
+            active_job
+                .execution_deadline_epoch_seconds
+                .is_some_and(|deadline| deadline >= 1_700_000_195)
         );
     }
 
