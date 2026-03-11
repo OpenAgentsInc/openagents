@@ -249,6 +249,26 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
         }
     }
 
+    if stage == JobLifecycleStage::Delivered
+        && active_job_requires_payment_required_feedback(state)
+        && !state.active_job.payment_required_feedback_in_flight
+        && !state.active_job.payment_required_failed
+    {
+        match queue_active_job_payment_required_feedback(state) {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(error) => {
+                state.active_job.last_error = Some(error.clone());
+                state.active_job.load_state = PaneLoadState::Error;
+                state.provider_runtime.last_result = Some(error);
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Payment);
+                state.active_job.payment_required_failed = true;
+                return true;
+            }
+        }
+    }
+
     false
 }
 
@@ -485,6 +505,13 @@ pub(super) fn apply_active_job_publish_outcome(
             }
         }
         ProviderNip90PublishRole::Feedback => {
+            if apply_payment_required_feedback_publish_outcome(
+                &mut state.active_job,
+                &mut state.provider_runtime,
+                outcome,
+            ) {
+                return;
+            }
             if outcome.accepted_relays == 0 {
                 state.active_job.append_event(format!(
                     "feedback publish failed ({})",
@@ -785,30 +812,26 @@ fn queue_nip90_feedback_for_active_job(
     status_extra: impl Into<String>,
     content: Option<String>,
     include_amount: bool,
+    bolt11: Option<&str>,
 ) -> Result<String, String> {
-    let Some(identity) = state.nostr_identity.as_ref() else {
-        return Err("Cannot publish feedback: Nostr identity unavailable".to_string());
-    };
     let Some(job) = state.active_job.job.as_ref() else {
         return Err("Cannot publish feedback: no active job selected".to_string());
     };
-
+    let event = build_nip90_feedback_event(
+        state
+            .nostr_identity
+            .as_ref()
+            .ok_or_else(|| "Cannot publish feedback: Nostr identity unavailable".to_string())?,
+        job.request_id.as_str(),
+        job.requester.as_str(),
+        job.quoted_price_sats,
+        status,
+        status_extra,
+        content,
+        include_amount,
+        bolt11,
+    )?;
     let request_id = job.request_id.clone();
-    let requester = job.requester.clone();
-    let quoted_price_sats = job.quoted_price_sats;
-    let mut feedback = JobFeedback::new(status, request_id.clone(), requester)
-        .with_status_extra(status_extra.into());
-    if let Some(content) = content {
-        let trimmed = content.trim();
-        if !trimmed.is_empty() {
-            feedback = feedback.with_content(trimmed.to_string());
-        }
-    }
-    if include_amount && quoted_price_sats > 0 {
-        feedback = feedback.with_amount(quoted_price_sats.saturating_mul(1000), None);
-    }
-    let template = create_job_feedback_event(&feedback);
-    let event = sign_event_template(identity, &template)?;
     let event_id = event.id.clone();
 
     state
@@ -820,6 +843,152 @@ fn queue_nip90_feedback_for_active_job(
         .map_err(|error| format!("Cannot queue NIP-90 feedback publish: {error}"))?;
 
     Ok(event_id)
+}
+
+fn build_nip90_feedback_event(
+    identity: &NostrIdentity,
+    request_id: &str,
+    requester: &str,
+    quoted_price_sats: u64,
+    status: JobStatus,
+    status_extra: impl Into<String>,
+    content: Option<String>,
+    include_amount: bool,
+    bolt11: Option<&str>,
+) -> Result<Event, String> {
+    let mut feedback = JobFeedback::new(status, request_id, requester)
+        .with_status_extra(status_extra.into());
+    if let Some(content) = content {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            feedback = feedback.with_content(trimmed.to_string());
+        }
+    }
+    if include_amount && quoted_price_sats > 0 {
+        feedback = feedback.with_amount(
+            quoted_price_sats.saturating_mul(1000),
+            bolt11.map(ToString::to_string),
+        );
+    }
+    let template = create_job_feedback_event(&feedback);
+    sign_event_template(identity, &template)
+}
+
+fn apply_payment_required_feedback_publish_outcome(
+    active_job: &mut crate::app_state::ActiveJobState,
+    provider_runtime: &mut crate::state::provider_runtime::ProviderRuntimeState,
+    outcome: &ProviderNip90PublishOutcome,
+) -> bool {
+    if !active_job.payment_required_feedback_in_flight {
+        return false;
+    }
+
+    active_job.payment_required_feedback_in_flight = false;
+    if outcome.accepted_relays == 0 {
+        if let Some(job) = active_job.job.as_mut() {
+            job.invoice_id = None;
+        }
+        active_job.payment_required_failed = true;
+        let message = format!(
+            "payment-required feedback publish failed ({})",
+            outcome
+                .first_error
+                .as_deref()
+                .unwrap_or("all relays rejected publish")
+        );
+        active_job.append_event(message.clone());
+        active_job.last_error = Some(message.clone());
+        active_job.load_state = PaneLoadState::Error;
+        provider_runtime.last_result = Some(message);
+        provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        return true;
+    }
+
+    active_job.payment_required_failed = false;
+    active_job.append_event(format!(
+        "payment-required feedback published {}",
+        outcome.event_id
+    ));
+    provider_runtime.last_result = Some(format!(
+        "provider requested Lightning settlement for request {}",
+        outcome.request_id
+    ));
+    true
+}
+
+fn active_job_requires_payment_required_feedback(state: &RenderState) -> bool {
+    let Some(job) = state.active_job.job.as_ref() else {
+        return false;
+    };
+    job.stage == JobLifecycleStage::Delivered
+        && job.demand_source == crate::app_state::JobDemandSource::OpenNetwork
+        && job.quoted_price_sats > 0
+        && job.payment_id.is_none()
+        && job.invoice_id.is_none()
+}
+
+fn queue_active_job_payment_required_feedback(state: &mut RenderState) -> Result<bool, String> {
+    if !active_job_requires_payment_required_feedback(state) {
+        return Ok(false);
+    }
+    let Some(job) = state.active_job.job.as_ref() else {
+        return Ok(false);
+    };
+    let request_id = job.request_id.clone();
+    let quoted_price_sats = job.quoted_price_sats;
+
+    if let Some(bolt11) = state.active_job.pending_bolt11.clone() {
+        let feedback_event_id = queue_nip90_feedback_for_active_job(
+            state,
+            JobStatus::PaymentRequired,
+            "lightning settlement required",
+            Some("pay the attached Lightning invoice to settle this result".to_string()),
+            true,
+            Some(bolt11.as_str()),
+        )?;
+        if let Some(job) = state.active_job.job.as_mut() {
+            job.invoice_id = Some(feedback_event_id.clone());
+        }
+        state.active_job.payment_required_feedback_in_flight = true;
+        state.active_job.payment_required_failed = false;
+        state.active_job.append_event(format!(
+            "queued canonical NIP-90 payment-required feedback {}",
+            feedback_event_id
+        ));
+        state.provider_runtime.last_result = Some(format!(
+            "queued provider payment-required feedback {} for request {}",
+            feedback_event_id, request_id
+        ));
+        return Ok(true);
+    }
+
+    if state.active_job.payment_required_invoice_requested {
+        return Ok(false);
+    }
+
+    super::super::queue_spark_command(
+        state,
+        crate::spark_wallet::SparkWalletCommand::CreateBolt11Invoice {
+            amount_sats: quoted_price_sats,
+            description: Some(format!("OpenAgents job {}", request_id)),
+            expiry_seconds: Some(3600),
+        },
+    );
+    if let Some(error) = state.spark_wallet.last_error.clone() {
+        return Err(format!("provider settlement invoice creation failed: {error}"));
+    }
+
+    state.active_job.payment_required_invoice_requested = true;
+    state.active_job.payment_required_failed = false;
+    state.active_job.append_event(format!(
+        "queued Spark BOLT11 invoice creation for {} sats",
+        quoted_price_sats
+    ));
+    state.provider_runtime.last_result = Some(format!(
+        "queued provider settlement invoice for request {}",
+        request_id
+    ));
+    Ok(true)
 }
 
 fn sign_event_template(
@@ -1282,6 +1451,7 @@ fn transition_active_job_to_running(
         "provider execution started",
         Some("execution lane processing".to_string()),
         false,
+        None,
     ) {
         Ok(feedback_event_id) => {
             state.active_job.append_event(format!(
@@ -1372,6 +1542,7 @@ pub(super) fn transition_active_job_to_paid(
         "wallet-confirmed settlement recorded",
         Some("execution lane settled".to_string()),
         true,
+        None,
     ) {
         Ok(feedback_event_id) => {
             if let Some(job) = state.active_job.job.as_mut() {
@@ -1391,6 +1562,11 @@ pub(super) fn transition_active_job_to_paid(
             ));
         }
     }
+
+    state.active_job.payment_required_invoice_requested = false;
+    state.active_job.payment_required_feedback_in_flight = false;
+    state.active_job.payment_required_failed = false;
+    state.active_job.pending_bolt11 = None;
 
     sync_provider_runtime_queue_depth(state);
     state.provider_runtime.last_error_detail = None;
@@ -1456,6 +1632,7 @@ fn fail_active_job_execution(
             "job aborted",
             Some(reason.clone()),
             false,
+            None,
         ) {
             Ok(feedback_event_id) => {
                 if let Some(job) = state.active_job.job.as_mut() {
@@ -2070,19 +2247,24 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
+        apply_payment_required_feedback_publish_outcome, build_nip90_feedback_event,
         ProviderExecutionBackend, apple_fm_request_accept_block_reason,
         next_auto_accept_request_id_for, next_invalid_request_rejection_for,
         ollama_request_accept_block_reason, provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
-        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
+        ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
+        JobInboxValidation, PaneLoadState,
     };
+    use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::state::provider_runtime::{
         ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState,
+        ProviderRuntimeState,
     };
-    use nostr::nip90::KIND_JOB_TEXT_GENERATION;
+    use nostr::{NostrIdentity, nip90::KIND_JOB_TEXT_GENERATION};
+    use std::path::PathBuf;
 
     fn fixture_request(
         request_id: &str,
@@ -2147,6 +2329,37 @@ mod tests {
             availability_message: None,
             bridge_status: Some("running".to_string()),
         }
+    }
+
+    fn fixture_nostr_identity() -> NostrIdentity {
+        NostrIdentity {
+            identity_path: PathBuf::from("/tmp/openagents-provider-nip90-tests.mnemonic"),
+            mnemonic: "test test test test test test test test test test test ball".to_string(),
+            npub: "npub1providerfeedbacktest".to_string(),
+            nsec: "nsec1providerfeedbacktest".to_string(),
+            public_key_hex: "02".repeat(32),
+            private_key_hex: "11".repeat(32),
+        }
+    }
+
+    fn fixture_delivered_active_job(request_id: &str) -> ActiveJobState {
+        let request = fixture_request(
+            request_id,
+            JobInboxValidation::Valid,
+            JobInboxDecision::Accepted {
+                reason: "valid + priced".to_string(),
+            },
+        );
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job
+            .job
+            .as_mut()
+            .expect("active job should exist");
+        job.stage = crate::app_state::JobLifecycleStage::Delivered;
+        job.invoice_id = None;
+        job.payment_id = None;
+        active_job
     }
 
     #[test]
@@ -2317,6 +2530,87 @@ mod tests {
                 "Requested Apple Foundation Models model 'llama3.2:latest' is blocked by local policy; provider currently serves 'apple-foundation-model'"
                     .to_string()
             )
+        );
+    }
+
+    #[test]
+    fn payment_required_feedback_event_includes_amount_and_bolt11() {
+        let mut active_job = fixture_delivered_active_job("req-pay-required-shape");
+        if let Some(job) = active_job.job.as_mut() {
+            job.quoted_price_sats = 2;
+        }
+
+        let event = build_nip90_feedback_event(
+            &fixture_nostr_identity(),
+            "req-pay-required-shape",
+            "buyer",
+            2,
+            nostr::nip90::JobStatus::PaymentRequired,
+            "lightning settlement required",
+            Some("pay the attached Lightning invoice to settle this result".to_string()),
+            true,
+            Some("lnbc20n1providerfeedback"),
+        )
+        .expect("feedback event should build");
+
+        assert_eq!(event.kind, nostr::nip90::KIND_JOB_FEEDBACK);
+        assert!(event.tags.iter().any(|tag| {
+            tag.first().map(String::as_str) == Some("status")
+                && tag.get(1).map(String::as_str) == Some("payment-required")
+                && tag.get(2).map(String::as_str) == Some("lightning settlement required")
+        }));
+        assert!(event.tags.iter().any(|tag| {
+            tag.first().map(String::as_str) == Some("amount")
+                && tag.get(1).map(String::as_str) == Some("2000")
+                && tag.get(2).map(String::as_str) == Some("lnbc20n1providerfeedback")
+        }));
+        assert_eq!(
+            event.content,
+            "pay the attached Lightning invoice to settle this result"
+        );
+    }
+
+    #[test]
+    fn payment_required_feedback_publish_failure_marks_payment_error() {
+        let mut active_job = fixture_delivered_active_job("req-pay-required-fail");
+        let mut provider_runtime = ProviderRuntimeState::default();
+        active_job.payment_required_feedback_in_flight = true;
+        if let Some(job) = active_job.job.as_mut() {
+            job.invoice_id = Some("feedback-event-001".to_string());
+        }
+
+        assert!(apply_payment_required_feedback_publish_outcome(
+            &mut active_job,
+            &mut provider_runtime,
+            &ProviderNip90PublishOutcome {
+                request_id: "req-pay-required-fail".to_string(),
+                role: ProviderNip90PublishRole::Feedback,
+                event_id: "feedback-event-001".to_string(),
+                accepted_relays: 0,
+                rejected_relays: 2,
+                first_error: Some("relay write failed".to_string()),
+                parsed_event_shape: None,
+                raw_event_json: None,
+            },
+        ));
+
+        assert!(!active_job.payment_required_feedback_in_flight);
+        assert!(active_job.payment_required_failed);
+        assert_eq!(
+            active_job
+                .job
+                .as_ref()
+                .and_then(|job| job.invoice_id.as_deref()),
+            None
+        );
+        assert_eq!(
+            active_job.last_error.as_deref(),
+            Some("payment-required feedback publish failed (relay write failed)")
+        );
+        assert_eq!(active_job.load_state, PaneLoadState::Error);
+        assert_eq!(
+            provider_runtime.last_authoritative_error_class,
+            Some(EarnFailureClass::Payment)
         );
     }
 }
