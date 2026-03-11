@@ -1,7 +1,7 @@
 use super::*;
 use crate::apple_fm_bridge::{
-    AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
-    AppleFmWorkbenchToolMode,
+    AppleFmBridgeCommand, AppleFmMissionControlSummaryCommand, AppleFmWorkbenchCommand,
+    AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
@@ -19,6 +19,7 @@ const MANAGED_CHAT_CONTROL_TRANSPORT_UNWIRED: &str =
 const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Direct message relay publish transport is not wired yet; local echo saved for retry.";
 const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
+const MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS: &str = "You are the Mission Control local Foundation Models test. Summarize only the supplied context in 3 short markdown bullets. Highlight the latest result, current buyer/provider state, and the next operator action. Do not invent facts or mention missing data unless it matters.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -9001,15 +9002,19 @@ pub(super) fn run_mission_control_action(
                 }
                 crate::spark_wallet::SparkInvoiceState::Ready => {
                     match state.spark_wallet.last_invoice.as_deref() {
-                        Some(invoice) if !invoice.trim().is_empty() => match copy_to_clipboard(invoice)
-                        {
-                            Ok(()) => "Copied Lightning receive target to clipboard".to_string(),
-                            Err(error) => {
-                                format!("Failed to copy Lightning receive target: {error}")
+                        Some(invoice) if !invoice.trim().is_empty() => {
+                            match copy_to_clipboard(invoice) {
+                                Ok(()) => {
+                                    "Copied Lightning receive target to clipboard".to_string()
+                                }
+                                Err(error) => {
+                                    format!("Failed to copy Lightning receive target: {error}")
+                                }
                             }
-                        },
-                        _ => "No Lightning receive target available. Generate one first."
-                            .to_string(),
+                        }
+                        _ => {
+                            "No Lightning receive target available. Generate one first.".to_string()
+                        }
                     }
                 }
             };
@@ -9126,6 +9131,9 @@ pub(super) fn run_mission_control_action(
                 }
             }
         }
+        MissionControlPaneAction::RunLocalFmSummaryTest => {
+            run_mission_control_local_fm_summary_test(state)
+        }
         MissionControlPaneAction::ToggleBuyModeLoop => {
             if !state.mission_control_buy_mode_enabled() {
                 state
@@ -9146,13 +9154,11 @@ pub(super) fn run_mission_control_action(
                 state.mission_control.record_error(reason.clone());
                 state.provider_runtime.last_error_detail = Some(reason);
             } else if state.mission_control.toggle_buy_mode_loop(now) {
-                state
-                    .mission_control
-                    .record_action(format!(
-                        "Buy Mode armed // 5050 // {} sats // every {}s",
-                        crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                        crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
-                    ));
+                state.mission_control.record_action(format!(
+                    "Buy Mode armed // 5050 // {} sats // every {}s",
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+                ));
                 let _ = run_mission_control_buy_mode_tick(state, now);
             }
             true
@@ -9296,6 +9302,143 @@ fn open_path_in_default_app(path: &std::path::Path) -> Result<(), String> {
         Err(format!(
             "Documentation launcher exited with status {status}"
         ))
+    }
+}
+
+fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::RenderState) -> bool {
+    if crate::app_state::mission_control_local_runtime_lane(
+        state.desktop_shell_mode,
+        &state.ollama_execution,
+    ) != Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
+    {
+        state
+            .mission_control
+            .record_error("Local FM test is only available on Apple Foundation Models");
+        return true;
+    }
+
+    if state.mission_control.local_fm_summary_is_pending() {
+        state
+            .mission_control
+            .record_action("Local FM summary test already streaming");
+        return true;
+    }
+
+    if !state.provider_runtime.apple_fm.is_ready() {
+        state
+            .mission_control
+            .record_error("Local FM test requires Apple Foundation Models to be ready");
+        return true;
+    }
+
+    let request_id = format!("mission-control-fm-{}", state.reserve_runtime_command_seq());
+    let command =
+        AppleFmBridgeCommand::MissionControlSummary(AppleFmMissionControlSummaryCommand {
+            request_id: request_id.clone(),
+            instructions: MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS.to_string(),
+            prompt: build_mission_control_local_fm_summary_prompt(state),
+            requested_model: state.provider_runtime.apple_fm.ready_model.clone(),
+            options: Some(AppleFmGenerationOptions {
+                sampling: None,
+                temperature: Some(0.2),
+                maximum_response_tokens: Some(160),
+            }),
+        });
+
+    match state.queue_apple_fm_bridge_command(command) {
+        Ok(()) => {
+            state
+                .mission_control
+                .begin_local_fm_summary(request_id, "latest Mission Control results");
+            state.provider_runtime.last_result =
+                Some("Queued local Apple Foundation Models summary test".to_string());
+        }
+        Err(error) => {
+            state
+                .mission_control
+                .record_error(format!("Failed to queue local FM summary test: {error}"));
+        }
+    }
+    true
+}
+
+fn build_mission_control_local_fm_summary_prompt(state: &crate::app_state::RenderState) -> String {
+    let mut sections = vec!["Summarize this Mission Control state.".to_string()];
+
+    if let Some(result) = state.provider_runtime.last_result.as_deref()
+        && !result.trim().is_empty()
+    {
+        sections.push(format!(
+            "Latest provider result: {}",
+            truncate_single_line(result, 220)
+        ));
+    }
+
+    if let Some(error) = state.provider_runtime.last_error_detail.as_deref()
+        && !error.trim().is_empty()
+    {
+        sections.push(format!(
+            "Latest provider error: {}",
+            truncate_single_line(error, 220)
+        ));
+    }
+
+    if let Some(request) = state.network_requests.submitted.first() {
+        sections.push(format!(
+            "Latest buyer request: id={} type={} status={:?} budget={} payload={}",
+            request.request_id,
+            request.request_type,
+            request.status,
+            request.budget_sats,
+            truncate_single_line(request.payload.as_str(), 240)
+        ));
+    }
+
+    if let Some(job) = state.active_job.job.as_ref() {
+        sections.push(format!(
+            "Active provider job: request_id={} capability={} stage={:?} price_sats={}",
+            job.request_id, job.capability, job.stage, job.quoted_price_sats
+        ));
+    }
+
+    if let Some(output) = state.active_job.execution_output.as_deref()
+        && !output.trim().is_empty()
+    {
+        sections.push(format!(
+            "Latest execution output: {}",
+            truncate_single_line(output, 240)
+        ));
+    }
+
+    let recent_log_lines = state
+        .mission_control
+        .log_stream
+        .recent_lines(8)
+        .iter()
+        .filter_map(|line| {
+            let text = line.text.trim();
+            if text.is_empty() || text.to_ascii_lowercase().contains("local fm summary") {
+                None
+            } else {
+                Some(format!("- {}", truncate_single_line(text, 220)))
+            }
+        })
+        .collect::<Vec<_>>();
+    if !recent_log_lines.is_empty() {
+        sections.push("Recent Mission Control logs:".to_string());
+        sections.extend(recent_log_lines);
+    }
+
+    sections.join("\n")
+}
+
+fn truncate_single_line(value: &str, max_chars: usize) -> String {
+    let flattened = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flattened.chars().count() <= max_chars {
+        flattened
+    } else {
+        let prefix = flattened.chars().take(max_chars).collect::<String>();
+        format!("{prefix}...")
     }
 }
 
@@ -9780,9 +9923,10 @@ pub(super) fn run_mission_control_buy_mode_tick(
     if !state.mission_control.buy_mode_dispatch_due(now) {
         return false;
     }
-    if state.network_requests.has_in_flight_request_by_type(
-        crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
-    ) {
+    if state
+        .network_requests
+        .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+    {
         return false;
     }
 

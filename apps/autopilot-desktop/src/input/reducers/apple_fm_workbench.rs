@@ -1,11 +1,12 @@
 use crate::app_state::{PaneLoadState, RenderState};
 use crate::apple_fm_bridge::{
-    AppleFmBridgeUpdate, AppleFmWorkbenchLogLevel, AppleFmWorkbenchOperation,
-    AppleFmWorkbenchUpdate,
+    AppleFmBridgeUpdate, AppleFmMissionControlSummaryUpdate, AppleFmWorkbenchLogLevel,
+    AppleFmWorkbenchOperation, AppleFmWorkbenchUpdate,
 };
 use wgpui::components::sections::{TerminalLine, TerminalStream};
 
 const PREVIEW_LIMIT: usize = 1600;
+const MISSION_CONTROL_SUMMARY_LINE_KEY_PREFIX: &str = "mission-control.local-fm-summary.";
 
 pub(super) fn apply_bridge_update(state: &mut RenderState, update: &AppleFmBridgeUpdate) -> bool {
     match update {
@@ -33,6 +34,10 @@ pub(super) fn apply_bridge_update(state: &mut RenderState, update: &AppleFmBridg
         }
         AppleFmBridgeUpdate::Workbench(update) => {
             apply_workbench_update(state, update.as_ref());
+            true
+        }
+        AppleFmBridgeUpdate::MissionControlSummary(update) => {
+            apply_mission_control_summary_update(state, update.as_ref());
             true
         }
         AppleFmBridgeUpdate::Started(_)
@@ -154,6 +159,93 @@ fn apply_workbench_update(state: &mut RenderState, update: &AppleFmWorkbenchUpda
     }
 }
 
+fn apply_mission_control_summary_update(
+    state: &mut RenderState,
+    update: &AppleFmMissionControlSummaryUpdate,
+) {
+    match update {
+        AppleFmMissionControlSummaryUpdate::Started(started) => {
+            state.mission_control.local_fm_summary_pending_request_id =
+                Some(started.request_id.clone());
+            state.mission_control.local_fm_summary_text.clear();
+            state.mission_control.upsert_runtime_log_line(
+                mission_control_summary_line_key(started.request_id.as_str()),
+                TerminalStream::Stdout,
+                "Local FM summary streaming...",
+            );
+            state.mission_control.record_action(format!(
+                "Local FM summary test running [{}]",
+                started.request_id
+            ));
+        }
+        AppleFmMissionControlSummaryUpdate::Delta(delta) => {
+            if state
+                .mission_control
+                .local_fm_summary_pending_request_id
+                .as_deref()
+                != Some(delta.request_id.as_str())
+            {
+                return;
+            }
+            state
+                .mission_control
+                .local_fm_summary_text
+                .push_str(&delta.delta);
+            let text = if state
+                .mission_control
+                .local_fm_summary_text
+                .trim()
+                .is_empty()
+            {
+                "Local FM summary streaming...".to_string()
+            } else {
+                format!(
+                    "Local FM summary > {}",
+                    state.mission_control.local_fm_summary_text
+                )
+            };
+            state.mission_control.upsert_runtime_log_line(
+                mission_control_summary_line_key(delta.request_id.as_str()),
+                TerminalStream::Stdout,
+                text,
+            );
+        }
+        AppleFmMissionControlSummaryUpdate::Completed(completed) => {
+            state.mission_control.local_fm_summary_pending_request_id = None;
+            state.mission_control.local_fm_summary_text = completed.response_text.clone();
+            state.mission_control.upsert_runtime_log_line(
+                mission_control_summary_line_key(completed.request_id.as_str()),
+                TerminalStream::Stdout,
+                format!("Local FM summary > {}", completed.response_text.trim()),
+            );
+            if let Some(model) = completed.model.as_deref() {
+                state.mission_control.push_runtime_log_line(
+                    TerminalStream::Stdout,
+                    format!("Local FM summary completed via {model}"),
+                );
+            } else {
+                state
+                    .mission_control
+                    .push_runtime_log_line(TerminalStream::Stdout, completed.summary.clone());
+            }
+            state
+                .mission_control
+                .record_action(completed.summary.clone());
+            state.provider_runtime.last_result = Some(completed.summary.clone());
+        }
+        AppleFmMissionControlSummaryUpdate::Failed(failed) => {
+            state.mission_control.local_fm_summary_pending_request_id = None;
+            state.mission_control.local_fm_summary_text.clear();
+            state.mission_control.upsert_runtime_log_line(
+                mission_control_summary_line_key(failed.request_id.as_str()),
+                TerminalStream::Stderr,
+                format!("Local FM summary failed // {}", failed.error),
+            );
+            state.mission_control.record_error(failed.error.clone());
+        }
+    }
+}
+
 fn terminal_stream(level: AppleFmWorkbenchLogLevel) -> TerminalStream {
     match level {
         AppleFmWorkbenchLogLevel::Info => TerminalStream::Stdout,
@@ -168,4 +260,8 @@ fn truncate_preview(value: &str) -> String {
         let prefix = value.chars().take(PREVIEW_LIMIT).collect::<String>();
         format!("{prefix}\n\n[truncated]")
     }
+}
+
+fn mission_control_summary_line_key(request_id: &str) -> String {
+    format!("{MISSION_CONTROL_SUMMARY_LINE_KEY_PREFIX}{request_id}")
 }

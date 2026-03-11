@@ -609,6 +609,8 @@ pub struct MissionControlPaneState {
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
     pub buy_mode_last_dispatch_at: Option<Instant>,
+    pub local_fm_summary_pending_request_id: Option<String>,
+    pub local_fm_summary_text: String,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
@@ -643,6 +645,8 @@ impl Default for MissionControlPaneState {
             buy_mode_loop_enabled: false,
             buy_mode_next_dispatch_at: None,
             buy_mode_last_dispatch_at: None,
+            local_fm_summary_pending_request_id: None,
+            local_fm_summary_text: String::new(),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_content: Vec::new(),
@@ -700,6 +704,50 @@ impl MissionControlPaneState {
 
     pub fn record_error(&mut self, error: impl Into<String>) {
         self.last_error = Some(error.into());
+    }
+
+    pub fn begin_local_fm_summary(&mut self, request_id: impl Into<String>, detail: &str) {
+        let request_id = request_id.into();
+        self.local_fm_summary_pending_request_id = Some(request_id.clone());
+        self.local_fm_summary_text.clear();
+        self.push_runtime_log_line(
+            TerminalStream::Stdout,
+            format!("Local FM summary queued [{request_id}] // {detail}"),
+        );
+    }
+
+    pub fn local_fm_summary_is_pending(&self) -> bool {
+        self.local_fm_summary_pending_request_id.is_some()
+    }
+
+    pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
+        self.log_stream.push_line(TerminalLine::new(
+            stream,
+            format!(
+                "{}  {}",
+                mission_control_log_timestamp(now_epoch_seconds()),
+                text.into()
+            ),
+        ));
+    }
+
+    pub fn upsert_runtime_log_line(
+        &mut self,
+        key: impl Into<String>,
+        stream: TerminalStream,
+        text: impl Into<String>,
+    ) {
+        self.log_stream.push_line(
+            TerminalLine::new(
+                stream,
+                format!(
+                    "{}  {}",
+                    mission_control_log_timestamp(now_epoch_seconds()),
+                    text.into()
+                ),
+            )
+            .with_key(key),
+        );
     }
 
     pub fn has_pending_mirrored_trace_logs(&self) -> bool {
@@ -763,6 +811,12 @@ fn mission_control_log_timestamp(epoch_secs: u64) -> String {
         .single()
         .map(|t| t.format("%H:%M:%S").to_string())
         .unwrap_or_else(|| Local::now().format("%H:%M:%S").to_string())
+}
+
+fn now_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 fn build_mission_control_log_lines(

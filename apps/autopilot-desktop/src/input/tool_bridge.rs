@@ -2023,6 +2023,11 @@ fn pane_action_to_hit_action(
                     crate::pane_system::MissionControlPaneAction::ToggleBuyModeLoop,
                 ))
             }
+            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => {
+                Ok(PaneHitAction::MissionControl(
+                    crate::pane_system::MissionControlPaneAction::RunLocalFmSummaryTest,
+                ))
+            }
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
                 Ok(PaneHitAction::MissionControl(
                     crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
@@ -6094,6 +6099,11 @@ mod tests {
             pane_action_to_hit_action(PaneKind::GoOnline, "open_local_model", None)
                 .expect("mission control local model"),
             PaneHitAction::MissionControl(MissionControlPaneAction::OpenLocalModelWorkbench)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::GoOnline, "test_local_fm", None)
+                .expect("mission control local fm test"),
+            PaneHitAction::MissionControl(MissionControlPaneAction::RunLocalFmSummaryTest)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::Settings, "save", None).expect("settings save"),
