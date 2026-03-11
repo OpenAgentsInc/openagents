@@ -1,5 +1,5 @@
 use crate::app_state::{EarnFailureClass, RenderState};
-use qrcode::QrCode;
+use qrcode::{render::unicode::Dense1x2, QrCode};
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     let previous_invoice = state.spark_wallet.last_invoice.clone();
@@ -120,11 +120,9 @@ fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {
     let qr = QrCode::new(invoice.as_bytes())
         .map_err(|error| format!("invalid Lightning invoice for QR render: {error}"))?;
     Ok(qr
-        .render::<char>()
+        .render::<Dense1x2>()
         .quiet_zone(true)
-        .module_dimensions(2, 1)
-        .dark_color('█')
-        .light_color(' ')
+        .module_dimensions(1, 1)
         .build())
 }
 
