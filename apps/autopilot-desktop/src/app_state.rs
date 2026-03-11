@@ -612,7 +612,7 @@ impl Default for MissionControlPaneState {
         Self {
             amount_display_mode: BitcoinAmountDisplayMode::Integer,
             log_stream: TerminalPane::new()
-                .title("\\\\ LOG STREAM")
+                .title("\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
             withdraw_invoice: TextInput::new().placeholder("Paste Lightning invoice to withdraw"),
