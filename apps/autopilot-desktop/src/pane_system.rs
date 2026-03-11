@@ -1991,22 +1991,22 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).sell_panel;
     Bounds::new(
         panel.origin.x + 14.0,
-        panel.origin.y + 34.0,
+        panel.origin.y + 44.0,
         (panel.size.width - 28.0).max(0.0),
-        36.0,
+        68.0,
     )
 }
 
 pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).earnings_panel;
-    let width = (panel.size.width * 0.48)
-        .clamp(132.0, 176.0)
+    let width = (panel.size.width * 0.42)
+        .clamp(116.0, 156.0)
         .min((panel.size.width - 28.0).max(0.0));
     Bounds::new(
         panel.max_x() - width - 14.0,
-        panel.origin.y + 12.0,
+        panel.origin.y + 14.0,
         width,
-        28.0,
+        24.0,
     )
 }
 
