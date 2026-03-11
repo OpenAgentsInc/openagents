@@ -301,7 +301,9 @@ impl AppleFmGenerationOptions {
 
     /// Validates option semantics against the Python SDK contract.
     pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
-        if let Some(temperature) = self.temperature && temperature < 0.0 {
+        if let Some(temperature) = self.temperature
+            && temperature < 0.0
+        {
             return Err(AppleFmGenerationOptionsValidationError::NegativeTemperature);
         }
         if self.maximum_response_tokens == Some(0) {

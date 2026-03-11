@@ -382,7 +382,8 @@ pub fn validate_remote_bind_addr(raw: &str) -> Result<SocketAddr, String> {
 
 pub fn generate_remote_auth_token() -> Result<String, String> {
     let mut bytes = [0_u8; 24];
-    getrandom::fill(&mut bytes).map_err(|error| format!("Failed to generate auth token: {error}"))?;
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("Failed to generate auth token: {error}"))?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
@@ -463,10 +464,7 @@ pub fn rotate_remote_runtime_token(state: &mut RenderState) -> Result<String, St
     state.codex_remote.last_action = Some("Remote auth token rotated".to_string());
     Ok(format!(
         "Remote auth token rotated for {} token={}",
-        state.codex_remote
-            .listen_addr
-            .as_deref()
-            .unwrap_or("n/a"),
+        state.codex_remote.listen_addr.as_deref().unwrap_or("n/a"),
         auth_token_preview(&auth_token)
     ))
 }
@@ -475,11 +473,9 @@ pub fn remote_status_lines(state: &RenderState) -> Vec<String> {
     let mut lines = vec![if state.codex_remote.enabled {
         format!(
             "Remote: enabled bind={} token={}",
-            state.codex_remote
-                .listen_addr
-                .as_deref()
-                .unwrap_or("n/a"),
-            state.codex_remote
+            state.codex_remote.listen_addr.as_deref().unwrap_or("n/a"),
+            state
+                .codex_remote
                 .auth_token_preview
                 .as_deref()
                 .unwrap_or("n/a")
@@ -545,7 +541,8 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     let signature = match serde_json::to_string(&snapshot) {
         Ok(json) => sha256_prefixed_text(json.as_str()),
         Err(error) => {
-            state.codex_remote.last_error = Some(format!("Failed to encode remote snapshot: {error}"));
+            state.codex_remote.last_error =
+                Some(format!("Failed to encode remote snapshot: {error}"));
             return false;
         }
     };
@@ -597,12 +594,13 @@ fn apply_remote_action(
             Ok(message) => CodexRemoteActionResponse::ok(message),
             Err(error) => CodexRemoteActionResponse::error(error),
         },
-        CodexRemoteActionRequest::RespondToolUserInput { request_id, answers } => {
-            match respond_tool_user_input(state, request_id.as_str(), answers) {
-                Ok(message) => CodexRemoteActionResponse::ok(message),
-                Err(error) => CodexRemoteActionResponse::error(error),
-            }
-        }
+        CodexRemoteActionRequest::RespondToolUserInput {
+            request_id,
+            answers,
+        } => match respond_tool_user_input(state, request_id.as_str(), answers) {
+            Ok(message) => CodexRemoteActionResponse::ok(message),
+            Err(error) => CodexRemoteActionResponse::error(error),
+        },
         CodexRemoteActionRequest::UpdateSession {
             model,
             reasoning_effort,
@@ -641,7 +639,9 @@ fn respond_approval(
                 .iter()
                 .position(|request| remote_request_id_value(&request.request_id) == request_id)
             else {
-                return Err(format!("No pending command approval matched `{request_id}`"));
+                return Err(format!(
+                    "No pending command approval matched `{request_id}`"
+                ));
             };
             let request = state.autopilot_chat.pending_command_approvals[index].clone();
             state.queue_codex_command(
@@ -659,10 +659,14 @@ fn respond_approval(
                 remote_approval_decision_label(decision),
                 current_epoch_ms(),
             );
-            state
-                .autopilot_chat
-                .record_turn_timeline_event(format!("remote command approval: {}", remote_approval_decision_label(decision)));
-            Ok(format!("Submitted command approval {}", remote_approval_decision_label(decision)))
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "remote command approval: {}",
+                remote_approval_decision_label(decision)
+            ));
+            Ok(format!(
+                "Submitted command approval {}",
+                remote_approval_decision_label(decision)
+            ))
         }
         CodexRemoteApprovalKind::FileChange => {
             let Some(index) = state
@@ -682,17 +686,26 @@ fn respond_approval(
                     },
                 },
             )?;
-            state.autopilot_chat.pending_file_change_approvals.remove(index);
-            state.autopilot_chat.record_turn_file_change_approval_response(
-                request.turn_id.as_str(),
-                request.item_id.as_str(),
-                remote_approval_decision_label(decision),
-                current_epoch_ms(),
-            );
             state
                 .autopilot_chat
-                .record_turn_timeline_event(format!("remote file approval: {}", remote_approval_decision_label(decision)));
-            Ok(format!("Submitted file approval {}", remote_approval_decision_label(decision)))
+                .pending_file_change_approvals
+                .remove(index);
+            state
+                .autopilot_chat
+                .record_turn_file_change_approval_response(
+                    request.turn_id.as_str(),
+                    request.item_id.as_str(),
+                    remote_approval_decision_label(decision),
+                    current_epoch_ms(),
+                );
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "remote file approval: {}",
+                remote_approval_decision_label(decision)
+            ));
+            Ok(format!(
+                "Submitted file approval {}",
+                remote_approval_decision_label(decision)
+            ))
         }
     }
 }
@@ -713,18 +726,18 @@ fn respond_tool_user_input(
     let request = state.autopilot_chat.pending_tool_user_input[index].clone();
     let mut response_answers = HashMap::new();
     for question in &request.questions {
-        let selected = answers
-            .get(&question.id)
-            .cloned()
-            .unwrap_or_else(|| {
-                question
-                    .options
-                    .first()
-                    .cloned()
-                    .map(|value| vec![value])
-                    .unwrap_or_else(|| vec!["ok".to_string()])
-            });
-        response_answers.insert(question.id.clone(), ToolRequestUserInputAnswer { answers: selected });
+        let selected = answers.get(&question.id).cloned().unwrap_or_else(|| {
+            question
+                .options
+                .first()
+                .cloned()
+                .map(|value| vec![value])
+                .unwrap_or_else(|| vec!["ok".to_string()])
+        });
+        response_answers.insert(
+            question.id.clone(),
+            ToolRequestUserInputAnswer { answers: selected },
+        );
     }
     state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ServerRequestToolUserInputRespond {
@@ -927,44 +940,46 @@ pub fn snapshot_for_state(state: &RenderState) -> CodexRemoteSnapshot {
         pending_auth_refresh: state.autopilot_chat.pending_auth_refresh.len(),
     };
 
-    let plan = state
-        .autopilot_chat
-        .active_plan_artifact()
-        .map(|artifact| CodexRemotePlanArtifact {
-            explanation: artifact.explanation.clone(),
-            steps: artifact
-                .steps
-                .iter()
-                .map(|step| CodexRemotePlanStep {
-                    step: step.step.clone(),
-                    status: step.status.clone(),
-                })
-                .collect(),
-            updated_at_epoch_ms: artifact.updated_at_epoch_ms,
-        });
+    let plan =
+        state
+            .autopilot_chat
+            .active_plan_artifact()
+            .map(|artifact| CodexRemotePlanArtifact {
+                explanation: artifact.explanation.clone(),
+                steps: artifact
+                    .steps
+                    .iter()
+                    .map(|step| CodexRemotePlanStep {
+                        step: step.step.clone(),
+                        status: step.status.clone(),
+                    })
+                    .collect(),
+                updated_at_epoch_ms: artifact.updated_at_epoch_ms,
+            });
 
-    let latest_diff = state
-        .autopilot_chat
-        .active_diff_artifact()
-        .map(|artifact| CodexRemoteDiffArtifact {
-            summary: format!(
-                "{} file(s), +{}, -{}",
-                artifact.files.len(),
-                artifact.added_line_count,
-                artifact.removed_line_count
-            ),
-            files: artifact
-                .files
-                .iter()
-                .map(|file| CodexRemoteDiffFile {
-                    path: file.path.clone(),
-                    added_line_count: file.added_line_count,
-                    removed_line_count: file.removed_line_count,
-                })
-                .collect(),
-            raw_diff: artifact.raw_diff.clone(),
-            updated_at_epoch_ms: artifact.updated_at_epoch_ms,
-        });
+    let latest_diff =
+        state
+            .autopilot_chat
+            .active_diff_artifact()
+            .map(|artifact| CodexRemoteDiffArtifact {
+                summary: format!(
+                    "{} file(s), +{}, -{}",
+                    artifact.files.len(),
+                    artifact.added_line_count,
+                    artifact.removed_line_count
+                ),
+                files: artifact
+                    .files
+                    .iter()
+                    .map(|file| CodexRemoteDiffFile {
+                        path: file.path.clone(),
+                        added_line_count: file.added_line_count,
+                        removed_line_count: file.removed_line_count,
+                    })
+                    .collect(),
+                raw_diff: artifact.raw_diff.clone(),
+                updated_at_epoch_ms: artifact.updated_at_epoch_ms,
+            });
 
     let wallet = CodexRemoteWalletSummary {
         total_sats: state
@@ -1088,7 +1103,9 @@ fn run_remote_runtime_loop(
         let listen_addr = match listener.local_addr() {
             Ok(addr) => addr,
             Err(error) => {
-                let _ = ready_tx.send(Err(format!("Failed to resolve remote listener address: {error}")));
+                let _ = ready_tx.send(Err(format!(
+                    "Failed to resolve remote listener address: {error}"
+                )));
                 return;
             }
         };
@@ -1144,7 +1161,10 @@ fn cached_git_worktree_entries(workspace_root: &str) -> Vec<String> {
     }
     let entries = git_worktree_entries(workspace_root);
     if let Ok(mut guard) = cache.lock() {
-        guard.insert(workspace_root.to_string(), (Instant::now(), entries.clone()));
+        guard.insert(
+            workspace_root.to_string(),
+            (Instant::now(), entries.clone()),
+        );
     }
     entries
 }
@@ -1272,11 +1292,16 @@ async fn remote_action(
     if let Err(status) = authorize_request(&headers, &state) {
         return (
             status,
-            Json(CodexRemoteActionResponse::error("Unauthorized remote request")),
+            Json(CodexRemoteActionResponse::error(
+                "Unauthorized remote request",
+            )),
         );
     }
     let (response_tx, response_rx) = oneshot::channel();
-    let envelope = CodexRemoteActionEnvelope { action, response_tx };
+    let envelope = CodexRemoteActionEnvelope {
+        action,
+        response_tx,
+    };
     if state
         .update_tx
         .send(CodexRemoteRuntimeUpdate::ActionRequest(envelope))
@@ -1284,18 +1309,24 @@ async fn remote_action(
     {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(CodexRemoteActionResponse::error("Desktop remote loop is unavailable")),
+            Json(CodexRemoteActionResponse::error(
+                "Desktop remote loop is unavailable",
+            )),
         );
     }
     match tokio::time::timeout(Duration::from_secs(3), response_rx).await {
         Ok(Ok(response)) => (StatusCode::OK, Json(response)),
         Ok(Err(_)) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(CodexRemoteActionResponse::error("Desktop dropped the remote action response")),
+            Json(CodexRemoteActionResponse::error(
+                "Desktop dropped the remote action response",
+            )),
         ),
         Err(_) => (
             StatusCode::REQUEST_TIMEOUT,
-            Json(CodexRemoteActionResponse::error("Desktop remote action timed out")),
+            Json(CodexRemoteActionResponse::error(
+                "Desktop remote action timed out",
+            )),
         ),
     }
 }
@@ -1341,7 +1372,11 @@ fn auth_token_preview(auth_token: &str) -> String {
     if trimmed.len() <= 10 {
         trimmed.to_string()
     } else {
-        format!("{}...{}", &trimmed[..4], &trimmed[trimmed.len().saturating_sub(4)..])
+        format!(
+            "{}...{}",
+            &trimmed[..4],
+            &trimmed[trimmed.len().saturating_sub(4)..]
+        )
     }
 }
 
@@ -1442,7 +1477,9 @@ fn parse_approval_mode(raw: &str) -> Result<codex_client::AskForApproval, String
         "on-failure" => Ok(codex_client::AskForApproval::OnFailure),
         "on-request" => Ok(codex_client::AskForApproval::OnRequest),
         "unless-trusted" => Ok(codex_client::AskForApproval::UnlessTrusted),
-        _ => Err("Approval mode must be never, on-failure, on-request, or unless-trusted".to_string()),
+        _ => Err(
+            "Approval mode must be never, on-failure, on-request, or unless-trusted".to_string(),
+        ),
     }
 }
 
@@ -1451,7 +1488,9 @@ fn parse_sandbox_mode(raw: &str) -> Result<codex_client::SandboxMode, String> {
         "danger-full-access" => Ok(codex_client::SandboxMode::DangerFullAccess),
         "workspace-write" => Ok(codex_client::SandboxMode::WorkspaceWrite),
         "read-only" => Ok(codex_client::SandboxMode::ReadOnly),
-        _ => Err("Sandbox mode must be danger-full-access, workspace-write, or read-only".to_string()),
+        _ => Err(
+            "Sandbox mode must be danger-full-access, workspace-write, or read-only".to_string(),
+        ),
     }
 }
 
@@ -2158,7 +2197,12 @@ const REMOTE_HTML: &str = r#"<!doctype html>
 "#;
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used, reason = "remote runtime tests use direct assertions")]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "remote runtime tests use direct assertions"
+)]
 mod tests {
     use super::*;
 
@@ -2267,7 +2311,10 @@ mod tests {
         let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
         let action_url = format!("http://{}/v1/action", runtime.listen_addr());
 
-        let unauthorized = client.get(snapshot_url.as_str()).send().expect("send unauthorized");
+        let unauthorized = client
+            .get(snapshot_url.as_str())
+            .send()
+            .expect("send unauthorized");
         assert_eq!(unauthorized.status(), reqwest::StatusCode::UNAUTHORIZED);
 
         let snapshot = client
@@ -2326,7 +2373,9 @@ mod tests {
         runtime
             .sync_snapshot(sample_snapshot())
             .expect("sync sample snapshot");
-        runtime.rotate_token("new".to_string()).expect("rotate token");
+        runtime
+            .rotate_token("new".to_string())
+            .expect("rotate token");
 
         let client = reqwest::blocking::Client::new();
         let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());

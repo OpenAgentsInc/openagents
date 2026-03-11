@@ -3484,8 +3484,7 @@ mod tests {
         is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
         provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
         should_mirror_provider_preflight_error, should_open_command_palette,
-        terminal_goal_labor_linkage,
-        validate_lightning_payment_request,
+        terminal_goal_labor_linkage, validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{

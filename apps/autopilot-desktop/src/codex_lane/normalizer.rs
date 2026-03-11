@@ -558,7 +558,8 @@ pub(super) fn extract_latest_thread_compaction_artifact(
 ) -> Option<CodexThreadCompactionArtifact> {
     for turn in thread.turns.iter().rev() {
         for item in turn.items.iter().rev() {
-            if item_type_from_item_value(item).is_some_and(|item_type| item_type == "contextCompaction")
+            if item_type_from_item_value(item)
+                .is_some_and(|item_type| item_type == "contextCompaction")
             {
                 return Some(CodexThreadCompactionArtifact {
                     turn_id: turn.id.clone(),

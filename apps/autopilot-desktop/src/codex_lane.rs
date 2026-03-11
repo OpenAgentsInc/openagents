@@ -1330,8 +1330,7 @@ impl CodexLaneState {
                 let messages = extract_thread_transcript_messages(&response.thread);
                 let latest_plan = extract_latest_thread_plan_artifact(&response.thread);
                 let latest_review = extract_latest_thread_review_artifact(&response.thread);
-                let latest_compaction =
-                    extract_latest_thread_compaction_artifact(&response.thread);
+                let latest_compaction = extract_latest_thread_compaction_artifact(&response.thread);
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
                     notification: Some(CodexLaneNotification::ThreadReadLoaded {
