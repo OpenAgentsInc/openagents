@@ -29,6 +29,7 @@ use nostr::nip90::{
     create_job_result_event,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
+use wgpui::clipboard::copy_to_clipboard;
 
 const MIN_PROVIDER_PRICE_SATS: u64 = 1;
 const MIN_PROVIDER_TTL_SECONDS: u64 = 30;
@@ -956,6 +957,26 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
                 true,
             );
             super::super::refresh_earnings_scoreboard(state, now);
+            true
+        }
+        ActiveJobPaneAction::CopyAll => {
+            let output = crate::pane_renderer::active_job_clipboard_text(
+                &state.active_job,
+                &state.earn_job_lifecycle_projection,
+            );
+            match copy_to_clipboard(&output) {
+                Ok(()) => {
+                    state.active_job.last_error = None;
+                    state.active_job.load_state = PaneLoadState::Ready;
+                    state.active_job.last_action =
+                        Some("Copied Active Job pane to clipboard".to_string());
+                }
+                Err(error) => {
+                    state.active_job.last_error =
+                        Some(format!("Failed to copy Active Job pane: {error}"));
+                    state.active_job.load_state = PaneLoadState::Error;
+                }
+            }
             true
         }
     }

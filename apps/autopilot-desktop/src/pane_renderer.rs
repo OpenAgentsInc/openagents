@@ -23,24 +23,25 @@ use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    active_job_scroll_viewport_bounds, activity_feed_detail_viewport_bounds,
-    activity_feed_details_bounds, activity_feed_filter_button_bounds,
-    activity_feed_next_page_button_bounds, activity_feed_prev_page_button_bounds,
-    activity_feed_refresh_button_bounds, activity_feed_row_bounds, activity_feed_visible_row_count,
-    alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
-    alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
-    alerts_recovery_visible_row_count, credentials_add_custom_button_bounds,
-    credentials_delete_button_bounds, credentials_import_button_bounds,
-    credentials_name_input_bounds, credentials_reload_button_bounds, credentials_row_bounds,
-    credentials_save_value_button_bounds, credentials_scope_codex_button_bounds,
-    credentials_scope_global_button_bounds, credentials_scope_skills_button_bounds,
-    credentials_scope_spark_button_bounds, credentials_toggle_enabled_button_bounds,
-    credentials_value_input_bounds, credentials_visible_row_count,
-    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
-    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-    job_history_search_input_bounds, job_history_status_button_bounds,
-    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
+    active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
+    activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
+    activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
+    activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
+    activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
+    alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
+    alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
+    credentials_add_custom_button_bounds, credentials_delete_button_bounds,
+    credentials_import_button_bounds, credentials_name_input_bounds,
+    credentials_reload_button_bounds, credentials_row_bounds, credentials_save_value_button_bounds,
+    credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
+    credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
+    credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
+    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
+    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+    job_history_prev_page_button_bounds, job_history_search_input_bounds,
+    job_history_status_button_bounds, job_history_time_button_bounds,
+    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+    job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
     mission_control_copy_seed_button_bounds, mission_control_layout_for_mode,
     mission_control_load_funds_layout, mission_control_local_fm_test_button_bounds,
@@ -4698,12 +4699,14 @@ fn paint_active_job_pane(
 
     let advance_bounds = active_job_advance_button_bounds(content_bounds);
     let abort_bounds = active_job_abort_button_bounds(content_bounds);
+    let copy_bounds = active_job_copy_button_bounds(content_bounds);
     paint_disabled_button(advance_bounds, "Execution auto", paint);
     if active_job.runtime_supports_abort {
         paint_action_button(abort_bounds, "Abort job", paint);
     } else {
         paint_disabled_button(abort_bounds, "Abort unsupported", paint);
     }
+    paint_action_button(copy_bounds, "Copy all", paint);
     let viewport =
         active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
     paint.scene.push_clip(viewport);
@@ -4756,6 +4759,19 @@ fn paint_active_job_pane(
             .with_background(theme::accent::PRIMARY.with_alpha(0.75)),
         );
     }
+}
+
+pub(crate) fn active_job_clipboard_text(
+    active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+) -> String {
+    let mut lines = vec!["Active Job".to_string(), String::new()];
+    lines.extend(
+        build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, 120)
+            .into_iter()
+            .map(|line| line.text),
+    );
+    lines.join("\n")
 }
 
 struct ActiveJobRenderLine {
@@ -5998,13 +6014,14 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        build_active_job_scroll_lines, create_invoice_view_state, mission_control_body_chunk_len,
-        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
-        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
-        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
-        mission_control_local_model_button_label, mission_control_value_chunk_len,
-        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
+        active_job_clipboard_text, build_active_job_scroll_lines, create_invoice_view_state,
+        mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
+        mission_control_buy_mode_payment_label, mission_control_go_online_hint,
+        mission_control_lightning_receive_state_label, mission_control_local_fm_test_button_label,
+        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
+        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
+        pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision,
@@ -6186,6 +6203,20 @@ mod tests {
         assert!(texts.contains(&"[x] running"));
         assert!(texts.contains(&"[ ] delivered"));
         assert!(texts.contains(&"[ ] paid"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_header_and_request_id() {
+        let request = fixture_active_job_request("req-active-job-copy");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+
+        let output =
+            active_job_clipboard_text(&active_job, &EarnJobLifecycleProjectionState::default());
+
+        assert!(output.starts_with("Active Job"));
+        assert!(output.contains("Job ID: job-req-active-job-copy"));
+        assert!(output.contains("[x] received"));
     }
 
     #[test]
