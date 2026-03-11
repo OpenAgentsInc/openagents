@@ -836,7 +836,13 @@ fn build_mission_control_log_lines(
         }
     }
 
-    let (model_status_stream, model_status) =
+    let (model_status_stream, model_status) = if unsupported_sell_platform_offline {
+        (
+            TerminalStream::Stdout,
+            "Buy Mode uses buyer relays only on this platform. Sell compute stays disabled."
+                .to_string(),
+        )
+    } else {
         match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
             Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                 if provider_runtime.apple_fm.is_ready() {
@@ -893,7 +899,8 @@ fn build_mission_control_log_lines(
                 "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path."
                     .to_string(),
             ),
-        };
+        }
+    };
     push_entry(model_status_stream, model_status, None);
 
     if let Some(action) = mission_action {
@@ -903,17 +910,18 @@ fn build_mission_control_log_lines(
         push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None);
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
-        if unsupported_sell_platform_offline
-            && result.starts_with("Relay preview active")
-        {
+        if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
             push_entry(
                 TerminalStream::Stdout,
                 result.replacen("Relay preview", "Buyer relays", 1),
                 None,
             );
-        } else if !unsupported_sell_platform_offline
-            || !result.starts_with("Relay preview")
+        } else if unsupported_sell_platform_offline
+            && (result.starts_with("Buyer relay transport")
+                || result.starts_with("Buyer response relay tracking"))
         {
+            push_entry(TerminalStream::Stdout, result.to_string(), None);
+        } else if !unsupported_sell_platform_offline || !result.starts_with("Relay preview") {
             push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
         }
     }
