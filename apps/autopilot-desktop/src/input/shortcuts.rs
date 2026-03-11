@@ -11,6 +11,10 @@ pub(super) fn pay_invoice_inputs_focused(state: &crate::app_state::RenderState) 
         || state.pay_invoice_inputs.amount_sats.is_focused()
 }
 
+pub(super) fn mission_control_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.mission_control.withdraw_invoice.is_focused()
+}
+
 pub(super) fn create_invoice_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.create_invoice_inputs.amount_sats.is_focused()
         || state.create_invoice_inputs.description.is_focused()
@@ -75,6 +79,7 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || state.chat_inputs.thread_search.is_focused()
         || state.calculator_inputs.expression.is_focused()
         || spark_inputs_focused(state)
+        || mission_control_inputs_focused(state)
         || pay_invoice_inputs_focused(state)
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
@@ -91,6 +96,7 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.spark_inputs.invoice_amount.blur();
     state.spark_inputs.send_request.blur();
     state.spark_inputs.send_amount.blur();
+    state.mission_control.withdraw_invoice.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.amount_sats.blur();

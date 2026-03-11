@@ -62,7 +62,8 @@ use crate::pane_system::{
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
-    dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
+    dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
+    dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
     pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
@@ -2454,6 +2455,7 @@ fn finish_chat_transcript_selection_drag(
 
 fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
     let mut handled = dispatch_spark_input_event(state, event);
+    handled |= dispatch_mission_control_input_event(state, event);
     handled |= dispatch_pay_invoice_input_event(state, event);
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
@@ -2606,6 +2608,7 @@ fn dispatch_keyboard_submit_actions(
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
+        || handle_mission_control_keyboard_input(state, logical_key)
         || handle_pay_invoice_keyboard_input(state, logical_key)
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
@@ -3068,6 +3071,28 @@ fn handle_spark_wallet_keyboard_input(
             }
             if s.spark_inputs.send_request.is_focused() || s.spark_inputs.send_amount.is_focused() {
                 let _ = run_spark_action(s, SparkPaneAction::SendPayment);
+                return true;
+            }
+            false
+        },
+    )
+}
+
+fn handle_mission_control_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        mission_control_inputs_focused,
+        dispatch_mission_control_input_event,
+        |s| {
+            if s.mission_control.withdraw_invoice.is_focused() {
+                let _ = run_mission_control_action(
+                    s,
+                    crate::pane_system::MissionControlPaneAction::SendWithdrawal,
+                );
                 return true;
             }
             false

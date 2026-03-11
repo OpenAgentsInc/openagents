@@ -126,6 +126,7 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
+    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -169,6 +170,7 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
+    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -207,6 +209,7 @@ fn focus_apple_fm_workbench_prompt_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
+    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -327,6 +330,7 @@ pub enum EarningsScoreboardPaneAction {
 pub enum MissionControlPaneAction {
     ToggleAmountDisplay,
     OpenLocalModelWorkbench,
+    SendWithdrawal,
     OpenDocumentation,
 }
 
@@ -1362,6 +1366,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             if !content_bounds.contains(point) {
                 return CursorIcon::Default;
             }
+            if pane.kind == PaneKind::GoOnline
+                && mission_control_withdraw_invoice_input_bounds(content_bounds).contains(point)
+            {
+                return CursorIcon::Text;
+            }
             if let Some(action) = pane_hit_action_for_pane(state, pane, point) {
                 if let PaneHitAction::CadDemo(cad_action) = action
                     && cad_action_uses_dense_row_hot_zone(cad_action)
@@ -1485,6 +1494,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::GoOnline => {
+                if mission_control_withdraw_invoice_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::Empty
             | PaneKind::ProjectOps
             | PaneKind::CodexAccount
@@ -1494,7 +1508,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexApps
             | PaneKind::CodexLabs
             | PaneKind::CodexDiagnostics
-            | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::SyncHealth
@@ -2115,11 +2128,39 @@ pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bo
 
 pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
+    let height = (panel.size.height * 0.28).clamp(26.0, 30.0);
+    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
+    let total_height = height * 3.0 + gap * 2.0;
+    let top = panel.origin.y + ((panel.size.height - total_height).max(0.0) * 0.5);
     Bounds::new(
         panel.origin.x + 14.0,
-        panel.origin.y + 30.0,
+        top,
         (panel.size.width - 28.0).max(0.0),
-        30.0,
+        height,
+    )
+}
+
+pub fn mission_control_withdraw_invoice_input_bounds(content_bounds: Bounds) -> Bounds {
+    let local_model = mission_control_local_model_button_bounds(content_bounds);
+    let panel = mission_control_layout(content_bounds).actions_panel;
+    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
+    Bounds::new(
+        local_model.origin.x,
+        local_model.max_y() + gap,
+        local_model.size.width,
+        local_model.size.height,
+    )
+}
+
+pub fn mission_control_withdraw_button_bounds(content_bounds: Bounds) -> Bounds {
+    let input = mission_control_withdraw_invoice_input_bounds(content_bounds);
+    let panel = mission_control_layout(content_bounds).actions_panel;
+    let gap = (panel.size.height * 0.08).clamp(6.0, 10.0);
+    Bounds::new(
+        input.origin.x,
+        input.max_y() + gap,
+        input.size.width,
+        input.size.height,
     )
 }
 
@@ -4366,9 +4407,16 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
                 ))
-            } else if mission_control_documentation_button_bounds(content_bounds).contains(point) {
+            } else if mission_control_withdraw_button_bounds(content_bounds).contains(point)
+                && !state
+                    .mission_control
+                    .withdraw_invoice
+                    .get_value()
+                    .trim()
+                    .is_empty()
+            {
                 Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenDocumentation,
+                    MissionControlPaneAction::SendWithdrawal,
                 ))
             } else {
                 None
@@ -5360,6 +5408,26 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
     wallet_pane::dispatch_pay_invoice_input_event(state, event)
 }
 
+pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_mission_control = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::GoOnline)
+        .max_by_key(|pane| pane.z_index);
+    let Some(pane) = top_mission_control else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
+
+    state
+        .mission_control
+        .withdraw_invoice
+        .event(event, input_bounds, &mut state.event_context)
+        .is_handled()
+}
+
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     chat_pane::dispatch_input_event(state, event)
 }
@@ -5828,7 +5896,8 @@ mod tests {
         starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-        trajectory_verify_button_bounds,
+        trajectory_verify_button_bounds, mission_control_local_model_button_bounds,
+        mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     };
     use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
@@ -5902,6 +5971,19 @@ mod tests {
             pane_content_bounds_for_presentation(bounds, PanePresentation::Windowed),
             bounds
         );
+    }
+
+    #[test]
+    fn mission_control_withdraw_controls_fit_below_local_model_action() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout(content_bounds);
+        let local_model = mission_control_local_model_button_bounds(content_bounds);
+        let withdraw_input = mission_control_withdraw_invoice_input_bounds(content_bounds);
+        let withdraw_button = mission_control_withdraw_button_bounds(content_bounds);
+
+        assert!(local_model.max_y() <= withdraw_input.origin.y);
+        assert!(withdraw_input.max_y() <= withdraw_button.origin.y);
+        assert!(withdraw_button.max_y() <= layout.actions_panel.max_y());
     }
 
     #[test]

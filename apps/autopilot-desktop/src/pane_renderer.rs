@@ -41,18 +41,19 @@ use crate::pane_system::{
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_amount_toggle_button_bounds,
-    mission_control_documentation_button_bounds, mission_control_layout,
-    mission_control_local_model_button_bounds, network_requests_accept_button_bounds,
-    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
-    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
-    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-    network_requests_type_input_bounds, network_requests_visible_quote_count,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
-    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
-    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_layout, mission_control_local_model_button_bounds,
+    mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
+    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
+    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
+    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
+    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
+    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
+    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
+    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+    settings_provider_queue_input_bounds, settings_relay_input_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -910,11 +911,25 @@ fn paint_go_online_pane(
     } else {
         paint_disabled_button(download_bounds, &download_label, paint);
     }
-    paint_action_button(
-        mission_control_documentation_button_bounds(content_bounds),
-        "DOCUMENTATION",
-        paint,
-    );
+    let withdraw_input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
+    mission_control
+        .withdraw_invoice
+        .set_max_width(withdraw_input_bounds.size.width);
+    mission_control
+        .withdraw_invoice
+        .paint(withdraw_input_bounds, paint);
+
+    let withdraw_bounds = mission_control_withdraw_button_bounds(content_bounds);
+    if mission_control
+        .withdraw_invoice
+        .get_value()
+        .trim()
+        .is_empty()
+    {
+        paint_disabled_button(withdraw_bounds, "WITHDRAW", paint);
+    } else {
+        paint_action_button(withdraw_bounds, "WITHDRAW", paint);
+    }
 
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
@@ -1081,10 +1096,16 @@ fn mission_control_local_model_button_label(
 ) -> String {
     match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
         Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            if provider_runtime.apple_fm.is_ready() {
-                String::from("OPEN APPLE FM")
-            } else if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
+            if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
                 String::from("STARTING APPLE FM")
+            } else if !desktop_shell_mode.is_dev() {
+                if provider_runtime.apple_fm.reachable {
+                    String::from("REFRESH APPLE FM")
+                } else {
+                    String::from("START APPLE FM")
+                }
+            } else if provider_runtime.apple_fm.is_ready() {
+                String::from("OPEN APPLE FM")
             } else if provider_runtime.apple_fm.reachable {
                 String::from("REFRESH APPLE FM")
             } else {
@@ -5092,7 +5113,7 @@ mod tests {
                 &provider,
                 &local
             ),
-            "OPEN APPLE FM"
+            "REFRESH APPLE FM"
         );
         assert_eq!(
             mission_control_go_online_hint(
