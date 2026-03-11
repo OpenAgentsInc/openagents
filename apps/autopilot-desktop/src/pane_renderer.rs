@@ -1154,16 +1154,16 @@ fn paint_mission_control_buy_mode_panel(
     spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
+    let Some(panel_state) =
+        mission_control_buy_mode_panel_state(true, network_requests, spark_wallet)
+    else {
+        return;
+    };
     let clip = mission_control_section_clip_bounds(panel_bounds);
     paint.scene.push_clip(clip);
 
-    let request = network_requests
-        .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
-    let summary = request
-        .map(|request| format!("{} // {}", request.request_id, request.status.label()))
-        .unwrap_or_else(|| "No smoke-test request yet.".to_string());
     paint.scene.draw_text(paint.text.layout_mono(
-        &summary,
+        panel_state.summary.as_str(),
         Point::new(panel_bounds.origin.x + 12.0, panel_bounds.origin.y + 34.0),
         11.0,
         mission_control_text_color(),
@@ -1174,25 +1174,14 @@ fn paint_mission_control_buy_mode_panel(
     let cell_y = panel_bounds.origin.y + 48.0;
     let cell_height = 24.0;
     let values = [
-        (
-            "STATE",
-            request
-                .map(|request| request.status.label().to_string())
-                .unwrap_or_else(|| "idle".to_string()),
-        ),
+        ("STATE", panel_state.state.clone()),
         ("KIND", "5050".to_string()),
         (
             "BUDGET",
             format_mission_control_amount(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS),
         ),
-        (
-            "RESULT",
-            mission_control_buy_mode_result_label(request).to_string(),
-        ),
-        (
-            "SETTLE",
-            mission_control_buy_mode_settlement_label(request, spark_wallet),
-        ),
+        ("RESULT", panel_state.result.clone()),
+        ("SETTLE", panel_state.settle.clone()),
     ];
     for (index, (label, value)) in values.iter().enumerate() {
         let x = panel_bounds.origin.x + 12.0 + index as f32 * (cell_width + cell_gap);
@@ -1206,19 +1195,51 @@ fn paint_mission_control_buy_mode_panel(
     }
     paint.scene.pop_clip();
 
-    let button_enabled = !network_requests
-        .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
     paint_mission_control_command_button(
         mission_control_buy_mode_button_bounds(content_bounds, true),
         "BUY 5050 TEST JOB",
-        if button_enabled {
+        if panel_state.button_enabled {
             mission_control_cyan_color()
         } else {
             mission_control_muted_color()
         },
-        button_enabled,
+        panel_state.button_enabled,
         paint,
     );
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MissionControlBuyModePanelState {
+    summary: String,
+    state: String,
+    result: String,
+    settle: String,
+    button_enabled: bool,
+}
+
+fn mission_control_buy_mode_panel_state(
+    buy_mode_enabled: bool,
+    network_requests: &NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> Option<MissionControlBuyModePanelState> {
+    if !buy_mode_enabled {
+        return None;
+    }
+
+    let request = network_requests
+        .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
+    Some(MissionControlBuyModePanelState {
+        summary: request
+            .map(|request| format!("{} // {}", request.request_id, request.status.label()))
+            .unwrap_or_else(|| "No smoke-test request yet.".to_string()),
+        state: request
+            .map(|request| request.status.label().to_string())
+            .unwrap_or_else(|| "idle".to_string()),
+        result: mission_control_buy_mode_result_label(request).to_string(),
+        settle: mission_control_buy_mode_settlement_label(request, spark_wallet),
+        button_enabled: !network_requests
+            .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE),
+    })
 }
 
 fn paint_mission_control_status_cell(
@@ -5325,16 +5346,40 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        create_invoice_view_state, mission_control_body_chunk_len, mission_control_go_online_hint,
-        mission_control_local_model_button_label, mission_control_value_chunk_len,
-        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
+        create_invoice_view_state, mission_control_body_chunk_len,
+        mission_control_buy_mode_panel_state, mission_control_buy_mode_settlement_label,
+        mission_control_go_online_hint, mission_control_local_model_button_label,
+        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
+        pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::spark_wallet::SparkPaneState;
+    use crate::state::operations::{
+        BuyerResolutionMode, NetworkRequestSubmission, NetworkRequestsState,
+    };
     use crate::state::provider_runtime::ProviderRuntimeState;
     use wgpui::Bounds;
+
+    fn queue_buy_mode_request_for_tests() -> NetworkRequestsState {
+        let mut requests = NetworkRequestsState::default();
+        requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-buy-render-001".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Reply with the exact text BUY MODE OK.".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 21,
+            })
+            .expect("buy mode request should queue");
+        requests
+    }
 
     #[test]
     fn spark_wallet_view_state_prioritizes_error_then_loading_then_ready() {
@@ -5502,5 +5547,95 @@ mod tests {
             ),
             "Start Apple FM before you go online."
         );
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_respects_feature_gate() {
+        let requests = NetworkRequestsState::default();
+        let wallet = SparkPaneState::default();
+
+        assert_eq!(
+            mission_control_buy_mode_panel_state(false, &requests, &wallet),
+            None
+        );
+
+        let panel = mission_control_buy_mode_panel_state(true, &requests, &wallet)
+            .expect("enabled buy mode should expose panel state");
+        assert_eq!(panel.summary, "No smoke-test request yet.");
+        assert_eq!(panel.state, "idle");
+        assert_eq!(panel.result, "waiting");
+        assert_eq!(panel.settle, "idle");
+        assert!(panel.button_enabled);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_requires_payment_settlement() {
+        let mut requests = queue_buy_mode_request_for_tests();
+        let provider_pubkey = "44".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            "req-buy-render-001",
+            "event-buy-render-001",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-001",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                "req-buy-render-001",
+                "lnbc1buyrender",
+                Some(2_000),
+                1_762_700_040,
+            )
+            .expect("payment-required invoice should prepare");
+
+        let paying =
+            mission_control_buy_mode_panel_state(true, &requests, &SparkPaneState::default())
+                .expect("enabled buy mode should expose panel state");
+        assert_eq!(paying.state, "payment-required");
+        assert_eq!(paying.result, "feedback");
+        assert_eq!(paying.settle, "paying");
+        assert!(!paying.button_enabled);
+
+        requests.apply_nip90_buyer_result_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "result-buy-render-001",
+            Some("success"),
+        );
+        let before_payment =
+            mission_control_buy_mode_panel_state(true, &requests, &SparkPaneState::default())
+                .expect("enabled buy mode should expose panel state");
+        assert_eq!(before_payment.state, "result-received");
+        assert_eq!(before_payment.result, "received");
+        assert_eq!(before_payment.settle, "paying");
+        assert_eq!(
+            mission_control_buy_mode_settlement_label(
+                requests.latest_request_by_type(
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
+                ),
+                &SparkPaneState::default()
+            ),
+            "paying".to_string()
+        );
+
+        requests.mark_auto_payment_sent(
+            "req-buy-render-001",
+            "wallet-payment-buy-render-001",
+            1_762_700_041,
+        );
+        let settled =
+            mission_control_buy_mode_panel_state(true, &requests, &SparkPaneState::default())
+                .expect("enabled buy mode should expose panel state");
+        assert_eq!(settled.state, "paid");
+        assert_eq!(settled.result, "received");
+        assert_eq!(settled.settle, "paid");
+        assert!(settled.button_enabled);
     }
 }
