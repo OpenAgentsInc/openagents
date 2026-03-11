@@ -6836,6 +6836,7 @@ pub struct ActiveJobState {
     pub execution_turn_interrupt_command_seq: Option<u64>,
     pub execution_deadline_epoch_seconds: Option<u64>,
     pub result_publish_in_flight: bool,
+    pub pending_result_publish_event_id: Option<String>,
     pub payment_required_invoice_requested: bool,
     pub payment_required_feedback_in_flight: bool,
     pub payment_required_failed: bool,
@@ -6862,6 +6863,7 @@ impl Default for ActiveJobState {
             execution_turn_interrupt_command_seq: None,
             execution_deadline_epoch_seconds: None,
             result_publish_in_flight: false,
+            pending_result_publish_event_id: None,
             payment_required_invoice_requested: false,
             payment_required_feedback_in_flight: false,
             payment_required_failed: false,
@@ -6933,6 +6935,7 @@ impl ActiveJobState {
         self.execution_turn_interrupt_command_seq = None;
         self.execution_deadline_epoch_seconds = None;
         self.result_publish_in_flight = false;
+        self.pending_result_publish_event_id = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;
@@ -7064,6 +7067,7 @@ impl ActiveJobState {
         self.load_state = PaneLoadState::Ready;
         self.runtime_supports_abort = false;
         self.execution_turn_interrupt_command_seq = None;
+        self.pending_result_publish_event_id = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;
