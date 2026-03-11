@@ -63,6 +63,11 @@ impl SparkWalletWorker {
 
         std::thread::spawn(move || {
             let mut state = SparkPaneState::with_network(initial_network);
+            if let Err(error) = ensure_rustls_crypto_provider() {
+                state.last_error = Some(error);
+                let _ = result_tx.send(state.clone());
+                return;
+            }
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -688,6 +693,16 @@ fn current_epoch_seconds() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
+}
+
+fn ensure_rustls_crypto_provider() -> Result<(), String> {
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|error| format!("failed to install rustls crypto provider: {error:?}"))
 }
 
 pub fn configured_network() -> Network {

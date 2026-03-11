@@ -647,6 +647,9 @@ fn handle_command(
             } else {
                 format!("{backend} capability pending: {status}")
             });
+            if let Some(pool) = state.pool.as_ref().cloned() {
+                resubscribe_ingress_filters(runtime, state, pool);
+            }
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureRelays { relays } => {
@@ -705,6 +708,9 @@ fn handle_command(
                         ProviderNip90RelayStatus::Connecting,
                     );
                 }
+            }
+            if let Some(pool) = state.pool.as_ref().cloned() {
+                resubscribe_ingress_filters(runtime, state, pool);
             }
             refresh_relay_health_snapshot(runtime, state);
         }
@@ -2692,6 +2698,78 @@ mod tests {
             transport_row_seen,
             "expected transport relay status row in snapshot"
         );
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_resubscribes_request_ingress_after_capability_becomes_ready() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task) = runtime.block_on(spawn_mock_relay_with_request());
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+
+        let preview_deadline = Instant::now() + Duration::from_secs(4);
+        let mut buyer_transport_preview_seen = false;
+        while Instant::now() < preview_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == super::ProviderNip90LaneMode::Preview
+                    && snapshot.connected_relays > 0
+                    && snapshot
+                        .last_action
+                        .as_deref()
+                        .is_some_and(|action| action.starts_with("Buyer relay transport"))
+                {
+                    buyer_transport_preview_seen = true;
+                    break;
+                }
+            }
+            if buyer_transport_preview_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        assert!(
+            buyer_transport_preview_seen,
+            "expected initial buyer-only preview before capability becomes ready"
+        );
+
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_ollama_capability(),
+            })
+            .expect("queue ready capability");
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let mut ingressed = false;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::IngressedRequest(row) = update
+                    && row.request_id == "request-live-1"
+                {
+                    ingressed = true;
+                    break;
+                }
+            }
+            if ingressed {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        assert!(
+            ingressed,
+            "expected request ingress after capability transition and resubscribe"
+        );
+
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
         relay_task.abort();
     }
