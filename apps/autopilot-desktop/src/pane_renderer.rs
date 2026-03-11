@@ -350,6 +350,7 @@ impl PaneRenderer {
                     buy_mode_payments_pane::paint(
                         content_bounds,
                         buy_mode_payments,
+                        mission_control,
                         network_requests,
                         spark_wallet,
                         paint,

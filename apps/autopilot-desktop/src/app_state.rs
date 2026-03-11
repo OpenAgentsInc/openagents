@@ -1114,6 +1114,11 @@ pub(crate) fn buy_mode_payments_summary_text(
     spark_wallet: &SparkPaneState,
 ) -> String {
     let entries = buy_mode_payment_ledger_entries(network_requests, spark_wallet);
+    let live_rows = entries
+        .iter()
+        .filter(|entry| entry.source == "request")
+        .count();
+    let wallet_backfill_rows = entries.len().saturating_sub(live_rows);
     let mut paid = 0usize;
     let mut pending = 0usize;
     let mut returned = 0usize;
@@ -1133,8 +1138,10 @@ pub(crate) fn buy_mode_payments_summary_text(
     }
 
     format!(
-        "{} rows  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
+        "{} rows  //  {} live  //  {} wallet-backfill  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
         entries.len(),
+        live_rows,
+        wallet_backfill_rows,
         paid,
         pending,
         returned,
@@ -1143,13 +1150,83 @@ pub(crate) fn buy_mode_payments_summary_text(
     )
 }
 
+pub(crate) fn buy_mode_payments_status_lines(
+    mission_control: &MissionControlPaneState,
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    now: Instant,
+) -> Vec<String> {
+    let live_requests = buy_mode_payment_history_requests(network_requests);
+    let in_flight = live_requests
+        .iter()
+        .copied()
+        .find(|request| !request.status.is_terminal());
+    let loop_line = if !mission_control.buy_mode_loop_enabled {
+        format!(
+            "Dispatch loop: off // cadence={}s // policy=single-flight",
+            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+        )
+    } else if let Some(request) = in_flight {
+        format!(
+            "Dispatch loop: on // cadence={}s // policy=single-flight // blocked by {} [{}]",
+            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
+            compact_buy_mode_request_id(request.request_id.as_str()),
+            request.status.label(),
+        )
+    } else {
+        let next = mission_control
+            .buy_mode_next_dispatch_countdown_seconds(now)
+            .map(|seconds| {
+                if seconds == 0 {
+                    "now".to_string()
+                } else {
+                    format!("{seconds}s")
+                }
+            })
+            .unwrap_or_else(|| "now".to_string());
+        format!(
+            "Dispatch loop: on // cadence={}s // policy=single-flight // next={}",
+            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, next
+        )
+    };
+
+    let recent_statuses = if live_requests.is_empty() {
+        "Recent live request statuses: none yet".to_string()
+    } else {
+        let preview = live_requests
+            .iter()
+            .take(4)
+            .map(|request| {
+                format!(
+                    "{}={}",
+                    compact_buy_mode_request_id(request.request_id.as_str()),
+                    request.status.label()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" // ");
+        if live_requests.len() > 4 {
+            format!(
+                "Recent live request statuses: {} // +{} more",
+                preview,
+                live_requests.len().saturating_sub(4)
+            )
+        } else {
+            format!("Recent live request statuses: {preview}")
+        }
+    };
+
+    vec![loop_line, recent_statuses]
+}
+
 pub(crate) fn buy_mode_payments_clipboard_text(
+    mission_control: &MissionControlPaneState,
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
     let mut sections = vec![
         "Buy Mode Payments".to_string(),
         buy_mode_payments_summary_text(network_requests, spark_wallet),
+        buy_mode_payments_status_lines(mission_control, network_requests, Instant::now()).join("\n"),
         "Rows are sourced from buy-mode requests plus wallet-backed Spark send history. Live requests stay linked by wallet pointer; older buy-mode sends are backfilled from Spark payment metadata.".to_string(),
         String::new(),
     ];
@@ -1168,67 +1245,41 @@ fn build_buy_mode_payment_rows(
     spark_wallet: &SparkPaneState,
 ) -> Vec<(TerminalStream, String)> {
     let mut rows = Vec::<(TerminalStream, String)>::new();
-    for entry in buy_mode_payment_ledger_entries(network_requests, spark_wallet) {
-        rows.push((
-            entry.stream.clone(),
-            format!(
-                "{}  status={}  amount={} sats  wallet_status={}  wallet_method={}  provider_pubkey={}",
-                buy_mode_payment_timestamp_label(entry.timestamp),
-                entry.status,
-                entry.amount_sats,
-                entry.wallet_status,
-                entry.wallet_method,
-                entry.provider_pubkey,
-            ),
-        ));
-        rows.push((
-            entry.stream.clone(),
-            format!(
-                "request_id={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}  source={}",
-                entry.request_id,
-                entry.payment_pointer,
-                entry.request_event_id,
-                entry.result_event_id,
-                entry.payment_hash,
-                entry.source,
-            ),
-        ));
-        if entry.destination_pubkey != "-"
-            || entry.htlc_status != "-"
-            || entry.htlc_expiry_epoch_seconds.is_some()
-        {
-            rows.push((
-                entry.stream.clone(),
-                format!(
-                    "destination_pubkey={}  htlc_status={}  htlc_expiry={}",
-                    entry.destination_pubkey,
-                    entry.htlc_status,
-                    buy_mode_payment_timestamp_label(entry.htlc_expiry_epoch_seconds),
-                ),
-            ));
-        }
-        if let Some(detail) = entry.wallet_detail.as_deref() {
-            rows.push((entry.stream.clone(), format!("wallet_detail={detail}")));
-        }
-        if let Some(description) = entry.wallet_description.as_deref() {
-            rows.push((
-                TerminalStream::Stdout,
-                format!("wallet_description={description}"),
-            ));
-        }
-        if let Some(invoice) = entry.wallet_invoice.as_deref() {
-            rows.push((TerminalStream::Stdout, format!("wallet_invoice={invoice}")));
-        }
-        if let Some(invoice) = entry.pending_bolt11.as_deref() {
-            rows.push((TerminalStream::Stdout, format!("pending_bolt11={invoice}")));
-        }
-        if let Some(error) = entry.payment_error.as_deref() {
-            rows.push((TerminalStream::Stderr, format!("payment_error={error}")));
-        }
-        if let Some(notice) = entry.payment_notice.as_deref() {
-            rows.push((TerminalStream::Stderr, format!("payment_notice={notice}")));
-        }
+    let entries = buy_mode_payment_ledger_entries(network_requests, spark_wallet);
+    let request_entries = entries
+        .iter()
+        .filter(|entry| entry.source == "request")
+        .collect::<Vec<_>>();
+    let wallet_backfill_entries = entries
+        .iter()
+        .filter(|entry| entry.source == "wallet-backfill")
+        .collect::<Vec<_>>();
+
+    if !request_entries.is_empty() {
+        rows.push((TerminalStream::Stdout, "LIVE BUY MODE REQUESTS".to_string()));
         rows.push((TerminalStream::Stdout, String::new()));
+        for entry in request_entries {
+            push_buy_mode_payment_entry_rows(&mut rows, entry);
+        }
+    }
+
+    if !wallet_backfill_entries.is_empty() {
+        if !rows.is_empty() {
+            rows.push((TerminalStream::Stdout, String::new()));
+        }
+        rows.push((
+            TerminalStream::Stdout,
+            "WALLET-BACKFILL HISTORY".to_string(),
+        ));
+        rows.push((
+            TerminalStream::Stdout,
+            "These rows are inferred from Spark send history; they are not live request records."
+                .to_string(),
+        ));
+        rows.push((TerminalStream::Stdout, String::new()));
+        for entry in wallet_backfill_entries {
+            push_buy_mode_payment_entry_rows(&mut rows, entry);
+        }
     }
 
     if rows.is_empty() {
@@ -1239,6 +1290,81 @@ fn build_buy_mode_payment_rows(
     }
 
     rows
+}
+
+fn push_buy_mode_payment_entry_rows(
+    rows: &mut Vec<(TerminalStream, String)>,
+    entry: &BuyModePaymentLedgerEntry,
+) {
+    rows.push((
+        entry.stream.clone(),
+        format!(
+            "{}  status={}  amount={} sats  wallet_status={}  wallet_method={}  provider_pubkey={}",
+            buy_mode_payment_timestamp_label(entry.timestamp),
+            entry.status,
+            entry.amount_sats,
+            entry.wallet_status,
+            entry.wallet_method,
+            entry.provider_pubkey,
+        ),
+    ));
+    rows.push((
+        entry.stream.clone(),
+        format!(
+            "request_id={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}  source={}",
+            entry.request_id,
+            entry.payment_pointer,
+            entry.request_event_id,
+            entry.result_event_id,
+            entry.payment_hash,
+            entry.source,
+        ),
+    ));
+    if entry.destination_pubkey != "-"
+        || entry.htlc_status != "-"
+        || entry.htlc_expiry_epoch_seconds.is_some()
+    {
+        rows.push((
+            entry.stream.clone(),
+            format!(
+                "destination_pubkey={}  htlc_status={}  htlc_expiry={}",
+                entry.destination_pubkey,
+                entry.htlc_status,
+                buy_mode_payment_timestamp_label(entry.htlc_expiry_epoch_seconds),
+            ),
+        ));
+    }
+    if let Some(detail) = entry.wallet_detail.as_deref() {
+        rows.push((entry.stream.clone(), format!("wallet_detail={detail}")));
+    }
+    if let Some(description) = entry.wallet_description.as_deref() {
+        rows.push((
+            TerminalStream::Stdout,
+            format!("wallet_description={description}"),
+        ));
+    }
+    if let Some(invoice) = entry.wallet_invoice.as_deref() {
+        rows.push((TerminalStream::Stdout, format!("wallet_invoice={invoice}")));
+    }
+    if let Some(invoice) = entry.pending_bolt11.as_deref() {
+        rows.push((TerminalStream::Stdout, format!("pending_bolt11={invoice}")));
+    }
+    if let Some(error) = entry.payment_error.as_deref() {
+        rows.push((TerminalStream::Stderr, format!("payment_error={error}")));
+    }
+    if let Some(notice) = entry.payment_notice.as_deref() {
+        rows.push((TerminalStream::Stderr, format!("payment_notice={notice}")));
+    }
+    rows.push((TerminalStream::Stdout, String::new()));
+}
+
+fn compact_buy_mode_request_id(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 18 {
+        trimmed.to_string()
+    } else {
+        format!("{}..{}", &trimmed[..12], &trimmed[trimmed.len() - 6..])
+    }
 }
 
 fn buy_mode_payment_timestamp_label(epoch_seconds: Option<u64>) -> String {
@@ -9119,9 +9245,9 @@ mod tests {
         EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
         JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        MissionControlPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderBlocker,
+        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
         RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
@@ -12715,12 +12841,22 @@ mod tests {
 
         let mut pane = super::BuyModePaymentsPaneState::default();
         pane.sync_rows(&requests, &wallet);
-        let lines = pane.ledger.recent_lines(12);
+        let lines = pane.ledger.recent_lines(20);
         let summary = super::buy_mode_payments_summary_text(&requests, &wallet);
 
         assert_eq!(
             summary,
-            "2 rows  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats"
+            "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("LIVE BUY MODE REQUESTS"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("WALLET-BACKFILL HISTORY"))
         );
         assert!(lines.iter().any(|line| {
             line.text
@@ -12749,14 +12885,46 @@ mod tests {
             1_762_700_145,
         );
 
-        let clipboard =
-            super::buy_mode_payments_clipboard_text(&requests, &SparkPaneState::default());
+        let clipboard = super::buy_mode_payments_clipboard_text(
+            &MissionControlPaneState::default(),
+            &requests,
+            &SparkPaneState::default(),
+        );
         assert!(clipboard.contains("Buy Mode Payments"));
         assert!(clipboard.contains("1 rows"));
+        assert!(clipboard.contains("Dispatch loop: off"));
         assert!(clipboard.contains(request_id.as_str()));
         assert!(clipboard.contains(
             "payment_notice=provider returned payment-required without bolt11 invoice; waiting for a valid invoice event"
         ));
+    }
+
+    #[test]
+    fn buy_mode_payments_status_lines_explain_single_flight_blocking() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-status-001", 27);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-status-001",
+            3,
+            1,
+            None,
+        );
+
+        let mut mission_control = MissionControlPaneState::default();
+        mission_control.buy_mode_loop_enabled = true;
+        let lines = super::buy_mode_payments_status_lines(
+            &mission_control,
+            &requests,
+            std::time::Instant::now(),
+        );
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("policy=single-flight"));
+        assert!(lines[0].contains("blocked by req-buy-stat"));
+        assert!(lines[0].contains("[streaming]"));
+        assert!(lines[1].contains("Recent live request statuses:"));
+        assert!(lines[1].contains("req-buy-stat"));
     }
 
     #[test]

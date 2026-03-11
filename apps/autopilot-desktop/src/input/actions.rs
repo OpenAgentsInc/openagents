@@ -9266,6 +9266,7 @@ pub(super) fn run_buy_mode_payments_action(
     match action {
         BuyModePaymentsPaneAction::CopyAll => {
             let output = crate::app_state::buy_mode_payments_clipboard_text(
+                &state.mission_control,
                 &state.network_requests,
                 &state.spark_wallet,
             );

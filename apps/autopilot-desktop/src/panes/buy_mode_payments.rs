@@ -1,7 +1,8 @@
 use wgpui::{Bounds, Component, PaintContext, Point, theme};
 
 use crate::app_state::{
-    BuyModePaymentsPaneState, NetworkRequestsState, buy_mode_payments_summary_text,
+    BuyModePaymentsPaneState, MissionControlPaneState, NetworkRequestsState,
+    buy_mode_payments_status_lines, buy_mode_payments_summary_text,
 };
 use crate::pane_renderer::{paint_action_button, paint_source_badge};
 use crate::pane_system::{buy_mode_payments_copy_button_bounds, buy_mode_payments_ledger_bounds};
@@ -10,6 +11,7 @@ use crate::spark_wallet::SparkPaneState;
 pub fn paint(
     content_bounds: Bounds,
     pane_state: &mut BuyModePaymentsPaneState,
+    mission_control: &MissionControlPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
@@ -38,6 +40,22 @@ pub fn paint(
         10.0,
         theme::text::MUTED,
     ));
+    let status_lines = buy_mode_payments_status_lines(
+        mission_control,
+        network_requests,
+        std::time::Instant::now(),
+    );
+    for (index, line) in status_lines.iter().enumerate() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(
+                content_bounds.origin.x + 12.0,
+                content_bounds.origin.y + 62.0 + (index as f32 * 12.0),
+            ),
+            10.0,
+            theme::text::SECONDARY,
+        ));
+    }
 
     pane_state.ledger.set_title("");
     pane_state
