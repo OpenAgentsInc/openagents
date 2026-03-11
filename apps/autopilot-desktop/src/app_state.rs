@@ -601,6 +601,7 @@ impl Default for CalculatorPaneInputs {
 pub struct MissionControlPaneState {
     pub amount_display_mode: BitcoinAmountDisplayMode,
     pub log_stream: TerminalPane,
+    pub withdraw_invoice: TextInput,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     rendered_log_lines: Vec<TerminalLine>,
@@ -614,6 +615,7 @@ impl Default for MissionControlPaneState {
                 .title("\\\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
+            withdraw_invoice: TextInput::new().placeholder("Paste Lightning invoice to withdraw"),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_lines: Vec::new(),

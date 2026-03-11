@@ -8914,12 +8914,11 @@ pub(super) fn run_mission_control_action(
                 &state.ollama_execution,
             ) {
                 Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-                    crate::pane_system::PaneController::create_for_kind(
-                        state,
-                        crate::app_state::PaneKind::AppleFmWorkbench,
-                    );
-
-                    if state.provider_runtime.apple_fm.is_ready() {
+                    if state.dev_mode_enabled() && state.provider_runtime.apple_fm.is_ready() {
+                        crate::pane_system::PaneController::create_for_kind(
+                            state,
+                            crate::app_state::PaneKind::AppleFmWorkbench,
+                        );
                         state
                             .mission_control
                             .record_action("Opened Apple FM workbench");
@@ -8986,6 +8985,31 @@ pub(super) fn run_mission_control_action(
                     true
                 }
             }
+        }
+        MissionControlPaneAction::SendWithdrawal => {
+            let command = match build_pay_invoice_command(
+                PayInvoicePaneAction::SendPayment,
+                state.mission_control.withdraw_invoice.get_value(),
+                "",
+            ) {
+                Ok(command) => command,
+                Err(error) => {
+                    state.spark_wallet.last_error = Some(error.clone());
+                    state.mission_control.record_error(error);
+                    return true;
+                }
+            };
+
+            queue_spark_command(state, command);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state
+                    .mission_control
+                    .record_action("Queued Lightning withdrawal");
+                state.mission_control.withdraw_invoice.set_value(String::new());
+            }
+            true
         }
         MissionControlPaneAction::OpenDocumentation => {
             match open_mission_control_documentation() {
