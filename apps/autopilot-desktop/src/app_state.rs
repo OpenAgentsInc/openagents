@@ -6983,11 +6983,8 @@ fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, S
 }
 
 pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://nexus.openagents.com/";
-const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
-    "wss://relay.primal.net",
-    "wss://relay.damus.io",
-    "wss://relay.nostr.band",
-];
+const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 2] =
+    ["wss://relay.primal.net", "wss://relay.damus.io"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsDocumentV1 {
@@ -14092,7 +14089,7 @@ mod tests {
             document.primary_relay_url,
             super::DEFAULT_NEXUS_PRIMARY_RELAY_URL
         );
-        assert_eq!(document.backup_relay_urls.len(), 3);
+        assert_eq!(document.backup_relay_urls.len(), 2);
     }
 
     #[test]
