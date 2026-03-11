@@ -1811,6 +1811,10 @@ fn event_to_buyer_response_event(
         if !tracked_buyer_request_ids.contains(result.request_id.as_str()) {
             return None;
         }
+        let bolt11 = result
+            .bolt11
+            .clone()
+            .or_else(|| extract_bolt11_from_response_event(event));
         let (status, status_extra) = parse_status_tags(event.tags.as_slice());
         let parsed_event_shape = Some(format_buyer_response_event_shape(
             event,
@@ -1819,7 +1823,7 @@ fn event_to_buyer_response_event(
             status.as_deref(),
             status_extra.as_deref(),
             result.amount,
-            result.bolt11.as_deref(),
+            bolt11.as_deref(),
         ));
         let raw_event_json = serde_json::to_string_pretty(event).ok();
         return Some(ProviderNip90BuyerResponseEvent {
@@ -1830,7 +1834,7 @@ fn event_to_buyer_response_event(
             status,
             status_extra,
             amount_msats: result.amount,
-            bolt11: result.bolt11,
+            bolt11,
             parsed_event_shape,
             raw_event_json,
         });
@@ -1862,6 +1866,9 @@ fn parse_feedback_event(event: &Event) -> Option<ProviderNip90BuyerResponseEvent
             _ => {}
         }
     }
+    if bolt11.is_none() {
+        bolt11 = extract_bolt11_from_response_event(event);
+    }
 
     let request_id = request_id?;
     let parsed_event_shape = Some(format_buyer_response_event_shape(
@@ -1887,6 +1894,79 @@ fn parse_feedback_event(event: &Event) -> Option<ProviderNip90BuyerResponseEvent
         parsed_event_shape,
         raw_event_json,
     })
+}
+
+fn extract_bolt11_from_response_event(event: &Event) -> Option<String> {
+    for tag in &event.tags {
+        if tag.len() < 2 {
+            continue;
+        }
+        match tag[0].as_str() {
+            "amount" if tag.len() >= 3 => {
+                if let Some(invoice) = normalize_bolt11_candidate(tag[2].as_str()) {
+                    return Some(invoice);
+                }
+            }
+            "bolt11" | "invoice" | "payment_request" => {
+                if let Some(invoice) = normalize_bolt11_candidate(tag[1].as_str()) {
+                    return Some(invoice);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    extract_bolt11_from_content(event.content.as_str())
+}
+
+fn extract_bolt11_from_content(content: &str) -> Option<String> {
+    if let Some(invoice) = normalize_bolt11_candidate(content) {
+        return Some(invoice);
+    }
+
+    let value = serde_json::from_str::<serde_json::Value>(content.trim()).ok()?;
+    extract_bolt11_from_json_value(&value)
+}
+
+fn extract_bolt11_from_json_value(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => normalize_bolt11_candidate(text),
+        serde_json::Value::Array(items) => items.iter().find_map(extract_bolt11_from_json_value),
+        serde_json::Value::Object(map) => {
+            for key in ["bolt11", "invoice", "payment_request"] {
+                if let Some(invoice) = map
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(normalize_bolt11_candidate)
+                {
+                    return Some(invoice);
+                }
+            }
+            map.values().find_map(extract_bolt11_from_json_value)
+        }
+        _ => None,
+    }
+}
+
+fn normalize_bolt11_candidate(candidate: &str) -> Option<String> {
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = if trimmed
+        .get(..10)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lightning:"))
+    {
+        trimmed[10..].trim()
+    } else {
+        trimmed
+    };
+    let lower = normalized.to_ascii_lowercase();
+    if lower.starts_with("ln") && !lower.starts_with("lnurl") && lower.contains('1') {
+        Some(normalized.to_string())
+    } else {
+        None
+    }
 }
 
 fn parse_status_tags(tags: &[Vec<String>]) -> (Option<String>, Option<String>) {
@@ -2453,6 +2533,57 @@ mod tests {
         assert_eq!(buyer_event.status.as_deref(), Some("payment-required"));
         assert_eq!(buyer_event.amount_msats, Some(10_000));
         assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1..."));
+    }
+
+    #[test]
+    fn maps_tracked_buyer_feedback_event_with_invoice_tag_fallback() {
+        let event = Event {
+            id: "feedback-invoice-tag".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_130,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "payment-required".to_string()],
+                vec!["e".to_string(), "req-001".to_string()],
+                vec!["amount".to_string(), "10000".to_string()],
+                vec![
+                    "invoice".to_string(),
+                    "lightning:lnbc10n1invoicefallback".to_string(),
+                ],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: "pay to continue".to_string(),
+            sig: "55".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        let buyer_event =
+            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
+        assert_eq!(
+            buyer_event.bolt11.as_deref(),
+            Some("lnbc10n1invoicefallback")
+        );
+    }
+
+    #[test]
+    fn maps_tracked_buyer_feedback_event_with_json_content_fallback() {
+        let event = Event {
+            id: "feedback-json-content".to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 1_760_000_130,
+            kind: 7000,
+            tags: vec![
+                vec!["status".to_string(), "payment-required".to_string()],
+                vec!["e".to_string(), "req-001".to_string()],
+                vec!["amount".to_string(), "10000".to_string()],
+                vec!["p".to_string(), "22".repeat(32)],
+            ],
+            content: r#"{"payment_request":"lnbc10n1jsoncontent"}"#.to_string(),
+            sig: "55".repeat(64),
+        };
+        let tracked = std::collections::HashSet::from(["req-001".to_string()]);
+        let buyer_event =
+            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
+        assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1jsoncontent"));
     }
 
     #[test]

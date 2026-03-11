@@ -708,11 +708,15 @@ fn queue_auto_payment_for_feedback(
             event.request_id,
             event.event_id
         );
-        state.network_requests.mark_auto_payment_failed(
+        state.network_requests.record_auto_payment_notice(
             event.request_id.as_str(),
-            "provider returned payment-required without bolt11 invoice",
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
             now_epoch_seconds,
         );
+        state.provider_runtime.last_result = Some(format!(
+            "buyer request {} is waiting for a valid provider invoice",
+            event.request_id
+        ));
         return;
     };
 

@@ -6,8 +6,8 @@ use crate::apple_fm_bridge::{
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
 use crate::pane_system::{
-    AppleFmWorkbenchPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction,
-    MissionControlPaneAction,
+    AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
+    LocalInferencePaneAction, MissionControlPaneAction,
 };
 use crate::state::job_inbox::JobExecutionParam;
 use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
@@ -9228,6 +9228,30 @@ pub(super) fn run_mission_control_action(
                         Some("Documentation open failed".to_string());
                     state.mission_control.last_error = Some(error);
                 }
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_buy_mode_payments_action(
+    state: &mut crate::app_state::RenderState,
+    action: BuyModePaymentsPaneAction,
+) -> bool {
+    match action {
+        BuyModePaymentsPaneAction::CopyAll => {
+            let output = crate::app_state::buy_mode_payments_clipboard_text(
+                &state.network_requests,
+                &state.spark_wallet,
+            );
+            let notice = match copy_to_clipboard(&output) {
+                Ok(()) => "Copied Buy Mode payment history to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Buy Mode payment history: {error}"),
+            };
+            if notice.starts_with("Failed") {
+                state.mission_control.record_error(notice);
+            } else {
+                state.mission_control.record_action(notice);
             }
             true
         }

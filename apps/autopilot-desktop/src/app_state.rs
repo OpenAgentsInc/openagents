@@ -852,18 +852,85 @@ impl BuyModePaymentsPaneState {
     }
 }
 
-fn build_buy_mode_payment_rows(
+fn buy_mode_payment_history_requests(
     network_requests: &crate::state::operations::NetworkRequestsState,
-    spark_wallet: &SparkPaneState,
-) -> Vec<(TerminalStream, String)> {
-    let mut rows = Vec::<(TerminalStream, String)>::new();
-    for request in network_requests
+) -> Vec<&crate::state::operations::SubmittedNetworkRequest> {
+    network_requests
         .submitted
         .iter()
         .rev()
         .filter(|request| request.request_type == MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
         .filter(|request| buy_mode_request_has_payment_history(request))
-    {
+        .collect()
+}
+
+pub(crate) fn buy_mode_payments_summary_text(
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> String {
+    let requests = buy_mode_payment_history_requests(network_requests);
+    let mut paid = 0usize;
+    let mut pending = 0usize;
+    let mut returned = 0usize;
+    let mut failed = 0usize;
+    let mut sats_sent = 0u64;
+    for request in &requests {
+        let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
+        let wallet_amount = wallet_payment.map(|payment| payment.amount_sats);
+        if request.payment_sent_at_epoch_seconds.is_some()
+            || request.status == crate::state::operations::NetworkRequestStatus::Paid
+        {
+            paid = paid.saturating_add(1);
+            sats_sent = sats_sent.saturating_add(wallet_amount.unwrap_or(request.budget_sats));
+        } else if wallet_payment.is_some_and(|payment| payment.is_returned_htlc_failure()) {
+            returned = returned.saturating_add(1);
+        } else if request.status == crate::state::operations::NetworkRequestStatus::Failed
+            || request.payment_failed_at_epoch_seconds.is_some()
+            || request.payment_error.is_some()
+        {
+            failed = failed.saturating_add(1);
+        } else {
+            pending = pending.saturating_add(1);
+        }
+    }
+
+    format!(
+        "{} rows  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
+        requests.len(),
+        paid,
+        pending,
+        returned,
+        failed,
+        sats_sent
+    )
+}
+
+pub(crate) fn buy_mode_payments_clipboard_text(
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> String {
+    let mut sections = vec![
+        "Buy Mode Payments".to_string(),
+        buy_mode_payments_summary_text(network_requests, spark_wallet),
+        "Rows are sourced from buy-mode requests and matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.".to_string(),
+        String::new(),
+    ];
+    for (_, text) in build_buy_mode_payment_rows(network_requests, spark_wallet) {
+        if text.trim().is_empty() {
+            sections.push(String::new());
+        } else {
+            sections.push(text);
+        }
+    }
+    sections.join("\n")
+}
+
+fn build_buy_mode_payment_rows(
+    network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> Vec<(TerminalStream, String)> {
+    let mut rows = Vec::<(TerminalStream, String)>::new();
+    for request in buy_mode_payment_history_requests(network_requests) {
         let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
         let timestamp = wallet_payment
             .map(|payment| payment.timestamp)
@@ -947,6 +1014,9 @@ fn build_buy_mode_payment_rows(
         if let Some(error) = request.payment_error.as_deref() {
             rows.push((TerminalStream::Stderr, format!("payment_error={error}")));
         }
+        if let Some(notice) = request.payment_notice.as_deref() {
+            rows.push((TerminalStream::Stderr, format!("payment_notice={notice}")));
+        }
         rows.push((TerminalStream::Stdout, String::new()));
     }
 
@@ -968,6 +1038,10 @@ fn buy_mode_request_has_payment_history(
         || request.payment_failed_at_epoch_seconds.is_some()
         || request.last_payment_pointer.is_some()
         || request.pending_bolt11.is_some()
+        || request
+            .payment_notice
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
         || request
             .payment_error
             .as_deref()
@@ -9069,6 +9143,7 @@ mod tests {
             payment_sent_at_epoch_seconds: Some(1_762_800_001),
             payment_failed_at_epoch_seconds: None,
             payment_error: None,
+            payment_notice: None,
             pending_bolt11: None,
             skill_scope_id: Some(skill_scope_id.to_string()),
             credit_envelope_ref: Some("ac:envelope:test".to_string()),
@@ -12337,6 +12412,27 @@ mod tests {
     }
 
     #[test]
+    fn buy_mode_payments_clipboard_text_includes_nonterminal_payment_notice() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-buy-notice-ledger-001", 23);
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_145,
+        );
+
+        let clipboard =
+            super::buy_mode_payments_clipboard_text(&requests, &SparkPaneState::default());
+        assert!(clipboard.contains("Buy Mode Payments"));
+        assert!(clipboard.contains("1 rows"));
+        assert!(clipboard.contains(request_id.as_str()));
+        assert!(clipboard.contains(
+            "payment_notice=provider returned payment-required without bolt11 invoice; waiting for a valid invoice event"
+        ));
+    }
+
+    #[test]
     fn network_requests_buy_mode_requires_payment_settlement_for_terminal_success() {
         let mut requests = NetworkRequestsState::default();
         let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-smoke-001", 17);
@@ -12449,6 +12545,40 @@ mod tests {
             Some("provider feedback is missing bolt11 invoice")
         );
         assert_eq!(row.payment_failed_at_epoch_seconds, Some(1_762_700_020));
+    }
+
+    #[test]
+    fn network_requests_payment_notice_keeps_request_nonterminal() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-pay-notice-001", 24);
+
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_021,
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(row.status, NetworkRequestStatus::PaymentRequired);
+        assert_eq!(row.payment_required_at_epoch_seconds, Some(1_762_700_021));
+        assert_eq!(row.payment_failed_at_epoch_seconds, None);
+        assert_eq!(row.payment_error, None);
+        assert_eq!(
+            row.payment_notice.as_deref(),
+            Some(
+                "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event"
+            )
+        );
+        assert!(
+            requests.has_in_flight_request_by_type(
+                crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE
+            ),
+            "request should remain in-flight while waiting for a valid invoice"
+        );
     }
 
     #[test]
