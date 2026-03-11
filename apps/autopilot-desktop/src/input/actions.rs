@@ -9522,6 +9522,25 @@ fn queue_apple_fm_workbench_operation(
         None
     };
 
+    let session_id = resolve_apple_fm_workbench_session_id(
+        state.apple_fm_workbench_inputs.session_id.get_value(),
+        state.apple_fm_workbench.active_session_id.as_deref(),
+    );
+    if state
+        .apple_fm_workbench_inputs
+        .session_id
+        .get_value()
+        .trim()
+        .is_empty()
+    {
+        if let Some(session_id_value) = session_id.as_ref() {
+            state
+                .apple_fm_workbench_inputs
+                .session_id
+                .set_value(session_id_value.clone());
+        }
+    }
+
     let request_id = format!("apple-fm-workbench-{}", state.reserve_runtime_command_seq());
     let request_id_for_state = request_id.clone();
     let command = AppleFmWorkbenchCommand {
@@ -9532,7 +9551,7 @@ fn queue_apple_fm_workbench_operation(
         ),
         prompt: normalize_optional_text(state.apple_fm_workbench_inputs.prompt.get_value()),
         requested_model: normalize_optional_text(state.apple_fm_workbench_inputs.model.get_value()),
-        session_id: normalize_optional_text(state.apple_fm_workbench_inputs.session_id.get_value()),
+        session_id,
         options,
         schema_json: normalize_optional_text(
             state.apple_fm_workbench_inputs.schema_json.get_value(),
@@ -9585,6 +9604,18 @@ fn apple_fm_workbench_operation_uses_options(operation: AppleFmWorkbenchOperatio
             | AppleFmWorkbenchOperation::RunStream
             | AppleFmWorkbenchOperation::RunStructured
     )
+}
+
+fn resolve_apple_fm_workbench_session_id(
+    input_session_id: &str,
+    active_session_id: Option<&str>,
+) -> Option<String> {
+    normalize_optional_text(input_session_id).or_else(|| {
+        active_session_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
 }
 
 fn build_apple_fm_workbench_options(
@@ -12980,7 +13011,8 @@ mod tests {
         parse_chat_request_intent, parse_chat_skills_intent, parse_chat_spacetime_intent,
         parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
-        parse_managed_chat_mention_prefix, resolve_wallet_blink_env_from_secure_values,
+        parse_managed_chat_mention_prefix, resolve_apple_fm_workbench_session_id,
+        resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
@@ -13360,6 +13392,18 @@ mod tests {
         )
         .expect_err("namespaced key should be required");
         assert!(error.contains("BLINK_API_KEY_SA_1"));
+    }
+
+    #[test]
+    fn apple_fm_workbench_session_id_prefers_explicit_input() {
+        let resolved = resolve_apple_fm_workbench_session_id("sess-manual", Some("sess-active"));
+        assert_eq!(resolved.as_deref(), Some("sess-manual"));
+    }
+
+    #[test]
+    fn apple_fm_workbench_session_id_falls_back_to_active_session() {
+        let resolved = resolve_apple_fm_workbench_session_id("   ", Some("sess-active"));
+        assert_eq!(resolved.as_deref(), Some("sess-active"));
     }
 
     #[test]
