@@ -37,23 +37,19 @@ pub fn paint(
 
     let mut paid = 0usize;
     let mut pending = 0usize;
+    let mut returned = 0usize;
     let mut failed = 0usize;
     let mut sats_sent = 0u64;
     for request in &requests {
-        let wallet_amount = request
-            .last_payment_pointer
-            .as_deref()
-            .and_then(|payment_id| {
-                spark_wallet
-                    .recent_payments
-                    .iter()
-                    .find(|payment| payment.id == payment_id)
-                    .map(|payment| payment.amount_sats)
-            });
-        if request.last_payment_pointer.is_some() || request.payment_sent_at_epoch_seconds.is_some()
+        let wallet_payment = crate::app_state::buy_mode_wallet_payment(request, spark_wallet);
+        let wallet_amount = wallet_payment.map(|payment| payment.amount_sats);
+        if request.payment_sent_at_epoch_seconds.is_some()
+            || request.status == NetworkRequestStatus::Paid
         {
             paid = paid.saturating_add(1);
             sats_sent = sats_sent.saturating_add(wallet_amount.unwrap_or(request.budget_sats));
+        } else if wallet_payment.is_some_and(|payment| payment.is_returned_htlc_failure()) {
+            returned = returned.saturating_add(1);
         } else if request.status == NetworkRequestStatus::Failed
             || request.payment_failed_at_epoch_seconds.is_some()
             || request.payment_error.is_some()
@@ -65,10 +61,11 @@ pub fn paint(
     }
 
     let summary = format!(
-        "{} rows  //  {} sent  //  {} pending  //  {} failed  //  {} sats",
+        "{} rows  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
         requests.len(),
         paid,
         pending,
+        returned,
         failed,
         sats_sent
     );
@@ -82,7 +79,7 @@ pub fn paint(
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Rows are sourced from buy-mode requests and matched to Spark payments when a wallet pointer is available.",
+        "Rows are sourced from buy-mode requests and matched to Spark payments by wallet pointer, including returned HTLC detail when Spark exposes it.",
         Point::new(content_bounds.origin.x + 12.0, content_bounds.origin.y + 40.0),
         10.0,
         theme::text::MUTED,

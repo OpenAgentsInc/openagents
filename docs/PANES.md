@@ -50,6 +50,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Mission Control is Apple FM-only in the production path: it shows Apple FM readiness, starts or refreshes the bridge inline, and keeps `GO ONLINE` disabled until Apple FM, wallet, and provider readiness are honest.
   - Mission Control now includes the inline Lightning withdraw entry point, so the first paid-job loop no longer requires opening the separate wallet pay-invoice pane.
   - Mission Control now exposes an inline `Buy Mode` control by default: a start/stop buyer loop that auto-dispatches one fixed `kind: 5050` request at `2 sats` every `12s` while armed, keeping at most one in-flight request and rendering publish/result/payment state inline without opening a second buyer pane.
+  - Buy Mode payment observability is documented in `docs/autopilot-earn/MISSION_CONTROL_BUY_MODE_PAYMENTS.md`: Mission Control mirrors buyer payment logs inline and the dedicated payment-history pane now keeps wallet pointers, pubkeys, payment hashes, and wallet detail for failed as well as settled sends.
   - Dev mode still retains separate workbench/debug panes, including the NVIDIA `GPT-OSS Workbench` path on supported non-macOS hosts.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.

@@ -1,5 +1,6 @@
 use crate::app_state::{EarnFailureClass, RenderState};
 use crate::spark_wallet::{is_settled_wallet_payment_status, is_terminal_wallet_payment_status};
+use openagents_spark::PaymentSummary;
 use qrcode::{QrCode, render::unicode::Dense1x2};
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
@@ -129,6 +130,9 @@ fn reconcile_pending_buyer_payment_confirmation(
     let Some(payment_pointer) = state.spark_wallet.last_payment_id.as_deref() else {
         return;
     };
+    state
+        .network_requests
+        .record_auto_payment_pointer(request_id.as_str(), payment_pointer);
     let Some(payment) = state
         .spark_wallet
         .recent_payments
@@ -136,6 +140,12 @@ fn reconcile_pending_buyer_payment_confirmation(
         .find(|payment| payment.id == payment_pointer)
     else {
         if state.spark_wallet.last_payment_id.as_deref() != previous_payment_id {
+            tracing::info!(
+                target: "autopilot_desktop::buyer",
+                "Buyer Spark payment pending wallet sync request_id={} pointer={}",
+                request_id,
+                payment_pointer
+            );
             state.provider_runtime.last_result = Some(format!(
                 "buyer payment pending Spark confirmation request={} pointer={}",
                 request_id, payment_pointer
@@ -145,6 +155,15 @@ fn reconcile_pending_buyer_payment_confirmation(
     };
 
     if is_settled_wallet_payment_status(payment.status.as_str()) {
+        tracing::info!(
+            target: "autopilot_desktop::buyer",
+            "Buyer Spark payment settled request_id={} pointer={} method={} status={} detail={}",
+            request_id,
+            payment_pointer,
+            payment.method,
+            payment.status,
+            payment.status_detail.as_deref().unwrap_or("wallet confirmed")
+        );
         state.network_requests.mark_auto_payment_sent(
             request_id.as_str(),
             payment_pointer,
@@ -158,22 +177,68 @@ fn reconcile_pending_buyer_payment_confirmation(
     }
 
     if is_terminal_wallet_payment_status(payment.status.as_str()) {
+        let detail = buyer_payment_failure_detail(payment_pointer, request_id.as_str(), payment);
+        tracing::error!(
+            target: "autopilot_desktop::buyer",
+            "Buyer Spark payment failed request_id={} pointer={} method={} status={} htlc_status={} detail={}",
+            request_id,
+            payment_pointer,
+            payment.method,
+            payment.status,
+            payment.htlc_status.as_deref().unwrap_or("-"),
+            detail
+        );
         state.network_requests.mark_auto_payment_failed(
             request_id.as_str(),
-            format!(
-                "Spark payment {} for {} is {}",
-                payment_pointer, request_id, payment.status
-            )
-            .as_str(),
+            detail.as_str(),
             now_epoch_seconds,
         );
+        state.provider_runtime.last_result = Some(format!(
+            "buyer payment failed request={} pointer={} detail={}",
+            request_id, payment_pointer, detail
+        ));
         return;
     }
 
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Buyer Spark payment in-flight request_id={} pointer={} method={} status={} detail={}",
+        request_id,
+        payment_pointer,
+        payment.method,
+        payment.status,
+        payment
+            .status_detail
+            .as_deref()
+            .unwrap_or(payment.status.as_str())
+    );
     state.provider_runtime.last_result = Some(format!(
-        "buyer payment pending Spark confirmation request={} pointer={} status={}",
-        request_id, payment_pointer, payment.status
+        "buyer payment pending Spark confirmation request={} pointer={} status={} detail={}",
+        request_id,
+        payment_pointer,
+        payment.status,
+        payment
+            .status_detail
+            .as_deref()
+            .unwrap_or(payment.status.as_str())
     ));
+}
+
+fn buyer_payment_failure_detail(
+    payment_pointer: &str,
+    request_id: &str,
+    payment: &PaymentSummary,
+) -> String {
+    let wallet_detail = payment
+        .status_detail
+        .as_deref()
+        .unwrap_or(payment.status.as_str());
+    if payment.is_returned_htlc_failure() {
+        return format!(
+            "Spark payment {payment_pointer} for {request_id} returned after expiry; provider was not paid and the refund should settle back to the wallet"
+        );
+    }
+    format!("Spark payment {payment_pointer} for {request_id} failed: {wallet_detail}")
 }
 
 fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {

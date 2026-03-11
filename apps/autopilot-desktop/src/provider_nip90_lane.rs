@@ -3648,6 +3648,7 @@ mod tests {
             status: "succeeded".to_string(),
             amount_sats: request.price_sats,
             timestamp: history.reference_epoch_seconds,
+            ..Default::default()
         });
 
         let mut provider = ProviderRuntimeState::default();

@@ -109,18 +109,16 @@ where
         let metadata = event.metadata();
         let mut visitor = MirroredLogVisitor::default();
         event.record(&mut visitor);
-        if !should_mirror_to_mission_control(*metadata.level(), metadata.target()) {
+        let line = format_mirrored_log_line(
+            metadata.level(),
+            metadata.target(),
+            visitor.message.as_deref(),
+            visitor.fields.as_slice(),
+        );
+        if !should_mirror_to_mission_control(*metadata.level(), metadata.target(), line.as_str()) {
             return;
         }
-        push_mirrored_log(
-            *metadata.level(),
-            format_mirrored_log_line(
-                metadata.level(),
-                metadata.target(),
-                visitor.message.as_deref(),
-                visitor.fields.as_slice(),
-            ),
-        );
+        push_mirrored_log(*metadata.level(), line);
     }
 }
 
@@ -196,17 +194,37 @@ fn format_mirrored_log_line(
     format!("{level} {target}: {content}")
 }
 
-fn should_mirror_to_mission_control(level: Level, target: &str) -> bool {
+fn should_mirror_to_mission_control(level: Level, target: &str, line: &str) -> bool {
     let target = target.trim();
     if target.is_empty() {
         return false;
     }
-    if matches!(level, Level::WARN | Level::ERROR) {
-        return target.starts_with("autopilot_desktop::buyer")
-            || target.starts_with("autopilot_desktop::buy_mode");
-    }
-    target.starts_with("autopilot_desktop::buyer")
+
+    if target.starts_with("autopilot_desktop::buyer")
         || target.starts_with("autopilot_desktop::buy_mode")
+    {
+        return true;
+    }
+
+    let normalized = line.to_ascii_lowercase();
+    if target.starts_with("autopilot_desktop::input") {
+        return matches!(level, Level::WARN | Level::ERROR)
+            && (normalized.contains("ui error [network.requests]")
+                || normalized.contains("ui error [spark.wallet]"));
+    }
+
+    if target.starts_with("breez_sdk_spark::sdk") {
+        return normalized.contains("polling lightning send payment")
+            || normalized.contains("polling payment status =")
+            || normalized.contains("polling payment completed status =")
+            || normalized.contains("timeout waiting for payment");
+    }
+
+    if target.starts_with("autopilot_desktop::spark_wallet") {
+        return matches!(level, Level::WARN | Level::ERROR);
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -235,23 +253,33 @@ mod tests {
     fn mission_control_mirror_filters_to_buyer_targets() {
         assert!(should_mirror_to_mission_control(
             tracing::Level::INFO,
-            "autopilot_desktop::buyer"
+            "autopilot_desktop::buyer",
+            "INFO autopilot_desktop::buyer: queued request"
         ));
         assert!(should_mirror_to_mission_control(
             tracing::Level::ERROR,
-            "autopilot_desktop::buy_mode"
+            "autopilot_desktop::buy_mode",
+            "ERROR autopilot_desktop::buy_mode: failed"
         ));
-        assert!(!should_mirror_to_mission_control(
+        assert!(should_mirror_to_mission_control(
             tracing::Level::INFO,
-            "breez_sdk_spark::sdk"
+            "breez_sdk_spark::sdk",
+            "INFO breez_sdk_spark::sdk: Polling payment status = failed UserSwapReturned"
         ));
-        assert!(!should_mirror_to_mission_control(
-            tracing::Level::INFO,
-            "autopilot_desktop::input"
+        assert!(should_mirror_to_mission_control(
+            tracing::Level::ERROR,
+            "autopilot_desktop::input",
+            "ERROR autopilot_desktop::input: ui error [network.requests]: Request req-1 payment failed"
         ));
         assert!(!should_mirror_to_mission_control(
             tracing::Level::WARN,
-            "spark::events::server_stream"
+            "spark::events::server_stream",
+            "WARN spark::events::server_stream: disconnected"
+        ));
+        assert!(!should_mirror_to_mission_control(
+            tracing::Level::INFO,
+            "breez_sdk_spark::sdk",
+            "INFO breez_sdk_spark::sdk: Balance updated successfully 507"
         ));
     }
 }
