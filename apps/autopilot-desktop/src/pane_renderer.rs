@@ -4996,16 +4996,13 @@ fn active_job_timeline_stage_reached(
                 || active_job.result_publish_in_flight
                 || job.sa_tick_result_event_id.is_some()
                 || active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
-                || job.ac_settlement_event_id.is_some()
         }
         JobLifecycleStage::Delivered => {
             job.sa_tick_result_event_id.is_some()
                 || active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
-                || job.ac_settlement_event_id.is_some()
         }
         JobLifecycleStage::Paid => {
             active_job_has_authoritative_payment_pointer(job.payment_id.as_deref())
-                || job.ac_settlement_event_id.is_some()
         }
         JobLifecycleStage::Failed => true,
     }
@@ -6563,6 +6560,32 @@ mod tests {
         assert!(output.contains("Settlement amount: 2 sats"));
         assert!(output.contains("Settlement fees: 1 sats"));
         assert!(output.contains("Wallet delta: +2 sats"));
+    }
+
+    #[test]
+    fn active_job_timeline_ignores_nonwallet_settlement_feedback_for_paid_state() {
+        let request = fixture_active_job_request("req-active-job-feedback-only");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("active job exists");
+        job.stage = JobLifecycleStage::Failed;
+        job.sa_tick_result_event_id = Some("result-feedback-only-001".to_string());
+        job.ac_settlement_event_id = Some("feedback-only-001".to_string());
+        job.failure_reason = Some(
+            "job delivered but unpaid timed out after 195s while awaiting buyer settlement"
+                .to_string(),
+        );
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(output.contains("[x] delivered"));
+        assert!(output.contains("[ ] paid"));
+        assert!(output.contains("AC settlement: feedback-only-001"));
+        assert!(output.contains("Payment ID: n/a"));
     }
 
     #[test]
