@@ -576,6 +576,26 @@ The right move is simplification and consolidation inside the app layer.
 4. Normalize domain log events in both Mission Control and JSONL runtime logs.
 5. Keep using headless compute as the regression truth surface for every major NIP-90 flow change.
 
+## Follow-up Completion Addendum
+
+The cleanup arc above has now been completed on `main` through issues `#3387` to `#3393`.
+
+Delivered from that sequence:
+
+- one app-owned NIP-90 compute flow snapshot now drives the main operator projections
+- Mission Control and Buy Mode expose selected provider, payable provider, loser summaries, and next expected event
+- publish continuity and settlement continuity are explicit in both Mission Control and Active Job surfaces
+- Mission Control and session logs emit normalized compute-domain events
+- headless and desktop validation now use aligned phase and settlement semantics
+- buyer/provider fee truth is visible in the operator panes and headless logs
+- Mission Control includes a persistent truth legend so the dense status cells are easier to interpret
+
+Residual guidance:
+
+- this audit tracker is complete
+- future NIP-90 compute cleanup should start with a fresh audit against the current `main` tree rather than reopening this sequence
+- new follow-up issues should be framed around post-cleanup simplification or new MVP requirements, not the already-landed truth-model work
+
 ## Final Assessment
 
 The MVP NIP-90 compute implementation is now credible.

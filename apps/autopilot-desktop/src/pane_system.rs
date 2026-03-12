@@ -2084,7 +2084,7 @@ pub fn mission_control_layout_for_mode(
         status_row.origin.x,
         status_row.max_y() + 8.0,
         status_row.size.width,
-        26.0,
+        40.0,
     );
     let body_top = alert_band.max_y() + 14.0;
     let body_height = (content_bounds.max_y() - body_top - outer_pad).max(0.0);
@@ -6845,6 +6845,16 @@ mod tests {
         assert!(layout.wallet_panel.contains(button.origin));
         assert!(button.max_x() <= layout.wallet_panel.max_x());
         assert!(button.max_y() <= layout.wallet_panel.origin.y + 22.0);
+    }
+
+    #[test]
+    fn mission_control_alert_band_leaves_room_for_truth_legend() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout(content_bounds);
+
+        assert!(layout.alert_band.size.height >= 40.0);
+        assert!(layout.alert_band.max_y() < layout.left_column.origin.y);
+        assert!(layout.alert_band.max_y() < layout.right_column.origin.y);
     }
 
     #[test]
