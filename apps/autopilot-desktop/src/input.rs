@@ -253,6 +253,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         WindowEvent::CursorMoved { position, .. } => {
             let scale = state.scale_factor.max(0.1);
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
+            state.cursor_position = app.cursor_position;
 
             if state.dev_mode_enabled() && state.command_palette.is_open() {
                 let event = InputEvent::MouseMove {
