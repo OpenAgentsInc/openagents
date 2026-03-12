@@ -269,6 +269,7 @@ fn domain_projection(
         "timeout_seconds",
         "status",
         "status_extra",
+        "local_wallet_status",
     ] {
         if let Some(value) = fields.get(key) {
             domain.insert(key.to_string(), value.clone());
@@ -690,6 +691,53 @@ mod tests {
             Some(&Value::String(
                 "invoice_over_budget,result_without_invoice".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn domain_projection_preserves_seller_settled_pending_wallet_fields() {
+        let fields = [
+            (
+                "domain_event".to_string(),
+                Value::String("buyer.seller_settled_pending_wallet_confirmation".to_string()),
+            ),
+            ("flow_role".to_string(), Value::String("buyer".to_string())),
+            ("request_id".to_string(), Value::String("req-1".to_string())),
+            (
+                "provider_pubkey".to_string(),
+                Value::String("provider-1".to_string()),
+            ),
+            (
+                "feedback_event_id".to_string(),
+                Value::String("feedback-1".to_string()),
+            ),
+            (
+                "payment_pointer".to_string(),
+                Value::String("payment-1".to_string()),
+            ),
+            (
+                "local_wallet_status".to_string(),
+                Value::String("pending".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect::<serde_json::Map<String, Value>>();
+        let projection = domain_projection("autopilot_desktop::compute_domain", Some(&fields))
+            .expect("domain projection");
+
+        assert_eq!(
+            projection.get("event"),
+            Some(&Value::String(
+                "buyer.seller_settled_pending_wallet_confirmation".to_string()
+            ))
+        );
+        assert_eq!(
+            projection.get("local_wallet_status"),
+            Some(&Value::String("pending".to_string()))
+        );
+        assert_eq!(
+            projection.get("payment_pointer"),
+            Some(&Value::String("payment-1".to_string()))
         );
     }
 

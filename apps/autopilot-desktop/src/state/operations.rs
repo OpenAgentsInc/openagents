@@ -1286,6 +1286,9 @@ impl NetworkRequestsState {
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
+        let previous_seller_settlement_feedback_id =
+            buyer_request_seller_settlement_feedback(request)
+                .map(|(_, feedback_event_id)| feedback_event_id.to_string());
 
         let feedback_is_payment_required = matches!(
             status
@@ -1347,6 +1350,36 @@ impl NetworkRequestsState {
         select_payable_winner(request, Some(provider_pubkey));
         emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
+        if buyer_request_seller_settled_pending_local_wallet(request) {
+            let current_seller_settlement_feedback = buyer_request_seller_settlement_feedback(
+                request,
+            )
+            .map(|(settled_provider_pubkey, feedback_event_id)| {
+                (
+                    settled_provider_pubkey.to_string(),
+                    feedback_event_id.to_string(),
+                )
+            });
+            if current_seller_settlement_feedback
+                .as_ref()
+                .map(|(_, feedback_event_id)| feedback_event_id.as_str())
+                != previous_seller_settlement_feedback_id.as_deref()
+                && let Some((settled_provider_pubkey, feedback_event_id)) =
+                    current_seller_settlement_feedback.as_ref()
+            {
+                nip90_compute_domain_events::emit_buyer_seller_settled_pending_wallet_confirmation(
+                    request.request_id.as_str(),
+                    Some(settled_provider_pubkey.as_str()),
+                    Some(feedback_event_id.as_str()),
+                    request.last_payment_pointer.as_deref(),
+                    if request.last_payment_pointer.is_some() {
+                        "pending"
+                    } else {
+                        "observation-missing"
+                    },
+                );
+            }
+        }
         let resolution_action = maybe_race_resolution_action_for_feedback(
             request,
             provider_pubkey,
@@ -2100,6 +2133,19 @@ fn provider_has_payment_feedback(observation: &NetworkRequestProviderObservation
     )
 }
 
+fn provider_has_success_feedback(observation: &NetworkRequestProviderObservation) -> bool {
+    matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("success")
+    )
+}
+
 fn provider_has_error_only_signal(observation: &NetworkRequestProviderObservation) -> bool {
     let feedback_error = matches!(
         observation
@@ -2165,6 +2211,38 @@ fn emit_buyer_payment_blocked(request: &SubmittedNetworkRequest) {
             .or(request.payment_notice.as_deref())
             .or(request.payment_error.as_deref()),
     );
+}
+
+pub(crate) fn buyer_request_seller_settlement_feedback(
+    request: &SubmittedNetworkRequest,
+) -> Option<(&str, &str)> {
+    let provider_pubkey = request
+        .winning_provider_pubkey
+        .as_deref()
+        .or(request.invoice_provider_pubkey.as_deref())
+        .or(request.result_provider_pubkey.as_deref())?;
+    let observation = request.provider_observations.iter().find(|observation| {
+        normalize_pubkey(observation.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+    })?;
+    if !provider_has_success_feedback(observation) {
+        return None;
+    }
+    observation
+        .last_feedback_event_id
+        .as_deref()
+        .map(|feedback_event_id| (observation.provider_pubkey.as_str(), feedback_event_id))
+}
+
+pub(crate) fn buyer_request_seller_settled_pending_local_wallet(
+    request: &SubmittedNetworkRequest,
+) -> bool {
+    if request.payment_error.is_some()
+        || request.payment_sent_at_epoch_seconds.is_some()
+        || request.status == NetworkRequestStatus::Paid
+    {
+        return false;
+    }
+    buyer_request_seller_settlement_feedback(request).is_some()
 }
 
 fn select_payable_winner(
