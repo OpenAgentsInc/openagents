@@ -552,6 +552,7 @@ pub(super) fn apply_active_job_publish_outcome(
             state.active_job.pending_result_publish_event_id = None;
             state.active_job.pending_result_publish_event = None;
             state.active_job.result_publish_attempt_count = 0;
+            state.active_job.result_publish_first_queued_epoch_seconds = None;
             state.active_job.result_publish_last_queued_epoch_seconds = None;
             if let Some(job) = state.active_job.job.as_mut()
                 && job.sa_tick_result_event_id.is_none()
@@ -1794,6 +1795,13 @@ fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
         .active_job
         .result_publish_attempt_count
         .saturating_add(1);
+    if state
+        .active_job
+        .result_publish_first_queued_epoch_seconds
+        .is_none()
+    {
+        state.active_job.result_publish_first_queued_epoch_seconds = Some(current_epoch_seconds());
+    }
     state.active_job.result_publish_last_queued_epoch_seconds = Some(current_epoch_seconds());
     let attempt = state.active_job.result_publish_attempt_count;
     let continuity_timeout_seconds = state
@@ -2027,6 +2035,7 @@ pub(super) fn transition_active_job_to_paid(
     state.active_job.pending_result_publish_event_id = None;
     state.active_job.pending_result_publish_event = None;
     state.active_job.result_publish_attempt_count = 0;
+    state.active_job.result_publish_first_queued_epoch_seconds = None;
     state.active_job.result_publish_last_queued_epoch_seconds = None;
     clear_active_job_phase_deadline(&mut state.active_job);
 
@@ -2095,6 +2104,7 @@ fn fail_active_job_execution(
     state.active_job.pending_result_publish_event_id = None;
     state.active_job.pending_result_publish_event = None;
     state.active_job.result_publish_attempt_count = 0;
+    state.active_job.result_publish_first_queued_epoch_seconds = None;
     state.active_job.result_publish_last_queued_epoch_seconds = None;
     state.active_job.execution_turn_completed = false;
     clear_active_job_phase_deadline(&mut state.active_job);

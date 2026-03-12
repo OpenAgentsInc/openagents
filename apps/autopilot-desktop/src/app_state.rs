@@ -7281,6 +7281,7 @@ pub struct ActiveJobState {
     pub pending_result_publish_event_id: Option<String>,
     pub pending_result_publish_event: Option<Event>,
     pub result_publish_attempt_count: u32,
+    pub result_publish_first_queued_epoch_seconds: Option<u64>,
     pub result_publish_last_queued_epoch_seconds: Option<u64>,
     pub payment_required_invoice_requested: bool,
     pub payment_required_feedback_in_flight: bool,
@@ -7311,6 +7312,7 @@ impl Default for ActiveJobState {
             pending_result_publish_event_id: None,
             pending_result_publish_event: None,
             result_publish_attempt_count: 0,
+            result_publish_first_queued_epoch_seconds: None,
             result_publish_last_queued_epoch_seconds: None,
             payment_required_invoice_requested: false,
             payment_required_feedback_in_flight: false,
@@ -7386,6 +7388,7 @@ impl ActiveJobState {
         self.pending_result_publish_event_id = None;
         self.pending_result_publish_event = None;
         self.result_publish_attempt_count = 0;
+        self.result_publish_first_queued_epoch_seconds = None;
         self.result_publish_last_queued_epoch_seconds = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
@@ -7521,6 +7524,7 @@ impl ActiveJobState {
         self.pending_result_publish_event_id = None;
         self.pending_result_publish_event = None;
         self.result_publish_attempt_count = 0;
+        self.result_publish_first_queued_epoch_seconds = None;
         self.result_publish_last_queued_epoch_seconds = None;
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
