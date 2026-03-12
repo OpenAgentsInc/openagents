@@ -8,6 +8,7 @@ use crate::app_state::{
     MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
     MissionControlPaneState,
 };
+use crate::nip90_compute_semantics::analyze_invoice_amount_msats;
 use crate::spark_wallet::{
     SparkPaneState, is_settled_wallet_payment_status, is_terminal_wallet_payment_status,
     wallet_payment_net_delta_sats, wallet_payment_total_debit_sats,
@@ -1819,7 +1820,13 @@ fn request_provider_invoice_amount_sats(
                 normalize_pubkey(observation.provider_pubkey.as_str())
                     == normalize_pubkey(provider_pubkey)
             })
-            .and_then(|observation| observation.last_feedback_amount_msats)
+            .and_then(|observation| {
+                analyze_invoice_amount_msats(
+                    observation.last_feedback_amount_msats,
+                    observation.last_feedback_bolt11.as_deref(),
+                )
+                .effective_amount_msats
+            })
     });
 
     preferred_amount
@@ -1827,7 +1834,13 @@ fn request_provider_invoice_amount_sats(
             request
                 .provider_observations
                 .iter()
-                .find_map(|observation| observation.last_feedback_amount_msats)
+                .find_map(|observation| {
+                    analyze_invoice_amount_msats(
+                        observation.last_feedback_amount_msats,
+                        observation.last_feedback_bolt11.as_deref(),
+                    )
+                    .effective_amount_msats
+                })
         })
         .map(msats_to_sats_ceil)
         .filter(|amount| *amount > 0)
@@ -1907,7 +1920,12 @@ fn derive_buyer_payment_blockers(
                 ),
             );
         }
-        if let Some(amount_msats) = observation.last_feedback_amount_msats {
+        if let Some(amount_msats) = analyze_invoice_amount_msats(
+            observation.last_feedback_amount_msats,
+            observation.last_feedback_bolt11.as_deref(),
+        )
+        .effective_amount_msats
+        {
             let invoice_sats = msats_to_sats_ceil(amount_msats);
             if invoice_sats > request.budget_sats {
                 push_unique_blocker_code(&mut blocker_codes, "invoice_over_budget");

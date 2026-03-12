@@ -770,6 +770,34 @@ fn queue_auto_payment_for_buyer_event(
             now_epoch_seconds,
         )
     else {
+        if let Some(refusal) = state
+            .network_requests
+            .auto_payment_budget_refusal_for_provider(
+                event.request_id.as_str(),
+                event.provider_pubkey.as_str(),
+            )
+        {
+            tracing::warn!(
+                target: "autopilot_desktop::buyer",
+                "Refusing over-budget Spark payment request_id={} provider={} invoice_amount_sats={} approved_budget_sats={} amount_mismatch={} event_id={}",
+                event.request_id,
+                refusal.provider_pubkey,
+                refusal.invoice_amount_sats,
+                refusal.approved_budget_sats,
+                refusal.amount_mismatch,
+                event.event_id
+            );
+            let notice = refusal.notice_message();
+            state.network_requests.record_auto_payment_notice(
+                event.request_id.as_str(),
+                notice.as_str(),
+                now_epoch_seconds,
+            );
+            state.provider_runtime.last_result = Some(format!(
+                "buyer request {} blocked: {}",
+                event.request_id, notice
+            ));
+        }
         return;
     };
     tracing::info!(

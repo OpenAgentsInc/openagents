@@ -13032,6 +13032,183 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_auto_payment_accepts_under_budget_bolt11_only_invoice() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-budget-ok-001", 25);
+        let provider_pubkey = "55".repeat(32);
+
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-budget-ok-001",
+            Some("payment-required"),
+            Some("invoice required"),
+            None,
+            Some("lnbc20n1budgetok"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-pay-budget-ok-001",
+            Some("success"),
+        );
+
+        let prepared = requests
+            .prepare_auto_payment_attempt_for_provider(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                1_762_700_040,
+            )
+            .expect("under-budget invoice should prepare for payment");
+        assert_eq!(prepared.0, "lnbc20n1budgetok");
+        assert_eq!(
+            prepared.1,
+            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS)
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after payment preparation");
+        assert_eq!(
+            row.winning_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+        assert_eq!(row.pending_bolt11.as_deref(), Some("lnbc20n1budgetok"));
+        assert_eq!(row.status, NetworkRequestStatus::PaymentRequired);
+        assert!(row.payment_notice.is_none());
+    }
+
+    #[test]
+    fn network_requests_auto_payment_refuses_over_budget_invoice() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-budget-block-001", 26);
+        let provider_pubkey = "56".repeat(32);
+
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-budget-block-001",
+            Some("payment-required"),
+            Some("invoice required"),
+            Some(25_000),
+            Some("lnbc250n1budgetblock"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-pay-budget-block-001",
+            Some("success"),
+        );
+
+        assert!(
+            requests
+                .prepare_auto_payment_attempt_for_provider(
+                    request_id.as_str(),
+                    provider_pubkey.as_str(),
+                    1_762_700_041,
+                )
+                .is_none(),
+            "over-budget invoice must not queue Spark payment"
+        );
+
+        let refusal = requests
+            .auto_payment_budget_refusal_for_provider(request_id.as_str(), provider_pubkey.as_str())
+            .expect("over-budget provider should surface refusal");
+        assert_eq!(refusal.invoice_amount_sats, 25);
+        assert_eq!(
+            refusal.approved_budget_sats,
+            crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS
+        );
+        assert!(!refusal.amount_mismatch);
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should remain present");
+        assert_eq!(row.winning_provider_pubkey, None);
+        assert_eq!(row.pending_bolt11, None);
+        assert_eq!(row.status, NetworkRequestStatus::ResultReceived);
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2"))
+        );
+
+        let snapshot = crate::nip90_compute_flow::build_buyer_request_flow_snapshot(
+            row,
+            &SparkPaneState::default(),
+        );
+        assert!(
+            snapshot
+                .payment_blocker_codes
+                .iter()
+                .any(|code| code == "invoice_over_budget")
+        );
+        assert!(
+            snapshot.payment_blocker_summary.as_deref().is_some_and(
+                |summary| summary.contains("requested 25 sats above approved budget 2")
+            )
+        );
+    }
+
+    #[test]
+    fn network_requests_auto_payment_refuses_mismatched_invoice_amounts() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-budget-mismatch-001", 27);
+        let provider_pubkey = "57".repeat(32);
+
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-budget-mismatch-001",
+            Some("payment-required"),
+            Some("invoice required"),
+            Some(1_000),
+            Some("lnbc250n1budgetmismatch"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-pay-budget-mismatch-001",
+            Some("success"),
+        );
+
+        assert!(
+            requests
+                .prepare_auto_payment_attempt_for_provider(
+                    request_id.as_str(),
+                    provider_pubkey.as_str(),
+                    1_762_700_042,
+                )
+                .is_none(),
+            "mismatched invoice metadata must not queue Spark payment"
+        );
+
+        let refusal = requests
+            .auto_payment_budget_refusal_for_provider(request_id.as_str(), provider_pubkey.as_str())
+            .expect("mismatched provider should surface refusal");
+        assert_eq!(refusal.invoice_amount_sats, 25);
+        assert!(refusal.amount_mismatch);
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should remain present");
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount"))
+        );
+    }
+
+    #[test]
     fn network_requests_payment_failure_stays_terminal_when_late_result_arrives() {
         let mut requests = NetworkRequestsState::default();
         let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-pay-fail-001", 18);
