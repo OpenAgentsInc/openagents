@@ -10569,6 +10569,12 @@ mod tests {
             request_id: "req-123".to_string(),
             requester: "npub1abc".to_string(),
             demand_source: JobDemandSource::OpenNetwork,
+            demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
+            demand_risk_disposition:
+                crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_note:
+                "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
             request_kind: 5000,
             capability: "text_generation".to_string(),
             execution_input: Some("Generate text for req-123".to_string()),

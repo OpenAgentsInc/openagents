@@ -9,7 +9,9 @@ use crate::provider_nip90_lane::{
     ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
 use crate::spark_wallet::SparkWalletCommand;
-use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
+use crate::state::job_inbox::{
+    JobInboxNetworkRequest, JobInboxValidation, local_provider_keys, normalize_provider_keys,
+};
 use crate::state::operations::{BuyerResolutionAction, BuyerResolutionReason};
 use crate::state::provider_runtime::LocalInferenceBackend;
 use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
@@ -520,21 +522,6 @@ fn apply_ignored_ingress_request(
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
-}
-
-fn normalize_provider_keys(values: &[String]) -> Vec<String> {
-    let mut normalized = values
-        .iter()
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    normalized.sort();
-    normalized.dedup();
-    normalized
-}
-
-fn local_provider_keys(identity: &nostr::NostrIdentity) -> Vec<String> {
-    normalize_provider_keys(&[identity.npub.clone(), identity.public_key_hex.clone()])
 }
 
 fn append_parsed_shape_line(shape: &mut Option<String>, line: String) {

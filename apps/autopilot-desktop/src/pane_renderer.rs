@@ -4908,11 +4908,13 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} scope:{} env:{} {} ttl:{}s {} {} eligibility:{}",
+            "#{} {} {} src:{} risk:{}/{} scope:{} env:{} {} ttl:{}s {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
             request.demand_source.label(),
+            request.demand_risk_assessment().class.label(),
+            request.demand_risk_assessment().disposition.label(),
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             format_sats_amount(request.price_sats),
@@ -4960,6 +4962,27 @@ fn paint_job_inbox_pane(
             line_y,
             "Demand source",
             selected.demand_source.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Demand risk",
+            selected.demand_risk_assessment().class.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Risk policy",
+            selected.demand_risk_assessment().disposition.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Risk note",
+            selected.demand_risk_assessment().note.as_str(),
         );
         line_y = paint_label_line(
             paint,
@@ -5285,6 +5308,8 @@ fn build_active_job_scroll_lines(
         ("Requester", job.requester.as_str()),
         ("Capability", job.capability.as_str()),
         ("Demand source", job.demand_source.label()),
+        ("Demand risk", job.demand_risk_class.label()),
+        ("Risk policy", job.demand_risk_disposition.label()),
         ("Stage", job.stage.label()),
         ("Flow authority", flow_snapshot.authority.as_str()),
         ("Flow phase", flow_snapshot.phase.as_str()),
@@ -5342,6 +5367,13 @@ fn build_active_job_scroll_lines(
             theme::text::PRIMARY,
         );
     }
+    push_active_job_wrapped_line(
+        &mut lines,
+        "Risk note: ",
+        job.demand_risk_note.as_str(),
+        chunk_len,
+        theme::text::PRIMARY,
+    );
     if let Some(window_seconds) = flow_snapshot.continuity_window_seconds {
         push_active_job_wrapped_line(
             &mut lines,
@@ -6829,6 +6861,22 @@ mod tests {
         assert!(output.starts_with("Active Job"));
         assert!(output.contains("Job ID: job-req-active-job-copy"));
         assert!(output.contains("[x] received"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_demand_risk_truth() {
+        let request = fixture_active_job_request("req-active-job-risk");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(output.contains("Demand risk: speculative-open-network"));
+        assert!(output.contains("Risk policy: manual-only"));
     }
 
     #[test]

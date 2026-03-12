@@ -16,6 +16,49 @@ impl JobDemandSource {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDemandRiskClass {
+    StarterDemand,
+    TargetedOpenNetwork,
+    SpeculativeOpenNetwork,
+    TargetedMismatch,
+}
+
+impl JobDemandRiskClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::StarterDemand => "starter-demand",
+            Self::TargetedOpenNetwork => "targeted-open-network",
+            Self::SpeculativeOpenNetwork => "speculative-open-network",
+            Self::TargetedMismatch => "targeted-mismatch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDemandRiskDisposition {
+    AutoAcceptSafe,
+    ManualReviewOnly,
+    RejectByDefault,
+}
+
+impl JobDemandRiskDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AutoAcceptSafe => "safe-auto",
+            Self::ManualReviewOnly => "manual-only",
+            Self::RejectByDefault => "reject-by-default",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDemandRiskAssessment {
+    pub class: JobDemandRiskClass,
+    pub disposition: JobDemandRiskDisposition,
+    pub note: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxValidation {
     Valid,
@@ -91,6 +134,27 @@ impl JobInboxRequest {
         !self.target_provider_pubkeys.is_empty()
     }
 
+    pub fn demand_risk_assessment(&self) -> JobDemandRiskAssessment {
+        match self.demand_source {
+            JobDemandSource::StarterDemand => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::StarterDemand,
+                disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+                note: "hosted starter demand is trusted bootstrap work".to_string(),
+            },
+            JobDemandSource::OpenNetwork if self.is_targeted() => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+                note: "targeted open-network demand explicitly names this provider".to_string(),
+            },
+            JobDemandSource::OpenNetwork => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::SpeculativeOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note: "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
+            },
+        }
+    }
+
     pub const fn eligibility_label(&self, provider_mode: ProviderMode) -> &'static str {
         if self.preview_only(provider_mode) {
             "preview-only"
@@ -98,6 +162,21 @@ impl JobInboxRequest {
             "claimable"
         }
     }
+}
+
+pub(crate) fn normalize_provider_keys(values: &[String]) -> Vec<String> {
+    let mut normalized = values
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+pub(crate) fn local_provider_keys(identity: &nostr::NostrIdentity) -> Vec<String> {
+    normalize_provider_keys(&[identity.npub.clone(), identity.public_key_hex.clone()])
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
