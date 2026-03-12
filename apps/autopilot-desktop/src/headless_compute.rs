@@ -22,6 +22,10 @@ use crate::apple_fm_bridge::{
     AppleFmGenerateJob,
 };
 use crate::nip90_compute_domain_events;
+use crate::nip90_compute_semantics::{
+    BuyerProviderObservation as SharedBuyerProviderObservation, normalize_pubkey,
+    provider_has_payable_result, select_payable_winner,
+};
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind,
     ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
@@ -291,8 +295,11 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                         request.ttl_seconds,
                         truncate_for_log(provider_prompt(&request).as_str(), 160)
                     );
-                    let mut job =
-                        ActiveProviderJob::new(request.clone(), spark_total_sats(&spark_state));
+                    let mut job = ActiveProviderJob::new(
+                        request.clone(),
+                        spark_total_sats(&spark_state),
+                        config.invoice_expiry_seconds,
+                    );
                     publish_processing_feedback(&lane, &identity, &job.request)?;
                     match config.backend {
                         HeadlessProviderBackend::AppleFoundationModels => {
@@ -311,20 +318,16 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                         }
                         HeadlessProviderBackend::Canned => {
                             let output = canned_provider_output(&job.request);
-                            handle_provider_execution_complete(
-                                &lane,
-                                &identity,
-                                &mut spark_worker,
-                                &mut job,
-                                output,
-                                config.invoice_expiry_seconds,
-                            )?;
+                            handle_provider_execution_complete(&lane, &identity, &mut job, output)?;
                         }
                     }
                     active_job = Some(job);
                 }
                 ProviderNip90LaneUpdate::PublishOutcome(outcome) => {
                     log_publish_outcome("provider", &outcome);
+                    if let Some(job) = active_job.as_mut() {
+                        handle_provider_publish_outcome(&mut spark_worker, job, &outcome)?;
+                    }
                 }
                 ProviderNip90LaneUpdate::BuyerResponseEvent(_) => {}
             }
@@ -351,10 +354,8 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                             handle_provider_execution_complete(
                                 &lane,
                                 &identity,
-                                &mut spark_worker,
                                 job,
                                 completed.output,
-                                config.invoice_expiry_seconds,
                             )?;
                         }
                     }
@@ -695,10 +696,8 @@ pub fn run_headless_buyer(config: HeadlessBuyerConfig) -> Result<()> {
 fn handle_provider_execution_complete(
     lane: &ProviderNip90LaneWorker,
     identity: &NostrIdentity,
-    spark_worker: &mut SparkWalletWorker,
     job: &mut ActiveProviderJob,
     output: String,
-    invoice_expiry_seconds: u32,
 ) -> Result<()> {
     job.output = Some(output.clone());
     let result_event = build_provider_result_event(identity, &job.request, output.as_str())?;
@@ -722,6 +721,57 @@ fn handle_provider_execution_complete(
         result_event_id.as_str(),
         1,
     );
+    extend_provider_deadline(job);
+    Ok(())
+}
+
+fn handle_provider_publish_outcome(
+    spark_worker: &mut SparkWalletWorker,
+    job: &mut ActiveProviderJob,
+    outcome: &ProviderNip90PublishOutcome,
+) -> Result<()> {
+    if job.request.request_id != outcome.request_id {
+        return Ok(());
+    }
+
+    match outcome.role {
+        ProviderNip90PublishRole::Result => {
+            if outcome.accepted_relays == 0 {
+                bail!(
+                    "provider result publish failed for {}: {}",
+                    job.request.request_id,
+                    outcome
+                        .first_error
+                        .as_deref()
+                        .unwrap_or("all relays rejected publish")
+                );
+            }
+            if !job.result_publish_confirmed {
+                job.result_publish_confirmed = true;
+                extend_provider_deadline(job);
+                request_provider_invoice(spark_worker, job)?;
+            }
+        }
+        ProviderNip90PublishRole::Feedback => {
+            if job.payment_required_event_id.as_deref() == Some(outcome.event_id.as_str())
+                && outcome.accepted_relays > 0
+            {
+                extend_provider_deadline(job);
+            }
+        }
+        ProviderNip90PublishRole::Capability | ProviderNip90PublishRole::Request => {}
+    }
+
+    Ok(())
+}
+
+fn request_provider_invoice(
+    spark_worker: &mut SparkWalletWorker,
+    job: &mut ActiveProviderJob,
+) -> Result<()> {
+    if !provider_invoice_request_ready(job) {
+        return Ok(());
+    }
 
     spark_worker
         .enqueue(SparkWalletCommand::CreateBolt11Invoice {
@@ -730,17 +780,21 @@ fn handle_provider_execution_complete(
                 "OpenAgents headless job {}",
                 job.request.request_id
             )),
-            expiry_seconds: Some(invoice_expiry_seconds),
+            expiry_seconds: Some(job.invoice_expiry_seconds),
         })
         .map_err(|error| anyhow!("failed to queue provider bolt11 invoice: {error}"))?;
     job.invoice_requested = true;
     info!(
         target: "autopilot_desktop::headless_provider",
-        "provider requested bolt11 invoice request_id={} amount_sats={}",
+        "provider requested bolt11 invoice request_id={} amount_sats={} after result relay confirmation",
         job.request.request_id,
         job.request.price_sats
     );
     Ok(())
+}
+
+fn provider_invoice_request_ready(job: &ActiveProviderJob) -> bool {
+    !job.invoice_requested && job.bolt11.is_none() && job.result_publish_confirmed
 }
 
 fn handle_provider_wallet_update(
@@ -849,7 +903,41 @@ fn handle_buyer_response_event(
     event: ProviderNip90BuyerResponseEvent,
     spark_worker: &mut SparkWalletWorker,
 ) -> Result<()> {
-    request.provider_pubkey = Some(event.provider_pubkey.clone());
+    let provider_pubkey = event.provider_pubkey.clone();
+    {
+        let provider = observed_buyer_provider_mut(request, provider_pubkey.as_str());
+        match event.kind {
+            ProviderNip90BuyerResponseKind::Feedback => {
+                let status = event.status.as_deref().unwrap_or("unknown").to_string();
+                provider.last_feedback_event_id = Some(event.event_id.clone());
+                provider.last_feedback_status = event.status.clone();
+                if let Some(amount_msats) = event.amount_msats {
+                    provider.last_feedback_amount_msats = Some(amount_msats);
+                }
+                if let Some(bolt11) = event
+                    .bolt11
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    provider.last_feedback_bolt11 = Some(bolt11.to_string());
+                }
+                if status.eq_ignore_ascii_case("payment-required") {
+                    provider.payment_feedback_event_id = Some(event.event_id.clone());
+                }
+                if status.eq_ignore_ascii_case("success") {
+                    provider.success_feedback_event_id = Some(event.event_id.clone());
+                }
+            }
+            ProviderNip90BuyerResponseKind::Result => {
+                provider.last_result_event_id = Some(event.event_id.clone());
+                provider.last_result_status = event.status.clone();
+                provider.last_result_content =
+                    buyer_result_content(event.raw_event_json.as_deref());
+            }
+        }
+    }
+
     match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
             let status = event.status.as_deref().unwrap_or("unknown").to_string();
@@ -861,68 +949,58 @@ fn handle_buyer_response_event(
                 status,
                 event.event_id
             );
-            if status.eq_ignore_ascii_case("success") {
-                request.success_feedback_event_id = Some(event.event_id.clone());
-            }
             if status.eq_ignore_ascii_case("payment-required") {
-                request.payment_feedback_event_id = Some(event.event_id.clone());
-                let Some(bolt11) = event.bolt11.as_deref() else {
+                if event.bolt11.as_deref().is_none() {
                     warn!(
                         target: "autopilot_desktop::headless_buyer",
-                        "buyer payment-required feedback missing bolt11 request_id={} provider={} event_id={}; waiting for a valid invoice event",
+                        "buyer payment-required feedback missing bolt11 request_id={} provider={} event_id={}; awaiting matching result with a valid invoice",
                         event.request_id,
                         event.provider_pubkey,
                         event.event_id
-                    );
-                    return Ok(());
-                };
-                if !request.payment_enqueued {
-                    let amount_sats = event
-                        .amount_msats
-                        .map(|value| value.saturating_add(999) / 1000);
-                    spark_worker
-                        .enqueue(SparkWalletCommand::SendPayment {
-                            payment_request: bolt11.to_string(),
-                            amount_sats,
-                        })
-                        .map_err(|error| anyhow!("failed to queue buyer Spark payment: {error}"))?;
-                    request.payment_enqueued = true;
-                    request.payment_request = Some(bolt11.to_string());
-                    info!(
-                        target: "autopilot_desktop::headless_buyer",
-                        "buyer queued Spark payment request_id={} amount_sats={} bolt11_present=true",
-                        event.request_id,
-                        amount_sats
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| "none".to_string())
-                    );
-                    nip90_compute_domain_events::emit_buyer_queued_payment(
-                        event.request_id.as_str(),
-                        Some(event.provider_pubkey.as_str()),
-                        Some(event.event_id.as_str()),
-                        amount_sats,
                     );
                 }
             }
         }
         ProviderNip90BuyerResponseKind::Result => {
-            request.result_event_id = Some(event.event_id.clone());
-            request.result_content = buyer_result_content(event.raw_event_json.as_deref());
+            let result_content = observed_buyer_provider(request, provider_pubkey.as_str())
+                .and_then(|observation| observation.last_result_content.clone())
+                .unwrap_or_else(|| "no result content".to_string());
             info!(
                 target: "autopilot_desktop::headless_buyer",
                 "buyer result observed request_id={} provider={} event_id={} result={}",
                 event.request_id,
                 event.provider_pubkey,
                 event.event_id,
-                truncate_for_log(
-                    request
-                        .result_content
-                        .as_deref()
-                        .unwrap_or("no result content"),
-                    220
-                )
+                truncate_for_log(result_content.as_str(), 220)
             );
         }
+    }
+
+    select_headless_payable_winner(request, Some(provider_pubkey.as_str()));
+    sync_headless_request_from_winner(request);
+    if let Some(dispatch) = take_buyer_payment_dispatch(request) {
+        spark_worker
+            .enqueue(SparkWalletCommand::SendPayment {
+                payment_request: dispatch.bolt11.clone(),
+                amount_sats: dispatch.amount_sats,
+            })
+            .map_err(|error| anyhow!("failed to queue buyer Spark payment: {error}"))?;
+        info!(
+            target: "autopilot_desktop::headless_buyer",
+            "buyer queued Spark payment request_id={} provider={} amount_sats={} bolt11_present=true",
+            event.request_id,
+            dispatch.provider_pubkey,
+            dispatch
+                .amount_sats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        );
+        nip90_compute_domain_events::emit_buyer_queued_payment(
+            event.request_id.as_str(),
+            Some(dispatch.provider_pubkey.as_str()),
+            dispatch.feedback_event_id.as_deref(),
+            dispatch.amount_sats,
+        );
     }
     Ok(())
 }
@@ -1531,9 +1609,46 @@ fn log_apple_snapshot(snapshot: &AppleFmBridgeSnapshot) {
     }
 }
 
+fn provider_phase_window_seconds(ttl_seconds: u64) -> u64 {
+    ttl_seconds.saturating_add(120).max(180)
+}
+
+fn extend_provider_deadline(job: &mut ActiveProviderJob) {
+    let candidate = Instant::now()
+        + Duration::from_secs(provider_phase_window_seconds(job.request.ttl_seconds));
+    if candidate > job.deadline {
+        job.deadline = candidate;
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct HeadlessBuyerProviderObservation {
+    provider_pubkey: String,
+    last_feedback_event_id: Option<String>,
+    last_feedback_status: Option<String>,
+    last_feedback_amount_msats: Option<u64>,
+    last_feedback_bolt11: Option<String>,
+    last_result_event_id: Option<String>,
+    last_result_status: Option<String>,
+    last_result_content: Option<String>,
+    payment_feedback_event_id: Option<String>,
+    success_feedback_event_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HeadlessBuyerPaymentDispatch {
+    provider_pubkey: String,
+    feedback_event_id: Option<String>,
+    bolt11: String,
+    amount_sats: Option<u64>,
+}
+
 struct ActiveBuyerRequest {
     request_id: String,
     dispatched_at: Instant,
+    winning_provider_pubkey: Option<String>,
+    winning_result_event_id: Option<String>,
+    provider_observations: Vec<HeadlessBuyerProviderObservation>,
     provider_pubkey: Option<String>,
     result_event_id: Option<String>,
     result_content: Option<String>,
@@ -1576,6 +1691,9 @@ impl Default for ActiveBuyerRequest {
         Self {
             request_id: String::new(),
             dispatched_at: Instant::now(),
+            winning_provider_pubkey: None,
+            winning_result_event_id: None,
+            provider_observations: Vec::new(),
             provider_pubkey: None,
             result_event_id: None,
             result_content: None,
@@ -1590,13 +1708,167 @@ impl Default for ActiveBuyerRequest {
     }
 }
 
+fn observed_buyer_provider_mut<'a>(
+    request: &'a mut ActiveBuyerRequest,
+    provider_pubkey: &str,
+) -> &'a mut HeadlessBuyerProviderObservation {
+    let normalized_provider = normalize_pubkey(provider_pubkey);
+    if let Some(index) = request
+        .provider_observations
+        .iter()
+        .position(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str()) == normalized_provider
+        })
+    {
+        return request
+            .provider_observations
+            .get_mut(index)
+            .expect("headless provider observation index should remain valid");
+    }
+
+    request
+        .provider_observations
+        .push(HeadlessBuyerProviderObservation {
+            provider_pubkey: provider_pubkey.to_string(),
+            ..HeadlessBuyerProviderObservation::default()
+        });
+    request
+        .provider_observations
+        .last_mut()
+        .expect("new headless provider observation should exist")
+}
+
+fn observed_buyer_provider<'a>(
+    request: &'a ActiveBuyerRequest,
+    provider_pubkey: &str,
+) -> Option<&'a HeadlessBuyerProviderObservation> {
+    let normalized_provider = normalize_pubkey(provider_pubkey);
+    request.provider_observations.iter().find(|observation| {
+        normalize_pubkey(observation.provider_pubkey.as_str()) == normalized_provider
+    })
+}
+
+fn as_shared_buyer_observation(
+    observation: &HeadlessBuyerProviderObservation,
+) -> SharedBuyerProviderObservation<'_> {
+    SharedBuyerProviderObservation {
+        provider_pubkey: observation.provider_pubkey.as_str(),
+        last_feedback_event_id: observation.last_feedback_event_id.as_deref(),
+        last_feedback_status: observation.last_feedback_status.as_deref(),
+        last_feedback_amount_msats: observation.last_feedback_amount_msats,
+        last_feedback_bolt11: observation.last_feedback_bolt11.as_deref(),
+        last_result_event_id: observation.last_result_event_id.as_deref(),
+        last_result_status: observation.last_result_status.as_deref(),
+    }
+}
+
+fn select_headless_payable_winner(
+    request: &mut ActiveBuyerRequest,
+    preferred_provider_pubkey: Option<&str>,
+) {
+    if request.payment_pointer.is_some() {
+        return;
+    }
+
+    let observations: Vec<_> = request
+        .provider_observations
+        .iter()
+        .map(as_shared_buyer_observation)
+        .collect();
+    let selection = select_payable_winner(
+        request.winning_provider_pubkey.as_deref(),
+        preferred_provider_pubkey,
+        observations.as_slice(),
+    );
+    if let Some(selection) = selection {
+        request.winning_provider_pubkey = Some(selection.provider_pubkey);
+        request.winning_result_event_id = selection.result_event_id;
+        return;
+    }
+
+    request.winning_provider_pubkey = None;
+    request.winning_result_event_id = None;
+}
+
+fn sync_headless_request_from_winner(request: &mut ActiveBuyerRequest) {
+    let Some(winner) = request.winning_provider_pubkey.clone() else {
+        if !request.payment_enqueued && request.payment_pointer.is_none() {
+            request.provider_pubkey = None;
+            request.result_event_id = None;
+            request.result_content = None;
+            request.payment_feedback_event_id = None;
+            request.success_feedback_event_id = None;
+            request.payment_request = None;
+        }
+        return;
+    };
+    let Some(observation) = observed_buyer_provider(request, winner.as_str()) else {
+        return;
+    };
+    let provider_pubkey = observation.provider_pubkey.clone();
+    let result_event_id = observation.last_result_event_id.clone();
+    let result_content = observation.last_result_content.clone();
+    let payment_feedback_event_id = observation.payment_feedback_event_id.clone();
+    let success_feedback_event_id = observation.success_feedback_event_id.clone();
+    let last_feedback_bolt11 = observation.last_feedback_bolt11.clone();
+    request.provider_pubkey = Some(provider_pubkey);
+    request.result_event_id = result_event_id;
+    request.result_content = result_content;
+    request.payment_feedback_event_id = payment_feedback_event_id;
+    request.success_feedback_event_id = success_feedback_event_id;
+    if let Some(bolt11) = last_feedback_bolt11 {
+        request.payment_request = Some(bolt11);
+    }
+}
+
+fn take_buyer_payment_dispatch(
+    request: &mut ActiveBuyerRequest,
+) -> Option<HeadlessBuyerPaymentDispatch> {
+    if request.payment_enqueued {
+        return None;
+    }
+
+    let winner = request.winning_provider_pubkey.clone()?;
+    let observation = observed_buyer_provider(request, winner.as_str())?;
+    if !provider_has_payable_result(&as_shared_buyer_observation(observation)) {
+        return None;
+    }
+    let provider_pubkey = observation.provider_pubkey.clone();
+    let feedback_event_id = observation.payment_feedback_event_id.clone();
+    let amount_sats = observation
+        .last_feedback_amount_msats
+        .map(|value| value.saturating_add(999) / 1000);
+    let bolt11 = observation
+        .last_feedback_bolt11
+        .as_deref()?
+        .trim()
+        .to_string();
+    if bolt11.is_empty() {
+        return None;
+    }
+
+    let dispatch = HeadlessBuyerPaymentDispatch {
+        provider_pubkey,
+        feedback_event_id,
+        bolt11,
+        amount_sats,
+    };
+    request.payment_enqueued = true;
+    request.provider_pubkey = Some(dispatch.provider_pubkey.clone());
+    request.payment_feedback_event_id = dispatch.feedback_event_id.clone();
+    request.payment_request = Some(dispatch.bolt11.clone());
+    Some(dispatch)
+}
+
 struct ActiveProviderJob {
     request: JobInboxNetworkRequest,
     accepted_at: Instant,
     deadline: Instant,
     balance_before_sats: u64,
+    invoice_expiry_seconds: u32,
     output: Option<String>,
     result_event_id: Option<String>,
+    result_publish_confirmed: bool,
     bolt11: Option<String>,
     invoice_requested: bool,
     invoice_created_at_epoch_seconds: Option<u64>,
@@ -1606,16 +1878,22 @@ struct ActiveProviderJob {
 }
 
 impl ActiveProviderJob {
-    fn new(request: JobInboxNetworkRequest, balance_before_sats: u64) -> Self {
-        let deadline =
-            Instant::now() + Duration::from_secs(request.ttl_seconds.saturating_add(120).max(180));
+    fn new(
+        request: JobInboxNetworkRequest,
+        balance_before_sats: u64,
+        invoice_expiry_seconds: u32,
+    ) -> Self {
+        let deadline = Instant::now()
+            + Duration::from_secs(provider_phase_window_seconds(request.ttl_seconds));
         Self {
             request,
             accepted_at: Instant::now(),
             deadline,
             balance_before_sats,
+            invoice_expiry_seconds,
             output: None,
             result_event_id: None,
+            result_publish_confirmed: false,
             bolt11: None,
             invoice_requested: false,
             invoice_created_at_epoch_seconds: None,
@@ -1928,9 +2206,12 @@ fn parse_relay_filters(values: &[Value]) -> Vec<HeadlessRelayFilter> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveBuyerRequest, buyer_result_content, canned_provider_output, parse_relay_filters,
-        truncate_for_log,
+        ActiveBuyerRequest, ActiveProviderJob, buyer_result_content, canned_provider_output,
+        observed_buyer_provider_mut, parse_relay_filters, provider_invoice_request_ready,
+        select_headless_payable_winner, sync_headless_request_from_winner,
+        take_buyer_payment_dispatch, truncate_for_log,
     };
+    use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
     use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
     use nostr::Event;
 
@@ -2017,6 +2298,124 @@ mod tests {
         assert!(!request.is_terminal_success());
         request.success_feedback_event_id = Some("feedback-123".to_string());
         assert!(request.is_terminal_success());
+    }
+
+    #[test]
+    fn buyer_payment_dispatch_waits_for_matching_result_and_invoice() {
+        let mut request = ActiveBuyerRequest::new("req-123".to_string());
+        {
+            let provider = observed_buyer_provider_mut(&mut request, "provider-aa");
+            provider.last_feedback_event_id = Some("feedback-aa".to_string());
+            provider.last_feedback_status = Some("payment-required".to_string());
+            provider.last_feedback_amount_msats = Some(2_000);
+            provider.last_feedback_bolt11 = Some("lnbc20n1provideraa".to_string());
+            provider.payment_feedback_event_id = Some("feedback-aa".to_string());
+        }
+
+        select_headless_payable_winner(&mut request, Some("provider-aa"));
+        sync_headless_request_from_winner(&mut request);
+        assert!(request.winning_provider_pubkey.is_none());
+        assert!(take_buyer_payment_dispatch(&mut request).is_none());
+
+        {
+            let provider = observed_buyer_provider_mut(&mut request, "provider-aa");
+            provider.last_result_event_id = Some("result-aa".to_string());
+            provider.last_result_status = Some("success".to_string());
+            provider.last_result_content = Some("BUY MODE OK.".to_string());
+        }
+
+        select_headless_payable_winner(&mut request, Some("provider-aa"));
+        sync_headless_request_from_winner(&mut request);
+        let dispatch =
+            take_buyer_payment_dispatch(&mut request).expect("matching result+invoice should pay");
+        assert_eq!(dispatch.provider_pubkey, "provider-aa");
+        assert_eq!(dispatch.amount_sats, Some(2));
+        assert_eq!(
+            request.winning_provider_pubkey.as_deref(),
+            Some("provider-aa")
+        );
+        assert!(request.payment_enqueued);
+    }
+
+    #[test]
+    fn buyer_payment_dispatch_uses_same_provider_for_result_and_invoice() {
+        let mut request = ActiveBuyerRequest::new("req-123".to_string());
+        {
+            let provider = observed_buyer_provider_mut(&mut request, "provider-aa");
+            provider.last_feedback_event_id = Some("feedback-aa".to_string());
+            provider.last_feedback_status = Some("payment-required".to_string());
+            provider.last_feedback_amount_msats = Some(2_000);
+            provider.last_feedback_bolt11 = Some("lnbc20n1provideraa".to_string());
+            provider.payment_feedback_event_id = Some("feedback-aa".to_string());
+        }
+        {
+            let provider = observed_buyer_provider_mut(&mut request, "provider-bb");
+            provider.last_result_event_id = Some("result-bb".to_string());
+            provider.last_result_status = Some("success".to_string());
+            provider.last_result_content = Some("BUY MODE OK.".to_string());
+        }
+
+        select_headless_payable_winner(&mut request, Some("provider-bb"));
+        sync_headless_request_from_winner(&mut request);
+        assert!(request.winning_provider_pubkey.is_none());
+        assert!(take_buyer_payment_dispatch(&mut request).is_none());
+
+        {
+            let provider = observed_buyer_provider_mut(&mut request, "provider-bb");
+            provider.last_feedback_event_id = Some("feedback-bb".to_string());
+            provider.last_feedback_status = Some("payment-required".to_string());
+            provider.last_feedback_amount_msats = Some(2_000);
+            provider.last_feedback_bolt11 = Some("lnbc20n1providerbb".to_string());
+            provider.payment_feedback_event_id = Some("feedback-bb".to_string());
+        }
+
+        select_headless_payable_winner(&mut request, Some("provider-bb"));
+        sync_headless_request_from_winner(&mut request);
+        let dispatch =
+            take_buyer_payment_dispatch(&mut request).expect("provider-bb should become payable");
+        assert_eq!(dispatch.provider_pubkey, "provider-bb");
+        assert_eq!(dispatch.bolt11, "lnbc20n1providerbb");
+    }
+
+    #[test]
+    fn provider_invoice_waits_for_result_publish_confirmation() {
+        let mut job = ActiveProviderJob::new(fixture_request(), 0, 3_600);
+        let initial_deadline = job.deadline;
+        job.result_event_id = Some("result-123".to_string());
+        assert!(!job.result_publish_confirmed);
+        assert!(!provider_invoice_request_ready(&job));
+
+        let failed_publish = ProviderNip90PublishOutcome {
+            request_id: job.request.request_id.clone(),
+            role: ProviderNip90PublishRole::Result,
+            event_id: "result-123".to_string(),
+            accepted_relays: 0,
+            rejected_relays: 4,
+            first_error: Some("all relays rejected".to_string()),
+            parsed_event_shape: None,
+            raw_event_json: None,
+        };
+        assert_eq!(failed_publish.accepted_relays, 0);
+        assert!(!job.result_publish_confirmed);
+        assert!(!provider_invoice_request_ready(&job));
+
+        let successful_publish = ProviderNip90PublishOutcome {
+            request_id: job.request.request_id.clone(),
+            role: ProviderNip90PublishRole::Result,
+            event_id: "result-123".to_string(),
+            accepted_relays: 3,
+            rejected_relays: 1,
+            first_error: None,
+            parsed_event_shape: None,
+            raw_event_json: None,
+        };
+        job.result_publish_confirmed = successful_publish.accepted_relays > 0;
+        if job.result_publish_confirmed {
+            super::extend_provider_deadline(&mut job);
+        }
+        assert!(job.result_publish_confirmed);
+        assert!(provider_invoice_request_ready(&job));
+        assert!(job.deadline >= initial_deadline);
     }
 
     #[test]
