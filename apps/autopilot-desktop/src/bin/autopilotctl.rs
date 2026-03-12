@@ -133,6 +133,42 @@ enum BuyModeCommand {
     Status,
 }
 
+impl ProviderCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Online { .. } => DesktopControlActionRequest::SetProviderMode { online: true },
+            Self::Offline { .. } => DesktopControlActionRequest::SetProviderMode { online: false },
+        }
+    }
+}
+
+impl AppleFmCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Refresh { .. } => DesktopControlActionRequest::RefreshAppleFm,
+            Self::SmokeTest => DesktopControlActionRequest::RunAppleFmSmokeTest,
+        }
+    }
+}
+
+impl WalletCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Refresh => DesktopControlActionRequest::RefreshWallet,
+        }
+    }
+}
+
+impl BuyModeCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Start { .. } => Some(DesktopControlActionRequest::StartBuyMode),
+            Self::Stop { .. } => Some(DesktopControlActionRequest::StopBuyMode),
+            Self::Status => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum LogSourceArg {
     MissionControl,
@@ -236,8 +272,7 @@ fn main() -> Result<()> {
         }
         Command::Provider { command } => match command {
             ProviderCommand::Online { wait, timeout_ms } => {
-                let response =
-                    client.action(&DesktopControlActionRequest::SetProviderMode { online: true })?;
+                let response = client.action(&command.action_request())?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::ProviderOnline, timeout_ms)?)
@@ -247,8 +282,7 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
             ProviderCommand::Offline { wait, timeout_ms } => {
-                let response =
-                    client.action(&DesktopControlActionRequest::SetProviderMode { online: false })?;
+                let response = client.action(&command.action_request())?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::ProviderOffline, timeout_ms)?)
@@ -260,7 +294,7 @@ fn main() -> Result<()> {
         },
         Command::AppleFm { command } => match command {
             AppleFmCommand::Refresh { wait, timeout_ms } => {
-                let response = client.action(&DesktopControlActionRequest::RefreshAppleFm)?;
+                let response = client.action(&command.action_request())?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::AppleFmReady, timeout_ms)?)
@@ -270,14 +304,14 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
             AppleFmCommand::SmokeTest => {
-                let response = client.action(&DesktopControlActionRequest::RunAppleFmSmokeTest)?;
+                let response = client.action(&command.action_request())?;
                 ensure_action_success(&response)?;
                 print_action(json_output, &response, None)?;
             }
         },
         Command::Wallet { command } => match command {
             WalletCommand::Refresh => {
-                let response = client.action(&DesktopControlActionRequest::RefreshWallet)?;
+                let response = client.action(&command.action_request())?;
                 ensure_action_success(&response)?;
                 print_action(json_output, &response, None)?;
             }
@@ -290,7 +324,10 @@ fn main() -> Result<()> {
             } => {
                 let snapshot = client.snapshot()?;
                 ensure_buy_mode_budget_ack(&snapshot, approved_budget_sats)?;
-                let response = client.action(&DesktopControlActionRequest::StartBuyMode)?;
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("buy mode start did not produce a control action"))?;
+                let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::BuyModeRunning, timeout_ms)?)
@@ -300,7 +337,10 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
             BuyModeCommand::Stop { wait, timeout_ms } => {
-                let response = client.action(&DesktopControlActionRequest::StopBuyMode)?;
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("buy mode stop did not produce a control action"))?;
+                let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::BuyModeStopped, timeout_ms)?)
@@ -886,9 +926,13 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 
 #[cfg(test)]
 mod tests {
-    use super::{WaitCondition, ensure_buy_mode_budget_ack, request_has_payment_required};
+    use super::{
+        AppleFmCommand, BuyModeCommand, ProviderCommand, WaitCondition, WalletCommand,
+        ensure_buy_mode_budget_ack, request_has_payment_required,
+    };
     use autopilot_desktop::desktop_control::{
-        DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlSnapshot,
+        DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
+        DesktopControlBuyModeStatus, DesktopControlSnapshot,
     };
 
     fn sample_snapshot() -> DesktopControlSnapshot {
@@ -904,8 +948,10 @@ mod tests {
     #[test]
     fn buy_mode_budget_ack_rejects_mismatch() {
         let snapshot = sample_snapshot();
-        let error = ensure_buy_mode_budget_ack(&snapshot, 5).expect_err("budget mismatch");
-        assert!(error.to_string().contains("Approved budget mismatch"));
+        let error = ensure_buy_mode_budget_ack(&snapshot, 5).err();
+        assert!(
+            matches!(error, Some(error) if error.to_string().contains("Approved budget mismatch"))
+        );
     }
 
     #[test]
@@ -921,5 +967,59 @@ mod tests {
         });
         assert!(request_has_payment_required(&snapshot.buy_mode.recent_requests[0]));
         assert!(WaitCondition::BuyModePaymentRequired.matches(&snapshot));
+    }
+
+    #[test]
+    fn lifecycle_commands_map_to_control_requests() {
+        assert_eq!(
+            ProviderCommand::Online {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetProviderMode { online: true }
+        );
+        assert_eq!(
+            ProviderCommand::Offline {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetProviderMode { online: false }
+        );
+        assert_eq!(
+            AppleFmCommand::Refresh {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            DesktopControlActionRequest::RefreshAppleFm
+        );
+        assert_eq!(
+            AppleFmCommand::SmokeTest.action_request(),
+            DesktopControlActionRequest::RunAppleFmSmokeTest
+        );
+        assert_eq!(
+            WalletCommand::Refresh.action_request(),
+            DesktopControlActionRequest::RefreshWallet
+        );
+        assert_eq!(
+            BuyModeCommand::Start {
+                approved_budget_sats: 2,
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::StartBuyMode)
+        );
+        assert_eq!(
+            BuyModeCommand::Stop {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::StopBuyMode)
+        );
+        assert_eq!(BuyModeCommand::Status.action_request(), None);
     }
 }

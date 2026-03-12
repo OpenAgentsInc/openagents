@@ -223,6 +223,25 @@ impl DesktopControlActionRequest {
             Self::GetMissionControlLogTail { .. } => "log-tail",
         }
     }
+
+    fn provider_mode_online_target(&self) -> Option<bool> {
+        match self {
+            Self::SetProviderMode { online } => Some(*online),
+            _ => None,
+        }
+    }
+
+    fn mission_control_pane_action(&self) -> Option<MissionControlPaneAction> {
+        match self {
+            Self::RunAppleFmSmokeTest => Some(MissionControlPaneAction::RunLocalFmSummaryTest),
+            Self::RefreshWallet => Some(MissionControlPaneAction::RefreshWallet),
+            Self::StartBuyMode | Self::StopBuyMode => {
+                Some(MissionControlPaneAction::ToggleBuyModeLoop)
+            }
+            Self::Withdraw { .. } => Some(MissionControlPaneAction::SendWithdrawal),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -1034,24 +1053,42 @@ fn apply_action_request(
     state: &mut RenderState,
     action: &DesktopControlActionRequest,
 ) -> DesktopControlActionResponse {
+    if let Some(online) = action.provider_mode_online_target() {
+        let response = apply_provider_mode_action(state, online);
+        record_command_outcome(state, action.label(), &response);
+        return attach_snapshot_metadata(state, response);
+    }
+    if let DesktopControlActionRequest::Withdraw { bolt11 } = action {
+        let response = withdraw_action(state, bolt11.as_str());
+        record_command_outcome(state, action.label(), &response);
+        return attach_snapshot_metadata(state, response);
+    }
+    if let Some(mission_control_action) = action.mission_control_pane_action() {
+        let response = match action {
+            DesktopControlActionRequest::StartBuyMode => start_buy_mode_action(state),
+            DesktopControlActionRequest::StopBuyMode => stop_buy_mode_action(state),
+            DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
+            _ => mission_control_action_response(state, mission_control_action),
+        };
+        record_command_outcome(state, action.label(), &response);
+        return attach_snapshot_metadata(state, response);
+    }
     let response = match action {
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
-        DesktopControlActionRequest::SetProviderMode { online } => {
-            apply_provider_mode_action(state, *online)
-        }
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
-        DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
-        DesktopControlActionRequest::RefreshWallet => {
-            mission_control_action_response(state, MissionControlPaneAction::RefreshWallet)
-        }
-        DesktopControlActionRequest::StartBuyMode => start_buy_mode_action(state),
-        DesktopControlActionRequest::StopBuyMode => stop_buy_mode_action(state),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
-        DesktopControlActionRequest::Withdraw { bolt11 } => withdraw_action(state, bolt11.as_str()),
         DesktopControlActionRequest::GetMissionControlLogTail { limit } => {
             log_tail_response(state, *limit)
+        }
+        DesktopControlActionRequest::SetProviderMode { .. }
+        | DesktopControlActionRequest::RunAppleFmSmokeTest
+        | DesktopControlActionRequest::RefreshWallet
+        | DesktopControlActionRequest::StartBuyMode
+        | DesktopControlActionRequest::StopBuyMode
+        | DesktopControlActionRequest::Withdraw { .. } => {
+            unreachable!("action-specific routes should be handled above")
         }
     };
     record_command_outcome(state, action.label(), &response);
@@ -1833,6 +1870,7 @@ mod tests {
         DesktopControlWalletStatus, apply_response_snapshot_metadata, snapshot_sync_signature,
         validate_control_bind_addr,
     };
+    use crate::pane_system::MissionControlPaneAction;
 
     use std::time::Duration;
 
@@ -2102,5 +2140,119 @@ mod tests {
             .expect("decode timed out event batch");
         assert!(timed_out.timed_out);
         assert!(timed_out.events.is_empty());
+    }
+
+    #[test]
+    fn desktop_control_request_routes_align_with_ui_owned_actions() {
+        assert_eq!(
+            DesktopControlActionRequest::SetProviderMode { online: true }
+                .provider_mode_online_target(),
+            Some(true)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::SetProviderMode { online: false }
+                .provider_mode_online_target(),
+            Some(false)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::RunAppleFmSmokeTest.mission_control_pane_action(),
+            Some(MissionControlPaneAction::RunLocalFmSummaryTest)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::RefreshWallet.mission_control_pane_action(),
+            Some(MissionControlPaneAction::RefreshWallet)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::StartBuyMode.mission_control_pane_action(),
+            Some(MissionControlPaneAction::ToggleBuyModeLoop)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::StopBuyMode.mission_control_pane_action(),
+            Some(MissionControlPaneAction::ToggleBuyModeLoop)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::Withdraw {
+                bolt11: "lnbc1example".to_string(),
+            }
+            .mission_control_pane_action(),
+            Some(MissionControlPaneAction::SendWithdrawal)
+        );
+    }
+
+    #[test]
+    fn event_batches_preserve_command_and_state_change_order_for_agents() {
+        let token = "token-order".to_string();
+        let runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        runtime
+            .sync_snapshot(sample_snapshot())
+            .expect("sync sample snapshot");
+        runtime
+            .append_events(vec![
+                DesktopControlEventDraft {
+                    event_type: "control.command.received".to_string(),
+                    summary: "provider-online received".to_string(),
+                    command_label: Some("provider-online".to_string()),
+                    success: None,
+                    payload: Some(serde_json::json!({ "command_label": "provider-online" })),
+                },
+                DesktopControlEventDraft {
+                    event_type: "control.command.applied".to_string(),
+                    summary: "provider-online applied".to_string(),
+                    command_label: Some("provider-online".to_string()),
+                    success: Some(true),
+                    payload: Some(serde_json::json!({
+                        "command_label": "provider-online",
+                        "snapshot_revision": 2,
+                    })),
+                },
+                DesktopControlEventDraft {
+                    event_type: "provider.mode.changed".to_string(),
+                    summary: "provider mode=online runtime=connecting relays=0".to_string(),
+                    command_label: None,
+                    success: None,
+                    payload: Some(serde_json::json!({
+                        "mode": "online",
+                        "runtime_mode": "connecting",
+                    })),
+                },
+            ])
+            .expect("append ordered events");
+
+        let client = reqwest::blocking::Client::new();
+        let events_url = format!("http://{}/v1/events", runtime.listen_addr());
+        let batch = client
+            .get(format!("{events_url}?after_event_id=0&limit=10&timeout_ms=0"))
+            .bearer_auth(token.as_str())
+            .send()
+            .expect("send ordered events request")
+            .error_for_status()
+            .expect("ordered events status")
+            .json::<DesktopControlEventBatch>()
+            .expect("decode ordered event batch");
+
+        let event_types = batch
+            .events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            event_types,
+            vec![
+                "control.command.received",
+                "control.command.applied",
+                "provider.mode.changed",
+            ]
+        );
+        assert_eq!(
+            batch.events[1]
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("snapshot_revision")),
+            Some(&serde_json::Value::from(2))
+        );
     }
 }
