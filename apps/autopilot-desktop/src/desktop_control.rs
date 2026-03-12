@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -6,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -16,7 +17,7 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_provider_substrate::ProviderDesiredMode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::sync::{mpsc as tokio_mpsc, oneshot};
+use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
 use crate::app_state::{
     MISSION_CONTROL_BUY_MODE_BUDGET_SATS, MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, RenderState,
@@ -29,6 +30,9 @@ const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
 const DESKTOP_CONTROL_LOG_TAIL_LIMIT: usize = 64;
+const DESKTOP_CONTROL_EVENT_BUFFER_LIMIT: usize = 512;
+const DESKTOP_CONTROL_EVENT_QUERY_LIMIT: usize = 128;
+const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRuntimeConfig {
@@ -262,6 +266,51 @@ impl DesktopControlActionResponse {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlEventDraft {
+    pub event_type: String,
+    pub summary: String,
+    pub command_label: Option<String>,
+    pub success: Option<bool>,
+    pub payload: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlEvent {
+    pub event_id: u64,
+    pub event_type: String,
+    pub at_epoch_ms: u64,
+    pub summary: String,
+    pub command_label: Option<String>,
+    pub success: Option<bool>,
+    pub snapshot_revision: Option<u64>,
+    pub state_signature: Option<String>,
+    pub payload: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlEventBatch {
+    pub last_event_id: u64,
+    pub timed_out: bool,
+    pub events: Vec<DesktopControlEvent>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+struct DesktopControlEventsQuery {
+    #[serde(default)]
+    after_event_id: u64,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Default)]
+struct DesktopControlEventBuffer {
+    next_event_id: u64,
+    events: VecDeque<DesktopControlEvent>,
+}
+
 #[derive(Debug)]
 pub struct DesktopControlActionEnvelope {
     pub action: DesktopControlActionRequest,
@@ -282,12 +331,15 @@ pub enum DesktopControlRuntimeUpdate {
 
 enum DesktopControlRuntimeCommand {
     SyncSnapshot(Box<DesktopControlSnapshot>),
+    AppendEvents(Vec<DesktopControlEventDraft>),
     Shutdown,
 }
 
 #[derive(Clone)]
 struct DesktopControlHttpState {
     snapshot: Arc<Mutex<DesktopControlSnapshot>>,
+    events: Arc<Mutex<DesktopControlEventBuffer>>,
+    event_notify: Arc<Notify>,
     auth_token: Arc<Mutex<String>>,
     update_tx: Sender<DesktopControlRuntimeUpdate>,
 }
@@ -296,6 +348,7 @@ pub struct DesktopControlRuntime {
     command_tx: tokio_mpsc::UnboundedSender<DesktopControlRuntimeCommand>,
     update_rx: Receiver<DesktopControlRuntimeUpdate>,
     listen_addr: SocketAddr,
+    last_event_snapshot: Option<DesktopControlSnapshot>,
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -314,6 +367,7 @@ impl DesktopControlRuntime {
             command_tx,
             update_rx,
             listen_addr,
+            last_event_snapshot: None,
             join_handle: Some(join_handle),
         })
     }
@@ -327,6 +381,15 @@ impl DesktopControlRuntime {
             .send(DesktopControlRuntimeCommand::SyncSnapshot(Box::new(
                 snapshot,
             )))
+            .map_err(|error| format!("Desktop control runtime offline: {error}"))
+    }
+
+    pub fn append_events(&self, events: Vec<DesktopControlEventDraft>) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        self.command_tx
+            .send(DesktopControlRuntimeCommand::AppendEvents(events))
             .map_err(|error| format!("Desktop control runtime offline: {error}"))
     }
 
@@ -349,6 +412,59 @@ impl DesktopControlRuntime {
 impl Drop for DesktopControlRuntime {
     fn drop(&mut self) {
         self.shutdown_async();
+    }
+}
+
+impl DesktopControlEventBuffer {
+    fn append(&mut self, drafts: Vec<DesktopControlEventDraft>) -> Vec<DesktopControlEvent> {
+        let mut appended = Vec::new();
+        for draft in drafts {
+            let event_type = draft.event_type.trim();
+            let summary = draft.summary.trim();
+            if event_type.is_empty() || summary.is_empty() {
+                continue;
+            }
+            self.next_event_id = self.next_event_id.saturating_add(1);
+            let event = DesktopControlEvent {
+                event_id: self.next_event_id,
+                event_type: event_type.to_string(),
+                at_epoch_ms: current_epoch_ms(),
+                summary: summary.to_string(),
+                command_label: draft.command_label,
+                success: draft.success,
+                snapshot_revision: draft
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("snapshot_revision"))
+                    .and_then(Value::as_u64),
+                state_signature: draft
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("state_signature"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                payload: draft.payload,
+            };
+            self.events.push_back(event.clone());
+            appended.push(event);
+        }
+        while self.events.len() > DESKTOP_CONTROL_EVENT_BUFFER_LIMIT {
+            self.events.pop_front();
+        }
+        appended
+    }
+
+    fn collect_after(&self, after_event_id: u64, limit: usize) -> Vec<DesktopControlEvent> {
+        self.events
+            .iter()
+            .filter(|event| event.event_id > after_event_id)
+            .take(limit.max(1).min(DESKTOP_CONTROL_EVENT_QUERY_LIMIT))
+            .cloned()
+            .collect()
+    }
+
+    fn last_event_id(&self) -> u64 {
+        self.events.back().map_or(0, |event| event.event_id)
     }
 }
 
@@ -402,7 +518,7 @@ pub fn enable_runtime(
     let manifest_path = control_manifest_path();
     disable_runtime(state);
 
-    let runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+    let mut runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
         listen_addr: bind_addr,
         auth_token: auth_token.clone(),
     })?;
@@ -410,6 +526,8 @@ pub fn enable_runtime(
     let base_url = control_base_url(listen_addr);
     let snapshot = snapshot_for_state(state);
     runtime.sync_snapshot(snapshot.clone())?;
+    runtime.append_events(snapshot_change_events(None, &snapshot))?;
+    runtime.last_event_snapshot = Some(snapshot.clone());
 
     let manifest = DesktopControlManifest {
         schema_version: DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION,
@@ -483,7 +601,17 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
     for update in updates {
         match update {
             DesktopControlRuntimeUpdate::ActionRequest(envelope) => {
+                emit_control_events(
+                    state,
+                    vec![command_received_event(&envelope.action)],
+                    false,
+                );
                 let response = apply_action_request(state, &envelope.action);
+                emit_control_events(
+                    state,
+                    vec![command_outcome_event(&envelope.action, &response)],
+                    true,
+                );
                 envelope.respond(response);
                 changed = true;
             }
@@ -497,23 +625,33 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
 }
 
 fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
-    let Some(runtime) = state.desktop_control_runtime.as_ref() else {
-        return false;
-    };
     let snapshot = snapshot_for_state(state);
     let snapshot_revision = snapshot.snapshot_revision;
     let signature = snapshot.state_signature.clone();
-    let should_sync = state.desktop_control_last_sync_signature.as_deref()
-        != Some(signature.as_str())
+    let signature_changed =
+        state.desktop_control_last_sync_signature.as_deref() != Some(signature.as_str());
+    let should_sync = signature_changed
         || state
             .desktop_control_last_sync_at
             .is_none_or(|last| last.elapsed() >= DESKTOP_CONTROL_SYNC_INTERVAL);
     if !should_sync {
         return false;
     }
-    if let Err(error) = runtime.sync_snapshot(snapshot) {
+    let Some(runtime) = state.desktop_control_runtime.as_mut() else {
+        return false;
+    };
+    if let Err(error) = runtime.sync_snapshot(snapshot.clone()) {
         state.desktop_control.last_error = Some(error);
         return false;
+    }
+    if signature_changed {
+        let previous_snapshot = runtime.last_event_snapshot.clone();
+        if let Err(error) =
+            runtime.append_events(snapshot_change_events(previous_snapshot.as_ref(), &snapshot))
+        {
+            state.desktop_control.last_error = Some(error);
+        }
+        runtime.last_event_snapshot = Some(snapshot.clone());
     }
     state.desktop_control.last_snapshot_revision = snapshot_revision;
     state.desktop_control.last_snapshot_signature = Some(signature.clone());
@@ -535,6 +673,361 @@ fn snapshot_sync_signature(snapshot: &DesktopControlSnapshot) -> String {
     serde_json::to_string(&stable_snapshot)
         .map(|json| sha256_prefixed_text(json.as_str()))
         .unwrap_or_else(|_| "desktop-control-signature-unavailable".to_string())
+}
+
+fn emit_control_events(
+    state: &mut RenderState,
+    events: Vec<DesktopControlEventDraft>,
+    mirror_to_mission_control: bool,
+) {
+    if events.is_empty() {
+        return;
+    }
+    if mirror_to_mission_control {
+        for event in &events {
+            mirror_control_event_to_mission_control(state, event);
+        }
+    }
+    let Some(runtime) = state.desktop_control_runtime.as_ref() else {
+        return;
+    };
+    if let Err(error) = runtime.append_events(events) {
+        state.desktop_control.last_error = Some(error);
+    }
+}
+
+fn mirror_control_event_to_mission_control(
+    state: &mut RenderState,
+    event: &DesktopControlEventDraft,
+) {
+    if matches!(
+        event.command_label.as_deref(),
+        Some("get-snapshot" | "active-job" | "log-tail")
+    ) {
+        return;
+    }
+    let stream = if matches!(event.success, Some(false)) {
+        wgpui::components::sections::TerminalStream::Stderr
+    } else {
+        wgpui::components::sections::TerminalStream::Stdout
+    };
+    state
+        .mission_control
+        .push_runtime_log_line(stream, format!("Control: {}", event.summary));
+}
+
+fn command_received_event(action: &DesktopControlActionRequest) -> DesktopControlEventDraft {
+    DesktopControlEventDraft {
+        event_type: "control.command.received".to_string(),
+        summary: format!("{} received", action.label()),
+        command_label: Some(action.label().to_string()),
+        success: None,
+        payload: Some(command_payload(action)),
+    }
+}
+
+fn command_outcome_event(
+    action: &DesktopControlActionRequest,
+    response: &DesktopControlActionResponse,
+) -> DesktopControlEventDraft {
+    let (event_type, outcome_label) = if response.success {
+        ("control.command.applied", "applied")
+    } else {
+        ("control.command.rejected", "rejected")
+    };
+    let include_response_payload = !matches!(
+        action,
+        DesktopControlActionRequest::GetSnapshot
+            | DesktopControlActionRequest::GetActiveJob
+            | DesktopControlActionRequest::GetMissionControlLogTail { .. }
+    );
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "command_label".to_string(),
+        Value::String(action.label().to_string()),
+    );
+    payload.insert(
+        "outcome".to_string(),
+        Value::String(outcome_label.to_string()),
+    );
+    payload.insert(
+        "message".to_string(),
+        Value::String(response.message.clone()),
+    );
+    if let Some(snapshot_revision) = response.snapshot_revision {
+        payload.insert(
+            "snapshot_revision".to_string(),
+            Value::from(snapshot_revision),
+        );
+    }
+    if let Some(state_signature) = response.state_signature.clone() {
+        payload.insert(
+            "state_signature".to_string(),
+            Value::String(state_signature),
+        );
+    }
+    if include_response_payload {
+        if let Some(response_payload) = response.payload.clone() {
+            payload.insert("response_payload".to_string(), response_payload);
+        }
+    }
+    DesktopControlEventDraft {
+        event_type: event_type.to_string(),
+        summary: format!("{} {} // {}", action.label(), outcome_label, response.message),
+        command_label: Some(action.label().to_string()),
+        success: Some(response.success),
+        payload: Some(Value::Object(payload)),
+    }
+}
+
+fn command_payload(action: &DesktopControlActionRequest) -> Value {
+    match action {
+        DesktopControlActionRequest::GetSnapshot => json!({ "command_label": action.label() }),
+        DesktopControlActionRequest::SetProviderMode { online } => {
+            json!({ "command_label": action.label(), "online": online })
+        }
+        DesktopControlActionRequest::RefreshAppleFm
+        | DesktopControlActionRequest::RunAppleFmSmokeTest
+        | DesktopControlActionRequest::RefreshWallet
+        | DesktopControlActionRequest::StartBuyMode
+        | DesktopControlActionRequest::StopBuyMode
+        | DesktopControlActionRequest::GetActiveJob => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::Withdraw { bolt11 } => json!({
+            "command_label": action.label(),
+            "invoice_length": bolt11.trim().len(),
+        }),
+        DesktopControlActionRequest::GetMissionControlLogTail { limit } => json!({
+            "command_label": action.label(),
+            "limit": limit,
+        }),
+    }
+}
+
+fn snapshot_change_events(
+    previous: Option<&DesktopControlSnapshot>,
+    current: &DesktopControlSnapshot,
+) -> Vec<DesktopControlEventDraft> {
+    let mut events = Vec::new();
+    let mut changed_domains = Vec::new();
+
+    if previous.is_none_or(|snapshot| snapshot.provider != current.provider) {
+        changed_domains.push("provider");
+        events.push(DesktopControlEventDraft {
+            event_type: "provider.mode.changed".to_string(),
+            summary: provider_status_summary(&current.provider),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.provider).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.apple_fm != current.apple_fm) {
+        changed_domains.push("apple_fm");
+        events.push(DesktopControlEventDraft {
+            event_type: "apple_fm.readiness.changed".to_string(),
+            summary: apple_fm_status_summary(&current.apple_fm),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.apple_fm).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.wallet != current.wallet) {
+        changed_domains.push("wallet");
+        events.push(DesktopControlEventDraft {
+            event_type: "wallet.state.changed".to_string(),
+            summary: wallet_status_summary(&current.wallet),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.wallet).ok(),
+        });
+    }
+    if buy_mode_status_changed(previous.map(|snapshot| &snapshot.buy_mode), &current.buy_mode) {
+        changed_domains.push("buy_mode");
+        events.push(DesktopControlEventDraft {
+            event_type: "buyer.lifecycle.changed".to_string(),
+            summary: buy_mode_status_summary(&current.buy_mode),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.buy_mode).ok(),
+        });
+    }
+    if active_job_status_changed(previous.and_then(|snapshot| snapshot.active_job.as_ref()), current.active_job.as_ref()) {
+        changed_domains.push("active_job");
+        events.push(DesktopControlEventDraft {
+            event_type: "active_job.lifecycle.changed".to_string(),
+            summary: active_job_status_summary(current.active_job.as_ref()),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.active_job).ok(),
+        });
+    }
+    if mission_control_status_changed(previous.map(|snapshot| &snapshot.mission_control), &current.mission_control) {
+        changed_domains.push("mission_control");
+    }
+
+    if !changed_domains.is_empty() {
+        events.insert(
+            0,
+            DesktopControlEventDraft {
+                event_type: "control.snapshot.synced".to_string(),
+                summary: format!(
+                    "snapshot synced revision={} domains={}",
+                    current.snapshot_revision,
+                    changed_domains.join(",")
+                ),
+                command_label: None,
+                success: Some(true),
+                payload: Some(json!({
+                    "snapshot_revision": current.snapshot_revision,
+                    "state_signature": current.state_signature.clone(),
+                    "changed_domains": changed_domains,
+                })),
+            },
+        );
+    }
+
+    events
+}
+
+fn provider_status_summary(status: &DesktopControlProviderStatus) -> String {
+    format!(
+        "provider mode={} runtime={} relays={} blockers={}",
+        status.mode,
+        status.runtime_mode,
+        status.connected_relays,
+        status.blocker_codes.len()
+    )
+}
+
+fn apple_fm_status_summary(status: &DesktopControlAppleFmStatus) -> String {
+    if status.ready {
+        format!(
+            "apple fm ready model={}",
+            status.ready_model.as_deref().unwrap_or("unknown")
+        )
+    } else if status.reachable {
+        "apple fm reachable; waiting for model readiness".to_string()
+    } else {
+        status
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "apple fm unavailable".to_string())
+    }
+}
+
+fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
+    format!(
+        "wallet balance={} network_status={} withdraw_ready={}",
+        status.balance_sats, status.network_status, status.can_withdraw
+    )
+}
+
+fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
+    match (
+        status.enabled,
+        status.in_flight_request_id.as_deref(),
+        status.in_flight_status.as_deref(),
+        status.in_flight_phase.as_deref(),
+    ) {
+        (false, _, _, _) => "buy mode stopped".to_string(),
+        (true, Some(request_id), Some(request_status), Some(phase)) => format!(
+            "buy mode request={} status={} phase={}",
+            short_request_id(request_id),
+            request_status,
+            phase
+        ),
+        (true, Some(request_id), _, _) => {
+            format!("buy mode request={} in flight", short_request_id(request_id))
+        }
+        (true, None, _, _) => "buy mode running with no in-flight request".to_string(),
+    }
+}
+
+fn active_job_status_summary(active_job: Option<&DesktopControlActiveJobStatus>) -> String {
+    let Some(active_job) = active_job else {
+        return "no active job".to_string();
+    };
+    format!(
+        "active job request={} stage={} next={}",
+        short_request_id(active_job.request_id.as_str()),
+        active_job.stage,
+        active_job.next_expected_event
+    )
+}
+
+fn mission_control_status_changed(
+    previous: Option<&DesktopControlMissionControlStatus>,
+    current: &DesktopControlMissionControlStatus,
+) -> bool {
+    previous.is_none_or(|previous| {
+        previous.last_action != current.last_action
+            || previous.last_error != current.last_error
+            || previous.can_go_online != current.can_go_online
+            || previous.blocker_codes != current.blocker_codes
+    })
+}
+
+fn buy_mode_status_changed(
+    previous: Option<&DesktopControlBuyModeStatus>,
+    current: &DesktopControlBuyModeStatus,
+) -> bool {
+    previous.is_none_or(|previous| {
+        previous.enabled != current.enabled
+            || previous.approved_budget_sats != current.approved_budget_sats
+            || previous.cadence_seconds != current.cadence_seconds
+            || previous.in_flight_request_id != current.in_flight_request_id
+            || previous.in_flight_phase != current.in_flight_phase
+            || previous.in_flight_status != current.in_flight_status
+            || previous.selected_provider_pubkey != current.selected_provider_pubkey
+            || previous.payable_provider_pubkey != current.payable_provider_pubkey
+            || previous.recent_requests != current.recent_requests
+    })
+}
+
+fn active_job_status_changed(
+    previous: Option<&DesktopControlActiveJobStatus>,
+    current: Option<&DesktopControlActiveJobStatus>,
+) -> bool {
+    match (previous, current) {
+        (None, None) => false,
+        (Some(_), None) | (None, Some(_)) => true,
+        (Some(previous), Some(current)) => {
+            previous.job_id != current.job_id
+                || previous.request_id != current.request_id
+                || previous.capability != current.capability
+                || previous.stage != current.stage
+                || previous.projection_stage != current.projection_stage
+                || previous.phase != current.phase
+                || previous.next_expected_event != current.next_expected_event
+                || previous.projection_authority != current.projection_authority
+                || previous.quoted_price_sats != current.quoted_price_sats
+                || previous.pending_result_publish_event_id
+                    != current.pending_result_publish_event_id
+                || previous.result_event_id != current.result_event_id
+                || previous.result_publish_status != current.result_publish_status
+                || previous.result_publish_attempt_count != current.result_publish_attempt_count
+                || previous.payment_pointer != current.payment_pointer
+                || previous.pending_bolt11 != current.pending_bolt11
+                || previous.settlement_status != current.settlement_status
+                || previous.settlement_method != current.settlement_method
+                || previous.settlement_amount_sats != current.settlement_amount_sats
+                || previous.settlement_fees_sats != current.settlement_fees_sats
+                || previous.settlement_net_wallet_delta_sats
+                    != current.settlement_net_wallet_delta_sats
+                || previous.continuity_window_seconds != current.continuity_window_seconds
+                || previous.failure_reason != current.failure_reason
+        }
+    }
+}
+
+fn short_request_id(request_id: &str) -> String {
+    let trimmed = request_id.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!("{}..", &trimmed[..12])
+    }
 }
 
 fn apply_action_request(
@@ -990,6 +1483,60 @@ fn mission_control_recent_lines(state: &RenderState, limit: usize) -> Vec<String
         .collect()
 }
 
+fn append_runtime_events(
+    state: &DesktopControlHttpState,
+    drafts: Vec<DesktopControlEventDraft>,
+) -> Result<Vec<DesktopControlEvent>, StatusCode> {
+    let appended = {
+        let mut buffer = state
+            .events
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        buffer.append(drafts)
+    };
+    if appended.is_empty() {
+        return Ok(appended);
+    }
+    for event in &appended {
+        persist_control_event(event);
+    }
+    state.event_notify.notify_waiters();
+    Ok(appended)
+}
+
+fn persist_control_event(event: &DesktopControlEvent) {
+    crate::runtime_log::record_control_event(
+        event.event_type.as_str(),
+        event.summary.clone(),
+        json!({
+            "event_id": event.event_id,
+            "at_epoch_ms": event.at_epoch_ms,
+            "command_label": event.command_label,
+            "success": event.success,
+            "snapshot_revision": event.snapshot_revision,
+            "state_signature": event.state_signature,
+            "payload": event.payload,
+        }),
+    );
+}
+
+fn runtime_event_batch(
+    state: &DesktopControlHttpState,
+    after_event_id: u64,
+    limit: usize,
+    timed_out: bool,
+) -> Result<DesktopControlEventBatch, StatusCode> {
+    let buffer = state
+        .events
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(DesktopControlEventBatch {
+        last_event_id: buffer.last_event_id(),
+        timed_out,
+        events: buffer.collect_after(after_event_id, limit),
+    })
+}
+
 fn current_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1045,6 +1592,66 @@ async fn desktop_control_snapshot(
     Ok(Json(snapshot))
 }
 
+async fn desktop_control_events(
+    State(state): State<DesktopControlHttpState>,
+    headers: HeaderMap,
+    Query(query): Query<DesktopControlEventsQuery>,
+) -> Result<Json<DesktopControlEventBatch>, StatusCode> {
+    authorize_request(&headers, &state)?;
+    let limit = query
+        .limit
+        .unwrap_or(DESKTOP_CONTROL_EVENT_QUERY_LIMIT)
+        .max(1)
+        .min(DESKTOP_CONTROL_EVENT_QUERY_LIMIT);
+    let timeout_ms = query
+        .timeout_ms
+        .unwrap_or(DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS)
+        .min(DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS);
+    let notified = state.event_notify.notified();
+    let immediate = runtime_event_batch(&state, query.after_event_id, limit, false)?;
+    if !immediate.events.is_empty() || timeout_ms == 0 {
+        return Ok(Json(immediate));
+    }
+
+    let notified = tokio::time::timeout(Duration::from_millis(timeout_ms), notified).await;
+    match notified {
+        Ok(()) => {
+            let batch = runtime_event_batch(&state, query.after_event_id, limit, false)?;
+            crate::runtime_log::record_control_event(
+                "control.wait.satisfied",
+                format!(
+                    "event wait satisfied after={} returned={}",
+                    query.after_event_id,
+                    batch.events.len()
+                ),
+                json!({
+                    "after_event_id": query.after_event_id,
+                    "timeout_ms": timeout_ms,
+                    "returned_event_count": batch.events.len(),
+                    "last_event_id": batch.last_event_id,
+                }),
+            );
+            Ok(Json(batch))
+        }
+        Err(_) => {
+            crate::runtime_log::record_control_event(
+                "control.wait.timed_out",
+                format!("event wait timed out after={}", query.after_event_id),
+                json!({
+                    "after_event_id": query.after_event_id,
+                    "timeout_ms": timeout_ms,
+                }),
+            );
+            Ok(Json(runtime_event_batch(
+                &state,
+                query.after_event_id,
+                limit,
+                true,
+            )?))
+        }
+    }
+}
+
 async fn desktop_control_action(
     State(state): State<DesktopControlHttpState>,
     headers: HeaderMap,
@@ -1059,6 +1666,7 @@ async fn desktop_control_action(
         );
     }
     let (response_tx, response_rx) = oneshot::channel();
+    let action_for_response = action.clone();
     let envelope = DesktopControlActionEnvelope {
         action,
         response_tx,
@@ -1068,27 +1676,37 @@ async fn desktop_control_action(
         .send(DesktopControlRuntimeUpdate::ActionRequest(envelope))
         .is_err()
     {
+        let response =
+            DesktopControlActionResponse::error("Desktop control loop is unavailable");
+        let _ = append_runtime_events(
+            &state,
+            vec![command_outcome_event(&action_for_response, &response)],
+        );
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(DesktopControlActionResponse::error(
-                "Desktop control loop is unavailable",
-            )),
+            Json(response),
         );
     }
     match tokio::time::timeout(Duration::from_secs(3), response_rx).await {
         Ok(Ok(response)) => (StatusCode::OK, Json(response)),
-        Ok(Err(_)) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(DesktopControlActionResponse::error(
-                "Desktop dropped the control action response",
-            )),
-        ),
-        Err(_) => (
-            StatusCode::REQUEST_TIMEOUT,
-            Json(DesktopControlActionResponse::error(
-                "Desktop control action timed out",
-            )),
-        ),
+        Ok(Err(_)) => {
+            let response =
+                DesktopControlActionResponse::error("Desktop dropped the control action response");
+            let _ = append_runtime_events(
+                &state,
+                vec![command_outcome_event(&action_for_response, &response)],
+            );
+            (StatusCode::SERVICE_UNAVAILABLE, Json(response))
+        }
+        Err(_) => {
+            let response =
+                DesktopControlActionResponse::error("Desktop control action timed out");
+            let _ = append_runtime_events(
+                &state,
+                vec![command_outcome_event(&action_for_response, &response)],
+            );
+            (StatusCode::REQUEST_TIMEOUT, Json(response))
+        }
     }
 }
 
@@ -1136,9 +1754,13 @@ fn run_desktop_control_runtime_loop(
 
     runtime.block_on(async move {
         let snapshot = Arc::new(Mutex::new(DesktopControlSnapshot::default()));
+        let events = Arc::new(Mutex::new(DesktopControlEventBuffer::default()));
+        let event_notify = Arc::new(Notify::new());
         let auth_token = Arc::new(Mutex::new(config.auth_token));
         let state = DesktopControlHttpState {
             snapshot,
+            events,
+            event_notify,
             auth_token,
             update_tx,
         };
@@ -1162,9 +1784,11 @@ fn run_desktop_control_runtime_loop(
         };
         let router = Router::new()
             .route("/v1/snapshot", get(desktop_control_snapshot))
+            .route("/v1/events", get(desktop_control_events))
             .route("/v1/action", post(desktop_control_action))
             .with_state(state.clone());
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let server_state = state.clone();
         let server = tokio::spawn(async move {
             if let Err(error) = axum::serve(listener, router)
                 .with_graceful_shutdown(async {
@@ -1172,7 +1796,7 @@ fn run_desktop_control_runtime_loop(
                 })
                 .await
             {
-                let _ = state
+                let _ = server_state
                     .update_tx
                     .send(DesktopControlRuntimeUpdate::WorkerError(format!(
                         "Desktop control listener failed: {error}"
@@ -1187,6 +1811,9 @@ fn run_desktop_control_runtime_loop(
                         *guard = *next_snapshot;
                     }
                 }
+                DesktopControlRuntimeCommand::AppendEvents(events) => {
+                    let _ = append_runtime_events(&state, events);
+                }
                 DesktopControlRuntimeCommand::Shutdown => break,
             }
         }
@@ -1200,10 +1827,10 @@ mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
-        DesktopControlMissionControlStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlWalletStatus, apply_response_snapshot_metadata,
-        snapshot_sync_signature,
+        DesktopControlEventBatch, DesktopControlEventDraft, DesktopControlMissionControlStatus,
+        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlWalletStatus, apply_response_snapshot_metadata, snapshot_sync_signature,
         validate_control_bind_addr,
     };
 
@@ -1380,5 +2007,100 @@ mod tests {
         request.respond(DesktopControlActionResponse::ok("Queued wallet refresh"));
         let response = join.join().expect("join action thread");
         assert_eq!(response.message, "Queued wallet refresh");
+    }
+
+    #[test]
+    fn runtime_serves_event_batches_and_long_poll_waits() {
+        let token = "token-events".to_string();
+        let runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        runtime
+            .sync_snapshot(sample_snapshot())
+            .expect("sync sample snapshot");
+        runtime
+            .append_events(vec![DesktopControlEventDraft {
+                event_type: "control.command.applied".to_string(),
+                summary: "provider-online applied".to_string(),
+                command_label: Some("provider-online".to_string()),
+                success: Some(true),
+                payload: Some(serde_json::json!({
+                    "command_label": "provider-online",
+                    "snapshot_revision": 1,
+                    "state_signature": "sig-001",
+                })),
+            }])
+            .expect("append sample event");
+
+        let client = reqwest::blocking::Client::new();
+        let events_url = format!("http://{}/v1/events", runtime.listen_addr());
+
+        let initial = client
+            .get(format!("{events_url}?after_event_id=0&limit=10&timeout_ms=0"))
+            .bearer_auth(token.as_str())
+            .send()
+            .expect("send initial events request")
+            .error_for_status()
+            .expect("initial events status")
+            .json::<DesktopControlEventBatch>()
+            .expect("decode initial event batch");
+        assert_eq!(initial.events.len(), 1);
+        assert_eq!(initial.events[0].event_type, "control.command.applied");
+        let after_event_id = initial.last_event_id;
+
+        let join = std::thread::spawn({
+            let client = client.clone();
+            let token = token.clone();
+            let events_url = events_url.clone();
+            move || {
+                client
+                    .get(format!(
+                        "{events_url}?after_event_id={after_event_id}&limit=10&timeout_ms=500"
+                    ))
+                    .bearer_auth(token)
+                    .send()
+                    .expect("send waiting events request")
+                    .error_for_status()
+                    .expect("waiting events status")
+                    .json::<DesktopControlEventBatch>()
+                    .expect("decode waiting event batch")
+            }
+        });
+
+        std::thread::sleep(Duration::from_millis(40));
+        runtime
+            .append_events(vec![DesktopControlEventDraft {
+                event_type: "wallet.state.changed".to_string(),
+                summary: "wallet balance=75 network_status=connected withdraw_ready=true"
+                    .to_string(),
+                command_label: None,
+                success: None,
+                payload: Some(serde_json::json!({
+                    "balance_sats": 75,
+                    "network_status": "connected",
+                })),
+            }])
+            .expect("append waiting event");
+        let waited = join.join().expect("join waiting event request");
+        assert!(!waited.timed_out);
+        assert_eq!(waited.events.len(), 1);
+        assert_eq!(waited.events[0].event_type, "wallet.state.changed");
+
+        let timed_out = client
+            .get(format!(
+                "{events_url}?after_event_id={}&limit=10&timeout_ms=25",
+                waited.last_event_id
+            ))
+            .bearer_auth(token.as_str())
+            .send()
+            .expect("send timed out events request")
+            .error_for_status()
+            .expect("timed out events status")
+            .json::<DesktopControlEventBatch>()
+            .expect("decode timed out event batch");
+        assert!(timed_out.timed_out);
+        assert!(timed_out.events.is_empty());
     }
 }
