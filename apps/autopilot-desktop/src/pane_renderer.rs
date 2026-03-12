@@ -1231,15 +1231,19 @@ fn paint_go_online_pane(
 
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
-    let active_state = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-        ("STANDBY", mission_control_orange_color())
-    } else if let Some(job) = active_job.job.as_ref() {
-        match job.stage {
-            JobLifecycleStage::Failed => ("FAULT", mission_control_red_color()),
-            _ => ("ACTIVE", mission_control_green_color()),
-        }
-    } else {
-        ("SCANNING", mission_control_cyan_color())
+    let active_panel_state = mission_control_active_jobs_panel_state(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        job_inbox,
+        active_job,
+        earn_job_lifecycle_projection,
+    );
+    let active_state = match active_panel_state.headline.as_str() {
+        "STANDBY" => ("STANDBY", mission_control_orange_color()),
+        "FAULT" => ("FAULT", mission_control_red_color()),
+        "ACTIVE" => ("ACTIVE", mission_control_green_color()),
+        _ => ("SCANNING", mission_control_cyan_color()),
     };
     paint.scene.draw_text(paint.text.layout_mono(
         active_state.0,
@@ -1250,35 +1254,7 @@ fn paint_go_online_pane(
         22.0,
         active_state.1,
     ));
-    let active_summary_lines = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-        vec![
-            if crate::app_state::mission_control_sell_compute_supported(
-                desktop_shell_mode,
-                local_inference_runtime,
-            ) {
-                "GO ONLINE TO ACCEPT PAID JOBS.".to_string()
-            } else {
-                "PLATFORM NOT SUPPORTED FOR SELLING COMPUTE.".to_string()
-            },
-            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
-        ]
-    } else if let Some(job) = active_job.job.as_ref() {
-        vec![
-            format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
-            format!("STAGE // {}", job.stage.label().to_ascii_uppercase()),
-            format!(
-                "PAYOUT // {}",
-                format_mission_control_amount(job.quoted_price_sats)
-            ),
-            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
-        ]
-    } else {
-        vec![
-            "WATCHING RELAYS FOR MATCHES.".to_string(),
-            format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
-        ]
-    };
-    for (index, line) in active_summary_lines.iter().enumerate() {
+    for (index, line) in active_panel_state.lines.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout_mono(
             line,
             Point::new(
@@ -1445,6 +1421,90 @@ fn paint_mission_control_buy_mode_panel(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct MissionControlActiveJobsPanelState {
+    headline: String,
+    lines: Vec<String>,
+}
+
+fn mission_control_active_jobs_panel_state(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+) -> MissionControlActiveJobsPanelState {
+    if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+        return MissionControlActiveJobsPanelState {
+            headline: "STANDBY".to_string(),
+            lines: vec![
+                if crate::app_state::mission_control_sell_compute_supported(
+                    desktop_shell_mode,
+                    local_inference_runtime,
+                ) {
+                    "GO ONLINE TO ACCEPT PAID JOBS.".to_string()
+                } else {
+                    "PLATFORM NOT SUPPORTED FOR SELLING COMPUTE.".to_string()
+                },
+                "NEXT // GO ONLINE".to_string(),
+                format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
+            ],
+        };
+    }
+
+    let Some(job) = active_job.job.as_ref() else {
+        return MissionControlActiveJobsPanelState {
+            headline: "SCANNING".to_string(),
+            lines: vec![
+                "WATCHING RELAYS FOR MATCHES.".to_string(),
+                "NEXT // MATCHING REQUEST".to_string(),
+                format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
+            ],
+        };
+    };
+
+    let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+        active_job,
+        earn_job_lifecycle_projection,
+    )
+    .expect("active job snapshot should exist when job exists");
+
+    let mut lines = vec![
+        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
+        format!(
+            "FLOW // {} / {}",
+            flow_snapshot.authority.as_str().to_ascii_uppercase(),
+            flow_snapshot.phase.as_str().to_ascii_uppercase()
+        ),
+        format!(
+            "NEXT // {}",
+            flow_snapshot.next_expected_event.to_ascii_uppercase()
+        ),
+    ];
+    if let Some(continuity_summary) = flow_snapshot.mission_control_continuity_summary() {
+        lines.push(format!(
+            "CONT // {}",
+            continuity_summary.to_ascii_uppercase()
+        ));
+    } else {
+        lines.push("CONT // NONE".to_string());
+    }
+    lines.push(format!(
+        "PAYOUT // {}",
+        format_mission_control_amount(job.quoted_price_sats)
+    ));
+
+    MissionControlActiveJobsPanelState {
+        headline: if job.stage == JobLifecycleStage::Failed {
+            "FAULT".to_string()
+        } else {
+            "ACTIVE".to_string()
+        },
+        lines,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct MissionControlBuyModePanelState {
     summary: String,
     mode: String,
@@ -1475,7 +1535,9 @@ fn mission_control_buy_mode_panel_state(
     });
     let block_reason = crate::app_state::mission_control_buy_mode_start_block_reason(spark_wallet);
     let blocked_while_idle = request.is_none() && block_reason.is_some();
-    let next = if !mission_control.buy_mode_loop_enabled {
+    let next = if let Some(snapshot) = request_snapshot.as_ref() {
+        snapshot.next_expected_event.clone()
+    } else if !mission_control.buy_mode_loop_enabled {
         "off".to_string()
     } else if network_requests
         .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
@@ -1510,12 +1572,13 @@ fn mission_control_buy_mode_panel_state(
             .as_ref()
             .map(|snapshot| {
                 let mut summary = format!(
-                    "req {} // {} // {} // {} // phase {} // next {} // payment {}",
+                    "req {} // {} // {} // {} // phase {} // auth {} // next {} // payment {}",
                     compact_mission_control_id(snapshot.request_id.as_str()),
                     snapshot.provider_summary(),
                     snapshot.winner_selection_summary(),
                     snapshot.work_summary(),
                     snapshot.phase.as_str(),
+                    snapshot.authority.as_str(),
                     snapshot.next_expected_event,
                     snapshot.payment_summary(),
                 );
@@ -6071,18 +6134,18 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 mod tests {
     use super::{
         active_job_clipboard_text, build_active_job_scroll_lines, create_invoice_view_state,
-        mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
-        mission_control_buy_mode_payment_label, mission_control_go_online_hint,
-        mission_control_lightning_receive_state_label, mission_control_local_fm_test_button_label,
-        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
-        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
-        pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state,
-        split_text_for_display,
+        mission_control_active_jobs_panel_state, mission_control_body_chunk_len,
+        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
+        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
+        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
+        mission_control_local_model_button_label, mission_control_value_chunk_len,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision,
-        JobInboxRequest, JobInboxValidation, JobLifecycleStage, MissionControlPaneState,
-        PaneLoadState,
+        JobInboxRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        MissionControlPaneState, PaneLoadState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
@@ -6556,7 +6619,7 @@ mod tests {
         )
         .expect("enabled buy mode should expose panel state");
         assert_eq!(paying.mode, "on");
-        assert_eq!(paying.next, "in-flight");
+        assert_eq!(paying.next, "wallet payment");
         assert_eq!(paying.provider, "444444..4444");
         assert_eq!(paying.work, "invoice");
         assert_eq!(paying.payment, "queued");
@@ -6675,6 +6738,91 @@ mod tests {
         assert!(panel.summary.contains("1 losers ignored"));
         assert!(panel.summary.contains("late result"));
         assert!(panel.summary.contains("non-winning provider noise ignored"));
+    }
+
+    #[test]
+    fn mission_control_active_jobs_panel_state_surfaces_publish_continuity() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = crate::app_state::ProviderMode::Online;
+        let request = fixture_active_job_request("req-active-panel-3389");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.job.as_mut().expect("job should exist").stage = JobLifecycleStage::Running;
+        active_job.execution_turn_completed = true;
+        active_job.result_publish_in_flight = true;
+        active_job.pending_result_publish_event_id = Some("result-active-panel-3389".to_string());
+        active_job.result_publish_attempt_count = 4;
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        active_job.result_publish_first_queued_epoch_seconds =
+            Some(now_epoch_seconds.saturating_sub(40));
+        active_job.result_publish_last_queued_epoch_seconds =
+            Some(now_epoch_seconds.saturating_sub(5));
+
+        let panel = mission_control_active_jobs_panel_state(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &LocalInferenceExecutionSnapshot::default(),
+            &JobInboxState::default(),
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+        );
+
+        assert_eq!(panel.headline, "ACTIVE");
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") })
+        );
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("CONT // RESULT SIGNED")
+                && line.contains("RELAY ATTEMPT 4")
+                && line.contains("WINDOW 195S")
+        }));
+    }
+
+    #[test]
+    fn mission_control_active_jobs_panel_state_distinguishes_wallet_settlement() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = crate::app_state::ProviderMode::Online;
+        let request = fixture_active_job_request("req-active-panel-settle-3389");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.job.as_mut().expect("job should exist").stage = JobLifecycleStage::Delivered;
+        active_job.pending_bolt11 = Some("lnbc1settle3389".to_string());
+
+        let panel = mission_control_active_jobs_panel_state(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &LocalInferenceExecutionSnapshot::default(),
+            &JobInboxState::default(),
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+        );
+
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // WALLET / AWAITING-PAYMENT") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // WALLET SETTLEMENT") })
+        );
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("CONT // WAITING ON SETTLEMENT") && line.contains("WINDOW 195S")
+        }));
     }
 
     #[test]

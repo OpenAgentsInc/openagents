@@ -373,7 +373,10 @@ pub(crate) struct ActiveJobFlowSnapshot {
     pub projection_authority: String,
     pub pending_result_publish_event_id: Option<String>,
     pub result_event_id: Option<String>,
+    pub result_signed: bool,
     pub result_publish_status: String,
+    pub result_publish_attempt_count: u32,
+    pub result_publish_age_seconds: Option<u64>,
     pub payment_pointer: Option<String>,
     pub pending_bolt11: Option<String>,
     pub continuity_window_seconds: Option<u64>,
@@ -384,6 +387,50 @@ pub(crate) struct ActiveJobFlowSnapshot {
 pub(crate) struct Nip90ComputeFlowSnapshot {
     pub recent_requests: Vec<BuyerRequestFlowSnapshot>,
     pub active_job: Option<ActiveJobFlowSnapshot>,
+}
+
+impl ActiveJobFlowSnapshot {
+    pub(crate) fn mission_control_continuity_summary(&self) -> Option<String> {
+        match self.phase {
+            Nip90FlowPhase::PublishingResult => Some(format!(
+                "{} // relay attempt {} // age {} // window {}",
+                if self.result_signed {
+                    "result signed"
+                } else {
+                    "result pending"
+                },
+                self.result_publish_attempt_count.max(1),
+                self.result_publish_age_seconds
+                    .map(|age| format!("{age}s"))
+                    .unwrap_or_else(|| "-".to_string()),
+                self.continuity_window_seconds
+                    .map(|window| format!("{window}s"))
+                    .unwrap_or_else(|| "-".to_string()),
+            )),
+            Nip90FlowPhase::AwaitingPayment => Some(format!(
+                "waiting on settlement // pointer {} // window {}",
+                self.payment_pointer
+                    .as_deref()
+                    .map(|pointer| short_id(pointer).to_string())
+                    .unwrap_or_else(|| "pending".to_string()),
+                self.continuity_window_seconds
+                    .map(|window| format!("{window}s"))
+                    .unwrap_or_else(|| "-".to_string()),
+            )),
+            Nip90FlowPhase::RequestingPayment => Some(format!(
+                "{} // window {}",
+                if self.pending_bolt11.is_some() {
+                    "waiting on wallet payment"
+                } else {
+                    "waiting on provider invoice"
+                },
+                self.continuity_window_seconds
+                    .map(|window| format!("{window}s"))
+                    .unwrap_or_else(|| "-".to_string()),
+            )),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) fn build_nip90_compute_flow_snapshot(
@@ -609,6 +656,9 @@ pub(crate) fn build_active_job_flow_snapshot(
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
 ) -> Option<ActiveJobFlowSnapshot> {
     let job = active_job.job.as_ref()?;
+    let now_epoch_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
     let authoritative_payment = authoritative_payment_pointer(job.payment_id.as_deref())
         || job.ac_settlement_event_id.is_some();
     let continuity_window = continuity_window_seconds(job.ttl_seconds);
@@ -689,7 +739,14 @@ pub(crate) fn build_active_job_flow_snapshot(
         projection_authority: earn_job_lifecycle_projection.authority.clone(),
         pending_result_publish_event_id: active_job.pending_result_publish_event_id.clone(),
         result_event_id: job.sa_tick_result_event_id.clone(),
+        result_signed: active_job.pending_result_publish_event.is_some()
+            || active_job.pending_result_publish_event_id.is_some()
+            || job.sa_tick_result_event_id.is_some(),
         result_publish_status: active_job_result_publish_status(active_job),
+        result_publish_attempt_count: active_job.result_publish_attempt_count,
+        result_publish_age_seconds: active_job
+            .result_publish_first_queued_epoch_seconds
+            .map(|queued_at| now_epoch_seconds.saturating_sub(queued_at)),
         payment_pointer: job.payment_id.clone(),
         pending_bolt11: active_job.pending_bolt11.clone(),
         continuity_window_seconds,
