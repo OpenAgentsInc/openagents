@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
-    DesktopControlBuyModeRequestStatus, DesktopControlEventBatch, DesktopControlManifest,
-    DesktopControlSnapshot, control_manifest_path,
+    DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
+    DesktopControlManifest, DesktopControlSnapshot, control_manifest_path,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::blocking::Client;
@@ -256,8 +256,11 @@ enum WaitConditionArg {
     Nip28OutboundIdle,
     BuyModeRunning,
     BuyModeStopped,
+    BuyModeTargetReady,
     BuyModeInFlight,
     BuyModePaymentRequired,
+    BuyModePaid,
+    BuyModeFailed,
     ActiveJobPresent,
     ActiveJobRunning,
     ActiveJobDelivered,
@@ -289,8 +292,11 @@ enum WaitCondition {
     Nip28OutboundIdle,
     BuyModeRunning,
     BuyModeStopped,
+    BuyModeTargetReady,
     BuyModeInFlight,
     BuyModePaymentRequired,
+    BuyModePaid,
+    BuyModeFailed,
     ActiveJobPresent,
     ActiveJobRunning,
     ActiveJobDelivered,
@@ -793,8 +799,11 @@ impl WaitConditionArg {
             Self::Nip28OutboundIdle => WaitCondition::Nip28OutboundIdle,
             Self::BuyModeRunning => WaitCondition::BuyModeRunning,
             Self::BuyModeStopped => WaitCondition::BuyModeStopped,
+            Self::BuyModeTargetReady => WaitCondition::BuyModeTargetReady,
             Self::BuyModeInFlight => WaitCondition::BuyModeInFlight,
             Self::BuyModePaymentRequired => WaitCondition::BuyModePaymentRequired,
+            Self::BuyModePaid => WaitCondition::BuyModePaid,
+            Self::BuyModeFailed => WaitCondition::BuyModeFailed,
             Self::ActiveJobPresent => WaitCondition::ActiveJobPresent,
             Self::ActiveJobRunning => WaitCondition::ActiveJobRunning,
             Self::ActiveJobDelivered => WaitCondition::ActiveJobDelivered,
@@ -814,8 +823,11 @@ impl WaitConditionArg {
             Self::Nip28OutboundIdle => "nip28-outbound-idle",
             Self::BuyModeRunning => "buy-mode-running",
             Self::BuyModeStopped => "buy-mode-stopped",
+            Self::BuyModeTargetReady => "buy-mode-target-ready",
             Self::BuyModeInFlight => "buy-mode-in-flight",
             Self::BuyModePaymentRequired => "buy-mode-payment-required",
+            Self::BuyModePaid => "buy-mode-paid",
+            Self::BuyModeFailed => "buy-mode-failed",
             Self::ActiveJobPresent => "active-job-present",
             Self::ActiveJobRunning => "active-job-running",
             Self::ActiveJobDelivered => "active-job-delivered",
@@ -837,8 +849,11 @@ impl WaitCondition {
             Self::Nip28OutboundIdle => "NIP-28 outbound idle",
             Self::BuyModeRunning => "buy mode running",
             Self::BuyModeStopped => "buy mode stopped",
+            Self::BuyModeTargetReady => "buy mode target ready",
             Self::BuyModeInFlight => "buy mode in flight",
             Self::BuyModePaymentRequired => "buy mode payment-required",
+            Self::BuyModePaid => "buy mode paid",
+            Self::BuyModeFailed => "buy mode failed",
             Self::ActiveJobPresent => "active job present",
             Self::ActiveJobRunning => "active job running",
             Self::ActiveJobDelivered => "active job delivered",
@@ -860,12 +875,19 @@ impl WaitCondition {
             Self::Nip28OutboundIdle => snapshot.nip28.publishing_outbound_count == 0,
             Self::BuyModeRunning => snapshot.buy_mode.enabled,
             Self::BuyModeStopped => !snapshot.buy_mode.enabled,
+            Self::BuyModeTargetReady => snapshot
+                .buy_mode
+                .target_selection
+                .selected_peer_pubkey
+                .is_some(),
             Self::BuyModeInFlight => snapshot.buy_mode.in_flight_request_id.is_some(),
             Self::BuyModePaymentRequired => snapshot
                 .buy_mode
                 .recent_requests
                 .iter()
                 .any(request_has_payment_required),
+            Self::BuyModePaid => buy_mode_has_paid_request(&snapshot.buy_mode),
+            Self::BuyModeFailed => buy_mode_has_failed_request(&snapshot.buy_mode),
             Self::ActiveJobPresent => snapshot.active_job.is_some(),
             Self::ActiveJobRunning => snapshot
                 .active_job
@@ -895,6 +917,34 @@ fn request_has_payment_required(request: &DesktopControlBuyModeRequestStatus) ->
         || request.status.eq_ignore_ascii_case("payment-required")
         || request.phase.eq_ignore_ascii_case("requesting-payment")
         || request.phase.eq_ignore_ascii_case("awaiting-payment")
+}
+
+fn request_has_paid(request: &DesktopControlBuyModeRequestStatus) -> bool {
+    request.status.eq_ignore_ascii_case("paid")
+        || request.phase.eq_ignore_ascii_case("paid")
+        || request.wallet_status.eq_ignore_ascii_case("sent")
+}
+
+fn request_has_failed(request: &DesktopControlBuyModeRequestStatus) -> bool {
+    request.status.eq_ignore_ascii_case("failed")
+        || request.phase.eq_ignore_ascii_case("failed")
+        || request.payment_error.is_some()
+}
+
+fn buy_mode_has_paid_request(status: &DesktopControlBuyModeStatus) -> bool {
+    status
+        .in_flight_status
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("paid"))
+        || status.recent_requests.iter().any(request_has_paid)
+}
+
+fn buy_mode_has_failed_request(status: &DesktopControlBuyModeStatus) -> bool {
+    status
+        .in_flight_status
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("failed"))
+        || status.recent_requests.iter().any(request_has_failed)
 }
 
 fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
@@ -1389,7 +1439,9 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 mod tests {
     use super::{
         AppleFmCommand, BuyModeCommand, ChatCommand, ProviderCommand, WaitCondition,
-        WaitConditionArg, WalletCommand, ensure_buy_mode_budget_ack, request_has_payment_required,
+        WaitConditionArg, WalletCommand, buy_mode_has_failed_request, buy_mode_has_paid_request,
+        ensure_buy_mode_budget_ack, request_has_failed, request_has_paid,
+        request_has_payment_required,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -1433,6 +1485,44 @@ mod tests {
             &snapshot.buy_mode.recent_requests[0]
         ));
         assert!(WaitCondition::BuyModePaymentRequired.matches(&snapshot));
+    }
+
+    #[test]
+    fn wait_conditions_cover_buy_mode_target_paid_and_failed_states() {
+        let mut paid = sample_snapshot();
+        paid.buy_mode.target_selection.selected_peer_pubkey = Some("a".repeat(64));
+        paid.buy_mode
+            .recent_requests
+            .push(DesktopControlBuyModeRequestStatus {
+                request_id: "req-paid".to_string(),
+                status: "paid".to_string(),
+                phase: "paid".to_string(),
+                next_expected_event: "none".to_string(),
+                wallet_status: "sent".to_string(),
+                ..DesktopControlBuyModeRequestStatus::default()
+            });
+        assert!(WaitCondition::BuyModeTargetReady.matches(&paid));
+        assert!(request_has_paid(&paid.buy_mode.recent_requests[0]));
+        assert!(buy_mode_has_paid_request(&paid.buy_mode));
+        assert!(WaitCondition::BuyModePaid.matches(&paid));
+        assert!(!WaitCondition::BuyModeFailed.matches(&paid));
+
+        let mut failed = sample_snapshot();
+        failed
+            .buy_mode
+            .recent_requests
+            .push(DesktopControlBuyModeRequestStatus {
+                request_id: "req-failed".to_string(),
+                status: "failed".to_string(),
+                phase: "failed".to_string(),
+                next_expected_event: "none".to_string(),
+                payment_error: Some("payment timed out".to_string()),
+                ..DesktopControlBuyModeRequestStatus::default()
+            });
+        assert!(request_has_failed(&failed.buy_mode.recent_requests[0]));
+        assert!(buy_mode_has_failed_request(&failed.buy_mode));
+        assert!(WaitCondition::BuyModeFailed.matches(&failed));
+        assert!(!WaitCondition::BuyModePaid.matches(&failed));
     }
 
     #[test]
@@ -1569,5 +1659,23 @@ mod tests {
             WaitCondition::Nip28Ready
         );
         assert_eq!(WaitConditionArg::Nip28Ready.as_str(), "nip28-ready");
+        assert_eq!(
+            WaitConditionArg::BuyModeTargetReady.into_condition(),
+            WaitCondition::BuyModeTargetReady
+        );
+        assert_eq!(
+            WaitConditionArg::BuyModeTargetReady.as_str(),
+            "buy-mode-target-ready"
+        );
+        assert_eq!(
+            WaitConditionArg::BuyModePaid.into_condition(),
+            WaitCondition::BuyModePaid
+        );
+        assert_eq!(WaitConditionArg::BuyModePaid.as_str(), "buy-mode-paid");
+        assert_eq!(
+            WaitConditionArg::BuyModeFailed.into_condition(),
+            WaitCondition::BuyModeFailed
+        );
+        assert_eq!(WaitConditionArg::BuyModeFailed.as_str(), "buy-mode-failed");
     }
 }

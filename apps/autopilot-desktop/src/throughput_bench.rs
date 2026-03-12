@@ -22,11 +22,10 @@ use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 use crate::app_state::{
-    AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
-    ManagedChatProjectionState, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+    AutopilotChatState, DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL, MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS,
     MISSION_CONTROL_BUY_MODE_REQUEST_TYPE, MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
-    NetworkRequestSubmission,
+    ManagedChatDeliveryState, ManagedChatProjectionState, NetworkRequestSubmission,
 };
 use crate::autopilot_compute_presence::pump_provider_chat_presence_with_config;
 use crate::input::build_mission_control_buy_mode_request_event;
@@ -146,7 +145,9 @@ struct JobMetric {
     paid_at: Option<Instant>,
 }
 
-pub fn run_default_throughput_bench(provider_compute_ms: Option<u64>) -> Result<ThroughputBenchReport> {
+pub fn run_default_throughput_bench(
+    provider_compute_ms: Option<u64>,
+) -> Result<ThroughputBenchReport> {
     let provider_compute_ms = provider_compute_ms.unwrap_or(DEFAULT_PROVIDER_COMPUTE_MS);
     let scenarios = vec![
         ScenarioConfig {
@@ -256,7 +257,8 @@ fn run_standard_phase(
             provider_seed_base.saturating_add(index as u8),
             format!("{label_prefix}-provider-{index}").as_str(),
         );
-        let projection_path = projection_path(format!("{label_prefix}-provider-{index}-chat").as_str());
+        let projection_path =
+            projection_path(format!("{label_prefix}-provider-{index}-chat").as_str());
         let mut chat = AutopilotChatState::default();
         chat.managed_chat_projection =
             ManagedChatProjectionState::from_projection_path_for_tests(projection_path);
@@ -310,7 +312,12 @@ fn run_standard_phase(
     let mut metrics = HashMap::<String, JobMetric>::new();
     let started_at = Instant::now();
 
-    while metrics.values().filter(|metric| metric.paid_at.is_some()).count() < total_jobs {
+    while metrics
+        .values()
+        .filter(|metric| metric.paid_at.is_some())
+        .count()
+        < total_jobs
+    {
         let now = Instant::now();
         let now_epoch_seconds = current_epoch_seconds();
 
@@ -372,12 +379,18 @@ fn wait_for_channels_loaded(
     let deadline = Instant::now() + BENCH_WAIT_TIMEOUT;
     while Instant::now() < deadline {
         pump_all_chat_lanes(buyers, providers);
-        let buyers_ready = buyers
-            .iter()
-            .all(|buyer| buyer.chat.configured_main_managed_chat_channel(config).is_some());
-        let providers_ready = providers
-            .iter()
-            .all(|provider| provider.chat.configured_main_managed_chat_channel(config).is_some());
+        let buyers_ready = buyers.iter().all(|buyer| {
+            buyer
+                .chat
+                .configured_main_managed_chat_channel(config)
+                .is_some()
+        });
+        let providers_ready = providers.iter().all(|provider| {
+            provider
+                .chat
+                .configured_main_managed_chat_channel(config)
+                .is_some()
+        });
         if buyers_ready && providers_ready {
             return Ok(());
         }
@@ -435,7 +448,9 @@ fn publish_provider_presence(
         }
         thread::sleep(BENCH_LOOP_SLEEP);
     }
-    Err(anyhow!("timed out waiting for buyers to observe provider presence"))
+    Err(anyhow!(
+        "timed out waiting for buyers to observe provider presence"
+    ))
 }
 
 fn wait_for_provider_lanes_online(providers: &mut [ProviderHarness]) -> Result<()> {
@@ -457,7 +472,9 @@ fn wait_for_provider_lanes_online(providers: &mut [ProviderHarness]) -> Result<(
         }
         thread::sleep(BENCH_LOOP_SLEEP);
     }
-    Err(anyhow!("timed out waiting for provider lanes to come online"))
+    Err(anyhow!(
+        "timed out waiting for provider lanes to come online"
+    ))
 }
 
 fn pump_all_chat_lanes(buyers: &mut [BuyerHarness], providers: &mut [ProviderHarness]) {
@@ -513,7 +530,8 @@ fn dispatch_due_requests(
             })
             .map_err(|error| anyhow!(error))?;
         buyer.next_command_seq = buyer.next_command_seq.saturating_add(1);
-        buyer.chat
+        buyer
+            .chat
             .note_buy_mode_target_dispatch(target_provider_pubkey.as_str());
         buyer
             .request_lane
@@ -599,24 +617,33 @@ fn advance_provider_work(providers: &mut [ProviderHarness], now: Instant) {
         if active.events_enqueued || active.ready_at > now {
             continue;
         }
-        active.invoice = format!("lnbc{}n{}", active.request.price_sats.saturating_mul(10), active.request.request_id);
-        let result_event = build_provider_result_event(&provider.identity, &active.request, "BUY MODE OK.");
+        active.invoice = format!(
+            "lnbc{}n{}",
+            active.request.price_sats.saturating_mul(10),
+            active.request.request_id
+        );
+        let result_event =
+            build_provider_result_event(&provider.identity, &active.request, "BUY MODE OK.");
         let feedback_event = build_provider_payment_required_feedback_event(
             &provider.identity,
             &active.request,
             active.invoice.as_str(),
         );
         let request_id = active.request.request_id.clone();
-        let _ = provider.lane.enqueue(ProviderNip90LaneCommand::PublishEvent {
-            request_id: request_id.clone(),
-            role: ProviderNip90PublishRole::Result,
-            event: Box::new(result_event),
-        });
-        let _ = provider.lane.enqueue(ProviderNip90LaneCommand::PublishEvent {
-            request_id,
-            role: ProviderNip90PublishRole::Feedback,
-            event: Box::new(feedback_event),
-        });
+        let _ = provider
+            .lane
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request_id.clone(),
+                role: ProviderNip90PublishRole::Result,
+                event: Box::new(result_event),
+            });
+        let _ = provider
+            .lane
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id,
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(feedback_event),
+            });
         active.events_enqueued = true;
     }
 }
@@ -645,60 +672,59 @@ fn process_buyer_updates(
                         }
                     }
                 }
-                ProviderNip90LaneUpdate::BuyerResponseEvent(event) => {
-                    match event.kind {
-                        ProviderNip90BuyerResponseKind::Result => {
-                            let _ = buyer.requests.apply_nip90_buyer_result_event(
-                                event.request_id.as_str(),
-                                event.provider_pubkey.as_str(),
-                                event.event_id.as_str(),
-                                event.status.as_deref(),
-                            );
-                            if let Some(metric) = metrics.get_mut(event.request_id.as_str()) {
-                                metric.result_at.get_or_insert(Instant::now());
-                            }
+                ProviderNip90LaneUpdate::BuyerResponseEvent(event) => match event.kind {
+                    ProviderNip90BuyerResponseKind::Result => {
+                        let _ = buyer.requests.apply_nip90_buyer_result_event(
+                            event.request_id.as_str(),
+                            event.provider_pubkey.as_str(),
+                            event.event_id.as_str(),
+                            event.status.as_deref(),
+                        );
+                        if let Some(metric) = metrics.get_mut(event.request_id.as_str()) {
+                            metric.result_at.get_or_insert(Instant::now());
                         }
-                        ProviderNip90BuyerResponseKind::Feedback => {
-                            let _ = buyer.requests.apply_nip90_buyer_feedback_event(
+                    }
+                    ProviderNip90BuyerResponseKind::Feedback => {
+                        let _ = buyer.requests.apply_nip90_buyer_feedback_event(
+                            event.request_id.as_str(),
+                            event.provider_pubkey.as_str(),
+                            event.event_id.as_str(),
+                            event.status.as_deref(),
+                            event.status_extra.as_deref(),
+                            event.amount_msats,
+                            event.bolt11.as_deref(),
+                        );
+                        if event.status.as_deref() == Some("payment-required")
+                            && let Some(metric) = metrics.get_mut(event.request_id.as_str())
+                        {
+                            metric.payment_required_at.get_or_insert(Instant::now());
+                        }
+                        if let Some((_bolt11, amount_sats)) =
+                            buyer.requests.prepare_auto_payment_attempt_for_provider(
                                 event.request_id.as_str(),
                                 event.provider_pubkey.as_str(),
-                                event.event_id.as_str(),
-                                event.status.as_deref(),
-                                event.status_extra.as_deref(),
-                                event.amount_msats,
-                                event.bolt11.as_deref(),
+                                now_epoch_seconds.saturating_add(30),
+                            )
+                        {
+                            let amount_sats =
+                                amount_sats.unwrap_or(MISSION_CONTROL_BUY_MODE_BUDGET_SATS);
+                            let payment_id = format!("wallet-{}-{}", buyer.label, event.request_id);
+                            buyer.requests.record_auto_payment_pointer(
+                                event.request_id.as_str(),
+                                payment_id.as_str(),
                             );
-                            if event.status.as_deref() == Some("payment-required")
-                                && let Some(metric) = metrics.get_mut(event.request_id.as_str())
-                            {
-                                metric.payment_required_at.get_or_insert(Instant::now());
+                            buyer.requests.mark_auto_payment_sent(
+                                event.request_id.as_str(),
+                                payment_id.as_str(),
+                                now_epoch_seconds.saturating_add(31),
+                            );
+                            if let Some(balance) = buyer.wallet.balance.as_mut() {
+                                balance.spark_sats = balance.spark_sats.saturating_sub(amount_sats);
                             }
-                            if let Some((_bolt11, amount_sats)) = buyer
-                                .requests
-                                .prepare_auto_payment_attempt_for_provider(
-                                    event.request_id.as_str(),
-                                    event.provider_pubkey.as_str(),
-                                    now_epoch_seconds.saturating_add(30),
-                                )
-                            {
-                                let amount_sats =
-                                    amount_sats.unwrap_or(MISSION_CONTROL_BUY_MODE_BUDGET_SATS);
-                                let payment_id =
-                                    format!("wallet-{}-{}", buyer.label, event.request_id);
-                                buyer.requests.record_auto_payment_pointer(
-                                    event.request_id.as_str(),
-                                    payment_id.as_str(),
-                                );
-                                buyer.requests.mark_auto_payment_sent(
-                                    event.request_id.as_str(),
-                                    payment_id.as_str(),
-                                    now_epoch_seconds.saturating_add(31),
-                                );
-                                if let Some(balance) = buyer.wallet.balance.as_mut() {
-                                    balance.spark_sats =
-                                        balance.spark_sats.saturating_sub(amount_sats);
-                                }
-                                buyer.wallet.recent_payments.push(openagents_spark::PaymentSummary {
+                            buyer
+                                .wallet
+                                .recent_payments
+                                .push(openagents_spark::PaymentSummary {
                                     id: payment_id,
                                     direction: "send".to_string(),
                                     status: "succeeded".to_string(),
@@ -706,18 +732,22 @@ fn process_buyer_updates(
                                     fees_sats: 0,
                                     timestamp: now_epoch_seconds.saturating_add(31),
                                     method: "lightning".to_string(),
-                                    description: Some("Throughput benchmark settlement".to_string()),
+                                    description: Some(
+                                        "Throughput benchmark settlement".to_string(),
+                                    ),
                                     invoice: event.bolt11.clone(),
                                     destination_pubkey: Some(event.provider_pubkey.clone()),
-                                    payment_hash: Some(format!("payment-hash-{}", event.request_id)),
+                                    payment_hash: Some(format!(
+                                        "payment-hash-{}",
+                                        event.request_id
+                                    )),
                                     htlc_status: None,
                                     htlc_expiry_epoch_seconds: None,
                                     status_detail: None,
                                 });
-                            }
                         }
                     }
-                }
+                },
                 ProviderNip90LaneUpdate::IngressedRequest(_)
                 | ProviderNip90LaneUpdate::Snapshot(_) => {}
             }
@@ -735,13 +765,20 @@ fn process_buyer_updates(
             buyer.active_request_id = None;
         }
 
-        if buyer.chat.configured_main_managed_chat_channel(config).is_none() {
+        if buyer
+            .chat
+            .configured_main_managed_chat_channel(config)
+            .is_none()
+        {
             let _ = buyer.chat.maybe_auto_select_default_nip28_channel();
         }
     }
 }
 
-fn release_paid_provider_slots(providers: &mut [ProviderHarness], metrics: &HashMap<String, JobMetric>) {
+fn release_paid_provider_slots(
+    providers: &mut [ProviderHarness],
+    metrics: &HashMap<String, JobMetric>,
+) {
     for provider in providers {
         let Some(active) = provider.active.as_ref() else {
             continue;
@@ -755,7 +792,10 @@ fn release_paid_provider_slots(providers: &mut [ProviderHarness], metrics: &Hash
     }
 }
 
-fn summarize_scenario(config: &ScenarioConfig, metrics: &[JobMetric]) -> Result<ThroughputScenarioSummary> {
+fn summarize_scenario(
+    config: &ScenarioConfig,
+    metrics: &[JobMetric],
+) -> Result<ThroughputScenarioSummary> {
     if metrics.is_empty() {
         return Err(anyhow!("scenario {} produced no metrics", config.name));
     }
@@ -778,7 +818,8 @@ fn summarize_scenario(config: &ScenarioConfig, metrics: &[JobMetric]) -> Result<
         .ok_or_else(|| anyhow!("missing final paid timestamp"))?;
 
     for metric in metrics {
-        let request_publish_latency = duration_between(metric.dispatch_at, metric.request_published_at)?;
+        let request_publish_latency =
+            duration_between(metric.dispatch_at, metric.request_published_at)?;
         let result_latency = duration_between(metric.dispatch_at, metric.result_at)?;
         let payment_required_latency =
             duration_between(metric.dispatch_at, metric.payment_required_at)?;
@@ -829,10 +870,12 @@ fn summarize_scenario(config: &ScenarioConfig, metrics: &[JobMetric]) -> Result<
         p50_paid_latency_ms: percentile(paid_latencies.as_mut_slice(), 0.50),
         provider_distribution: provider_distribution
             .into_iter()
-            .map(|(provider_pubkey, selected_jobs)| ThroughputProviderDistribution {
-                provider_pubkey,
-                selected_jobs,
-            })
+            .map(
+                |(provider_pubkey, selected_jobs)| ThroughputProviderDistribution {
+                    provider_pubkey,
+                    selected_jobs,
+                },
+            )
             .collect(),
         jobs,
     })
@@ -1210,8 +1253,7 @@ fn matching_events<'a>(
     let mut matching = Vec::new();
     let mut seen = HashSet::<String>::new();
     for event in events {
-        if filters.iter().any(|filter| filter.matches_event(event))
-            && seen.insert(event.id.clone())
+        if filters.iter().any(|filter| filter.matches_event(event)) && seen.insert(event.id.clone())
         {
             matching.push(event.clone());
             if matching.len() >= limit {
@@ -1222,10 +1264,7 @@ fn matching_events<'a>(
     matching
 }
 
-async fn handle_relay_connection(
-    state: Arc<Mutex<TestRelayState>>,
-    stream: tokio::net::TcpStream,
-) {
+async fn handle_relay_connection(state: Arc<Mutex<TestRelayState>>, stream: tokio::net::TcpStream) {
     let websocket = accept_async(stream)
         .await
         .expect("upgrade websocket relay connection");

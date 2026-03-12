@@ -311,10 +311,7 @@ fn select_eligible_target<'a>(
     }
 
     let normalized_local = local_pubkey.map(normalize_pubkey).unwrap_or_default();
-    let offset = stable_peer_offset(
-        normalized_local.as_str(),
-        eligible_rows.len(),
-    );
+    let offset = stable_peer_offset(normalized_local.as_str(), eligible_rows.len());
     eligible_rows.get(offset).copied()
 }
 
@@ -322,10 +319,9 @@ fn stable_peer_offset(seed: &str, len: usize) -> usize {
     if len <= 1 {
         return 0;
     }
-    let digest = seed
-        .as_bytes()
-        .iter()
-        .fold(0usize, |acc, byte| acc.wrapping_mul(131).wrapping_add(*byte as usize));
+    let digest = seed.as_bytes().iter().fold(0usize, |acc, byte| {
+        acc.wrapping_mul(131).wrapping_add(*byte as usize)
+    });
     digest % len
 }
 
