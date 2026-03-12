@@ -335,6 +335,7 @@ impl PaneRenderer {
                         content_bounds,
                         active_job,
                         earn_job_lifecycle_projection,
+                        spark_wallet,
                         paint,
                     );
                 }
@@ -1238,6 +1239,7 @@ fn paint_go_online_pane(
         job_inbox,
         active_job,
         earn_job_lifecycle_projection,
+        spark_wallet,
     );
     let active_state = match active_panel_state.headline.as_str() {
         "STANDBY" => ("STANDBY", mission_control_orange_color()),
@@ -1433,6 +1435,7 @@ fn mission_control_active_jobs_panel_state(
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
 ) -> MissionControlActiveJobsPanelState {
     if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
         return MissionControlActiveJobsPanelState {
@@ -1466,6 +1469,7 @@ fn mission_control_active_jobs_panel_state(
     let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
         active_job,
         earn_job_lifecycle_projection,
+        spark_wallet,
     )
     .expect("active job snapshot should exist when job exists");
 
@@ -1493,6 +1497,25 @@ fn mission_control_active_jobs_panel_state(
         "PAYOUT // {}",
         format_mission_control_amount(job.quoted_price_sats)
     ));
+    if let Some(amount) = flow_snapshot.settlement_amount_sats {
+        let mut settlement = format!(
+            "SETTLE // RECEIVED {}",
+            format_mission_control_amount(amount)
+        );
+        if let Some(fees) = flow_snapshot.settlement_fees_sats {
+            settlement.push_str(" // FEE ");
+            settlement.push_str(format_mission_control_amount(fees).as_str());
+        }
+        if let Some(delta) = flow_snapshot.settlement_net_wallet_delta_sats {
+            settlement.push_str(" // DELTA ");
+            settlement.push_str(
+                crate::spark_wallet::format_wallet_delta_sats(delta)
+                    .to_ascii_uppercase()
+                    .as_str(),
+            );
+        }
+        lines.push(settlement);
+    }
 
     MissionControlActiveJobsPanelState {
         headline: if job.stage == JobLifecycleStage::Failed {
@@ -4789,6 +4812,7 @@ fn paint_active_job_pane(
     content_bounds: Bounds,
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(
@@ -4811,7 +4835,12 @@ fn paint_active_job_pane(
         active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
     paint.scene.push_clip(viewport);
     let chunk_len = (((viewport.size.width - 8.0).max(48.0) / 6.2).floor() as usize).max(12);
-    let lines = build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, chunk_len);
+    let lines = build_active_job_scroll_lines(
+        active_job,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+        chunk_len,
+    );
     let line_height = 14.0;
     let content_height = (lines.len() as f32 * line_height).max(viewport.size.height);
     let max_offset = (content_height - viewport.size.height).max(0.0);
@@ -4864,10 +4893,11 @@ fn paint_active_job_pane(
 pub(crate) fn active_job_clipboard_text(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
 ) -> String {
     let mut lines = vec!["Active Job".to_string(), String::new()];
     lines.extend(
-        build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, 120)
+        build_active_job_scroll_lines(active_job, earn_job_lifecycle_projection, spark_wallet, 120)
             .into_iter()
             .map(|line| line.text),
     );
@@ -5002,6 +5032,7 @@ fn active_job_result_publish_status(active_job: &ActiveJobState) -> String {
 fn build_active_job_scroll_lines(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
     chunk_len: usize,
 ) -> Vec<ActiveJobRenderLine> {
     let mut lines = Vec::new();
@@ -5057,6 +5088,7 @@ fn build_active_job_scroll_lines(
     let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
         active_job,
         earn_job_lifecycle_projection,
+        spark_wallet,
     )
     .expect("active job snapshot should exist when job exists");
 
@@ -5131,6 +5163,52 @@ fn build_active_job_scroll_lines(
             &mut lines,
             "Continuity window: ",
             &format!("{window_seconds}s"),
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(status) = flow_snapshot.settlement_status.as_deref() {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement status: ",
+            status,
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(method) = flow_snapshot.settlement_method.as_deref() {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement method: ",
+            method,
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(amount) = flow_snapshot.settlement_amount_sats {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement amount: ",
+            &format!("{amount} sats"),
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(fees) = flow_snapshot.settlement_fees_sats {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement fees: ",
+            &format!("{fees} sats"),
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(delta) = flow_snapshot.settlement_net_wallet_delta_sats {
+        let delta_label = crate::spark_wallet::format_wallet_delta_sats(delta);
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Wallet delta: ",
+            delta_label.as_str(),
             chunk_len,
             theme::text::PRIMARY,
         );
@@ -6310,6 +6388,7 @@ mod tests {
         let lines = build_active_job_scroll_lines(
             &active_job,
             &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
             120,
         );
         let texts = lines
@@ -6331,11 +6410,49 @@ mod tests {
         active_job.start_from_request(&request);
 
         let output =
-            active_job_clipboard_text(&active_job, &EarnJobLifecycleProjectionState::default());
+            active_job_clipboard_text(
+                &active_job,
+                &EarnJobLifecycleProjectionState::default(),
+                &SparkPaneState::default(),
+            );
 
         assert!(output.starts_with("Active Job"));
         assert!(output.contains("Job ID: job-req-active-job-copy"));
         assert!(output.contains("[x] received"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_settlement_fee_truth() {
+        let request = fixture_active_job_request("req-active-job-settlement-copy");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("active job exists");
+        job.stage = JobLifecycleStage::Paid;
+        job.payment_id = Some("wallet-active-job-settlement-001".to_string());
+
+        let mut spark_wallet = SparkPaneState::default();
+        spark_wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-active-job-settlement-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                fees_sats: 1,
+                method: "lightning".to_string(),
+                timestamp: 1_762_700_778,
+                ..Default::default()
+            });
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &spark_wallet,
+        );
+
+        assert!(output.contains("Settlement amount: 2 sats"));
+        assert!(output.contains("Settlement fees: 1 sats"));
+        assert!(output.contains("Wallet delta: +2 sats"));
     }
 
     #[test]
@@ -6767,6 +6884,7 @@ mod tests {
             &JobInboxState::default(),
             &active_job,
             &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
         );
 
         assert_eq!(panel.headline, "ACTIVE");
@@ -6806,6 +6924,7 @@ mod tests {
             &JobInboxState::default(),
             &active_job,
             &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
         );
 
         assert!(
@@ -6891,6 +7010,9 @@ mod tests {
                 .summary
                 .contains("lightning send failed before preimage settlement")
         );
-        assert!(failed.summary.contains("2 sats + 3 sats fee"));
+        assert!(failed.summary.contains("2 sats invoice"));
+        assert!(failed.summary.contains("3 sats fee"));
+        assert!(failed.summary.contains("5 sats total debit"));
+        assert!(failed.summary.contains("wallet delta -5 sats"));
     }
 }

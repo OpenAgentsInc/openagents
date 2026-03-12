@@ -10,7 +10,7 @@ use crate::app_state::{
 };
 use crate::spark_wallet::{
     SparkPaneState, is_settled_wallet_payment_status, is_terminal_wallet_payment_status,
-    wallet_payment_total_debit_sats,
+    wallet_payment_net_delta_sats, wallet_payment_total_debit_sats,
 };
 use crate::state::operations::{
     BuyerResolutionReason, NetworkRequestStatus, NetworkRequestsState, SubmittedNetworkRequest,
@@ -92,8 +92,10 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub timestamp: Option<u64>,
     pub wallet_status: String,
     pub wallet_method: String,
+    pub invoice_amount_sats: Option<u64>,
     pub fees_sats: Option<u64>,
     pub total_debit_sats: Option<u64>,
+    pub net_wallet_delta_sats: Option<i64>,
     pub payment_hash: Option<String>,
     pub destination_pubkey: Option<String>,
     pub htlc_status: Option<String>,
@@ -249,37 +251,109 @@ impl BuyerRequestFlowSnapshot {
     }
 
     pub(crate) fn payment_summary(&self) -> String {
+        let invoice_summary = self
+            .invoice_amount_sats
+            .map(|amount| format!("{amount} sats invoice"));
+        let net_delta_summary = self
+            .net_wallet_delta_sats
+            .map(crate::spark_wallet::format_wallet_delta_sats)
+            .map(|delta| format!("wallet delta {delta}"));
         match self.wallet_status.as_str() {
             "sent" => {
-                let amount = self
-                    .total_debit_sats
-                    .or(Some(self.budget_sats))
-                    .unwrap_or(self.budget_sats);
-                if let Some(fees) = self.fees_sats {
-                    if fees > 0 {
-                        return format!("payment sent (wallet debit {amount} sats)");
-                    }
+                let mut parts = Vec::new();
+                if let Some(invoice_summary) = invoice_summary.clone() {
+                    parts.push(invoice_summary);
                 }
-                "payment sent".to_string()
+                if let Some(fees) = self.fees_sats {
+                    parts.push(format!("{fees} sats fee"));
+                }
+                if let Some(total) = self.total_debit_sats {
+                    parts.push(format!("{total} sats total debit"));
+                }
+                if let Some(net_delta_summary) = net_delta_summary.clone() {
+                    parts.push(net_delta_summary);
+                }
+                if parts.is_empty() {
+                    "payment sent".to_string()
+                } else {
+                    format!("payment sent ({})", parts.join("; "))
+                }
             }
             "returned" => {
-                let amount = self
-                    .total_debit_sats
-                    .or(Some(self.budget_sats))
-                    .unwrap_or(self.budget_sats);
-                format!("payment returned (wallet debit {amount} sats)")
+                let mut parts = Vec::new();
+                if let Some(invoice_summary) = invoice_summary.clone() {
+                    parts.push(invoice_summary);
+                }
+                if let Some(fees) = self.fees_sats {
+                    parts.push(format!("{fees} sats fee"));
+                }
+                if let Some(total) = self.total_debit_sats {
+                    parts.push(format!("{total} sats total debit"));
+                }
+                if let Some(net_delta_summary) = net_delta_summary.clone() {
+                    parts.push(net_delta_summary);
+                }
+                if parts.is_empty() {
+                    "payment returned".to_string()
+                } else {
+                    format!("payment returned ({})", parts.join("; "))
+                }
             }
-            "failed" => self
-                .wallet_detail
-                .clone()
-                .or_else(|| self.payment_error.clone())
-                .unwrap_or_else(|| "payment failed".to_string()),
-            "pending" => self
-                .wallet_detail
-                .clone()
-                .unwrap_or_else(|| "payment pending Spark confirmation".to_string()),
-            "queued" => "payment queued".to_string(),
-            "invoice" => "invoice received".to_string(),
+            "failed" => {
+                let detail = self
+                    .wallet_detail
+                    .clone()
+                    .or_else(|| self.payment_error.clone())
+                    .unwrap_or_else(|| "payment failed".to_string());
+                let mut parts = Vec::new();
+                if let Some(invoice_summary) = invoice_summary.clone() {
+                    parts.push(invoice_summary);
+                }
+                if let Some(fees) = self.fees_sats {
+                    parts.push(format!("{fees} sats fee"));
+                }
+                if let Some(total) = self.total_debit_sats {
+                    parts.push(format!("{total} sats total debit"));
+                }
+                if let Some(net_delta_summary) = net_delta_summary.clone() {
+                    parts.push(net_delta_summary);
+                }
+                if parts.is_empty() {
+                    detail
+                } else {
+                    format!("{detail} ({})", parts.join("; "))
+                }
+            }
+            "pending" => {
+                let detail = self
+                    .wallet_detail
+                    .clone()
+                    .unwrap_or_else(|| "payment pending Spark confirmation".to_string());
+                let mut parts = Vec::new();
+                if let Some(invoice_summary) = invoice_summary.clone() {
+                    parts.push(invoice_summary);
+                }
+                if let Some(fees) = self.fees_sats {
+                    parts.push(format!("{fees} sats fee"));
+                }
+                if let Some(total) = self.total_debit_sats {
+                    parts.push(format!("{total} sats total debit"));
+                }
+                if let Some(net_delta_summary) = net_delta_summary {
+                    parts.push(net_delta_summary);
+                }
+                if parts.is_empty() {
+                    detail
+                } else {
+                    format!("{detail} ({})", parts.join("; "))
+                }
+            }
+            "queued" => invoice_summary
+                .map(|invoice| format!("payment queued ({invoice})"))
+                .unwrap_or_else(|| "payment queued".to_string()),
+            "invoice" => invoice_summary
+                .map(|invoice| format!("invoice received ({invoice})"))
+                .unwrap_or_else(|| "invoice received".to_string()),
             _ => "payment idle".to_string(),
         }
     }
@@ -340,9 +414,17 @@ impl BuyerRequestFlowSnapshot {
             line.push_str(" fee_sats=");
             line.push_str(&fees.to_string());
         }
+        if let Some(invoice) = self.invoice_amount_sats {
+            line.push_str(" invoice_sats=");
+            line.push_str(&invoice.to_string());
+        }
         if let Some(total) = self.total_debit_sats {
             line.push_str(" wallet_debit_sats=");
             line.push_str(&total.to_string());
+        }
+        if let Some(delta) = self.net_wallet_delta_sats {
+            line.push_str(" wallet_delta_sats=");
+            line.push_str(&delta.to_string());
         }
         if let Some(invoice) = self.pending_bolt11.as_deref() {
             line.push_str(" invoice=");
@@ -379,6 +461,11 @@ pub(crate) struct ActiveJobFlowSnapshot {
     pub result_publish_age_seconds: Option<u64>,
     pub payment_pointer: Option<String>,
     pub pending_bolt11: Option<String>,
+    pub settlement_status: Option<String>,
+    pub settlement_method: Option<String>,
+    pub settlement_amount_sats: Option<u64>,
+    pub settlement_fees_sats: Option<u64>,
+    pub settlement_net_wallet_delta_sats: Option<i64>,
     pub continuity_window_seconds: Option<u64>,
     pub failure_reason: Option<String>,
 }
@@ -446,7 +533,11 @@ pub(crate) fn build_nip90_compute_flow_snapshot(
             .rev()
             .map(|request| build_buyer_request_flow_snapshot(request, spark_wallet))
             .collect(),
-        active_job: build_active_job_flow_snapshot(active_job, earn_job_lifecycle_projection),
+        active_job: build_active_job_flow_snapshot(
+            active_job,
+            earn_job_lifecycle_projection,
+            spark_wallet,
+        ),
     }
 }
 
@@ -489,7 +580,12 @@ pub(crate) fn buy_mode_wallet_state_label(
     if request.pending_bolt11.is_some() {
         return "queued".to_string();
     }
-    if request.payment_required_at_epoch_seconds.is_some() {
+    if request.payment_required_at_epoch_seconds.is_some()
+        || request
+            .last_feedback_status
+            .as_deref()
+            .is_some_and(|status| status.eq_ignore_ascii_case("payment-required"))
+    {
         return "invoice".to_string();
     }
     if request.payment_error.is_some() {
@@ -524,6 +620,16 @@ pub(crate) fn build_buyer_request_flow_snapshot(
     let payable_provider_pubkey = request.winning_provider_pubkey.clone();
     let (loser_provider_count, loser_reason_summary) =
         loser_provider_summary(request, payable_provider_pubkey.as_deref());
+    let invoice_amount_sats = wallet_payment
+        .map(|payment| payment.amount_sats)
+        .or_else(|| {
+            request_provider_invoice_amount_sats(
+                request,
+                payable_provider_pubkey
+                    .as_deref()
+                    .or(selected_provider_pubkey.as_deref()),
+            )
+        });
 
     let (authority, phase, next_expected_event) =
         if request.payment_error.is_some() || request.status == NetworkRequestStatus::Failed {
@@ -636,8 +742,10 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         wallet_method: wallet_payment
             .map(|payment| payment.method.clone())
             .unwrap_or_else(|| "-".to_string()),
+        invoice_amount_sats,
         fees_sats: wallet_payment.map(|payment| payment.fees_sats),
         total_debit_sats: wallet_payment.map(wallet_payment_total_debit_sats),
+        net_wallet_delta_sats: wallet_payment.map(wallet_payment_net_delta_sats),
         payment_hash: wallet_payment.and_then(|payment| payment.payment_hash.clone()),
         destination_pubkey: wallet_payment.and_then(|payment| payment.destination_pubkey.clone()),
         htlc_status: wallet_payment.and_then(|payment| payment.htlc_status.clone()),
@@ -654,11 +762,18 @@ pub(crate) fn build_buyer_request_flow_snapshot(
 pub(crate) fn build_active_job_flow_snapshot(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
 ) -> Option<ActiveJobFlowSnapshot> {
     let job = active_job.job.as_ref()?;
     let now_epoch_seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
+    let settlement_payment = job.payment_id.as_deref().and_then(|payment_id| {
+        spark_wallet
+            .recent_payments
+            .iter()
+            .find(|payment| payment.id == payment_id)
+    });
     let authoritative_payment = authoritative_payment_pointer(job.payment_id.as_deref())
         || job.ac_settlement_event_id.is_some();
     let continuity_window = continuity_window_seconds(job.ttl_seconds);
@@ -749,6 +864,11 @@ pub(crate) fn build_active_job_flow_snapshot(
             .map(|queued_at| now_epoch_seconds.saturating_sub(queued_at)),
         payment_pointer: job.payment_id.clone(),
         pending_bolt11: active_job.pending_bolt11.clone(),
+        settlement_status: settlement_payment.map(|payment| payment.status.clone()),
+        settlement_method: settlement_payment.map(|payment| payment.method.clone()),
+        settlement_amount_sats: settlement_payment.map(|payment| payment.amount_sats),
+        settlement_fees_sats: settlement_payment.map(|payment| payment.fees_sats),
+        settlement_net_wallet_delta_sats: settlement_payment.map(wallet_payment_net_delta_sats),
         continuity_window_seconds,
         failure_reason: job.failure_reason.clone(),
     })
@@ -969,8 +1089,10 @@ struct BuyModePaymentLedgerEntry {
     stream: TerminalStream,
     status: String,
     amount_sats: u64,
+    budget_sats: Option<u64>,
     fees_sats: Option<u64>,
     total_debit_sats: Option<u64>,
+    net_wallet_delta_sats: Option<i64>,
     wallet_status: String,
     wallet_method: String,
     provider_pubkey: String,
@@ -1104,9 +1226,11 @@ fn buy_mode_request_ledger_entry(
             .unwrap_or(u64::MAX.saturating_sub(index as u64)),
         stream,
         status: request.status.label().to_string(),
-        amount_sats: request.budget_sats,
+        amount_sats: request.invoice_amount_sats.unwrap_or(request.budget_sats),
+        budget_sats: Some(request.budget_sats),
         fees_sats: request.fees_sats,
         total_debit_sats: request.total_debit_sats,
+        net_wallet_delta_sats: request.net_wallet_delta_sats,
         wallet_status: request.wallet_status.clone(),
         wallet_method: request.wallet_method.clone(),
         provider_pubkey: request.provider_pubkey().unwrap_or("-").to_string(),
@@ -1190,8 +1314,10 @@ fn buy_mode_wallet_backfill_entry(
         stream,
         status: "wallet-backfill".to_string(),
         amount_sats: payment.amount_sats,
+        budget_sats: None,
         fees_sats: Some(payment.fees_sats),
         total_debit_sats: Some(wallet_payment_total_debit_sats(payment)),
+        net_wallet_delta_sats: Some(wallet_payment_net_delta_sats(payment)),
         wallet_status,
         wallet_method: payment.method.clone(),
         provider_pubkey: payment
@@ -1254,12 +1380,13 @@ fn push_buy_mode_payment_entry_rows(
     rows.push((
         entry.stream.clone(),
         format!(
-            "{}  status={}  amount={} sats  fee={}  total_debit={}  wallet_status={}  wallet_method={}  provider_pubkey={}",
+            "{}  status={}  invoice={} sats  fee={}  total_debit={}  wallet_delta={}  wallet_status={}  wallet_method={}  provider_pubkey={}",
             buy_mode_payment_timestamp_label(entry.timestamp),
             entry.status,
             entry.amount_sats,
             buy_mode_optional_sats_label(entry.fees_sats),
             buy_mode_optional_sats_label(entry.total_debit_sats),
+            buy_mode_optional_signed_sats_label(entry.net_wallet_delta_sats),
             entry.wallet_status,
             entry.wallet_method,
             entry.provider_pubkey,
@@ -1268,9 +1395,10 @@ fn push_buy_mode_payment_entry_rows(
     rows.push((
         entry.stream.clone(),
         format!(
-            "request_id={}  request_type={}  authority={}  phase={}  next={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}  source={}",
+            "request_id={}  request_type={}  budget={}  authority={}  phase={}  next={}  payment_pointer={}  request_event_id={}  result_event_id={}  payment_hash={}  source={}",
             entry.request_id,
             entry.request_type,
+            buy_mode_optional_sats_label(entry.budget_sats),
             entry.authority.as_str(),
             entry.phase.as_str(),
             entry.next_expected_event,
@@ -1507,6 +1635,12 @@ fn buy_mode_optional_sats_label(value: Option<u64>) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
+fn buy_mode_optional_signed_sats_label(value: Option<i64>) -> String {
+    value
+        .map(crate::spark_wallet::format_wallet_delta_sats)
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn format_mission_control_amount(amount_sats: u64) -> String {
     if amount_sats >= 1_000 {
         format!("\u{20BF} {}", thousands(amount_sats))
@@ -1549,6 +1683,41 @@ fn normalize_pubkey(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
+fn msats_to_sats_ceil(msats: u64) -> u64 {
+    let sats = msats / 1_000;
+    if msats % 1_000 == 0 {
+        sats
+    } else {
+        sats.saturating_add(1)
+    }
+}
+
+fn request_provider_invoice_amount_sats(
+    request: &SubmittedNetworkRequest,
+    preferred_provider_pubkey: Option<&str>,
+) -> Option<u64> {
+    let preferred_amount = preferred_provider_pubkey.and_then(|provider_pubkey| {
+        request
+            .provider_observations
+            .iter()
+            .find(|observation| {
+                normalize_pubkey(observation.provider_pubkey.as_str())
+                    == normalize_pubkey(provider_pubkey)
+            })
+            .and_then(|observation| observation.last_feedback_amount_msats)
+    });
+
+    preferred_amount
+        .or_else(|| {
+            request
+                .provider_observations
+                .iter()
+                .find_map(|observation| observation.last_feedback_amount_msats)
+        })
+        .map(msats_to_sats_ceil)
+        .filter(|amount| *amount > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
@@ -1559,7 +1728,8 @@ mod tests {
         continuity_window_seconds,
     };
     use crate::app_state::{
-        ActiveJobState, EarnJobLifecycleProjectionState, MissionControlPaneState,
+        ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
+        MissionControlPaneState,
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::operations::{
@@ -1620,6 +1790,51 @@ mod tests {
     }
 
     #[test]
+    fn buyer_snapshot_surfaces_invoice_amount_before_wallet_evidence() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-snapshot-invoice-amount".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 75,
+                authority_command_seq: 2,
+            })
+            .expect("queue request");
+        let provider_pubkey = "ab".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-snapshot-invoice-amount",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-invoice-amount-001",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(25_000),
+            Some("lnbc1snapshotinvoiceamount"),
+        );
+
+        let request = requests
+            .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+            .expect("latest request");
+        let snapshot = build_buyer_request_flow_snapshot(request, &SparkPaneState::default());
+
+        assert_eq!(snapshot.invoice_amount_sats, Some(25));
+        assert_eq!(snapshot.net_wallet_delta_sats, None);
+        assert!(snapshot.payment_summary().contains("25 sats invoice"));
+    }
+
+    #[test]
     fn active_job_snapshot_publishing_result_is_relay_authoritative() {
         let mut active_job = ActiveJobState::default();
         let request = crate::state::job_inbox::JobInboxRequest {
@@ -1656,6 +1871,7 @@ mod tests {
         let snapshot = build_active_job_flow_snapshot(
             &active_job,
             &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
         )
         .expect("active snapshot");
 
@@ -1663,6 +1879,65 @@ mod tests {
         assert_eq!(snapshot.phase, Nip90FlowPhase::PublishingResult);
         assert_eq!(snapshot.next_expected_event, "relay confirmation");
         assert_eq!(snapshot.continuity_window_seconds, Some(195));
+    }
+
+    #[test]
+    fn active_job_snapshot_surfaces_wallet_settlement_fee_truth() {
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-settlement-snapshot".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("job");
+        job.stage = JobLifecycleStage::Paid;
+        job.payment_id = Some("wallet-provider-settlement-001".to_string());
+
+        let mut spark_wallet = SparkPaneState::default();
+        spark_wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-provider-settlement-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                fees_sats: 1,
+                method: "lightning".to_string(),
+                timestamp: 1_762_700_777,
+                ..Default::default()
+            });
+
+        let snapshot = build_active_job_flow_snapshot(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &spark_wallet,
+        )
+        .expect("active snapshot");
+
+        assert_eq!(snapshot.settlement_status.as_deref(), Some("succeeded"));
+        assert_eq!(snapshot.settlement_method.as_deref(), Some("lightning"));
+        assert_eq!(snapshot.settlement_amount_sats, Some(2));
+        assert_eq!(snapshot.settlement_fees_sats, Some(1));
+        assert_eq!(snapshot.settlement_net_wallet_delta_sats, Some(2));
     }
 
     #[test]

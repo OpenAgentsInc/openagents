@@ -398,13 +398,14 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                 if let Some(payment) = spark_state.recent_payments.first() {
                     info!(
                         target: "autopilot_desktop::headless_provider",
-                        "provider wallet payment id={} direction={} status={} amount_sats={} fees_sats={} total_debit_sats={}",
+                        "provider wallet payment id={} direction={} status={} amount_sats={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={}",
                         payment.id,
                         payment.direction,
                         payment.status,
                         payment.amount_sats,
                         payment.fees_sats,
-                        crate::spark_wallet::wallet_payment_total_debit_sats(payment)
+                        crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+                        crate::spark_wallet::wallet_payment_net_delta_sats(payment)
                     );
                 }
                 last_provider_payment_id = newest_payment;
@@ -877,12 +878,13 @@ fn handle_provider_wallet_update(
         job.settled = true;
         info!(
             target: "autopilot_desktop::headless_provider",
-            "provider settlement confirmed request_id={} success_feedback_id={} payment_id={} amount_sats={} fees_sats={} balance_before={} balance_after={}",
+            "provider settlement confirmed request_id={} success_feedback_id={} payment_id={} amount_sats={} fees_sats={} net_wallet_delta_sats={} balance_before={} balance_after={}",
             job.request.request_id,
             success_feedback_id.as_str(),
             payment.id,
             payment.amount_sats,
             payment.fees_sats,
+            crate::spark_wallet::wallet_payment_net_delta_sats(payment),
             job.balance_before_sats,
             spark_total_sats(spark_state)
         );
@@ -1038,12 +1040,13 @@ fn handle_buyer_wallet_update(request: &mut ActiveBuyerRequest, spark_state: &Sp
             request.payment_settled = true;
             info!(
                 target: "autopilot_desktop::headless_buyer",
-                "buyer payment settled request_id={} payment_id={} amount_sats={} fees_sats={} total_debit_sats={}",
+                "buyer payment settled request_id={} payment_id={} amount_sats={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={}",
                 request.request_id,
                 payment.id,
                 payment.amount_sats,
                 payment.fees_sats,
-                crate::spark_wallet::wallet_payment_total_debit_sats(payment)
+                crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+                crate::spark_wallet::wallet_payment_net_delta_sats(payment)
             );
             nip90_compute_domain_events::emit_buyer_payment_settled(
                 request.request_id.as_str(),
