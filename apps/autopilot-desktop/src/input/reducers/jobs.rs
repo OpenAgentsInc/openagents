@@ -2130,6 +2130,11 @@ fn fail_active_job_execution(
     publish_feedback: bool,
 ) {
     let reason = reason.into();
+    let active_job_request_id = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| job.request_id.clone());
     let starter_request_id = state.active_job.job.as_ref().and_then(|job| {
         (job.demand_source == crate::app_state::JobDemandSource::StarterDemand)
             .then(|| job.request_id.clone())
@@ -2139,6 +2144,24 @@ fn fail_active_job_execution(
     };
     if stage.is_terminal() {
         return;
+    }
+
+    if stage == JobLifecycleStage::Delivered
+        && reason.contains("job delivered but unpaid timed out")
+        && let Some(request_id) = active_job_request_id.as_deref()
+    {
+        nip90_compute_domain_events::emit_provider_delivered_unpaid_timeout(
+            request_id,
+            active_job_settlement_timeout_seconds(
+                state
+                    .active_job
+                    .job
+                    .as_ref()
+                    .map(|job| job.ttl_seconds)
+                    .unwrap_or_default(),
+            ),
+            reason.as_str(),
+        );
     }
 
     if let Err(error) = state
