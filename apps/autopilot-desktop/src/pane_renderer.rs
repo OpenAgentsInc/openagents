@@ -1515,10 +1515,26 @@ fn mission_control_active_jobs_panel_state(
             );
         }
         lines.push(settlement);
+    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
+        let mut settlement = "SETTLE // BUYER NEVER PAID".to_string();
+        if flow_snapshot.pending_bolt11.is_some() {
+            settlement.push_str(" // INVOICE READY");
+        } else {
+            settlement.push_str(" // INVOICE MISSING");
+        }
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
     }
 
     MissionControlActiveJobsPanelState {
-        headline: if job.stage == JobLifecycleStage::Failed {
+        headline: if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+        {
+            "UNPAID".to_string()
+        } else if job.stage == JobLifecycleStage::Failed {
             "FAULT".to_string()
         } else {
             "ACTIVE".to_string()
@@ -5181,6 +5197,38 @@ fn build_active_job_scroll_lines(
             theme::text::PRIMARY,
         );
     }
+    if let Some(bolt11) = flow_snapshot.pending_bolt11.as_deref() {
+        let compact_invoice = crate::nip90_compute_flow::compact_payment_invoice(bolt11);
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement invoice: ",
+            compact_invoice.as_str(),
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    } else if matches!(
+        flow_snapshot.phase,
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+    ) {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement invoice: ",
+            "none",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "compute completed and the result was delivered, but buyer settlement never arrived",
+            chunk_len,
+            theme::status::ERROR,
+        );
+    }
     if let Some(status) = flow_snapshot.settlement_status.as_deref() {
         push_active_job_wrapped_line(
             &mut lines,
@@ -6418,6 +6466,55 @@ mod tests {
     }
 
     #[test]
+    fn delivered_unpaid_active_job_shows_nonpayment_state() {
+        let request = fixture_active_job_request("req-active-job-unpaid");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1activejobunpaid".to_string());
+        let job = active_job.job.as_mut().expect("active job");
+        job.stage = JobLifecycleStage::Failed;
+        job.sa_tick_result_event_id = Some("result-active-job-unpaid-001".to_string());
+        job.failure_reason = Some(
+            "job delivered but unpaid timed out after 195s while awaiting buyer settlement"
+                .to_string(),
+        );
+
+        let lines = build_active_job_scroll_lines(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            120,
+        );
+        let texts = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Flow phase: delivered-unpaid") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Next event: buyer settlement timed out") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") })
+        );
+        assert!(texts.iter().any(|text| {
+            text.contains(
+                "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived",
+            )
+        }));
+        assert!(texts.contains(&"[x] delivered"));
+        assert!(texts.contains(&"[ ] paid"));
+    }
+
+    #[test]
     fn active_job_clipboard_text_includes_header_and_request_id() {
         let request = fixture_active_job_request("req-active-job-copy");
         let mut active_job = ActiveJobState::default();
@@ -6954,6 +7051,55 @@ mod tests {
         );
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // WAITING ON SETTLEMENT") && line.contains("WINDOW 195S")
+        }));
+    }
+
+    #[test]
+    fn mission_control_active_jobs_panel_state_distinguishes_delivered_unpaid_timeout() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = crate::app_state::ProviderMode::Online;
+        let request = fixture_active_job_request("req-active-panel-unpaid-3403");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1panelunpaid".to_string());
+        let job = active_job.job.as_mut().expect("job should exist");
+        job.stage = JobLifecycleStage::Failed;
+        job.sa_tick_result_event_id = Some("result-active-panel-unpaid-3403".to_string());
+        job.failure_reason = Some(
+            "job delivered but unpaid timed out after 195s while awaiting buyer settlement"
+                .to_string(),
+        );
+
+        let panel = mission_control_active_jobs_panel_state(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &LocalInferenceExecutionSnapshot::default(),
+            &JobInboxState::default(),
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert_eq!(panel.headline, "UNPAID");
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // WALLET / DELIVERED-UNPAID") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") })
+        );
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("CONT // BUYER NEVER SETTLED")
+                && line.contains("RESULT RESULT")
+                && line.contains("WINDOW 195S")
+        }));
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("SETTLE // BUYER NEVER PAID // INVOICE READY // WINDOW 195S")
         }));
     }
 

@@ -46,6 +46,7 @@ pub(crate) enum Nip90FlowPhase {
     Delivered,
     RequestingPayment,
     AwaitingPayment,
+    DeliveredUnpaid,
     Paid,
     Failed,
 }
@@ -61,6 +62,7 @@ impl Nip90FlowPhase {
             Self::Delivered => "delivered",
             Self::RequestingPayment => "requesting-payment",
             Self::AwaitingPayment => "awaiting-payment",
+            Self::DeliveredUnpaid => "delivered-unpaid",
             Self::Paid => "paid",
             Self::Failed => "failed",
         }
@@ -218,6 +220,7 @@ impl BuyerRequestFlowSnapshot {
             Nip90FlowPhase::Paid => "done".to_string(),
             Nip90FlowPhase::AwaitingPayment => "invoice".to_string(),
             Nip90FlowPhase::RequestingPayment => "invoice".to_string(),
+            Nip90FlowPhase::DeliveredUnpaid => "unpaid".to_string(),
             Nip90FlowPhase::Delivered => "done".to_string(),
             Nip90FlowPhase::Executing => "working".to_string(),
             Nip90FlowPhase::Submitted => {
@@ -251,6 +254,7 @@ impl BuyerRequestFlowSnapshot {
                     "awaiting valid invoice".to_string()
                 }
             }
+            Nip90FlowPhase::DeliveredUnpaid => "result delivered but unpaid".to_string(),
             Nip90FlowPhase::Delivered => "result received".to_string(),
             Nip90FlowPhase::Executing => "provider working".to_string(),
             Nip90FlowPhase::Submitted => {
@@ -279,6 +283,7 @@ impl BuyerRequestFlowSnapshot {
             Nip90FlowPhase::AwaitingPayment | Nip90FlowPhase::RequestingPayment => {
                 "invoice-requested".to_string()
             }
+            Nip90FlowPhase::DeliveredUnpaid => "delivered-unpaid".to_string(),
             Nip90FlowPhase::Executing => "provider-working".to_string(),
             Nip90FlowPhase::Accepted => "accepted".to_string(),
             Nip90FlowPhase::PublishingResult => "publishing-result".to_string(),
@@ -563,6 +568,21 @@ impl ActiveJobFlowSnapshot {
                     .as_deref()
                     .map(|pointer| short_id(pointer).to_string())
                     .unwrap_or_else(|| "pending".to_string()),
+                self.continuity_window_seconds
+                    .map(|window| format!("{window}s"))
+                    .unwrap_or_else(|| "-".to_string()),
+            )),
+            Nip90FlowPhase::DeliveredUnpaid => Some(format!(
+                "{} // result {} // window {}",
+                if self.pending_bolt11.is_some() {
+                    "buyer never settled"
+                } else {
+                    "buyer never paid after delivery"
+                },
+                self.result_event_id
+                    .as_deref()
+                    .map(short_id)
+                    .unwrap_or_else(|| "n/a".to_string()),
                 self.continuity_window_seconds
                     .map(|window| format!("{window}s"))
                     .unwrap_or_else(|| "-".to_string()),
@@ -865,6 +885,18 @@ pub(crate) fn build_active_job_flow_snapshot(
                 "none".to_string(),
                 None,
             )
+        } else if job.stage == JobLifecycleStage::Failed
+            && job
+                .failure_reason
+                .as_deref()
+                .is_some_and(active_job_is_settlement_timeout_reason)
+        {
+            (
+                Nip90FlowAuthority::Wallet,
+                Nip90FlowPhase::DeliveredUnpaid,
+                "buyer settlement timed out".to_string(),
+                Some(continuity_window),
+            )
         } else if job.stage == JobLifecycleStage::Failed {
             let authority = if active_job.result_publish_in_flight
                 || active_job.pending_result_publish_event_id.is_some()
@@ -952,6 +984,13 @@ pub(crate) fn build_active_job_flow_snapshot(
         continuity_window_seconds,
         failure_reason: job.failure_reason.clone(),
     })
+}
+
+fn active_job_is_settlement_timeout_reason(reason: &str) -> bool {
+    let normalized = reason.trim().to_ascii_lowercase();
+    normalized.contains("job settlement timed out")
+        || normalized.contains("delivered but unpaid")
+        || normalized.contains("awaiting buyer settlement")
 }
 
 pub(crate) fn buy_mode_payments_summary_text(
@@ -2149,6 +2188,67 @@ mod tests {
         assert_eq!(snapshot.phase, Nip90FlowPhase::PublishingResult);
         assert_eq!(snapshot.next_expected_event, "relay confirmation");
         assert_eq!(snapshot.continuity_window_seconds, Some(195));
+    }
+
+    #[test]
+    fn active_job_snapshot_distinguishes_delivered_unpaid_timeout() {
+        let mut active_job = ActiveJobState::default();
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-unpaid-snapshot".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1activeunpaid".to_string());
+        let job = active_job.job.as_mut().expect("job");
+        job.stage = JobLifecycleStage::Failed;
+        job.sa_tick_result_event_id = Some("result-active-unpaid-001".to_string());
+        job.failure_reason = Some(
+            "job delivered but unpaid timed out after 195s while awaiting buyer settlement"
+                .to_string(),
+        );
+
+        let snapshot = build_active_job_flow_snapshot(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        )
+        .expect("active snapshot");
+
+        assert_eq!(snapshot.authority, Nip90FlowAuthority::Wallet);
+        assert_eq!(snapshot.phase, Nip90FlowPhase::DeliveredUnpaid);
+        assert_eq!(snapshot.next_expected_event, "buyer settlement timed out");
+        assert_eq!(snapshot.continuity_window_seconds, Some(195));
+        assert_eq!(
+            snapshot.result_event_id.as_deref(),
+            Some("result-active-unpaid-001")
+        );
+        assert_eq!(
+            snapshot.pending_bolt11.as_deref(),
+            Some("lnbc20n1activeunpaid")
+        );
+        assert_eq!(
+            snapshot.mission_control_continuity_summary().as_deref(),
+            Some("buyer never settled // result result..-001 // window 195s")
+        );
     }
 
     #[test]

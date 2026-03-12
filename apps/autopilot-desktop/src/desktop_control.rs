@@ -1551,6 +1551,7 @@ fn active_job_stage_label(
     match active_job.phase {
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
         | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => "settling",
+        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => "unpaid",
         _ => active_job.stage.label(),
     }
 }
