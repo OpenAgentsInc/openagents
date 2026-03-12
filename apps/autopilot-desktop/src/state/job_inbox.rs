@@ -68,6 +68,7 @@ pub struct JobInboxRequest {
     pub execution_params: Vec<JobExecutionParam>,
     pub requested_model: Option<String>,
     pub requested_output_mime: Option<String>,
+    pub target_provider_pubkeys: Vec<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -84,6 +85,10 @@ pub struct JobInboxRequest {
 impl JobInboxRequest {
     pub const fn preview_only(&self, provider_mode: ProviderMode) -> bool {
         matches!(provider_mode, ProviderMode::Offline)
+    }
+
+    pub fn is_targeted(&self) -> bool {
+        !self.target_provider_pubkeys.is_empty()
     }
 
     pub const fn eligibility_label(&self, provider_mode: ProviderMode) -> &'static str {
@@ -169,6 +174,7 @@ impl JobInboxState {
             existing.execution_params = request.execution_params;
             existing.requested_model = request.requested_model;
             existing.requested_output_mime = request.requested_output_mime;
+            existing.target_provider_pubkeys = request.target_provider_pubkeys;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -194,6 +200,7 @@ impl JobInboxState {
             execution_params: request.execution_params,
             requested_model: request.requested_model,
             requested_output_mime: request.requested_output_mime,
+            target_provider_pubkeys: request.target_provider_pubkeys,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -316,6 +323,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
