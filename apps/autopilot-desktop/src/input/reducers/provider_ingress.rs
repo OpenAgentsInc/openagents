@@ -214,7 +214,7 @@ pub(super) fn apply_ingressed_request(
         return;
     }
 
-    let preview_only = state.provider_runtime.mode == ProviderMode::Offline;
+    let preview_only = ingress_is_preview_only(state.provider_nip90_lane.mode);
     apply_encrypted_request_handling(state, &mut request);
     if let Some(reason) = target_policy_reject_reason(state, &request) {
         apply_ignored_ingress_request(state, &request, reason.as_str());
@@ -280,45 +280,43 @@ pub(super) fn apply_ingressed_request(
         let now_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs());
-        let parsed_shape = request
-            .parsed_event_shape
-            .as_deref()
-            .unwrap_or("shape unavailable");
-        let raw_json = request
-            .raw_event_json
-            .as_deref()
-            .unwrap_or("raw event json unavailable");
-        state.earn_job_lifecycle_projection.record_ingress_request(
-            &request,
-            now_epoch_seconds,
-            "nip90.relay.ingress",
-        );
-        state.earn_kernel_receipts.record_ingress_request(
-            &request,
-            now_epoch_seconds,
-            "nip90.relay.ingress",
-        );
-        state.activity_feed.upsert_event(ActivityEventRow {
-            event_id: format!("nip90:req:{}", request.request_id),
-            domain: ActivityEventDomain::Network,
-            source_tag: "nip90.relay".to_string(),
-            summary: if preview_only {
-                format!("Preview request {} observed", request.capability)
-            } else {
-                format!("Live request {} arrived", request.capability)
-            },
-            detail: format!(
-                "request={} requester={} price_sats={} ttl_seconds={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
-                request.request_id,
-                request.requester,
-                request.price_sats,
-                request.ttl_seconds,
-                parsed_shape,
-                raw_json,
-            ),
-            occurred_at_epoch_seconds: now_epoch_seconds,
-        });
-        state.activity_feed.load_state = PaneLoadState::Ready;
+        if !preview_only {
+            let parsed_shape = request
+                .parsed_event_shape
+                .as_deref()
+                .unwrap_or("shape unavailable");
+            let raw_json = request
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("raw event json unavailable");
+            state.earn_job_lifecycle_projection.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "nip90.relay.ingress",
+            );
+            state.earn_kernel_receipts.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "nip90.relay.ingress",
+            );
+            state.activity_feed.upsert_event(ActivityEventRow {
+                event_id: format!("nip90:req:{}", request.request_id),
+                domain: ActivityEventDomain::Network,
+                source_tag: "nip90.relay".to_string(),
+                summary: format!("Live request {} arrived", request.capability),
+                detail: format!(
+                    "request={} requester={} price_sats={} ttl_seconds={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+                    request.request_id,
+                    request.requester,
+                    request.price_sats,
+                    request.ttl_seconds,
+                    parsed_shape,
+                    raw_json,
+                ),
+                occurred_at_epoch_seconds: now_epoch_seconds,
+            });
+            state.activity_feed.load_state = PaneLoadState::Ready;
+        }
     }
 
     state.sync_health.last_applied_event_seq =
@@ -439,18 +437,20 @@ fn apply_ignored_ingress_request(
     request: &JobInboxNetworkRequest,
     reason: &str,
 ) {
-    let preview_only = state.provider_runtime.mode == ProviderMode::Offline;
+    let preview_only = ingress_is_preview_only(state.provider_nip90_lane.mode);
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    state
-        .earn_kernel_receipts
-        .record_network_preflight_rejection(
-            request,
-            reason,
-            now_epoch_seconds,
-            "nip90.relay.ingress.reject",
-        );
+    if !preview_only {
+        state
+            .earn_kernel_receipts
+            .record_network_preflight_rejection(
+                request,
+                reason,
+                now_epoch_seconds,
+                "nip90.relay.ingress.reject",
+            );
+    }
 
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
@@ -483,45 +483,50 @@ fn apply_ignored_ingress_request(
         }
     }
 
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    state.activity_feed.upsert_event(ActivityEventRow {
-        event_id: format!("nip90:req:ignored:{}", request.request_id),
-        domain: ActivityEventDomain::Network,
-        source_tag: "nip90.policy".to_string(),
-        summary: if preview_only {
-            "Ignored preview NIP-90 request".to_string()
-        } else {
-            "Ignored live NIP-90 request".to_string()
-        },
-        detail: format!(
-            "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
-            request.request_id,
-            request.requester,
-            if request.target_provider_pubkeys.is_empty() {
-                "none".to_string()
-            } else {
-                request.target_provider_pubkeys.join(",")
-            },
-            request.encrypted,
-            reason,
-            request
-                .parsed_event_shape
-                .as_deref()
-                .unwrap_or("shape unavailable"),
-            request
-                .raw_event_json
-                .as_deref()
-                .unwrap_or("raw event json unavailable"),
-        ),
-        occurred_at_epoch_seconds: now_epoch_seconds,
-    });
-    state.activity_feed.load_state = PaneLoadState::Ready;
+    if !preview_only {
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
+        state.activity_feed.upsert_event(ActivityEventRow {
+            event_id: format!("nip90:req:ignored:{}", request.request_id),
+            domain: ActivityEventDomain::Network,
+            source_tag: "nip90.policy".to_string(),
+            summary: "Ignored live NIP-90 request".to_string(),
+            detail: format!(
+                "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+                request.request_id,
+                request.requester,
+                if request.target_provider_pubkeys.is_empty() {
+                    "none".to_string()
+                } else {
+                    request.target_provider_pubkeys.join(",")
+                },
+                request.encrypted,
+                reason,
+                request
+                    .parsed_event_shape
+                    .as_deref()
+                    .unwrap_or("shape unavailable"),
+                request
+                    .raw_event_json
+                    .as_deref()
+                    .unwrap_or("raw event json unavailable"),
+            ),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        state.activity_feed.load_state = PaneLoadState::Ready;
+    }
 
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn ingress_is_preview_only(mode: ProviderNip90LaneMode) -> bool {
+    !matches!(
+        mode,
+        ProviderNip90LaneMode::Online | ProviderNip90LaneMode::Degraded
+    )
 }
 
 fn append_parsed_shape_line(shape: &mut Option<String>, line: String) {
@@ -1176,9 +1181,10 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
 #[cfg(test)]
 mod tests {
     use super::{
-        decrypt_encrypted_request_payload, normalize_provider_keys,
+        decrypt_encrypted_request_payload, ingress_is_preview_only, normalize_provider_keys,
         relay_connections_surface_error, target_policy_reject_reason_for,
     };
+    use crate::provider_nip90_lane::ProviderNip90LaneMode;
 
     fn fixture_identity() -> nostr::NostrIdentity {
         nostr::NostrIdentity {
@@ -1283,6 +1289,24 @@ mod tests {
         assert_eq!(
             relay_connections_surface_error(Some("relay recv failed on wss://relay: boom")),
             Some("relay recv failed on wss://relay: boom".to_string())
+        );
+    }
+
+    #[test]
+    fn ingress_preview_detection_tracks_lane_mode_not_provider_mode_only() {
+        assert!(
+            ingress_is_preview_only(ProviderNip90LaneMode::Connecting),
+            "connecting preview traffic should stay preview-only until the lane is online"
+        );
+
+        assert!(
+            ingress_is_preview_only(ProviderNip90LaneMode::Preview),
+            "preview lane traffic should stay preview-only"
+        );
+
+        assert!(
+            !ingress_is_preview_only(ProviderNip90LaneMode::Online),
+            "online lane traffic should enter the live accounting path"
         );
     }
 }
