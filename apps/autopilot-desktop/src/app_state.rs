@@ -1383,7 +1383,12 @@ fn build_mission_control_log_lines(
             )
         });
         if seen.insert(key.clone()) {
-            entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string(), key));
+            entries.push((
+                at_epoch.unwrap_or(now_epoch),
+                stream,
+                trimmed.to_string(),
+                key,
+            ));
         }
     };
     let compute_flow_snapshot = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
@@ -1415,7 +1420,12 @@ fn build_mission_control_log_lines(
 
     if !unsupported_sell_platform_offline {
         if provider_blockers.is_empty() {
-            push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None, None);
+            push_entry(
+                TerminalStream::Stdout,
+                "Preflight clear.".to_string(),
+                None,
+                None,
+            );
         } else {
             for blocker in provider_blockers.iter().take(3) {
                 push_entry(
@@ -1498,7 +1508,12 @@ fn build_mission_control_log_lines(
         push_entry(TerminalStream::Stdout, format!("UI: {action}"), None, None);
     }
     if let Some(error) = mission_error {
-        push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None, None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("UI error: {error}"),
+            None,
+            None,
+        );
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
         if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
@@ -1514,7 +1529,12 @@ fn build_mission_control_log_lines(
         {
             push_entry(TerminalStream::Stdout, result.to_string(), None, None);
         } else if !unsupported_sell_platform_offline {
-            push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None, None);
+            push_entry(
+                TerminalStream::Stdout,
+                format!("Provider: {result}"),
+                None,
+                None,
+            );
         }
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
@@ -1526,7 +1546,12 @@ fn build_mission_control_log_lines(
         );
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None, None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Inventory: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
         push_entry(
@@ -1538,7 +1563,12 @@ fn build_mission_control_log_lines(
     }
 
     if let Some(action) = provider_runtime.apple_fm.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Apple FM: {action}"), None, None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Apple FM: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = provider_runtime.apple_fm.last_error.as_deref() {
         push_entry(
@@ -1550,7 +1580,12 @@ fn build_mission_control_log_lines(
     }
 
     if let Some(action) = spark_wallet.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None, None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Wallet: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
         push_entry(
@@ -1598,7 +1633,12 @@ fn build_mission_control_log_lines(
         }
     }
     if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None, None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Inbox: {action}"),
+            None,
+            None,
+        );
     }
 
     if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
@@ -1681,10 +1721,7 @@ fn build_mission_control_log_lines(
     }
 
     entries.sort_by_key(|e| e.0);
-    let content: Vec<String> = entries
-        .iter()
-        .map(|(_, _, _, key)| key.clone())
-        .collect();
+    let content: Vec<String> = entries.iter().map(|(_, _, _, key)| key.clone()).collect();
     let lines: Vec<TerminalLine> = entries
         .into_iter()
         .map(|(epoch, stream, text, key)| {
@@ -9176,11 +9213,12 @@ impl RenderState {
         } else {
             CodexLaneSnapshot::idle()
         };
-        self.autopilot_chat.set_connection_status(if self.codex_lane_config.connect_on_startup {
-            "starting"
-        } else {
-            "idle"
-        });
+        self.autopilot_chat
+            .set_connection_status(if self.codex_lane_config.connect_on_startup {
+                "starting"
+            } else {
+                "idle"
+            });
         tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
     }
 
@@ -12225,8 +12263,9 @@ mod tests {
             JobLifecycleStage::Delivered
         );
         active.pending_bolt11 = Some("lnbc20n1unpaidopennetwork".to_string());
-        active.last_action =
-            Some("Awaiting buyer Lightning payment after publishing feedback-unpaid-001".to_string());
+        active.last_action = Some(
+            "Awaiting buyer Lightning payment after publishing feedback-unpaid-001".to_string(),
+        );
         projection.record_active_job_stage(
             active.job.as_ref().expect("delivered job"),
             JobLifecycleStage::Delivered,
@@ -12279,7 +12318,10 @@ mod tests {
         );
         let timeout_row = projection.rows.first().expect("timeout row");
         assert_eq!(timeout_row.stage, JobLifecycleStage::Failed);
-        assert_eq!(timeout_row.settlement_authority, "projection.non_authoritative");
+        assert_eq!(
+            timeout_row.settlement_authority,
+            "projection.non_authoritative"
+        );
         assert!(!timeout_row.settlement_authoritative);
 
         let snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
@@ -15927,9 +15969,11 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines.iter().any(|line| {
-            line.text.contains("[REPLAY/OPEN] delivered job-replay-001")
-        }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") })
+        );
         assert!(keys.iter().any(|key| {
             key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
         }));
@@ -15976,9 +16020,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(first.log_stream.recent_lines(32).iter().any(|line| {
-            line.text.contains("[REPLAY/OPEN] accepted job-replay-002")
-        }));
+        assert!(
+            first
+                .log_stream
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
 
         let mut reopened = MissionControlPaneState::default();
         reopened.sync_log_stream(
@@ -15992,9 +16040,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(reopened.log_stream.recent_lines(32).iter().any(|line| {
-            line.text.contains("[REPLAY/OPEN] accepted job-replay-002")
-        }));
+        assert!(
+            reopened
+                .log_stream
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
     }
 
     #[test]

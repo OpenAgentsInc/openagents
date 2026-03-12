@@ -1618,9 +1618,7 @@ fn mission_control_active_jobs_panel_state(
             settlement.push_str(format!("{window}S").as_str());
         }
         lines.push(settlement);
-    } else if flow_snapshot.phase
-        == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
-    {
+    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
         let mut settlement = "SETTLE // PREPARING BUYER INVOICE".to_string();
         if let Some(window) = flow_snapshot.continuity_window_seconds {
             settlement.push_str(" // WINDOW ");
@@ -1642,15 +1640,15 @@ fn mission_control_active_jobs_panel_state(
     }
 
     MissionControlActiveJobsPanelState {
-        headline: if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+        headline: if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
         {
             "AWAITING PAYMENT".to_string()
         } else if flow_snapshot.phase
             == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
         {
             "INVOICING".to_string()
-        } else if flow_snapshot.phase
-            == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+        } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
         {
             "UNPAID".to_string()
         } else if job.stage == JobLifecycleStage::Failed {
@@ -6899,12 +6897,16 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(texts.iter().any(|text| {
-            text.contains("Stage: delivered (awaiting buyer payment)")
-        }));
-        assert!(texts.iter().any(|text| {
-            text.contains("Next event: buyer Lightning payment")
-        }));
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Next event: buyer Lightning payment") })
+        );
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment",

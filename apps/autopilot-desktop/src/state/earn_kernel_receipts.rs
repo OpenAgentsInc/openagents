@@ -10570,8 +10570,7 @@ mod tests {
             requester: "npub1abc".to_string(),
             demand_source: JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
-            demand_risk_disposition:
-                crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
             demand_risk_note:
                 "untargeted open-network demand stays visible but requires manual review"
                     .to_string(),
