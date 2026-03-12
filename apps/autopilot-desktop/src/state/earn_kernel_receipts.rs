@@ -10608,6 +10608,7 @@ mod tests {
             ttl_seconds: 120,
             request_created_at_epoch_seconds: Some(1_762_000_000),
             request_expires_at_epoch_seconds: Some(1_762_000_120),
+            accepted_at_epoch_seconds: Some(1_762_000_010),
             stage: JobLifecycleStage::Paid,
             invoice_id: None,
             settlement_bolt11: None,
