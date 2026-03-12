@@ -22,6 +22,7 @@ use crate::provider_nip90_lane::{
     ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90PublishOutcome,
     ProviderNip90PublishRole,
 };
+use crate::spark_wallet::decode_lightning_invoice_payment_hash;
 use crate::state::job_inbox::{
     JobDemandRiskAssessment, JobDemandRiskClass, JobDemandRiskDisposition, JobDemandSource,
     local_provider_keys, normalize_provider_keys,
@@ -1262,6 +1263,13 @@ fn queue_active_job_payment_required_feedback(state: &mut RenderState) -> Result
         )?;
         if let Some(job) = state.active_job.job.as_mut() {
             job.invoice_id = Some(feedback_event_id.clone());
+            if job.settlement_bolt11.is_none() {
+                job.settlement_bolt11 = Some(bolt11.clone());
+            }
+            if job.settlement_payment_hash.is_none() {
+                job.settlement_payment_hash =
+                    decode_lightning_invoice_payment_hash(bolt11.as_str());
+            }
         }
         state.active_job.payment_required_feedback_in_flight = true;
         state.active_job.payment_required_failed = false;

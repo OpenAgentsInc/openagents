@@ -1,6 +1,9 @@
 use crate::app_state::{EarnFailureClass, RenderState};
 use crate::nip90_compute_domain_events;
-use crate::spark_wallet::{is_settled_wallet_payment_status, is_terminal_wallet_payment_status};
+use crate::spark_wallet::{
+    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    is_terminal_wallet_payment_status,
+};
 use openagents_spark::PaymentSummary;
 use qrcode::{QrCode, render::unicode::Dense1x2};
 
@@ -312,6 +315,10 @@ fn reconcile_provider_settlement_invoice_state(
         active_job.pending_bolt11_created_at_epoch_seconds =
             spark_wallet.last_invoice_created_at_epoch_seconds;
         active_job.pending_bolt11 = Some(invoice.to_string());
+        if let Some(job) = active_job.job.as_mut() {
+            job.settlement_bolt11 = Some(invoice.to_string());
+            job.settlement_payment_hash = decode_lightning_invoice_payment_hash(invoice);
+        }
         active_job.append_event("generated Spark BOLT11 settlement invoice for provider payout");
         provider_runtime.last_result = Some(
             "provider settlement invoice generated; queueing payment-required feedback".to_string(),

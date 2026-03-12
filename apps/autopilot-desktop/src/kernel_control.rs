@@ -3564,6 +3564,8 @@ mod tests {
             ttl_seconds: 90,
             stage: JobLifecycleStage::Delivered,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: None,
             failure_reason: None,
             events: Vec::new(),
