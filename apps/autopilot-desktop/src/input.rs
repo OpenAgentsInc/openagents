@@ -102,6 +102,7 @@ mod tool_bridge;
 use actions::*;
 
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
+pub(crate) use actions::queue_managed_chat_channel_message;
 use shortcuts::*;
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {

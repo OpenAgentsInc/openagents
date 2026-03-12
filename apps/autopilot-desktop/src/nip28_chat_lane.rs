@@ -34,9 +34,13 @@ pub struct Nip28ChatLaneWorker {
 
 impl Nip28ChatLaneWorker {
     pub fn spawn() -> Self {
+        Self::spawn_with_config(DefaultNip28ChannelConfig::from_env_or_default())
+    }
+
+    pub fn spawn_with_config(config: DefaultNip28ChannelConfig) -> Self {
         let (update_tx, update_rx) = mpsc::channel::<Nip28ChatLaneUpdate>();
         let (command_tx, command_rx) = mpsc::channel::<Nip28ChatLaneCommand>();
-        std::thread::spawn(move || run_nip28_chat_lane_loop(update_tx, command_rx));
+        std::thread::spawn(move || run_nip28_chat_lane_loop(update_tx, command_rx, config));
         Self {
             update_rx,
             command_tx,
@@ -77,8 +81,8 @@ fn build_filters(channel_id: &str) -> Vec<serde_json::Value> {
 fn run_nip28_chat_lane_loop(
     update_tx: Sender<Nip28ChatLaneUpdate>,
     command_rx: Receiver<Nip28ChatLaneCommand>,
+    config: DefaultNip28ChannelConfig,
 ) {
-    let config = DefaultNip28ChannelConfig::from_env_or_default();
     if !config.is_valid() {
         tracing::info!("nip28: skipped, invalid config (relay_url or channel_id missing/invalid)");
         return;

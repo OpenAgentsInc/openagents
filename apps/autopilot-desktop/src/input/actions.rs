@@ -670,12 +670,7 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             content,
             reply_reference,
         } => {
-            let Some(channel) = state.autopilot_chat.active_managed_chat_channel().cloned() else {
-                state.autopilot_chat.last_error =
-                    Some("No managed chat channel is selected.".to_string());
-                return true;
-            };
-            let reply_target = match reply_reference.as_deref() {
+            let reply_event_id = match reply_reference.as_deref() {
                 Some(reference) => {
                     let Some(target_message) =
                         resolve_managed_chat_message_reference(&state.autopilot_chat, reference)
@@ -685,36 +680,20 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
                         ));
                         return true;
                     };
-                    Some(target_message)
+                    Some(target_message.event_id.clone())
                 }
                 None => None,
             };
-            let mentions = resolve_managed_chat_mentions(&group, &content);
-            let outbound_message = match build_managed_chat_outbound_message(
-                identity,
-                &group.group_id,
-                &channel,
-                &content,
-                reply_target,
-                mentions,
-            ) {
-                Ok(outbound_message) => outbound_message,
-                Err(error) => {
-                    state.autopilot_chat.last_error = Some(error);
-                    return true;
-                }
-            };
             state.chat_inputs.composer.set_value(String::new());
-            if let Err(error) = state
-                .autopilot_chat
-                .managed_chat_projection
-                .queue_outbound_message(outbound_message)
-            {
+            if let Err(error) = queue_managed_chat_channel_message(
+                &mut state.autopilot_chat,
+                identity,
+                &content,
+                reply_event_id.as_deref(),
+            ) {
                 state.autopilot_chat.last_error = Some(error);
                 return true;
             }
-            state.autopilot_chat.last_error = None;
-            state.autopilot_chat.reset_transcript_scroll();
             true
         }
         ManagedChatComposerIntent::DeleteMessage {
@@ -2001,6 +1980,59 @@ fn build_managed_chat_outbound_message(
         attempt_count: 1,
         last_error: None,
     })
+}
+
+pub(crate) fn queue_managed_chat_channel_message(
+    chat: &mut crate::app_state::AutopilotChatState,
+    identity: &nostr::NostrIdentity,
+    content: &str,
+    reply_event_id: Option<&str>,
+) -> Result<String, String> {
+    let Some(group) = chat.active_managed_chat_group().cloned() else {
+        return Err("No managed chat group is selected.".to_string());
+    };
+    let Some(channel) = chat.active_managed_chat_channel().cloned() else {
+        return Err("No managed chat channel is selected.".to_string());
+    };
+    let reply_target = match reply_event_id {
+        Some(event_id) => {
+            let Some(target_message) = chat.managed_chat_projection.snapshot.messages.get(event_id)
+            else {
+                return Err(format!(
+                    "Unknown managed chat reply target event: {event_id}"
+                ));
+            };
+            if target_message.group_id != group.group_id {
+                return Err(format!(
+                    "Managed chat reply target {} is not in the active group {}",
+                    event_id, group.group_id
+                ));
+            }
+            if target_message.channel_id != channel.channel_id {
+                return Err(format!(
+                    "Managed chat reply target {} is not in the active channel {}",
+                    event_id, channel.channel_id
+                ));
+            }
+            Some(target_message)
+        }
+        None => None,
+    };
+    let mentions = resolve_managed_chat_mentions(&group, content);
+    let outbound_message = build_managed_chat_outbound_message(
+        identity,
+        &group.group_id,
+        &channel,
+        content,
+        reply_target,
+        mentions,
+    )?;
+    let event_id = outbound_message.event.id.clone();
+    chat.managed_chat_projection
+        .queue_outbound_message(outbound_message)?;
+    chat.last_error = None;
+    chat.reset_transcript_scroll();
+    Ok(event_id)
 }
 
 fn finalize_signed_nostr_event(

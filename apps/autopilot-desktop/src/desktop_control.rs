@@ -20,12 +20,13 @@ use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
 use crate::app_state::{
-    MISSION_CONTROL_BUY_MODE_BUDGET_SATS, MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, RenderState,
+    DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+    MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, RenderState,
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::pane_system::MissionControlPaneAction;
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 1;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 2;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -53,6 +54,7 @@ pub struct DesktopControlSnapshot {
     pub wallet: DesktopControlWalletStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
     pub active_job: Option<DesktopControlActiveJobStatus>,
+    pub nip28: DesktopControlNip28Status,
     pub recent_logs: Vec<String>,
     pub last_command: Option<DesktopControlLastCommandStatus>,
 }
@@ -181,6 +183,62 @@ pub struct DesktopControlActiveJobStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlNip28GroupStatus {
+    pub group_id: String,
+    pub name: String,
+    pub selected: bool,
+    pub unread_count: usize,
+    pub mention_count: usize,
+    pub channel_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlNip28ChannelStatus {
+    pub channel_id: String,
+    pub group_id: String,
+    pub name: String,
+    pub relay_url: Option<String>,
+    pub selected: bool,
+    pub unread_count: usize,
+    pub mention_count: usize,
+    pub message_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlNip28MessageStatus {
+    pub event_id: String,
+    pub author_pubkey: String,
+    pub content: String,
+    pub created_at: u64,
+    pub reply_to_event_id: Option<String>,
+    pub delivery_state: String,
+    pub delivery_error: Option<String>,
+    pub attempt_count: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlNip28Status {
+    pub available: bool,
+    pub browse_mode: String,
+    pub configured_relay_url: String,
+    pub configured_channel_id: String,
+    pub configured_channel_loaded: bool,
+    pub local_pubkey: Option<String>,
+    pub selected_group_id: Option<String>,
+    pub selected_group_name: Option<String>,
+    pub selected_channel_id: Option<String>,
+    pub selected_channel_name: Option<String>,
+    pub selected_channel_relay_url: Option<String>,
+    pub publishing_outbound_count: usize,
+    pub retryable_event_id: Option<String>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    pub groups: Vec<DesktopControlNip28GroupStatus>,
+    pub channels: Vec<DesktopControlNip28ChannelStatus>,
+    pub recent_messages: Vec<DesktopControlNip28MessageStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlLastCommandStatus {
     pub summary: String,
     pub error: Option<String>,
@@ -204,15 +262,35 @@ pub struct DesktopControlManifest {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum DesktopControlActionRequest {
     GetSnapshot,
-    SetProviderMode { online: bool },
+    SetProviderMode {
+        online: bool,
+    },
     RefreshAppleFm,
     RunAppleFmSmokeTest,
     RefreshWallet,
     StartBuyMode,
     StopBuyMode,
     GetActiveJob,
-    Withdraw { bolt11: String },
-    GetMissionControlLogTail { limit: usize },
+    SelectNip28MainChannel,
+    SelectNip28Group {
+        group_id: String,
+    },
+    SelectNip28Channel {
+        channel_id: String,
+    },
+    SendNip28Message {
+        content: String,
+        reply_to_event_id: Option<String>,
+    },
+    RetryNip28Message {
+        event_id: String,
+    },
+    Withdraw {
+        bolt11: String,
+    },
+    GetMissionControlLogTail {
+        limit: usize,
+    },
 }
 
 impl DesktopControlActionRequest {
@@ -227,6 +305,11 @@ impl DesktopControlActionRequest {
             Self::StartBuyMode => "buy-mode-start",
             Self::StopBuyMode => "buy-mode-stop",
             Self::GetActiveJob => "active-job",
+            Self::SelectNip28MainChannel => "nip28-main",
+            Self::SelectNip28Group { .. } => "nip28-select-group",
+            Self::SelectNip28Channel { .. } => "nip28-select-channel",
+            Self::SendNip28Message { .. } => "nip28-send",
+            Self::RetryNip28Message { .. } => "nip28-retry",
             Self::Withdraw { .. } => "withdraw",
             Self::GetMissionControlLogTail { .. } => "log-tail",
         }
@@ -820,9 +903,30 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::RefreshWallet
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
-        | DesktopControlActionRequest::GetActiveJob => {
+        | DesktopControlActionRequest::GetActiveJob
+        | DesktopControlActionRequest::SelectNip28MainChannel => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::SelectNip28Group { group_id } => json!({
+            "command_label": action.label(),
+            "group_id": group_id,
+        }),
+        DesktopControlActionRequest::SelectNip28Channel { channel_id } => json!({
+            "command_label": action.label(),
+            "channel_id": channel_id,
+        }),
+        DesktopControlActionRequest::SendNip28Message {
+            content,
+            reply_to_event_id,
+        } => json!({
+            "command_label": action.label(),
+            "content_length": content.trim().len(),
+            "reply_to_event_id": reply_to_event_id,
+        }),
+        DesktopControlActionRequest::RetryNip28Message { event_id } => json!({
+            "command_label": action.label(),
+            "event_id": event_id,
+        }),
         DesktopControlActionRequest::Withdraw { bolt11 } => json!({
             "command_label": action.label(),
             "invoice_length": bolt11.trim().len(),
@@ -895,6 +999,16 @@ fn snapshot_change_events(
             command_label: None,
             success: None,
             payload: serde_json::to_value(&current.active_job).ok(),
+        });
+    }
+    if nip28_status_changed(previous.map(|snapshot| &snapshot.nip28), &current.nip28) {
+        changed_domains.push("nip28");
+        events.push(DesktopControlEventDraft {
+            event_type: "nip28.state.changed".to_string(),
+            summary: nip28_status_summary(&current.nip28),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.nip28).ok(),
         });
     }
     if mission_control_status_changed(
@@ -997,6 +1111,23 @@ fn active_job_status_summary(active_job: Option<&DesktopControlActiveJobStatus>)
     )
 }
 
+fn nip28_status_summary(status: &DesktopControlNip28Status) -> String {
+    if !status.available {
+        return format!(
+            "nip28 unavailable configured_channel={} loaded={}",
+            short_request_id(status.configured_channel_id.as_str()),
+            status.configured_channel_loaded
+        );
+    }
+    format!(
+        "nip28 group={} channel={} messages={} publishing_outbound={}",
+        status.selected_group_name.as_deref().unwrap_or("-"),
+        status.selected_channel_name.as_deref().unwrap_or("-"),
+        status.recent_messages.len(),
+        status.publishing_outbound_count
+    )
+}
+
 fn mission_control_status_changed(
     previous: Option<&DesktopControlMissionControlStatus>,
     current: &DesktopControlMissionControlStatus,
@@ -1066,6 +1197,13 @@ fn active_job_status_changed(
     }
 }
 
+fn nip28_status_changed(
+    previous: Option<&DesktopControlNip28Status>,
+    current: &DesktopControlNip28Status,
+) -> bool {
+    previous.is_none_or(|previous| previous != current)
+}
+
 fn short_request_id(request_id: &str) -> String {
     let trimmed = request_id.trim();
     if trimmed.len() <= 12 {
@@ -1107,6 +1245,22 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
+        DesktopControlActionRequest::SelectNip28MainChannel => {
+            select_nip28_main_channel_action(state)
+        }
+        DesktopControlActionRequest::SelectNip28Group { group_id } => {
+            select_nip28_group_action(state, group_id.as_str())
+        }
+        DesktopControlActionRequest::SelectNip28Channel { channel_id } => {
+            select_nip28_channel_action(state, channel_id.as_str())
+        }
+        DesktopControlActionRequest::SendNip28Message {
+            content,
+            reply_to_event_id,
+        } => send_nip28_message_action(state, content.as_str(), reply_to_event_id.as_deref()),
+        DesktopControlActionRequest::RetryNip28Message { event_id } => {
+            retry_nip28_message_action(state, event_id.as_str())
+        }
         DesktopControlActionRequest::GetMissionControlLogTail { limit } => {
             log_tail_response(state, *limit)
         }
@@ -1170,6 +1324,176 @@ fn apply_response_snapshot_metadata(
     response.snapshot_revision = Some(snapshot.snapshot_revision);
     response.state_signature = Some(snapshot.state_signature.clone());
     response
+}
+
+fn configured_nip28_main_channel(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Option<(String, String)> {
+    let config = DefaultNip28ChannelConfig::from_env_or_default();
+    chat.managed_chat_projection
+        .snapshot
+        .channels
+        .iter()
+        .find(|channel| channel.channel_id == config.channel_id)
+        .map(|channel| (channel.group_id.clone(), channel.channel_id.clone()))
+}
+
+fn select_nip28_group(
+    chat: &mut crate::app_state::AutopilotChatState,
+    group_id: &str,
+) -> Result<String, String> {
+    if chat.select_managed_chat_group_by_id(group_id) {
+        Ok(format!("Selected NIP-28 group {group_id}"))
+    } else {
+        Err(chat
+            .last_error
+            .clone()
+            .unwrap_or_else(|| format!("Unknown NIP-28 group: {group_id}")))
+    }
+}
+
+fn select_nip28_channel(
+    chat: &mut crate::app_state::AutopilotChatState,
+    channel_id: &str,
+) -> Result<String, String> {
+    let Some(channel) = chat
+        .managed_chat_projection
+        .snapshot
+        .channels
+        .iter()
+        .find(|channel| channel.channel_id == channel_id)
+        .cloned()
+    else {
+        return Err(format!("Unknown NIP-28 channel: {channel_id}"));
+    };
+    match chat
+        .managed_chat_projection
+        .set_selected_channel(channel.group_id.as_str(), channel.channel_id.as_str())
+    {
+        Ok(()) => {
+            chat.selected_workspace =
+                crate::app_state::ChatWorkspaceSelection::ManagedGroup(channel.group_id.clone());
+            chat.reset_transcript_scroll();
+            chat.last_error = None;
+            Ok(format!("Selected NIP-28 channel {}", channel.channel_id))
+        }
+        Err(error) => {
+            chat.last_error = Some(error.clone());
+            Err(error)
+        }
+    }
+}
+
+fn send_nip28_message(
+    chat: &mut crate::app_state::AutopilotChatState,
+    identity: &nostr::NostrIdentity,
+    content: &str,
+    reply_to_event_id: Option<&str>,
+) -> Result<String, String> {
+    let event_id = crate::input::queue_managed_chat_channel_message(
+        chat,
+        identity,
+        content,
+        reply_to_event_id,
+    )?;
+    Ok(event_id)
+}
+
+fn select_nip28_main_channel_action(state: &mut RenderState) -> DesktopControlActionResponse {
+    let Some((_, channel_id)) = configured_nip28_main_channel(&state.autopilot_chat) else {
+        return DesktopControlActionResponse::error(
+            "Configured NIP-28 main channel is not loaded in the managed chat projection yet.",
+        );
+    };
+    select_nip28_channel_action(state, channel_id.as_str())
+}
+
+fn select_nip28_group_action(
+    state: &mut RenderState,
+    group_id: &str,
+) -> DesktopControlActionResponse {
+    match select_nip28_group(&mut state.autopilot_chat, group_id) {
+        Ok(message) => DesktopControlActionResponse::ok_with_payload(
+            message,
+            json!({
+                "group_id": group_id,
+            }),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn select_nip28_channel_action(
+    state: &mut RenderState,
+    channel_id: &str,
+) -> DesktopControlActionResponse {
+    match select_nip28_channel(&mut state.autopilot_chat, channel_id) {
+        Ok(message) => {
+            let group_id = state
+                .autopilot_chat
+                .active_managed_chat_group()
+                .map(|group| group.group_id.clone());
+            DesktopControlActionResponse::ok_with_payload(
+                message,
+                json!({
+                    "group_id": group_id,
+                    "channel_id": channel_id,
+                }),
+            )
+        }
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn send_nip28_message_action(
+    state: &mut RenderState,
+    content: &str,
+    reply_to_event_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        return DesktopControlActionResponse::error(
+            "No Nostr identity is loaded for NIP-28 publishing.",
+        );
+    };
+    match send_nip28_message(
+        &mut state.autopilot_chat,
+        identity,
+        content,
+        reply_to_event_id,
+    ) {
+        Ok(event_id) => {
+            let channel_id = state
+                .autopilot_chat
+                .active_managed_chat_channel()
+                .map(|channel| channel.channel_id.clone());
+            DesktopControlActionResponse::ok_with_payload(
+                format!("Queued NIP-28 message {event_id}"),
+                json!({
+                    "event_id": event_id,
+                    "channel_id": channel_id,
+                    "reply_to_event_id": reply_to_event_id,
+                }),
+            )
+        }
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn retry_nip28_message_action(
+    state: &mut RenderState,
+    event_id: &str,
+) -> DesktopControlActionResponse {
+    match state
+        .autopilot_chat
+        .managed_chat_projection
+        .retry_outbound_message(event_id)
+    {
+        Ok(()) => DesktopControlActionResponse::ok_with_payload(
+            format!("Retried NIP-28 message {event_id}"),
+            json!({ "event_id": event_id }),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
 }
 
 fn apply_provider_mode_action(
@@ -1329,6 +1653,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         .into_iter()
         .map(|blocker| blocker.code().to_string())
         .collect::<Vec<_>>();
+    let nip28 = desktop_control_nip28_status(&state.autopilot_chat);
     let recent_request_rows = buy_mode_requests
         .iter()
         .take(6)
@@ -1463,6 +1788,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
                 failure_reason: active_job.failure_reason,
             }
         }),
+        nip28,
         recent_logs: mission_control_recent_lines(state, DESKTOP_CONTROL_LOG_TAIL_LIMIT),
         last_command: state
             .desktop_control
@@ -1497,6 +1823,135 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         last_command.state_signature = signature;
     }
     snapshot
+}
+
+fn desktop_control_nip28_status(
+    chat: &crate::app_state::AutopilotChatState,
+) -> DesktopControlNip28Status {
+    let config = DefaultNip28ChannelConfig::from_env_or_default();
+    let browse_mode = match chat.chat_browse_mode() {
+        crate::app_state::ChatBrowseMode::Autopilot => "autopilot",
+        crate::app_state::ChatBrowseMode::Managed => "managed",
+        crate::app_state::ChatBrowseMode::DirectMessages => "direct_messages",
+    }
+    .to_string();
+    let active_group = chat.active_managed_chat_group();
+    let active_channel = chat.active_managed_chat_channel();
+    let groups = chat
+        .managed_chat_projection
+        .snapshot
+        .groups
+        .iter()
+        .map(|group| DesktopControlNip28GroupStatus {
+            group_id: group.group_id.clone(),
+            name: group_name_label(group),
+            selected: active_group.is_some_and(|active| active.group_id == group.group_id),
+            unread_count: group.unread_count,
+            mention_count: group.mention_count,
+            channel_count: group.channel_ids.len(),
+        })
+        .collect::<Vec<_>>();
+    let channels = active_group
+        .map(|_| {
+            chat.active_managed_chat_channels()
+                .into_iter()
+                .map(|channel| DesktopControlNip28ChannelStatus {
+                    channel_id: channel.channel_id.clone(),
+                    group_id: channel.group_id.clone(),
+                    name: channel_name_label(channel),
+                    relay_url: channel.relay_url.clone(),
+                    selected: active_channel
+                        .is_some_and(|active| active.channel_id == channel.channel_id),
+                    unread_count: channel.unread_count,
+                    mention_count: channel.mention_count,
+                    message_count: channel.message_ids.len(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let recent_messages = {
+        let mut tail = chat.active_managed_chat_messages();
+        if tail.len() > 16 {
+            tail.drain(0..tail.len().saturating_sub(16));
+        }
+        tail.into_iter()
+            .map(|message| DesktopControlNip28MessageStatus {
+                event_id: message.event_id.clone(),
+                author_pubkey: message.author_pubkey.clone(),
+                content: message.content.clone(),
+                created_at: message.created_at,
+                reply_to_event_id: message.reply_to_event_id.clone(),
+                delivery_state: match message.delivery_state {
+                    crate::app_state::ManagedChatDeliveryState::Confirmed => "confirmed",
+                    crate::app_state::ManagedChatDeliveryState::Publishing => "publishing",
+                    crate::app_state::ManagedChatDeliveryState::Acked => "acked",
+                    crate::app_state::ManagedChatDeliveryState::Failed => "failed",
+                }
+                .to_string(),
+                delivery_error: message.delivery_error.clone(),
+                attempt_count: message.attempt_count,
+            })
+            .collect::<Vec<_>>()
+    };
+    let publishing_outbound_count = chat
+        .managed_chat_projection
+        .outbound_messages
+        .iter()
+        .filter(|message| {
+            message.delivery_state == crate::app_state::ManagedChatDeliveryState::Publishing
+        })
+        .count();
+    let retryable_event_id = active_channel.and_then(|channel| {
+        chat.managed_chat_projection
+            .latest_retryable_outbound_event_id(channel.channel_id.as_str())
+    });
+
+    DesktopControlNip28Status {
+        available: chat.has_managed_chat_browseable_content(),
+        browse_mode,
+        configured_relay_url: config.relay_url.clone(),
+        configured_channel_id: config.channel_id.clone(),
+        configured_channel_loaded: chat
+            .managed_chat_projection
+            .snapshot
+            .channels
+            .iter()
+            .any(|channel| channel.channel_id == config.channel_id),
+        local_pubkey: chat.managed_chat_local_pubkey().map(str::to_string),
+        selected_group_id: active_group.map(|group| group.group_id.clone()),
+        selected_group_name: active_group.map(group_name_label),
+        selected_channel_id: active_channel.map(|channel| channel.channel_id.clone()),
+        selected_channel_name: active_channel.map(channel_name_label),
+        selected_channel_relay_url: active_channel.and_then(|channel| channel.relay_url.clone()),
+        publishing_outbound_count,
+        retryable_event_id,
+        last_action: chat.managed_chat_projection.last_action.clone(),
+        last_error: chat
+            .last_error
+            .clone()
+            .or_else(|| chat.managed_chat_projection.last_error.clone()),
+        groups,
+        channels,
+        recent_messages,
+    }
+}
+
+fn group_name_label(group: &crate::app_state::ManagedChatGroupProjection) -> String {
+    group
+        .metadata
+        .name
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| group.group_id.clone())
+}
+
+fn channel_name_label(channel: &crate::app_state::ManagedChatChannelProjection) -> String {
+    let name = channel.metadata.name.trim();
+    if name.is_empty() {
+        channel.channel_id.clone()
+    } else {
+        channel.metadata.name.clone()
+    }
 }
 
 fn provider_desired_mode_hint(state: &RenderState) -> &'static str {
@@ -1908,11 +2363,28 @@ mod tests {
         DesktopControlEventDraft, DesktopControlMissionControlStatus, DesktopControlProviderStatus,
         DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
         DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlWalletStatus,
-        apply_response_snapshot_metadata, snapshot_sync_signature, validate_control_bind_addr,
+        apply_response_snapshot_metadata, command_outcome_event, command_received_event,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
+    use crate::app_state::{
+        AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
+        ManagedChatProjectionState,
+    };
+    use crate::nip28_chat_lane::{Nip28ChatLaneUpdate, Nip28ChatLaneWorker};
     use crate::pane_system::MissionControlPaneAction;
-
+    use futures_util::{SinkExt, StreamExt};
+    use nostr::{
+        ChannelMetadata, Event, GroupMetadata, GroupMetadataEvent, ManagedChannelCreateEvent,
+        ManagedChannelHints, ManagedChannelMessageEvent, ManagedChannelType,
+    };
+    use serde_json::{Value, json};
+    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::sync::{Arc, Mutex, mpsc};
     use std::time::Duration;
+    use tempfile::tempdir;
+    use tokio::net::TcpListener;
+    use tokio::sync::{mpsc as tokio_mpsc, oneshot};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
 
     fn sample_snapshot() -> DesktopControlSnapshot {
         DesktopControlSnapshot {
@@ -1981,9 +2453,641 @@ mod tests {
                 recent_requests: Vec::new(),
             },
             active_job: None,
+            nip28: super::DesktopControlNip28Status::default(),
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
             last_command: None,
         }
+    }
+
+    fn repeated_hex(ch: char, len: usize) -> String {
+        std::iter::repeat_n(ch, len).collect()
+    }
+
+    fn signed_event(
+        id: impl Into<String>,
+        pubkey: impl Into<String>,
+        created_at: u64,
+        kind: u16,
+        tags: Vec<Vec<String>>,
+        content: impl Into<String>,
+    ) -> Event {
+        Event {
+            id: id.into(),
+            pubkey: pubkey.into(),
+            created_at,
+            kind,
+            tags,
+            content: content.into(),
+            sig: repeated_hex('f', 128),
+        }
+    }
+
+    fn build_test_group_metadata_event() -> Event {
+        let template = GroupMetadataEvent::new(
+            "oa-main",
+            GroupMetadata::new().with_name("OpenAgents Main"),
+            10,
+        )
+        .expect("group metadata");
+        signed_event(
+            repeated_hex('a', 64),
+            repeated_hex('1', 64),
+            10,
+            39000,
+            template.to_tags(),
+            String::new(),
+        )
+    }
+
+    fn build_test_channel_create_event(channel_id: &str) -> Event {
+        let template = ManagedChannelCreateEvent::new(
+            "oa-main",
+            ChannelMetadata::new("main", "OpenAgents main channel", ""),
+            20,
+        )
+        .expect("channel create")
+        .with_hints(
+            ManagedChannelHints::new()
+                .with_slug("main")
+                .with_channel_type(ManagedChannelType::Ops)
+                .with_category_id("main")
+                .with_category_label("Main")
+                .with_position(1),
+        )
+        .expect("channel hints");
+        signed_event(
+            channel_id.to_string(),
+            repeated_hex('2', 64),
+            20,
+            40,
+            template.to_tags().expect("channel tags"),
+            template.content().expect("channel content"),
+        )
+    }
+
+    fn build_test_channel_message_event(
+        event_id: &str,
+        author_pubkey: &str,
+        channel_id: &str,
+        relay_url: &str,
+        created_at: u64,
+        content: &str,
+    ) -> Event {
+        let template =
+            ManagedChannelMessageEvent::new("oa-main", channel_id, relay_url, content, created_at)
+                .expect("channel message");
+        signed_event(
+            event_id.to_string(),
+            author_pubkey.to_string(),
+            created_at,
+            42,
+            template.to_tags().expect("message tags"),
+            content.to_string(),
+        )
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestNip28RelayFilter {
+        ids: Option<HashSet<String>>,
+        kinds: Option<HashSet<u16>>,
+        e_tags: Option<HashSet<String>>,
+        limit: usize,
+    }
+
+    impl TestNip28RelayFilter {
+        fn matches_event(&self, event: &Event) -> bool {
+            if let Some(ids) = self.ids.as_ref()
+                && !ids.contains(event.id.as_str())
+            {
+                return false;
+            }
+            if let Some(kinds) = self.kinds.as_ref()
+                && !kinds.contains(&event.kind)
+            {
+                return false;
+            }
+            if let Some(expected_e_tags) = self.e_tags.as_ref() {
+                let matched = event.tags.iter().any(|tag| {
+                    tag.first().is_some_and(|value| value == "e")
+                        && tag
+                            .get(1)
+                            .is_some_and(|value| expected_e_tags.contains(value.as_str()))
+                });
+                if !matched {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+
+    struct TestNip28RelayClient {
+        sender: tokio_mpsc::UnboundedSender<Message>,
+        subscriptions: HashMap<String, Vec<TestNip28RelayFilter>>,
+    }
+
+    struct TestNip28RelayState {
+        next_client_id: u64,
+        events: VecDeque<Event>,
+        clients: HashMap<u64, TestNip28RelayClient>,
+    }
+
+    impl TestNip28RelayState {
+        fn new() -> Self {
+            Self {
+                next_client_id: 0,
+                events: VecDeque::new(),
+                clients: HashMap::new(),
+            }
+        }
+
+        fn register_client(&mut self, sender: tokio_mpsc::UnboundedSender<Message>) -> u64 {
+            self.next_client_id = self.next_client_id.saturating_add(1);
+            let client_id = self.next_client_id;
+            self.clients.insert(
+                client_id,
+                TestNip28RelayClient {
+                    sender,
+                    subscriptions: HashMap::new(),
+                },
+            );
+            client_id
+        }
+
+        fn remove_client(&mut self, client_id: u64) {
+            self.clients.remove(&client_id);
+        }
+
+        fn set_subscription(
+            &mut self,
+            client_id: u64,
+            subscription_id: String,
+            filters: Vec<TestNip28RelayFilter>,
+        ) -> Vec<Event> {
+            let matching = test_relay_matching_events(self.events.iter(), filters.as_slice());
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                client.subscriptions.insert(subscription_id, filters);
+            }
+            matching
+        }
+
+        fn close_subscription(&mut self, client_id: u64, subscription_id: &str) {
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                client.subscriptions.remove(subscription_id);
+            }
+        }
+
+        fn store_and_fanout(&mut self, event: Event) {
+            if self.events.iter().any(|stored| stored.id == event.id) {
+                return;
+            }
+            self.events.push_back(event.clone());
+            let mut deliveries = Vec::<(tokio_mpsc::UnboundedSender<Message>, String)>::new();
+            for client in self.clients.values() {
+                for (subscription_id, filters) in &client.subscriptions {
+                    if filters.iter().any(|filter| filter.matches_event(&event)) {
+                        let payload = serde_json::json!(["EVENT", subscription_id, event]);
+                        deliveries.push((client.sender.clone(), payload.to_string()));
+                    }
+                }
+            }
+            for (sender, payload) in deliveries {
+                let _ = sender.send(Message::Text(payload.into()));
+            }
+        }
+    }
+
+    fn parse_test_relay_filters(values: &[Value]) -> Vec<TestNip28RelayFilter> {
+        values
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|object| {
+                let ids = object.get("ids").and_then(Value::as_array).map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToString::to_string)
+                        .collect::<HashSet<_>>()
+                });
+                let kinds = object.get("kinds").and_then(Value::as_array).map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_u64)
+                        .filter_map(|kind| u16::try_from(kind).ok())
+                        .collect::<HashSet<_>>()
+                });
+                let e_tags = object.get("#e").and_then(Value::as_array).map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToString::to_string)
+                        .collect::<HashSet<_>>()
+                });
+                let limit = object
+                    .get("limit")
+                    .and_then(Value::as_u64)
+                    .and_then(|limit| usize::try_from(limit).ok())
+                    .unwrap_or(256)
+                    .max(1);
+                TestNip28RelayFilter {
+                    ids,
+                    kinds,
+                    e_tags,
+                    limit,
+                }
+            })
+            .collect()
+    }
+
+    fn test_relay_matching_events<'a>(
+        events: impl Iterator<Item = &'a Event>,
+        filters: &[TestNip28RelayFilter],
+    ) -> Vec<Event> {
+        if filters.is_empty() {
+            return Vec::new();
+        }
+        let limit = filters
+            .iter()
+            .map(|filter| filter.limit)
+            .max()
+            .unwrap_or(256);
+        let mut matching = Vec::new();
+        let mut seen = HashSet::<String>::new();
+        for event in events {
+            if filters.iter().any(|filter| filter.matches_event(event))
+                && seen.insert(event.id.clone())
+            {
+                matching.push(event.clone());
+                if matching.len() >= limit {
+                    break;
+                }
+            }
+        }
+        matching
+    }
+
+    async fn handle_test_nip28_relay_connection(
+        state: Arc<Mutex<TestNip28RelayState>>,
+        stream: tokio::net::TcpStream,
+    ) {
+        let websocket = accept_async(stream)
+            .await
+            .expect("upgrade websocket relay connection");
+        let (mut writer, mut reader) = websocket.split();
+        let (outbound_tx, mut outbound_rx) = tokio_mpsc::unbounded_channel::<Message>();
+        let writer_task = tokio::spawn(async move {
+            while let Some(message) = outbound_rx.recv().await {
+                if writer.send(message).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let client_id = {
+            let mut guard = state.lock().expect("lock test relay state");
+            guard.register_client(outbound_tx.clone())
+        };
+
+        while let Some(frame) = reader.next().await {
+            let Ok(frame) = frame else {
+                break;
+            };
+            let Message::Text(text) = frame else {
+                continue;
+            };
+            let value: Value = serde_json::from_str(text.as_ref()).expect("parse relay frame");
+            let Some(frame) = value.as_array() else {
+                continue;
+            };
+            let Some(kind) = frame.first().and_then(Value::as_str) else {
+                continue;
+            };
+            match kind {
+                "REQ" => {
+                    if frame.len() < 3 {
+                        continue;
+                    }
+                    let subscription_id = frame[1].as_str().expect("subscription id");
+                    let filters = parse_test_relay_filters(&frame[2..]);
+                    let matching = {
+                        let mut guard = state.lock().expect("lock test relay state");
+                        guard.set_subscription(client_id, subscription_id.to_string(), filters)
+                    };
+                    for event in matching {
+                        let payload = serde_json::json!(["EVENT", subscription_id, event]);
+                        let _ = outbound_tx.send(Message::Text(payload.to_string().into()));
+                    }
+                    let eose = serde_json::json!(["EOSE", subscription_id]);
+                    let _ = outbound_tx.send(Message::Text(eose.to_string().into()));
+                }
+                "EVENT" => {
+                    if frame.len() < 2 {
+                        continue;
+                    }
+                    let event =
+                        serde_json::from_value::<Event>(frame[1].clone()).expect("relay event");
+                    {
+                        let mut guard = state.lock().expect("lock test relay state");
+                        guard.store_and_fanout(event.clone());
+                    }
+                    let ok = serde_json::json!(["OK", event.id, true, "accepted"]);
+                    let _ = outbound_tx.send(Message::Text(ok.to_string().into()));
+                }
+                "CLOSE" => {
+                    if let Some(subscription_id) = frame.get(1).and_then(Value::as_str) {
+                        let mut guard = state.lock().expect("lock test relay state");
+                        guard.close_subscription(client_id, subscription_id);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        {
+            let mut guard = state.lock().expect("lock test relay state");
+            guard.remove_client(client_id);
+        }
+        writer_task.abort();
+    }
+
+    struct TestNip28Relay {
+        url: String,
+        state: Arc<Mutex<TestNip28RelayState>>,
+        shutdown_tx: Option<oneshot::Sender<()>>,
+        join_handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl TestNip28Relay {
+        fn spawn() -> Self {
+            let state = Arc::new(Mutex::new(TestNip28RelayState::new()));
+            let (ready_tx, ready_rx) = mpsc::channel::<String>();
+            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+            let relay_state = Arc::clone(&state);
+            let join_handle = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build()
+                    .expect("build test relay runtime");
+                runtime.block_on(async move {
+                    let listener = TcpListener::bind("127.0.0.1:0")
+                        .await
+                        .expect("bind test relay listener");
+                    let local_addr = listener.local_addr().expect("resolve test relay addr");
+                    ready_tx
+                        .send(format!("ws://{local_addr}"))
+                        .expect("send test relay addr");
+                    let mut shutdown_rx = shutdown_rx;
+                    loop {
+                        tokio::select! {
+                            _ = &mut shutdown_rx => break,
+                            accept = listener.accept() => {
+                                let Ok((stream, _)) = accept else {
+                                    break;
+                                };
+                                let relay_state = Arc::clone(&relay_state);
+                                tokio::spawn(async move {
+                                    handle_test_nip28_relay_connection(relay_state, stream).await;
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+            let url = ready_rx.recv().expect("receive test relay addr");
+            Self {
+                url,
+                state,
+                shutdown_tx: Some(shutdown_tx),
+                join_handle: Some(join_handle),
+            }
+        }
+
+        fn store_events<I>(&self, events: I)
+        where
+            I: IntoIterator<Item = Event>,
+        {
+            let mut guard = self.state.lock().expect("lock test relay state");
+            for event in events {
+                guard.store_and_fanout(event);
+            }
+        }
+    }
+
+    impl Drop for TestNip28Relay {
+        fn drop(&mut self) {
+            if let Some(shutdown_tx) = self.shutdown_tx.take() {
+                let _ = shutdown_tx.send(());
+            }
+            if let Some(handle) = self.join_handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn pump_nip28_lane(
+        chat: &mut AutopilotChatState,
+        lane_worker: &mut Nip28ChatLaneWorker,
+    ) -> bool {
+        let mut changed = false;
+        for update in lane_worker.drain_updates() {
+            changed = true;
+            match update {
+                Nip28ChatLaneUpdate::RelayEvent(event) => {
+                    chat.managed_chat_projection.record_relay_event(event);
+                }
+                Nip28ChatLaneUpdate::PublishAck { event_id } => {
+                    let _ = chat.managed_chat_projection.ack_outbound_message(&event_id);
+                    lane_worker.clear_dispatched(&event_id);
+                }
+                Nip28ChatLaneUpdate::PublishError { event_id, message } => {
+                    let _ = chat
+                        .managed_chat_projection
+                        .fail_outbound_message(&event_id, &message);
+                    lane_worker.clear_dispatched(&event_id);
+                }
+                Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+            }
+        }
+        let pending_events = chat
+            .managed_chat_projection
+            .outbound_messages
+            .iter()
+            .filter(|message| message.delivery_state == ManagedChatDeliveryState::Publishing)
+            .map(|message| message.event.clone())
+            .collect::<Vec<_>>();
+        for event in pending_events {
+            lane_worker.publish(event);
+        }
+        if chat.maybe_auto_select_default_nip28_channel() {
+            changed = true;
+        }
+        changed
+    }
+
+    fn build_test_snapshot(
+        chat: &AutopilotChatState,
+        provider_online: bool,
+        snapshot_revision: u64,
+    ) -> DesktopControlSnapshot {
+        let mut snapshot = sample_snapshot();
+        snapshot.snapshot_revision = snapshot_revision;
+        snapshot.generated_at_epoch_ms = snapshot_revision;
+        snapshot.mission_control.can_go_online = !provider_online;
+        snapshot.mission_control.blocker_codes = if provider_online {
+            Vec::new()
+        } else {
+            vec!["PROVIDER_OFFLINE".to_string()]
+        };
+        snapshot.provider.mode = if provider_online {
+            "online".to_string()
+        } else {
+            "offline".to_string()
+        };
+        snapshot.provider.runtime_mode = snapshot.provider.mode.clone();
+        snapshot.provider.desired_mode_hint = if provider_online {
+            "online".to_string()
+        } else {
+            "offline".to_string()
+        };
+        snapshot.provider.online = provider_online;
+        snapshot.provider.blocker_codes = snapshot.mission_control.blocker_codes.clone();
+        snapshot.provider.connected_relays = usize::from(provider_online);
+        snapshot.provider.last_action = Some(if provider_online {
+            "Provider online".to_string()
+        } else {
+            "Provider offline".to_string()
+        });
+        snapshot.nip28 = super::desktop_control_nip28_status(chat);
+        snapshot.state_signature = snapshot_sync_signature(&snapshot);
+        snapshot
+    }
+
+    fn sync_test_snapshot(
+        runtime: &DesktopControlRuntime,
+        previous_snapshot: &mut Option<DesktopControlSnapshot>,
+        chat: &AutopilotChatState,
+        provider_online: bool,
+        next_revision: &mut u64,
+    ) -> DesktopControlSnapshot {
+        let snapshot = build_test_snapshot(chat, provider_online, *next_revision);
+        *next_revision = next_revision.saturating_add(1);
+        runtime
+            .sync_snapshot(snapshot.clone())
+            .expect("sync test snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &snapshot,
+            ))
+            .expect("append snapshot events");
+        *previous_snapshot = Some(snapshot.clone());
+        snapshot
+    }
+
+    fn wait_for_action_request(
+        runtime: &mut DesktopControlRuntime,
+    ) -> super::DesktopControlActionEnvelope {
+        for _ in 0..80 {
+            for update in runtime.drain_updates() {
+                match update {
+                    DesktopControlRuntimeUpdate::ActionRequest(envelope) => return envelope,
+                    DesktopControlRuntimeUpdate::WorkerError(error) => {
+                        panic!("desktop control runtime worker error: {error}");
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting for desktop control action request");
+    }
+
+    fn post_action_async(
+        client: &reqwest::blocking::Client,
+        action_url: &str,
+        token: &str,
+        action: DesktopControlActionRequest,
+    ) -> std::thread::JoinHandle<DesktopControlActionResponse> {
+        let client = client.clone();
+        let action_url = action_url.to_string();
+        let token = token.to_string();
+        std::thread::spawn(move || {
+            client
+                .post(action_url.as_str())
+                .bearer_auth(token)
+                .json(&action)
+                .send()
+                .expect("send desktop control action")
+                .error_for_status()
+                .expect("desktop control action status")
+                .json::<DesktopControlActionResponse>()
+                .expect("decode desktop control action response")
+        })
+    }
+
+    fn fetch_snapshot(
+        client: &reqwest::blocking::Client,
+        snapshot_url: &str,
+        token: &str,
+    ) -> DesktopControlSnapshot {
+        client
+            .get(snapshot_url)
+            .bearer_auth(token)
+            .send()
+            .expect("fetch desktop control snapshot")
+            .error_for_status()
+            .expect("snapshot status")
+            .json::<DesktopControlSnapshot>()
+            .expect("decode desktop control snapshot")
+    }
+
+    fn fetch_events(
+        client: &reqwest::blocking::Client,
+        events_url: &str,
+        token: &str,
+    ) -> DesktopControlEventBatch {
+        client
+            .get(format!(
+                "{events_url}?after_event_id=0&limit=128&timeout_ms=0"
+            ))
+            .bearer_auth(token)
+            .send()
+            .expect("fetch desktop control events")
+            .error_for_status()
+            .expect("events status")
+            .json::<DesktopControlEventBatch>()
+            .expect("decode desktop control events")
+    }
+
+    fn pump_until_snapshot(
+        runtime: &DesktopControlRuntime,
+        previous_snapshot: &mut Option<DesktopControlSnapshot>,
+        chat: &mut AutopilotChatState,
+        lane_worker: &mut Nip28ChatLaneWorker,
+        provider_online: bool,
+        next_revision: &mut u64,
+        predicate: impl Fn(&DesktopControlSnapshot) -> bool,
+    ) -> DesktopControlSnapshot {
+        for _ in 0..120 {
+            if pump_nip28_lane(chat, lane_worker) {
+                let snapshot = sync_test_snapshot(
+                    runtime,
+                    previous_snapshot,
+                    chat,
+                    provider_online,
+                    next_revision,
+                );
+                if predicate(&snapshot) {
+                    return snapshot;
+                }
+            } else if let Some(snapshot) = previous_snapshot.as_ref()
+                && predicate(snapshot)
+            {
+                return snapshot.clone();
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting for NIP-28 desktop control snapshot predicate");
     }
 
     #[test]
@@ -2384,6 +3488,286 @@ mod tests {
                 .as_ref()
                 .and_then(|payload| payload.get("snapshot_revision")),
             Some(&serde_json::Value::from(2))
+        );
+    }
+
+    #[test]
+    fn desktop_control_http_harness_goes_online_and_interacts_with_nip28_programmatically() {
+        let relay = TestNip28Relay::spawn();
+        let main_channel_id = DefaultNip28ChannelConfig::from_env_or_default().channel_id;
+        let remote_pubkey = repeated_hex('9', 64);
+        relay.store_events(vec![
+            build_test_group_metadata_event(),
+            build_test_channel_create_event(main_channel_id.as_str()),
+            build_test_channel_message_event(
+                &repeated_hex('d', 64),
+                remote_pubkey.as_str(),
+                main_channel_id.as_str(),
+                relay.url.as_str(),
+                30,
+                "hello from remote autopilot",
+            ),
+        ]);
+
+        let identity = nostr::regenerate_identity().expect("generate test nostr identity");
+        let temp = tempdir().expect("tempdir");
+        let projection_path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(projection_path);
+        chat.managed_chat_projection
+            .set_local_pubkey(Some(identity.public_key_hex.as_str()));
+
+        let mut lane_worker = Nip28ChatLaneWorker::spawn_with_config(DefaultNip28ChannelConfig {
+            relay_url: relay.url.clone(),
+            channel_id: main_channel_id.clone(),
+        });
+
+        let token = "token-nip28-programmatic".to_string();
+        let mut runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        let client = reqwest::blocking::Client::new();
+        let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
+        let action_url = format!("http://{}/v1/action", runtime.listen_addr());
+        let events_url = format!("http://{}/v1/events", runtime.listen_addr());
+
+        let mut provider_online = false;
+        let mut previous_snapshot = None;
+        let mut next_revision = 1;
+        let initial_snapshot = sync_test_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &chat,
+            provider_online,
+            &mut next_revision,
+        );
+        assert!(!initial_snapshot.provider.online);
+        assert!(!initial_snapshot.nip28.available);
+
+        let provider_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SetProviderMode { online: true },
+        );
+        let provider_request = wait_for_action_request(&mut runtime);
+        assert_eq!(
+            provider_request.action,
+            DesktopControlActionRequest::SetProviderMode { online: true }
+        );
+        runtime
+            .append_events(vec![command_received_event(&provider_request.action)])
+            .expect("append provider command received");
+        provider_online = true;
+        let provider_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let provider_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok("Queued provider online"),
+            &provider_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &provider_request.action,
+                &provider_response,
+            )])
+            .expect("append provider command outcome");
+        runtime
+            .sync_snapshot(provider_snapshot.clone())
+            .expect("sync provider snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &provider_snapshot,
+            ))
+            .expect("append provider snapshot events");
+        previous_snapshot = Some(provider_snapshot.clone());
+        provider_request.respond(provider_response.clone());
+        let provider_response = provider_join.join().expect("join provider action");
+        assert!(provider_response.success);
+        let provider_snapshot = fetch_snapshot(&client, snapshot_url.as_str(), token.as_str());
+        assert!(provider_snapshot.provider.online);
+
+        let loaded_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.available
+                    && snapshot.nip28.configured_channel_loaded
+                    && snapshot.nip28.selected_channel_id.is_some()
+                    && snapshot
+                        .nip28
+                        .recent_messages
+                        .iter()
+                        .any(|message| message.content == "hello from remote autopilot")
+            },
+        );
+        assert_eq!(
+            loaded_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(main_channel_id.as_str())
+        );
+
+        let select_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SelectNip28MainChannel,
+        );
+        let select_request = wait_for_action_request(&mut runtime);
+        assert_eq!(
+            select_request.action,
+            DesktopControlActionRequest::SelectNip28MainChannel
+        );
+        runtime
+            .append_events(vec![command_received_event(&select_request.action)])
+            .expect("append nip28 main command received");
+        let (_, configured_channel_id) =
+            super::configured_nip28_main_channel(&chat).expect("configured main channel");
+        let select_message = super::select_nip28_channel(&mut chat, configured_channel_id.as_str())
+            .expect("select main channel");
+        let select_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let select_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                select_message,
+                json!({
+                    "group_id": chat
+                        .active_managed_chat_group()
+                        .map(|group| group.group_id.clone()),
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                }),
+            ),
+            &select_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &select_request.action,
+                &select_response,
+            )])
+            .expect("append nip28 main command outcome");
+        runtime
+            .sync_snapshot(select_snapshot.clone())
+            .expect("sync nip28 main snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &select_snapshot,
+            ))
+            .expect("append nip28 main snapshot events");
+        previous_snapshot = Some(select_snapshot);
+        select_request.respond(select_response.clone());
+        let select_response = select_join.join().expect("join nip28 main action");
+        assert!(select_response.success);
+
+        let send_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SendNip28Message {
+                content: "hello from desktop control".to_string(),
+                reply_to_event_id: None,
+            },
+        );
+        let send_request = wait_for_action_request(&mut runtime);
+        assert!(matches!(
+            send_request.action,
+            DesktopControlActionRequest::SendNip28Message { .. }
+        ));
+        runtime
+            .append_events(vec![command_received_event(&send_request.action)])
+            .expect("append nip28 send command received");
+        let send_event_id =
+            super::send_nip28_message(&mut chat, &identity, "hello from desktop control", None)
+                .expect("queue nip28 message");
+        let queued_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let send_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                format!("Queued NIP-28 message {send_event_id}"),
+                json!({
+                    "event_id": send_event_id,
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                    "reply_to_event_id": Value::Null,
+                }),
+            ),
+            &queued_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &send_request.action,
+                &send_response,
+            )])
+            .expect("append nip28 send command outcome");
+        runtime
+            .sync_snapshot(queued_snapshot.clone())
+            .expect("sync queued nip28 snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &queued_snapshot,
+            ))
+            .expect("append queued nip28 snapshot events");
+        previous_snapshot = Some(queued_snapshot.clone());
+        send_request.respond(send_response.clone());
+        let send_response = send_join.join().expect("join nip28 send action");
+        assert!(send_response.success);
+        assert_eq!(queued_snapshot.nip28.publishing_outbound_count, 1);
+
+        let sent_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.publishing_outbound_count == 0
+                    && snapshot.nip28.recent_messages.iter().any(|message| {
+                        message.content == "hello from desktop control"
+                            && message.author_pubkey == identity.public_key_hex
+                    })
+            },
+        );
+        assert_eq!(
+            sent_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(main_channel_id.as_str())
+        );
+        assert!(
+            sent_snapshot
+                .nip28
+                .recent_messages
+                .iter()
+                .any(|message| message.content == "hello from remote autopilot")
+        );
+
+        let events = fetch_events(&client, events_url.as_str(), token.as_str());
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.event_type == "provider.mode.changed")
+        );
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.event_type == "nip28.state.changed")
+        );
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.summary.contains("nip28-send applied"))
         );
     }
 }
