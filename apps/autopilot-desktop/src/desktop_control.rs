@@ -119,6 +119,8 @@ pub struct DesktopControlBuyModeRequestStatus {
     pub next_expected_event: String,
     pub request_event_id: Option<String>,
     pub selected_provider_pubkey: Option<String>,
+    pub result_provider_pubkey: Option<String>,
+    pub invoice_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
     pub last_feedback_status: Option<String>,
     pub last_feedback_event_id: Option<String>,
@@ -141,6 +143,8 @@ pub struct DesktopControlBuyModeStatus {
     pub in_flight_phase: Option<String>,
     pub in_flight_status: Option<String>,
     pub selected_provider_pubkey: Option<String>,
+    pub result_provider_pubkey: Option<String>,
+    pub invoice_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
     pub recent_requests: Vec<DesktopControlBuyModeRequestStatus>,
 }
@@ -620,11 +624,7 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
     for update in updates {
         match update {
             DesktopControlRuntimeUpdate::ActionRequest(envelope) => {
-                emit_control_events(
-                    state,
-                    vec![command_received_event(&envelope.action)],
-                    false,
-                );
+                emit_control_events(state, vec![command_received_event(&envelope.action)], false);
                 let response = apply_action_request(state, &envelope.action);
                 emit_control_events(
                     state,
@@ -665,9 +665,10 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     }
     if signature_changed {
         let previous_snapshot = runtime.last_event_snapshot.clone();
-        if let Err(error) =
-            runtime.append_events(snapshot_change_events(previous_snapshot.as_ref(), &snapshot))
-        {
+        if let Err(error) = runtime.append_events(snapshot_change_events(
+            previous_snapshot.as_ref(),
+            &snapshot,
+        )) {
             state.desktop_control.last_error = Some(error);
         }
         runtime.last_event_snapshot = Some(snapshot.clone());
@@ -792,7 +793,12 @@ fn command_outcome_event(
     }
     DesktopControlEventDraft {
         event_type: event_type.to_string(),
-        summary: format!("{} {} // {}", action.label(), outcome_label, response.message),
+        summary: format!(
+            "{} {} // {}",
+            action.label(),
+            outcome_label,
+            response.message
+        ),
         command_label: Some(action.label().to_string()),
         success: Some(response.success),
         payload: Some(Value::Object(payload)),
@@ -861,7 +867,10 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.wallet).ok(),
         });
     }
-    if buy_mode_status_changed(previous.map(|snapshot| &snapshot.buy_mode), &current.buy_mode) {
+    if buy_mode_status_changed(
+        previous.map(|snapshot| &snapshot.buy_mode),
+        &current.buy_mode,
+    ) {
         changed_domains.push("buy_mode");
         events.push(DesktopControlEventDraft {
             event_type: "buyer.lifecycle.changed".to_string(),
@@ -871,7 +880,10 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.buy_mode).ok(),
         });
     }
-    if active_job_status_changed(previous.and_then(|snapshot| snapshot.active_job.as_ref()), current.active_job.as_ref()) {
+    if active_job_status_changed(
+        previous.and_then(|snapshot| snapshot.active_job.as_ref()),
+        current.active_job.as_ref(),
+    ) {
         changed_domains.push("active_job");
         events.push(DesktopControlEventDraft {
             event_type: "active_job.lifecycle.changed".to_string(),
@@ -881,7 +893,10 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.active_job).ok(),
         });
     }
-    if mission_control_status_changed(previous.map(|snapshot| &snapshot.mission_control), &current.mission_control) {
+    if mission_control_status_changed(
+        previous.map(|snapshot| &snapshot.mission_control),
+        &current.mission_control,
+    ) {
         changed_domains.push("mission_control");
     }
 
@@ -957,7 +972,10 @@ fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
             phase
         ),
         (true, Some(request_id), _, _) => {
-            format!("buy mode request={} in flight", short_request_id(request_id))
+            format!(
+                "buy mode request={} in flight",
+                short_request_id(request_id)
+            )
         }
         (true, None, _, _) => "buy mode running with no in-flight request".to_string(),
     }
@@ -999,6 +1017,8 @@ fn buy_mode_status_changed(
             || previous.in_flight_phase != current.in_flight_phase
             || previous.in_flight_status != current.in_flight_status
             || previous.selected_provider_pubkey != current.selected_provider_pubkey
+            || previous.result_provider_pubkey != current.result_provider_pubkey
+            || previous.invoice_provider_pubkey != current.invoice_provider_pubkey
             || previous.payable_provider_pubkey != current.payable_provider_pubkey
             || previous.recent_requests != current.recent_requests
     })
@@ -1067,7 +1087,9 @@ fn apply_action_request(
         let response = match action {
             DesktopControlActionRequest::StartBuyMode => start_buy_mode_action(state),
             DesktopControlActionRequest::StopBuyMode => stop_buy_mode_action(state),
-            DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
+            DesktopControlActionRequest::RunAppleFmSmokeTest => {
+                run_apple_fm_smoke_test_action(state)
+            }
             _ => mission_control_action_response(state, mission_control_action),
         };
         record_command_outcome(state, action.label(), &response);
@@ -1275,11 +1297,10 @@ fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionR
 
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
     let now = Instant::now();
-    let buy_mode_requests =
-        crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
-            &state.network_requests,
-            &state.spark_wallet,
-        );
+    let buy_mode_requests = crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
+        &state.network_requests,
+        &state.spark_wallet,
+    );
     let buy_mode_request = buy_mode_requests
         .iter()
         .find(|request| !request.status.is_terminal());
@@ -1388,43 +1409,47 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             selected_provider_pubkey: buy_mode_request
                 .as_ref()
                 .and_then(|request| request.selected_provider_pubkey.clone()),
+            result_provider_pubkey: buy_mode_request
+                .as_ref()
+                .and_then(|request| request.result_provider_pubkey.clone()),
+            invoice_provider_pubkey: buy_mode_request
+                .as_ref()
+                .and_then(|request| request.invoice_provider_pubkey.clone()),
             payable_provider_pubkey: buy_mode_request
                 .as_ref()
                 .and_then(|request| request.payable_provider_pubkey.clone()),
             recent_requests: recent_request_rows,
         },
-        active_job: compute_flow
-            .active_job
-            .map(|active_job| {
-                let stage = active_job_stage_label(&active_job).to_string();
-                let projection_stage = active_job.stage.label().to_string();
-                let phase = active_job.phase.as_str().to_string();
-                DesktopControlActiveJobStatus {
-                    job_id: active_job.job_id,
-                    request_id: active_job.request_id,
-                    capability: active_job.capability,
-                    stage,
-                    projection_stage,
-                    phase,
-                    next_expected_event: active_job.next_expected_event,
-                    projection_authority: active_job.projection_authority,
-                    quoted_price_sats: active_job.quoted_price_sats,
-                    pending_result_publish_event_id: active_job.pending_result_publish_event_id,
-                    result_event_id: active_job.result_event_id,
-                    result_publish_status: active_job.result_publish_status,
-                    result_publish_attempt_count: active_job.result_publish_attempt_count,
-                    result_publish_age_seconds: active_job.result_publish_age_seconds,
-                    payment_pointer: active_job.payment_pointer,
-                    pending_bolt11: active_job.pending_bolt11,
-                    settlement_status: active_job.settlement_status,
-                    settlement_method: active_job.settlement_method,
-                    settlement_amount_sats: active_job.settlement_amount_sats,
-                    settlement_fees_sats: active_job.settlement_fees_sats,
-                    settlement_net_wallet_delta_sats: active_job.settlement_net_wallet_delta_sats,
-                    continuity_window_seconds: active_job.continuity_window_seconds,
-                    failure_reason: active_job.failure_reason,
-                }
-            }),
+        active_job: compute_flow.active_job.map(|active_job| {
+            let stage = active_job_stage_label(&active_job).to_string();
+            let projection_stage = active_job.stage.label().to_string();
+            let phase = active_job.phase.as_str().to_string();
+            DesktopControlActiveJobStatus {
+                job_id: active_job.job_id,
+                request_id: active_job.request_id,
+                capability: active_job.capability,
+                stage,
+                projection_stage,
+                phase,
+                next_expected_event: active_job.next_expected_event,
+                projection_authority: active_job.projection_authority,
+                quoted_price_sats: active_job.quoted_price_sats,
+                pending_result_publish_event_id: active_job.pending_result_publish_event_id,
+                result_event_id: active_job.result_event_id,
+                result_publish_status: active_job.result_publish_status,
+                result_publish_attempt_count: active_job.result_publish_attempt_count,
+                result_publish_age_seconds: active_job.result_publish_age_seconds,
+                payment_pointer: active_job.payment_pointer,
+                pending_bolt11: active_job.pending_bolt11,
+                settlement_status: active_job.settlement_status,
+                settlement_method: active_job.settlement_method,
+                settlement_amount_sats: active_job.settlement_amount_sats,
+                settlement_fees_sats: active_job.settlement_fees_sats,
+                settlement_net_wallet_delta_sats: active_job.settlement_net_wallet_delta_sats,
+                continuity_window_seconds: active_job.continuity_window_seconds,
+                failure_reason: active_job.failure_reason,
+            }
+        }),
         recent_logs: mission_control_recent_lines(state, DESKTOP_CONTROL_LOG_TAIL_LIMIT),
         last_command: state
             .desktop_control
@@ -1446,7 +1471,11 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         if state.desktop_control.last_snapshot_signature.as_deref() == Some(signature.as_str()) {
             state.desktop_control.last_snapshot_revision
         } else {
-            state.desktop_control.last_snapshot_revision.saturating_add(1).max(1)
+            state
+                .desktop_control
+                .last_snapshot_revision
+                .saturating_add(1)
+                .max(1)
         };
     snapshot.snapshot_revision = next_revision;
     snapshot.state_signature = signature.clone();
@@ -1468,10 +1497,7 @@ fn provider_desired_mode_hint(state: &RenderState) -> &'static str {
 
 fn withdraw_readiness(balance_sats: u64, wallet_connected: bool) -> (bool, Option<String>) {
     if !wallet_connected {
-        return (
-            false,
-            Some("wallet is not connected to Spark".to_string()),
-        );
+        return (false, Some("wallet is not connected to Spark".to_string()));
     }
     if balance_sats == 0 {
         return (false, Some("wallet balance is zero".to_string()));
@@ -1489,6 +1515,8 @@ fn desktop_control_buy_mode_request_status(
         next_expected_event: request.next_expected_event.clone(),
         request_event_id: request.published_request_event_id.clone(),
         selected_provider_pubkey: request.selected_provider_pubkey.clone(),
+        result_provider_pubkey: request.result_provider_pubkey.clone(),
+        invoice_provider_pubkey: request.invoice_provider_pubkey.clone(),
         payable_provider_pubkey: request.payable_provider_pubkey.clone(),
         last_feedback_status: request.last_feedback_status.clone(),
         last_feedback_event_id: request.last_feedback_event_id.clone(),
@@ -1502,7 +1530,9 @@ fn desktop_control_buy_mode_request_status(
     }
 }
 
-fn active_job_stage_label(active_job: &crate::nip90_compute_flow::ActiveJobFlowSnapshot) -> &'static str {
+fn active_job_stage_label(
+    active_job: &crate::nip90_compute_flow::ActiveJobFlowSnapshot,
+) -> &'static str {
     match active_job.phase {
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
         | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => "settling",
@@ -1713,16 +1743,12 @@ async fn desktop_control_action(
         .send(DesktopControlRuntimeUpdate::ActionRequest(envelope))
         .is_err()
     {
-        let response =
-            DesktopControlActionResponse::error("Desktop control loop is unavailable");
+        let response = DesktopControlActionResponse::error("Desktop control loop is unavailable");
         let _ = append_runtime_events(
             &state,
             vec![command_outcome_event(&action_for_response, &response)],
         );
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(response),
-        );
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(response));
     }
     match tokio::time::timeout(Duration::from_secs(3), response_rx).await {
         Ok(Ok(response)) => (StatusCode::OK, Json(response)),
@@ -1736,8 +1762,7 @@ async fn desktop_control_action(
             (StatusCode::SERVICE_UNAVAILABLE, Json(response))
         }
         Err(_) => {
-            let response =
-                DesktopControlActionResponse::error("Desktop control action timed out");
+            let response = DesktopControlActionResponse::error("Desktop control action timed out");
             let _ = append_runtime_events(
                 &state,
                 vec![command_outcome_event(&action_for_response, &response)],
@@ -1863,12 +1888,11 @@ fn run_desktop_control_runtime_loop(
 mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
-        DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
-        DesktopControlEventBatch, DesktopControlEventDraft, DesktopControlMissionControlStatus,
-        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
-        DesktopControlRuntimeUpdate, DesktopControlSessionStatus, DesktopControlSnapshot,
-        DesktopControlWalletStatus, apply_response_snapshot_metadata, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlAppleFmStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
+        DesktopControlEventDraft, DesktopControlMissionControlStatus, DesktopControlProviderStatus,
+        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
+        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlWalletStatus,
+        apply_response_snapshot_metadata, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::pane_system::MissionControlPaneAction;
 
@@ -1933,6 +1957,8 @@ mod tests {
                 in_flight_phase: None,
                 in_flight_status: None,
                 selected_provider_pubkey: None,
+                result_provider_pubkey: None,
+                invoice_provider_pubkey: None,
                 payable_provider_pubkey: None,
                 recent_requests: Vec::new(),
             },
@@ -1966,12 +1992,74 @@ mod tests {
     }
 
     #[test]
+    fn buy_mode_request_status_preserves_result_invoice_and_payable_roles() {
+        let selected = "aa".repeat(32);
+        let result = "bb".repeat(32);
+        let invoice = "cc".repeat(32);
+        let status = super::desktop_control_buy_mode_request_status(
+            &crate::nip90_compute_flow::BuyerRequestFlowSnapshot {
+                request_id: "req-role-split".to_string(),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                budget_sats: 2,
+                status: crate::state::operations::NetworkRequestStatus::Streaming,
+                authority: crate::nip90_compute_flow::Nip90FlowAuthority::Relay,
+                phase: crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment,
+                next_expected_event: "valid provider invoice".to_string(),
+                published_request_event_id: Some("event-role-split".to_string()),
+                selected_provider_pubkey: Some(selected.clone()),
+                result_provider_pubkey: Some(result.clone()),
+                invoice_provider_pubkey: Some(invoice.clone()),
+                payable_provider_pubkey: None,
+                last_feedback_status: Some("payment-required".to_string()),
+                last_feedback_event_id: Some("feedback-role-split".to_string()),
+                last_result_event_id: Some("result-role-split".to_string()),
+                winning_result_event_id: None,
+                payment_pointer: None,
+                payment_required_at_epoch_seconds: None,
+                payment_sent_at_epoch_seconds: None,
+                payment_failed_at_epoch_seconds: None,
+                pending_bolt11: None,
+                payment_error: None,
+                payment_notice: Some("invoice missing bolt11".to_string()),
+                timestamp: None,
+                wallet_status: "idle".to_string(),
+                wallet_method: "-".to_string(),
+                invoice_amount_sats: None,
+                fees_sats: None,
+                total_debit_sats: None,
+                net_wallet_delta_sats: None,
+                payment_hash: None,
+                destination_pubkey: None,
+                htlc_status: None,
+                htlc_expiry_epoch_seconds: None,
+                wallet_detail: None,
+                wallet_description: None,
+                wallet_invoice: None,
+                loser_provider_count: 1,
+                loser_reason_summary: Some("no payable winner".to_string()),
+            },
+        );
+
+        assert_eq!(
+            status.selected_provider_pubkey.as_deref(),
+            Some(selected.as_str())
+        );
+        assert_eq!(
+            status.result_provider_pubkey.as_deref(),
+            Some(result.as_str())
+        );
+        assert_eq!(
+            status.invoice_provider_pubkey.as_deref(),
+            Some(invoice.as_str())
+        );
+        assert_eq!(status.payable_provider_pubkey, None);
+    }
+
+    #[test]
     fn action_response_metadata_uses_snapshot_revision_and_signature() {
         let snapshot = sample_snapshot();
-        let response = apply_response_snapshot_metadata(
-            DesktopControlActionResponse::ok("ok"),
-            &snapshot,
-        );
+        let response =
+            apply_response_snapshot_metadata(DesktopControlActionResponse::ok("ok"), &snapshot);
 
         assert_eq!(response.snapshot_revision, Some(snapshot.snapshot_revision));
         assert_eq!(response.state_signature, Some(snapshot.state_signature));
@@ -2076,7 +2164,9 @@ mod tests {
         let events_url = format!("http://{}/v1/events", runtime.listen_addr());
 
         let initial = client
-            .get(format!("{events_url}?after_event_id=0&limit=10&timeout_ms=0"))
+            .get(format!(
+                "{events_url}?after_event_id=0&limit=10&timeout_ms=0"
+            ))
             .bearer_auth(token.as_str())
             .send()
             .expect("send initial events request")
@@ -2225,7 +2315,9 @@ mod tests {
         let client = reqwest::blocking::Client::new();
         let events_url = format!("http://{}/v1/events", runtime.listen_addr());
         let batch = client
-            .get(format!("{events_url}?after_event_id=0&limit=10&timeout_ms=0"))
+            .get(format!(
+                "{events_url}?after_event_id=0&limit=10&timeout_ms=0"
+            ))
             .bearer_auth(token.as_str())
             .send()
             .expect("send ordered events request")

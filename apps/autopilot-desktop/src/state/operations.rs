@@ -504,6 +504,8 @@ pub struct SubmittedNetworkRequest {
     pub resolution_mode: BuyerResolutionMode,
     pub target_provider_pubkeys: Vec<String>,
     pub last_provider_pubkey: Option<String>,
+    pub result_provider_pubkey: Option<String>,
+    pub invoice_provider_pubkey: Option<String>,
     pub last_feedback_status: Option<String>,
     pub last_feedback_event_id: Option<String>,
     pub last_result_event_id: Option<String>,
@@ -915,6 +917,8 @@ impl NetworkRequestsState {
                 resolution_mode,
                 target_provider_pubkeys,
                 last_provider_pubkey: None,
+                result_provider_pubkey: None,
+                invoice_provider_pubkey: None,
                 last_feedback_status: None,
                 last_feedback_event_id: None,
                 last_result_event_id: None,
@@ -1218,6 +1222,7 @@ impl NetworkRequestsState {
             .map(ToString::to_string)
         {
             provider.last_feedback_bolt11 = Some(bolt11);
+            request.invoice_provider_pubkey = Some(provider_pubkey.to_string());
         }
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
@@ -1273,6 +1278,16 @@ impl NetworkRequestsState {
         provider.last_result_status = status.map(ToString::to_string);
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
+        if !matches!(
+            status
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("error")
+        ) {
+            request.result_provider_pubkey = Some(provider_pubkey.to_string());
+        }
         request.last_result_event_id = Some(event_id.to_string());
         select_payable_winner(request, Some(provider_pubkey));
         request.status = compute_request_status(request);

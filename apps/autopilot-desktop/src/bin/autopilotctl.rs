@@ -361,6 +361,8 @@ fn main() -> Result<()> {
                         "inFlightPhase": snapshot.buy_mode.in_flight_phase,
                         "inFlightStatus": snapshot.buy_mode.in_flight_status,
                         "selectedProviderPubkey": snapshot.buy_mode.selected_provider_pubkey,
+                        "resultProviderPubkey": snapshot.buy_mode.result_provider_pubkey,
+                        "invoiceProviderPubkey": snapshot.buy_mode.invoice_provider_pubkey,
                         "payableProviderPubkey": snapshot.buy_mode.payable_provider_pubkey,
                         "recentRequests": snapshot.buy_mode.recent_requests,
                     }))?;
@@ -409,12 +411,17 @@ fn main() -> Result<()> {
                     .target
                     .latest_session_log_path
                     .as_ref()
-                    .ok_or_else(|| anyhow!("Desktop control manifest does not include latest session log path"))?;
+                    .ok_or_else(|| {
+                        anyhow!("Desktop control manifest does not include latest session log path")
+                    })?;
                 let lines = tail_file_lines(path, tail)?;
                 if json_output {
                     let parsed = lines
                         .iter()
-                        .map(|line| serde_json::from_str::<Value>(line).unwrap_or(Value::String(line.clone())))
+                        .map(|line| {
+                            serde_json::from_str::<Value>(line)
+                                .unwrap_or(Value::String(line.clone()))
+                        })
                         .collect::<Vec<_>>();
                     print_json(&LogEnvelope {
                         source: "session".to_string(),
@@ -490,7 +497,9 @@ impl DesktopControlClient {
             .send()
             .context("send desktop control action")?;
         let status = response.status();
-        let body = response.text().context("read desktop control action body")?;
+        let body = response
+            .text()
+            .context("read desktop control action body")?;
         let decoded = serde_json::from_str::<DesktopControlActionResponse>(body.as_str())
             .unwrap_or_else(|_| DesktopControlActionResponse {
                 success: false,
@@ -579,11 +588,7 @@ impl DesktopControlClient {
     }
 
     fn url(&self, path: &str) -> String {
-        format!(
-            "{}{}",
-            self.target.base_url.trim_end_matches('/'),
-            path
-        )
+        format!("{}{}", self.target.base_url.trim_end_matches('/'), path)
     }
 }
 
@@ -747,8 +752,8 @@ fn ensure_buy_mode_budget_ack(
 }
 
 fn tail_file_lines(path: &Path, tail: usize) -> Result<Vec<String>> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("read session log {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("read session log {}", path.display()))?;
     let mut lines = raw.lines().map(str::to_string).collect::<Vec<_>>();
     if lines.len() > tail {
         lines.drain(0..lines.len().saturating_sub(tail));
@@ -810,11 +815,7 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         "apple fm: ready={} reachable={} model={}",
         snapshot.apple_fm.ready,
         snapshot.apple_fm.reachable,
-        snapshot
-            .apple_fm
-            .ready_model
-            .as_deref()
-            .unwrap_or("-")
+        snapshot.apple_fm.ready_model.as_deref().unwrap_or("-")
     );
     println!(
         "wallet: balance={} sats network={} status={} withdraw_ready={}",
@@ -828,17 +829,30 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
         snapshot.buy_mode.cadence_seconds,
-        snapshot.buy_mode.next_dispatch_countdown_seconds.unwrap_or(0)
+        snapshot
+            .buy_mode
+            .next_dispatch_countdown_seconds
+            .unwrap_or(0)
     );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "buy mode in-flight: request={} phase={} status={} selected_provider={} payable_provider={}",
+            "buy mode in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
             snapshot
                 .buy_mode
                 .selected_provider_pubkey
+                .as_deref()
+                .unwrap_or("-"),
+            snapshot
+                .buy_mode
+                .result_provider_pubkey
+                .as_deref()
+                .unwrap_or("-"),
+            snapshot
+                .buy_mode
+                .invoice_provider_pubkey
                 .as_deref()
                 .unwrap_or("-"),
             snapshot
@@ -857,17 +871,30 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
         snapshot.buy_mode.cadence_seconds,
-        snapshot.buy_mode.next_dispatch_countdown_seconds.unwrap_or(0)
+        snapshot
+            .buy_mode
+            .next_dispatch_countdown_seconds
+            .unwrap_or(0)
     );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "in-flight: request={} phase={} status={} selected_provider={} payable_provider={}",
+            "in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
             snapshot
                 .buy_mode
                 .selected_provider_pubkey
+                .as_deref()
+                .unwrap_or("-"),
+            snapshot
+                .buy_mode
+                .result_provider_pubkey
+                .as_deref()
+                .unwrap_or("-"),
+            snapshot
+                .buy_mode
+                .invoice_provider_pubkey
                 .as_deref()
                 .unwrap_or("-"),
             snapshot
@@ -879,11 +906,14 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     }
     for request in snapshot.buy_mode.recent_requests.iter().take(6) {
         println!(
-            "request={} status={} phase={} next={} payment_pointer={} payment_error={}",
+            "request={} status={} phase={} next={} result_provider={} invoice_provider={} payable_provider={} payment_pointer={} payment_error={}",
             request.request_id,
             request.status,
             request.phase,
             request.next_expected_event,
+            request.result_provider_pubkey.as_deref().unwrap_or("-"),
+            request.invoice_provider_pubkey.as_deref().unwrap_or("-"),
+            request.payable_provider_pubkey.as_deref().unwrap_or("-"),
             request.payment_pointer.as_deref().unwrap_or("-"),
             request.payment_error.as_deref().unwrap_or("-")
         );
@@ -917,10 +947,7 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
         batch.last_event_id, batch.timed_out
     );
     for event in &batch.events {
-        println!(
-            "#{} {} {}",
-            event.event_id, event.event_type, event.summary
-        );
+        println!("#{} {} {}", event.event_id, event.event_type, event.summary);
     }
 }
 
@@ -957,15 +984,20 @@ mod tests {
     #[test]
     fn wait_condition_matches_buy_mode_payment_required() {
         let mut snapshot = sample_snapshot();
-        snapshot.buy_mode.recent_requests.push(DesktopControlBuyModeRequestStatus {
-            request_id: "req-1".to_string(),
-            status: "streaming".to_string(),
-            phase: "awaiting-payment".to_string(),
-            next_expected_event: "invoice".to_string(),
-            last_feedback_status: Some("payment-required".to_string()),
-            ..DesktopControlBuyModeRequestStatus::default()
-        });
-        assert!(request_has_payment_required(&snapshot.buy_mode.recent_requests[0]));
+        snapshot
+            .buy_mode
+            .recent_requests
+            .push(DesktopControlBuyModeRequestStatus {
+                request_id: "req-1".to_string(),
+                status: "streaming".to_string(),
+                phase: "awaiting-payment".to_string(),
+                next_expected_event: "invoice".to_string(),
+                last_feedback_status: Some("payment-required".to_string()),
+                ..DesktopControlBuyModeRequestStatus::default()
+            });
+        assert!(request_has_payment_required(
+            &snapshot.buy_mode.recent_requests[0]
+        ));
         assert!(WaitCondition::BuyModePaymentRequired.matches(&snapshot));
     }
 
