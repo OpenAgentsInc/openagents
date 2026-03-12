@@ -9,6 +9,7 @@ use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, MissionControlPaneAction,
 };
+use crate::spark_wallet::is_settled_wallet_payment_status;
 use crate::state::job_inbox::JobExecutionParam;
 use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
 
@@ -11545,6 +11546,24 @@ fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
         || normalized.starts_with("pay-req-")
 }
 
+const ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(5);
+
+fn active_job_payment_evidence_refresh_due(
+    active_job: &mut crate::app_state::ActiveJobState,
+    now: std::time::Instant,
+) -> bool {
+    if matches!(
+        active_job.next_payment_evidence_refresh_at,
+        Some(next_refresh_at) if now < next_refresh_at
+    ) {
+        return false;
+    }
+    active_job.next_payment_evidence_refresh_at =
+        Some(now + ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL);
+    true
+}
+
 fn note_active_job_waiting_for_payment_evidence(
     active_job: &mut crate::app_state::ActiveJobState,
     provider_runtime: &mut crate::state::provider_runtime::ProviderRuntimeState,
@@ -11621,6 +11640,7 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
     let wallet_pointer = maybe_existing_pointer.or_else(|| {
         resolve_wallet_settlement_pointer_for_open_network_job(
             state.active_job.job.as_ref()?,
+            state.active_job.pending_bolt11_created_at_epoch_seconds,
             state.job_history.rows.as_slice(),
             state.spark_wallet.recent_payments.as_slice(),
         )
@@ -11628,6 +11648,19 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
 
     let Some(wallet_pointer) = wallet_pointer else {
         if !state.active_job.payment_required_failed {
+            if (state.active_job.pending_bolt11.is_some()
+                || state.active_job.payment_required_invoice_requested
+                || state.active_job.payment_required_feedback_in_flight)
+                && active_job_payment_evidence_refresh_due(&mut state.active_job, now)
+            {
+                queue_spark_command(state, SparkWalletCommand::Refresh);
+                tracing::info!(
+                    target: "autopilot_desktop::provider",
+                    "Provider queued wallet refresh while awaiting payment evidence request_id={} interval_seconds={}",
+                    request_id,
+                    ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL.as_secs()
+                );
+            }
             note_active_job_waiting_for_payment_evidence(
                 &mut state.active_job,
                 &mut state.provider_runtime,
@@ -11789,6 +11822,7 @@ fn fail_hosted_starter_active_job_for_lease_loss(
 
 fn resolve_wallet_settlement_pointer_for_open_network_job(
     job: &crate::app_state::ActiveJobRecord,
+    settlement_invoice_created_at_epoch_seconds: Option<u64>,
     history_rows: &[crate::app_state::JobHistoryReceiptRow],
     recent_payments: &[openagents_spark::PaymentSummary],
 ) -> Option<String> {
@@ -11800,11 +11834,13 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
         .iter()
         .filter(|payment| {
             payment.direction.eq_ignore_ascii_case("receive")
-                && payment.status.eq_ignore_ascii_case("succeeded")
+                && is_settled_wallet_payment_status(payment.status.as_str())
                 && !payment.id.trim().is_empty()
                 && !used_pointers.contains(payment.id.as_str())
                 && !is_synthetic_local_payment_pointer(payment.id.as_str())
                 && (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
+                && settlement_invoice_created_at_epoch_seconds
+                    .is_none_or(|created_at| payment.timestamp >= created_at.saturating_sub(5))
         })
         .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
         .map(|payment| payment.id.clone())
@@ -13099,11 +13135,12 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatAppsComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
-        ChatRemoteComposerIntent, ChatRequestComposerIntent, ChatSkillsComposerIntent,
-        ChatSpacetimeComposerIntent, ChatTerminalComposerIntent, ChatWalletComposerIntent,
-        ChatWalletMessagePayload, DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT,
-        ManagedChatComposerIntent, build_direct_message_outbound_message,
+        ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL, ChatAppsComposerIntent,
+        ChatGitComposerIntent, ChatMcpComposerIntent, ChatRemoteComposerIntent,
+        ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
+        ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
+        DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT, ManagedChatComposerIntent,
+        active_job_payment_evidence_refresh_due, build_direct_message_outbound_message,
         build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
         build_managed_chat_moderation_event, build_managed_chat_outbound_message,
         build_managed_chat_reaction_event, build_mission_control_buy_mode_request_event,
@@ -13281,7 +13318,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive() {
+    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive_after_invoice() {
         let job = fixture_open_network_delivered_job(10);
         let history_rows = vec![fixture_history_row("wallet-used-001")];
         let payments = vec![
@@ -13304,7 +13341,7 @@ mod tests {
             openagents_spark::PaymentSummary {
                 id: "wallet-wrong-amount-001".to_string(),
                 direction: "receive".to_string(),
-                status: "succeeded".to_string(),
+                status: "completed".to_string(),
                 amount_sats: 9,
                 timestamp: 1_762_700_003,
                 ..Default::default()
@@ -13320,15 +13357,15 @@ mod tests {
             openagents_spark::PaymentSummary {
                 id: "wallet-used-001".to_string(),
                 direction: "receive".to_string(),
-                status: "succeeded".to_string(),
+                status: "completed".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_005,
                 ..Default::default()
             },
             openagents_spark::PaymentSummary {
-                id: "wallet-pointer-001".to_string(),
+                id: "wallet-before-invoice-001".to_string(),
                 direction: "receive".to_string(),
-                status: "succeeded".to_string(),
+                status: "completed".to_string(),
                 amount_sats: 10,
                 timestamp: 1_762_700_006,
                 ..Default::default()
@@ -13336,15 +13373,16 @@ mod tests {
             openagents_spark::PaymentSummary {
                 id: "wallet-pointer-002".to_string(),
                 direction: "receive".to_string(),
-                status: "succeeded".to_string(),
+                status: "completed".to_string(),
                 amount_sats: 10,
-                timestamp: 1_762_700_007,
+                timestamp: 1_762_700_012,
                 ..Default::default()
             },
         ];
 
         let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
             &job,
+            Some(1_762_700_010),
             history_rows.as_slice(),
             payments.as_slice(),
         )
@@ -14321,6 +14359,31 @@ mod tests {
             provider_runtime.last_authoritative_error_class,
             Some(crate::app_state::EarnFailureClass::Payment)
         );
+    }
+
+    #[test]
+    fn payment_evidence_refresh_due_queues_immediately_and_then_throttles() {
+        let mut active_job = crate::app_state::ActiveJobState::default();
+        let now = std::time::Instant::now();
+
+        assert!(active_job_payment_evidence_refresh_due(
+            &mut active_job,
+            now
+        ));
+        let next_due = active_job
+            .next_payment_evidence_refresh_at
+            .expect("refresh deadline should be scheduled");
+        assert_eq!(next_due, now + ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL);
+
+        assert!(!active_job_payment_evidence_refresh_due(
+            &mut active_job,
+            now + ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL
+                - std::time::Duration::from_millis(1),
+        ));
+        assert!(active_job_payment_evidence_refresh_due(
+            &mut active_job,
+            now + ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL,
+        ));
     }
 
     #[test]

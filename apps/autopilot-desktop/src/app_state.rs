@@ -7295,6 +7295,8 @@ pub struct ActiveJobState {
     pub payment_required_invoice_requested: bool,
     pub payment_required_feedback_in_flight: bool,
     pub payment_required_failed: bool,
+    pub next_payment_evidence_refresh_at: Option<Instant>,
+    pub pending_bolt11_created_at_epoch_seconds: Option<u64>,
     pub pending_bolt11: Option<String>,
     pub job: Option<ActiveJobRecord>,
     next_event_seq: u64,
@@ -7326,6 +7328,8 @@ impl Default for ActiveJobState {
             payment_required_invoice_requested: false,
             payment_required_feedback_in_flight: false,
             payment_required_failed: false,
+            next_payment_evidence_refresh_at: None,
+            pending_bolt11_created_at_epoch_seconds: None,
             pending_bolt11: None,
             job: None,
             next_event_seq: 1,
@@ -7402,6 +7406,8 @@ impl ActiveJobState {
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;
+        self.next_payment_evidence_refresh_at = None;
+        self.pending_bolt11_created_at_epoch_seconds = None;
         self.pending_bolt11 = None;
         self.append_event("received request from inbox");
         self.append_event("accepted request and queued runtime execution");
@@ -7538,6 +7544,8 @@ impl ActiveJobState {
         self.payment_required_invoice_requested = false;
         self.payment_required_feedback_in_flight = false;
         self.payment_required_failed = false;
+        self.next_payment_evidence_refresh_at = None;
+        self.pending_bolt11_created_at_epoch_seconds = None;
         self.pending_bolt11 = None;
         self.last_action = Some(action_label.to_string());
         Ok(())
@@ -14471,6 +14479,18 @@ mod tests {
         assert_eq!(document.provider_max_queue_depth, 1);
         assert_eq!(document.primary_relay_url, "wss://relay.example");
         assert!(document.backup_relay_urls.is_empty());
+    }
+
+    #[test]
+    fn parse_settings_document_preserves_loopback_ws_relay_for_packaged_verification() {
+        let raw = "schema_version=2\nprimary_relay_url=ws://127.0.0.1:18490\nbackup_relay_urls=\nidentity_path=~/.openagents/pylon/identity.mnemonic\nwallet_default_send_sats=1000\nprovider_max_queue_depth=1\nreconnect_required=false\n";
+        let document = super::parse_settings_document(raw).expect("settings parse should succeed");
+        assert_eq!(document.primary_relay_url, "ws://127.0.0.1:18490");
+        assert!(document.backup_relay_urls.is_empty());
+        assert_eq!(
+            document.configured_relay_urls(),
+            vec!["ws://127.0.0.1:18490".to_string()]
+        );
     }
 
     #[test]
