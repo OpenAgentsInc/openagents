@@ -8026,7 +8026,12 @@ impl EarnJobLifecycleProjectionState {
         let payment_pointer = job.payment_id.clone().or_else(|| job.invoice_id.clone());
         let (settlement_authority, settlement_authoritative) =
             settle_authority_for_pointer(payment_pointer.as_deref());
-        let authority_key = match stage {
+        let effective_stage = if stage == JobLifecycleStage::Paid && !settlement_authoritative {
+            JobLifecycleStage::Delivered
+        } else {
+            stage
+        };
+        let authority_key = match effective_stage {
             JobLifecycleStage::Received | JobLifecycleStage::Accepted => job.request_id.as_str(),
             JobLifecycleStage::Running => job
                 .sa_tick_request_event_id
@@ -8038,8 +8043,6 @@ impl EarnJobLifecycleProjectionState {
                 .unwrap_or(job.request_id.as_str()),
             JobLifecycleStage::Paid => payment_pointer
                 .as_deref()
-                .or(job.ac_settlement_event_id.as_deref())
-                .or(job.sa_tick_result_event_id.as_deref())
                 .unwrap_or(job.request_id.as_str()),
             JobLifecycleStage::Failed => job
                 .ac_default_event_id
@@ -8049,10 +8052,14 @@ impl EarnJobLifecycleProjectionState {
         };
         let row = EarnJobLifecycleProjectionRow {
             stream_seq: 0,
-            event_id: earn_job_lifecycle_event_id(job.job_id.as_str(), stage, authority_key),
+            event_id: earn_job_lifecycle_event_id(
+                job.job_id.as_str(),
+                effective_stage,
+                authority_key,
+            ),
             job_id: job.job_id.clone(),
             request_id: job.request_id.clone(),
-            stage,
+            stage: effective_stage,
             source_tag: source_tag.to_string(),
             occurred_at_epoch_seconds,
             quoted_price_sats: job.quoted_price_sats,
@@ -11727,6 +11734,43 @@ mod tests {
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Delivered
         );
+    }
+
+    #[test]
+    fn earn_job_lifecycle_projection_coerces_nonwallet_paid_stage_to_delivered() {
+        let request = fixture_inbox_request(
+            "req-projection-nonwallet-paid",
+            "summarize.text",
+            500,
+            90,
+            JobInboxValidation::Valid,
+        );
+        let mut active = ActiveJobState::default();
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        active.start_from_request(&selected);
+        let job = active.job.as_mut().expect("job should exist");
+        job.stage = JobLifecycleStage::Paid;
+        job.sa_tick_result_event_id = Some("result-projection-nonwallet-paid".to_string());
+        job.ac_settlement_event_id = Some("feedback-projection-nonwallet-paid".to_string());
+
+        let mut projection = EarnJobLifecycleProjectionState::default();
+        projection.record_active_job_stage(
+            job,
+            JobLifecycleStage::Paid,
+            1_762_000_000,
+            "earn.active_job.invalid_paid_projection",
+        );
+
+        let row = projection.rows.first().expect("projection row");
+        assert_eq!(row.stage, JobLifecycleStage::Delivered);
+        assert_eq!(row.payment_pointer, None);
+        assert!(!row.settlement_authoritative);
+        assert_eq!(row.settlement_authority, "projection.non_authoritative");
     }
 
     #[test]

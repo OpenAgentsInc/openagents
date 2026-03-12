@@ -4,7 +4,7 @@ use chrono::{Local, TimeZone};
 use wgpui::components::sections::TerminalStream;
 
 use crate::app_state::{
-    ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
+    ActiveJobRecord, ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
     MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
     MissionControlPaneState,
 };
@@ -874,18 +874,20 @@ pub(crate) fn build_active_job_flow_snapshot(
             .iter()
             .find(|payment| payment.id == payment_id)
     });
-    let authoritative_payment = authoritative_payment_pointer(job.payment_id.as_deref())
-        || job.ac_settlement_event_id.is_some();
+    let authoritative_payment =
+        active_job_has_wallet_authoritative_settlement(job, settlement_payment);
+    let effective_stage =
+        active_job_effective_stage(job, active_job, authoritative_payment, settlement_payment);
     let continuity_window = continuity_window_seconds(job.ttl_seconds);
     let (authority, phase, next_expected_event, continuity_window_seconds) =
-        if job.stage == JobLifecycleStage::Paid || authoritative_payment {
+        if effective_stage == JobLifecycleStage::Paid || authoritative_payment {
             (
                 Nip90FlowAuthority::Wallet,
                 Nip90FlowPhase::Paid,
                 "none".to_string(),
                 None,
             )
-        } else if job.stage == JobLifecycleStage::Failed
+        } else if effective_stage == JobLifecycleStage::Failed
             && job
                 .failure_reason
                 .as_deref()
@@ -897,7 +899,7 @@ pub(crate) fn build_active_job_flow_snapshot(
                 "buyer settlement timed out".to_string(),
                 Some(continuity_window),
             )
-        } else if job.stage == JobLifecycleStage::Failed {
+        } else if effective_stage == JobLifecycleStage::Failed {
             let authority = if active_job.result_publish_in_flight
                 || active_job.pending_result_publish_event_id.is_some()
             {
@@ -922,7 +924,7 @@ pub(crate) fn build_active_job_flow_snapshot(
                 "relay confirmation".to_string(),
                 Some(continuity_window),
             )
-        } else if job.stage == JobLifecycleStage::Delivered {
+        } else if effective_stage == JobLifecycleStage::Delivered {
             if active_job.pending_bolt11.is_some() {
                 (
                     Nip90FlowAuthority::Wallet,
@@ -938,7 +940,7 @@ pub(crate) fn build_active_job_flow_snapshot(
                     Some(continuity_window),
                 )
             }
-        } else if job.stage == JobLifecycleStage::Running {
+        } else if effective_stage == JobLifecycleStage::Running {
             (
                 Nip90FlowAuthority::Provider,
                 Nip90FlowPhase::Executing,
@@ -991,6 +993,41 @@ fn active_job_is_settlement_timeout_reason(reason: &str) -> bool {
     normalized.contains("job settlement timed out")
         || normalized.contains("delivered but unpaid")
         || normalized.contains("awaiting buyer settlement")
+}
+
+fn active_job_has_wallet_authoritative_settlement(
+    job: &ActiveJobRecord,
+    settlement_payment: Option<&openagents_spark::PaymentSummary>,
+) -> bool {
+    authoritative_payment_pointer(job.payment_id.as_deref())
+        || settlement_payment
+            .is_some_and(|payment| is_settled_wallet_payment_status(payment.status.as_str()))
+}
+
+fn active_job_effective_stage(
+    job: &ActiveJobRecord,
+    active_job: &ActiveJobState,
+    authoritative_payment: bool,
+    settlement_payment: Option<&openagents_spark::PaymentSummary>,
+) -> JobLifecycleStage {
+    if job.stage != JobLifecycleStage::Paid || authoritative_payment {
+        return job.stage;
+    }
+    if settlement_payment
+        .is_some_and(|payment| is_settled_wallet_payment_status(payment.status.as_str()))
+    {
+        return JobLifecycleStage::Paid;
+    }
+    if job.sa_tick_result_event_id.is_some() {
+        return JobLifecycleStage::Delivered;
+    }
+    if active_job.result_publish_in_flight || active_job.pending_result_publish_event_id.is_some() {
+        return JobLifecycleStage::Running;
+    }
+    if job.sa_tick_request_event_id.is_some() {
+        return JobLifecycleStage::Running;
+    }
+    JobLifecycleStage::Accepted
 }
 
 pub(crate) fn buy_mode_payments_summary_text(
@@ -2308,6 +2345,139 @@ mod tests {
         assert_eq!(snapshot.settlement_amount_sats, Some(2));
         assert_eq!(snapshot.settlement_fees_sats, Some(1));
         assert_eq!(snapshot.settlement_net_wallet_delta_sats, Some(2));
+    }
+
+    #[test]
+    fn active_job_snapshot_does_not_project_paid_from_feedback_without_wallet_settlement() {
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-invalid-paid".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1invalidpaid".to_string());
+        let job = active_job.job.as_mut().expect("job");
+        job.stage = JobLifecycleStage::Paid;
+        job.sa_tick_result_event_id = Some("result-invalid-paid-001".to_string());
+        job.ac_settlement_event_id = Some("feedback-invalid-paid-001".to_string());
+
+        let snapshot = build_active_job_flow_snapshot(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        )
+        .expect("active snapshot");
+
+        assert_eq!(snapshot.phase, Nip90FlowPhase::AwaitingPayment);
+        assert_eq!(snapshot.authority, Nip90FlowAuthority::Wallet);
+        assert_eq!(snapshot.next_expected_event, "wallet settlement");
+        assert_eq!(snapshot.payment_pointer, None);
+    }
+
+    #[test]
+    fn active_job_snapshot_running_stage_ignores_nonwallet_settlement_feedback() {
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-running-feedback".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some("request-running-feedback-001".to_string()),
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("job");
+        job.stage = JobLifecycleStage::Running;
+        job.ac_settlement_event_id = Some("feedback-running-001".to_string());
+
+        let snapshot = build_active_job_flow_snapshot(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        )
+        .expect("active snapshot");
+
+        assert_eq!(snapshot.phase, Nip90FlowPhase::Executing);
+        assert_eq!(snapshot.authority, Nip90FlowAuthority::Provider);
+        assert_eq!(snapshot.next_expected_event, "local execution");
+    }
+
+    #[test]
+    fn active_job_snapshot_failed_stage_ignores_nonwallet_settlement_feedback() {
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-failed-feedback".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: crate::state::job_inbox::JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: crate::state::job_inbox::JobInboxDecision::Pending,
+        };
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("job");
+        job.stage = JobLifecycleStage::Failed;
+        job.ac_settlement_event_id = Some("feedback-failed-001".to_string());
+        job.failure_reason = Some("provider runtime failed".to_string());
+
+        let snapshot = build_active_job_flow_snapshot(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        )
+        .expect("active snapshot");
+
+        assert_eq!(snapshot.phase, Nip90FlowPhase::Failed);
+        assert_eq!(snapshot.authority, Nip90FlowAuthority::Provider);
+        assert_eq!(snapshot.next_expected_event, "none");
     }
 
     #[test]
