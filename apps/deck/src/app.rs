@@ -1,4 +1,4 @@
-use crate::deck::model::{Deck, DeckTheme, Slide, SlideDiagram, SlideLayout};
+use crate::deck::model::{Deck, DeckTheme, Slide, SlideLayout};
 use crate::deck::parser::presentation_markdown_config;
 use crate::state::DeckState;
 use wgpui::components::Component;
@@ -156,61 +156,26 @@ impl DeckApp {
         }
 
         let body_top = self.paint_slide_header(slide, content_bounds, palette, 42.0, cx);
-        let gap = 18.0;
-        let panel_height = (content_bounds.max_y() - body_top).max(1.0);
-        let stacked = content_bounds.width() < 940.0;
-        let (left_bounds, right_bounds) = if stacked {
-            let left_height = (panel_height * 0.42).max(1.0);
-            let right_height = (panel_height - left_height - gap).max(1.0);
-            (
-                Bounds::new(
-                    content_bounds.min_x(),
-                    body_top,
-                    content_bounds.width(),
-                    left_height,
-                ),
-                Bounds::new(
-                    content_bounds.min_x(),
-                    body_top + left_height + gap,
-                    content_bounds.width(),
-                    right_height,
-                ),
-            )
-        } else {
-            let left_width = content_bounds.width() * 0.37;
-            (
-                Bounds::new(content_bounds.min_x(), body_top, left_width, panel_height),
-                Bounds::new(
-                    content_bounds.min_x() + left_width + gap,
-                    body_top,
-                    content_bounds.width() - left_width - gap,
-                    panel_height,
-                ),
-            )
-        };
+        let panel_bounds = Bounds::new(
+            content_bounds.min_x(),
+            body_top,
+            content_bounds.width(),
+            (content_bounds.max_y() - body_top).max(1.0),
+        );
 
         draw_panel(
             cx,
-            left_bounds,
+            panel_bounds,
             palette.panel_bg,
             palette.panel_border,
             18.0,
         );
-        draw_panel(
-            cx,
-            right_bounds,
-            palette.panel_bg,
-            palette.panel_border,
-            18.0,
-        );
-
         self.paint_markdown_panel(
             slide,
-            left_bounds.inset(22.0),
-            Point::new(left_bounds.min_x() + 22.0, left_bounds.min_y() + 22.0),
+            panel_bounds.inset(22.0),
+            Point::new(panel_bounds.min_x() + 22.0, panel_bounds.min_y() + 24.0),
             cx,
         );
-        self.paint_diagram(slide.diagram, right_bounds.inset(16.0), palette, cx);
     }
 
     fn paint_minimal_title_slide(
@@ -264,49 +229,16 @@ impl DeckApp {
         cx: &mut PaintContext,
     ) {
         let body_top = self.paint_slide_header(slide, content_bounds, palette, 34.0, cx);
-        let gap = 18.0;
-        let panel_height = (content_bounds.max_y() - body_top).max(1.0);
-        let stacked = content_bounds.width() < 840.0;
-        let (left_bounds, right_bounds) = if stacked {
-            let left_height = (panel_height * 0.42).max(1.0);
-            let right_height = (panel_height - left_height - gap).max(1.0);
-            (
-                Bounds::new(
-                    content_bounds.min_x(),
-                    body_top,
-                    content_bounds.width(),
-                    left_height,
-                ),
-                Bounds::new(
-                    content_bounds.min_x(),
-                    body_top + left_height + gap,
-                    content_bounds.width(),
-                    right_height,
-                ),
-            )
-        } else {
-            let left_width = content_bounds.width() * 0.42;
-            (
-                Bounds::new(content_bounds.min_x(), body_top, left_width, panel_height),
-                Bounds::new(
-                    content_bounds.min_x() + left_width + gap,
-                    body_top,
-                    content_bounds.width() - left_width - gap,
-                    panel_height,
-                ),
-            )
-        };
+        let panel_bounds = Bounds::new(
+            content_bounds.min_x(),
+            body_top,
+            content_bounds.width(),
+            (content_bounds.max_y() - body_top).max(1.0),
+        );
 
         draw_panel(
             cx,
-            left_bounds,
-            palette.panel_bg,
-            palette.panel_border,
-            16.0,
-        );
-        draw_panel(
-            cx,
-            right_bounds,
+            panel_bounds,
             palette.panel_bg,
             palette.panel_border,
             16.0,
@@ -314,33 +246,20 @@ impl DeckApp {
         draw_mono_text(
             cx,
             "CORE POINTS",
-            Point::new(left_bounds.min_x() + 20.0, left_bounds.min_y() + 18.0),
-            11.0,
-            palette.accent,
-        );
-        draw_mono_text(
-            cx,
-            "SIMPLIFIED DIAGRAM",
-            Point::new(right_bounds.min_x() + 20.0, right_bounds.min_y() + 18.0),
+            Point::new(panel_bounds.min_x() + 20.0, panel_bounds.min_y() + 18.0),
             11.0,
             palette.accent,
         );
 
         self.paint_markdown_panel(
             slide,
-            left_bounds.inset(22.0),
-            Point::new(left_bounds.min_x() + 22.0, left_bounds.min_y() + 38.0),
-            cx,
-        );
-        self.paint_diagram(
-            slide.diagram,
             Bounds::new(
-                right_bounds.min_x() + 16.0,
-                right_bounds.min_y() + 38.0,
-                (right_bounds.width() - 32.0).max(1.0),
-                (right_bounds.height() - 54.0).max(1.0),
+                panel_bounds.min_x() + 22.0,
+                panel_bounds.min_y() + 38.0,
+                (panel_bounds.width() - 44.0).max(1.0),
+                (panel_bounds.height() - 54.0).max(1.0),
             ),
-            palette,
+            Point::new(panel_bounds.min_x() + 22.0, panel_bounds.min_y() + 38.0),
             cx,
         );
     }
@@ -385,7 +304,7 @@ impl DeckApp {
             let summary_width = if slide.layout == SlideLayout::Title {
                 content_bounds.width() * 0.9
             } else {
-                content_bounds.width() * 0.82
+                content_bounds.width()
             };
             let summary_height = draw_wrapped_text(
                 cx,
@@ -420,27 +339,6 @@ impl DeckApp {
             cx.text,
             cx.scene,
         );
-    }
-
-    fn paint_diagram(
-        &self,
-        diagram: Option<SlideDiagram>,
-        bounds: Bounds,
-        palette: &DeckPalette,
-        cx: &mut PaintContext,
-    ) {
-        let Some(diagram) = diagram else {
-            return;
-        };
-
-        match diagram {
-            SlideDiagram::MarketMap => paint_market_map(bounds, palette, cx),
-            SlideDiagram::ComputeFlow => paint_compute_flow(bounds, palette, cx),
-            SlideDiagram::AccessGrant => paint_access_grant(bounds, palette, cx),
-            SlideDiagram::ContractChain => paint_contract_chain(bounds, palette, cx),
-            SlideDiagram::LiquidityRoute => paint_liquidity_route(bounds, palette, cx),
-            SlideDiagram::RiskLoop => paint_risk_loop(bounds, palette, cx),
-        }
     }
 }
 
@@ -611,6 +509,7 @@ fn measure_text_width(
     run.bounds().size.width
 }
 
+#[allow(dead_code)]
 fn paint_market_map(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(6.0);
     let autopilot_height = (inner.height() * 0.18).clamp(40.0, 56.0);
@@ -698,6 +597,7 @@ fn paint_market_map(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext
     );
 }
 
+#[allow(dead_code)]
 fn paint_compute_flow(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(8.0);
     let top_height = (inner.height() * 0.28).clamp(52.0, 74.0);
@@ -777,6 +677,7 @@ fn paint_compute_flow(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintConte
     );
 }
 
+#[allow(dead_code)]
 fn paint_access_grant(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(8.0);
     let top_height = (inner.height() * 0.28).clamp(52.0, 72.0);
@@ -852,6 +753,7 @@ fn paint_access_grant(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintConte
     );
 }
 
+#[allow(dead_code)]
 fn paint_contract_chain(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(8.0);
     let card_height = (inner.height() * 0.28).clamp(48.0, 64.0);
@@ -901,6 +803,7 @@ fn paint_contract_chain(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintCon
     );
 }
 
+#[allow(dead_code)]
 fn paint_liquidity_route(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(8.0);
     let card_height = (inner.height() * 0.28).clamp(52.0, 68.0);
@@ -949,6 +852,7 @@ fn paint_liquidity_route(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintCo
     );
 }
 
+#[allow(dead_code)]
 fn paint_risk_loop(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext) {
     let inner = bounds.inset(8.0);
     let top_height = (inner.height() * 0.28).clamp(52.0, 72.0);
@@ -993,6 +897,7 @@ fn paint_risk_loop(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintContext)
     );
 }
 
+#[allow(dead_code)]
 fn draw_flow_card(
     cx: &mut PaintContext,
     bounds: Bounds,
@@ -1054,6 +959,7 @@ fn draw_flow_card(
     }
 }
 
+#[allow(dead_code)]
 fn draw_h_connector(cx: &mut PaintContext, x1: f32, x2: f32, y: f32, color: Hsla) {
     let left = x1.min(x2);
     let width = (x2 - x1).abs().max(2.0);
@@ -1064,6 +970,7 @@ fn draw_h_connector(cx: &mut PaintContext, x1: f32, x2: f32, y: f32, color: Hsla
     );
 }
 
+#[allow(dead_code)]
 fn draw_v_connector(cx: &mut PaintContext, x: f32, y1: f32, y2: f32, color: Hsla) {
     let top = y1.min(y2);
     let height = (y2 - y1).abs().max(2.0);
@@ -1074,10 +981,12 @@ fn draw_v_connector(cx: &mut PaintContext, x: f32, y1: f32, y2: f32, color: Hsla
     );
 }
 
+#[allow(dead_code)]
 fn center_x(bounds: Bounds) -> f32 {
     bounds.min_x() + bounds.width() * 0.5
 }
 
+#[allow(dead_code)]
 fn center_y(bounds: Bounds) -> f32 {
     bounds.min_y() + bounds.height() * 0.5
 }

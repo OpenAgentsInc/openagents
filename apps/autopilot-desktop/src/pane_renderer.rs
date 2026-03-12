@@ -1694,7 +1694,7 @@ fn mission_control_buy_mode_panel_state(
     mission_control: &MissionControlPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
-    now: std::time::Instant,
+    _now: std::time::Instant,
 ) -> Option<MissionControlBuyModePanelState> {
     if !buy_mode_enabled {
         return None;
@@ -1720,10 +1720,23 @@ fn mission_control_buy_mode_panel_state(
         .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
     {
         "in-flight".to_string()
+    } else if block_reason.is_some() {
+        "blocked".to_string()
+    } else if target_selection.selected_peer_pubkey.is_some() {
+        "dispatch-ready".to_string()
+    } else if let Some(blocked_reason_code) = target_selection.blocked_reason_code.as_deref() {
+        match blocked_reason_code {
+            crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_WAITING_FOR_MAIN_CHANNEL => {
+                "waiting-channel".to_string()
+            }
+            crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_PEERS_OBSERVED
+            | crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_ELIGIBLE_PEERS => {
+                "waiting-peer".to_string()
+            }
+            _ => "blocked".to_string(),
+        }
     } else {
-        mission_control
-            .buy_mode_next_dispatch_countdown_label(now)
-            .unwrap_or_else(|| "now".to_string())
+        "armed".to_string()
     };
     let provider = request_snapshot
         .as_ref()
@@ -7226,7 +7239,7 @@ mod tests {
         )
         .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
-        assert_eq!(armed_panel.next, "now");
+        assert_eq!(armed_panel.next, "blocked");
         assert_eq!(armed_panel.work, "blocked");
         assert_eq!(armed_panel.button_label, "STOP BUY MODE");
         assert!(armed_panel.button_enabled);
@@ -7357,6 +7370,7 @@ mod tests {
         )
         .expect("buy mode panel should render selected idle target");
 
+        assert_eq!(panel.next, "dispatch-ready");
         assert_eq!(panel.provider, "666666..6666");
         assert_eq!(panel.work, "1/1");
         assert!(panel.summary.contains("target 666666..6666"));
@@ -7387,6 +7401,7 @@ mod tests {
         )
         .expect("buy mode panel should render target blocker");
 
+        assert_eq!(panel.next, "waiting-peer");
         assert_eq!(panel.provider, "none");
         assert_eq!(panel.work, "blocked");
         assert!(

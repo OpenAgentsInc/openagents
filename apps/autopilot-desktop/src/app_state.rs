@@ -615,6 +615,8 @@ pub struct MissionControlPaneState {
     pub local_fm_summary_text: String,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    buy_mode_last_blocked_signature: Option<String>,
+    buy_mode_last_blocked_notice_at: Option<Instant>,
     /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
     rendered_log_content: Vec<(TerminalStream, String)>,
     last_mirrored_trace_id: u64,
@@ -659,6 +661,8 @@ impl Default for MissionControlPaneState {
             local_fm_summary_text: String::new(),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
+            buy_mode_last_blocked_signature: None,
+            buy_mode_last_blocked_notice_at: None,
             rendered_log_content: Vec::new(),
             last_mirrored_trace_id: 0,
         }
@@ -698,6 +702,7 @@ impl MissionControlPaneState {
 
     pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
         self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
+        self.clear_buy_mode_blocked_notice();
         if self.buy_mode_loop_enabled {
             self.buy_mode_next_dispatch_at = Some(now);
         } else {
@@ -721,6 +726,32 @@ impl MissionControlPaneState {
 
     pub fn schedule_buy_mode_retry(&mut self, now: Instant) {
         self.buy_mode_next_dispatch_at = Some(now + MISSION_CONTROL_BUY_MODE_INTERVAL);
+    }
+
+    pub fn schedule_buy_mode_retry_with_interval(&mut self, now: Instant, interval: Duration) {
+        self.buy_mode_next_dispatch_at = Some(now + interval);
+    }
+
+    pub fn clear_buy_mode_blocked_notice(&mut self) {
+        self.buy_mode_last_blocked_signature = None;
+        self.buy_mode_last_blocked_notice_at = None;
+    }
+
+    pub fn should_emit_buy_mode_blocked_notice(&mut self, now: Instant, signature: &str) -> bool {
+        let should_emit = self
+            .buy_mode_last_blocked_notice_at
+            .zip(self.buy_mode_last_blocked_signature.as_deref())
+            .map(|(last_notice_at, last_signature)| {
+                last_signature != signature
+                    || now.saturating_duration_since(last_notice_at)
+                        >= MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+            })
+            .unwrap_or(true);
+        if should_emit {
+            self.buy_mode_last_blocked_signature = Some(signature.to_string());
+            self.buy_mode_last_blocked_notice_at = Some(now);
+        }
+        should_emit
     }
 
     pub fn buy_mode_next_dispatch_countdown_millis(&self, now: Instant) -> Option<u64> {
@@ -1654,6 +1685,9 @@ pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
 pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS: u64 = 100;
 pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL: Duration =
     Duration::from_millis(MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS);
+pub(crate) const MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+pub(crate) const MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL: Duration =
+    Duration::from_secs(10);
 pub(crate) const MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
 
 pub(crate) fn mission_control_buy_mode_interval_label() -> String {
@@ -15720,6 +15754,33 @@ mod tests {
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);
         assert_eq!(mission_control.buy_mode_next_dispatch_at, None);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_blocked_notice_is_throttled_until_signature_changes() {
+        let mut mission_control = super::MissionControlPaneState::default();
+        let now = std::time::Instant::now();
+
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(now, "no-peers:4:0"));
+        assert!(!mission_control.should_emit_buy_mode_blocked_notice(
+            now + std::time::Duration::from_secs(1),
+            "no-peers:4:0"
+        ));
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL,
+            "no-peers:4:0"
+        ));
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+                + std::time::Duration::from_secs(1),
+            "no-peers:5:0"
+        ));
+        mission_control.clear_buy_mode_blocked_notice();
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+                + std::time::Duration::from_secs(2),
+            "no-peers:5:0"
+        ));
     }
 
     #[test]
