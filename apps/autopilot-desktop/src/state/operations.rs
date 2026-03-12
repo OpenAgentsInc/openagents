@@ -7,10 +7,11 @@ use crate::app_state::{PaneLoadState, PaneStatusAccess};
 use crate::bitcoin_display::format_sats_amount;
 use crate::nip90_compute_domain_events;
 use crate::nip90_compute_semantics::{
-    BuyerProviderObservation as SharedBuyerProviderObservation, normalize_pubkey,
-    provider_has_non_error_result as shared_provider_has_non_error_result,
+    BuyerInvoiceAmountAnalysis as SharedBuyerInvoiceAmountAnalysis,
+    BuyerProviderObservation as SharedBuyerProviderObservation, analyze_invoice_amount_msats,
+    normalize_pubkey, provider_has_non_error_result as shared_provider_has_non_error_result,
     provider_has_payable_result as shared_provider_has_payable_result,
-    select_payable_winner as shared_select_payable_winner,
+    select_budget_approved_payable_winner as shared_select_budget_approved_payable_winner,
 };
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
@@ -493,6 +494,31 @@ pub struct NetworkRequestProviderObservation {
     pub last_feedback_bolt11: Option<String>,
     pub last_result_event_id: Option<String>,
     pub last_result_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoPaymentBudgetRefusal {
+    pub provider_pubkey: String,
+    pub invoice_amount_sats: u64,
+    pub approved_budget_sats: u64,
+    pub amount_mismatch: bool,
+}
+
+impl AutoPaymentBudgetRefusal {
+    pub fn notice_message(&self) -> String {
+        let mismatch_suffix = if self.amount_mismatch {
+            " (provider metadata mismatched the BOLT11 amount)"
+        } else {
+            ""
+        };
+        format!(
+            "provider {} requested {} sats above approved budget {}; refusing auto-payment{}",
+            self.provider_pubkey,
+            self.invoice_amount_sats,
+            self.approved_budget_sats,
+            mismatch_suffix,
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1359,6 +1385,7 @@ impl NetworkRequestsState {
     ) -> Option<(String, Option<u64>)> {
         self.prepare_auto_payment_attempt_internal(
             request_id,
+            None,
             bolt11,
             amount_msats,
             now_epoch_seconds,
@@ -1371,7 +1398,7 @@ impl NetworkRequestsState {
         provider_pubkey: &str,
         now_epoch_seconds: u64,
     ) -> Option<(String, Option<u64>)> {
-        let (bolt11, amount_msats) = {
+        let (budget_refusal_notice, bolt11, amount_msats) = {
             let request = self
                 .submitted
                 .iter_mut()
@@ -1381,36 +1408,80 @@ impl NetworkRequestsState {
             }
             select_payable_winner(request, Some(provider_pubkey));
 
-            let winner = request.winning_provider_pubkey.as_deref()?;
-            if normalize_pubkey(winner) != normalize_pubkey(provider_pubkey) {
-                return None;
-            }
-
             let observation = request.provider_observations.iter().find(|observation| {
                 normalize_pubkey(observation.provider_pubkey.as_str())
                     == normalize_pubkey(provider_pubkey)
             })?;
-            if !provider_has_payable_result(observation) {
-                return None;
-            }
-
-            (
-                observation.last_feedback_bolt11.clone()?,
+            let budget_refusal_notice = budget_refusal_for_request(
+                request,
+                Some(provider_pubkey),
                 observation.last_feedback_amount_msats,
+                observation.last_feedback_bolt11.as_deref(),
             )
+            .map(|refusal| refusal.notice_message());
+            if let Some(notice) = budget_refusal_notice {
+                (
+                    Some(notice),
+                    observation.last_feedback_bolt11.clone(),
+                    observation.last_feedback_amount_msats,
+                )
+            } else {
+                let winner = request.winning_provider_pubkey.as_deref()?;
+                if normalize_pubkey(winner) != normalize_pubkey(provider_pubkey) {
+                    return None;
+                }
+
+                if !provider_has_payable_result(observation) {
+                    return None;
+                }
+
+                (
+                    None,
+                    observation.last_feedback_bolt11.clone(),
+                    observation.last_feedback_amount_msats,
+                )
+            }
         };
+        if let Some(notice) = budget_refusal_notice {
+            self.record_auto_payment_notice(request_id, notice.as_str(), now_epoch_seconds);
+            return None;
+        }
+        let bolt11 = bolt11?;
 
         self.prepare_auto_payment_attempt_internal(
             request_id,
+            Some(provider_pubkey),
             bolt11.as_str(),
             amount_msats,
             now_epoch_seconds,
         )
     }
 
+    pub fn auto_payment_budget_refusal_for_provider(
+        &self,
+        request_id: &str,
+        provider_pubkey: &str,
+    ) -> Option<AutoPaymentBudgetRefusal> {
+        let request = self
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)?;
+        let observation = request.provider_observations.iter().find(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str())
+                == normalize_pubkey(provider_pubkey)
+        })?;
+        budget_refusal_for_request(
+            request,
+            Some(provider_pubkey),
+            observation.last_feedback_amount_msats,
+            observation.last_feedback_bolt11.as_deref(),
+        )
+    }
+
     fn prepare_auto_payment_attempt_internal(
         &mut self,
         request_id: &str,
+        provider_pubkey: Option<&str>,
         bolt11: &str,
         amount_msats: Option<u64>,
         now_epoch_seconds: u64,
@@ -1448,6 +1519,28 @@ impl NetworkRequestsState {
             return None;
         }
 
+        if let Some(refusal) =
+            budget_refusal_for_request(request, provider_pubkey, amount_msats, Some(bolt11))
+        {
+            let notice = refusal.notice_message();
+            request.pending_bolt11 = None;
+            request.payment_error = None;
+            request.payment_failed_at_epoch_seconds = None;
+            request
+                .payment_required_at_epoch_seconds
+                .get_or_insert(now_epoch_seconds);
+            request.payment_notice = Some(notice.clone());
+            request.status = compute_request_status(request);
+            if self.pending_auto_payment_request_id.as_deref() == Some(request_id) {
+                self.pending_auto_payment_request_id = None;
+            }
+            let _ = self.pane_set_ready(format!(
+                "Request {} auto-payment blocked: {}",
+                request_id, notice
+            ));
+            return None;
+        }
+
         request.pending_bolt11 = Some(bolt11.to_string());
         request
             .payment_required_at_epoch_seconds
@@ -1458,7 +1551,8 @@ impl NetworkRequestsState {
         request.status = NetworkRequestStatus::PaymentRequired;
         self.pending_auto_payment_request_id = Some(request_id.to_string());
 
-        let amount_sats = amount_msats
+        let amount_sats = analyze_invoice_amount_msats(amount_msats, Some(bolt11))
+            .effective_amount_msats
             .map(msats_to_sats_ceil)
             .filter(|amount| *amount > 0);
         self.pane_set_ready(format!(
@@ -1549,8 +1643,8 @@ impl NetworkRequestsState {
         request.payment_notice = Some(notice.to_string());
         request.status = compute_request_status(request);
         self.pane_set_ready(format!(
-            "Request {} is waiting for a valid provider invoice",
-            request_id
+            "Request {} payment blocked: {}",
+            request_id, notice
         ));
     }
 
@@ -1877,10 +1971,11 @@ fn select_payable_winner(
         .map(as_shared_provider_observation)
         .collect();
 
-    if let Some(selection) = shared_select_payable_winner(
+    if let Some(selection) = shared_select_budget_approved_payable_winner(
         previous_winner.as_deref(),
         preferred_provider_pubkey,
         observations.as_slice(),
+        request.budget_sats,
     ) {
         let Some(observation) = request.provider_observations.iter().find(|observation| {
             normalize_pubkey(observation.provider_pubkey.as_str())
@@ -1891,7 +1986,8 @@ fn select_payable_winner(
         let selected_provider_pubkey = observation.provider_pubkey.clone();
         let selected_result_event_id = observation.last_result_event_id.clone();
         let selected_feedback_event_id = observation.last_feedback_event_id.clone();
-        let selected_amount_msats = observation.last_feedback_amount_msats;
+        let selected_amount_msats =
+            invoice_amount_analysis_for_observation(observation).effective_amount_msats;
         let provider_changed = previous_winner.as_deref().map(normalize_pubkey)
             != Some(normalize_pubkey(selected_provider_pubkey.as_str()));
 
@@ -1916,6 +2012,41 @@ fn select_payable_winner(
     request.winning_provider_pubkey = None;
     request.winning_result_event_id = None;
     request.resolution_reason_code = None;
+}
+
+fn invoice_amount_analysis_for_observation(
+    observation: &NetworkRequestProviderObservation,
+) -> SharedBuyerInvoiceAmountAnalysis {
+    analyze_invoice_amount_msats(
+        observation.last_feedback_amount_msats,
+        observation.last_feedback_bolt11.as_deref(),
+    )
+}
+
+fn budget_refusal_for_request(
+    request: &SubmittedNetworkRequest,
+    provider_pubkey: Option<&str>,
+    metadata_amount_msats: Option<u64>,
+    bolt11: Option<&str>,
+) -> Option<AutoPaymentBudgetRefusal> {
+    let provider_pubkey = provider_pubkey
+        .map(str::trim)
+        .filter(|provider| !provider.is_empty())
+        .or_else(|| request.winning_provider_pubkey.as_deref())
+        .or_else(|| request.invoice_provider_pubkey.as_deref())?;
+    let analysis = analyze_invoice_amount_msats(metadata_amount_msats, bolt11);
+    let effective_amount_msats = analysis.effective_amount_msats?;
+    let approved_budget_msats = request.budget_sats.saturating_mul(1_000);
+    if effective_amount_msats <= approved_budget_msats {
+        return None;
+    }
+
+    Some(AutoPaymentBudgetRefusal {
+        provider_pubkey: provider_pubkey.to_string(),
+        invoice_amount_sats: msats_to_sats_ceil(effective_amount_msats),
+        approved_budget_sats: request.budget_sats,
+        amount_mismatch: analysis.amount_mismatch,
+    })
 }
 
 fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestStatus {
