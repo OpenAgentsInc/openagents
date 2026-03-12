@@ -135,6 +135,11 @@ enum BuyModeCommand {
         timeout_ms: u64,
     },
     Status,
+    Target,
+    Roster {
+        #[arg(long, default_value_t = 12)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -202,7 +207,7 @@ impl BuyModeCommand {
         match self {
             Self::Start { .. } => Some(DesktopControlActionRequest::StartBuyMode),
             Self::Stop { .. } => Some(DesktopControlActionRequest::StopBuyMode),
-            Self::Status => None,
+            Self::Status | Self::Target | Self::Roster { .. } => None,
         }
     }
 }
@@ -438,10 +443,35 @@ fn main() -> Result<()> {
                         "payableProviderPubkey": snapshot.buy_mode.payable_provider_pubkey,
                         "paymentBlockerCodes": snapshot.buy_mode.payment_blocker_codes,
                         "paymentBlockerSummary": snapshot.buy_mode.payment_blocker_summary,
+                        "targetSelection": snapshot.buy_mode.target_selection,
+                        "peerRoster": snapshot.buy_mode.peer_roster,
                         "recentRequests": snapshot.buy_mode.recent_requests,
                     }))?;
                 } else {
                     print_buy_mode_text(&snapshot);
+                }
+            }
+            BuyModeCommand::Target => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.buy_mode.target_selection)?;
+                } else {
+                    print_buy_mode_target_text(&snapshot);
+                }
+            }
+            BuyModeCommand::Roster { limit } => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(
+                        &snapshot
+                            .buy_mode
+                            .peer_roster
+                            .iter()
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    )?;
+                } else {
+                    print_buy_mode_roster_text(&snapshot, limit);
                 }
             }
         },
@@ -1006,6 +1036,41 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
             .next_dispatch_countdown_seconds
             .unwrap_or(0)
     );
+    println!(
+        "buy mode target: selected={} relay={} model={} roster={}/{} blocked_code={} blocked_reason={}",
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_peer_pubkey
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_relay_url
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_ready_model
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.buy_mode.target_selection.eligible_peer_count,
+        snapshot.buy_mode.target_selection.observed_peer_count,
+        snapshot
+            .buy_mode
+            .target_selection
+            .blocked_reason_code
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .blocked_reason
+            .as_deref()
+            .unwrap_or("-")
+    );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
             "buy mode in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
@@ -1067,6 +1132,7 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
             .next_dispatch_countdown_seconds
             .unwrap_or(0)
     );
+    print_buy_mode_target_text(snapshot);
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
             "in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
@@ -1116,6 +1182,65 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
             request.payment_pointer.as_deref().unwrap_or("-"),
             request.payment_error.as_deref().unwrap_or("-")
         );
+    }
+    print_buy_mode_roster_text(snapshot, 8);
+}
+
+fn print_buy_mode_target_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "target: selected={} relay={} model={} roster={}/{} blocked_code={} blocked_reason={}",
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_peer_pubkey
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_relay_url
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .selected_ready_model
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.buy_mode.target_selection.eligible_peer_count,
+        snapshot.buy_mode.target_selection.observed_peer_count,
+        snapshot
+            .buy_mode
+            .target_selection
+            .blocked_reason_code
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buy_mode
+            .target_selection
+            .blocked_reason
+            .as_deref()
+            .unwrap_or("-")
+    );
+}
+
+fn print_buy_mode_roster_text(snapshot: &DesktopControlSnapshot, limit: usize) {
+    for peer in snapshot.buy_mode.peer_roster.iter().take(limit) {
+        println!(
+            "peer={} eligible={} online={} reason={} relay={} model={} last_presence={} expires={} last_chat={}",
+            peer.pubkey,
+            peer.eligible_for_buy_mode,
+            peer.online_for_compute,
+            peer.eligibility_reason,
+            peer.relay_url,
+            peer.ready_model.as_deref().unwrap_or("-"),
+            peer.last_presence_at.unwrap_or(0),
+            peer.presence_expires_at.unwrap_or(0),
+            peer.last_chat_message_at.unwrap_or(0)
+        );
+    }
+    if snapshot.buy_mode.peer_roster.is_empty() {
+        println!("peer-roster: empty");
     }
 }
 
@@ -1343,6 +1468,8 @@ mod tests {
             Some(DesktopControlActionRequest::StopBuyMode)
         );
         assert_eq!(BuyModeCommand::Status.action_request(), None);
+        assert_eq!(BuyModeCommand::Target.action_request(), None);
+        assert_eq!(BuyModeCommand::Roster { limit: 5 }.action_request(), None);
         assert_eq!(
             ChatCommand::Main.action_request(),
             Some(DesktopControlActionRequest::SelectNip28MainChannel)

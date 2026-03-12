@@ -26,7 +26,7 @@ use crate::app_state::{
 use crate::bitcoin_display::format_sats_amount;
 use crate::pane_system::MissionControlPaneAction;
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 2;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 3;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -138,6 +138,30 @@ pub struct DesktopControlBuyModeRequestStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAutopilotPeerStatus {
+    pub pubkey: String,
+    pub relay_url: String,
+    pub ready_model: Option<String>,
+    pub online_for_compute: bool,
+    pub eligible_for_buy_mode: bool,
+    pub eligibility_reason: String,
+    pub last_chat_message_at: Option<u64>,
+    pub last_presence_at: Option<u64>,
+    pub presence_expires_at: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlBuyModeTargetSelectionStatus {
+    pub selected_peer_pubkey: Option<String>,
+    pub selected_relay_url: Option<String>,
+    pub selected_ready_model: Option<String>,
+    pub observed_peer_count: usize,
+    pub eligible_peer_count: usize,
+    pub blocked_reason_code: Option<String>,
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlBuyModeStatus {
     pub enabled: bool,
     pub approved_budget_sats: u64,
@@ -152,6 +176,8 @@ pub struct DesktopControlBuyModeStatus {
     pub payable_provider_pubkey: Option<String>,
     pub payment_blocker_codes: Vec<String>,
     pub payment_blocker_summary: Option<String>,
+    pub target_selection: DesktopControlBuyModeTargetSelectionStatus,
+    pub peer_roster: Vec<DesktopControlAutopilotPeerStatus>,
     pub recent_requests: Vec<DesktopControlBuyModeRequestStatus>,
 }
 
@@ -1084,18 +1110,54 @@ fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
     ) {
         (false, _, _, _) => "buy mode stopped".to_string(),
         (true, Some(request_id), Some(request_status), Some(phase)) => format!(
-            "buy mode request={} status={} phase={}",
+            "buy mode request={} status={} phase={} target={} roster={}/{}",
             short_request_id(request_id),
             request_status,
-            phase
+            phase,
+            status
+                .target_selection
+                .selected_peer_pubkey
+                .as_deref()
+                .map(short_request_id)
+                .unwrap_or_else(|| "-".to_string()),
+            status.target_selection.eligible_peer_count,
+            status.target_selection.observed_peer_count,
         ),
         (true, Some(request_id), _, _) => {
             format!(
-                "buy mode request={} in flight",
-                short_request_id(request_id)
+                "buy mode request={} in flight target={} roster={}/{}",
+                short_request_id(request_id),
+                status
+                    .target_selection
+                    .selected_peer_pubkey
+                    .as_deref()
+                    .map(short_request_id)
+                    .unwrap_or_else(|| "-".to_string()),
+                status.target_selection.eligible_peer_count,
+                status.target_selection.observed_peer_count,
             )
         }
-        (true, None, _, _) => "buy mode running with no in-flight request".to_string(),
+        (true, None, _, _) => {
+            if let Some(target) = status.target_selection.selected_peer_pubkey.as_deref() {
+                format!(
+                    "buy mode armed target={} roster={}/{}",
+                    short_request_id(target),
+                    status.target_selection.eligible_peer_count,
+                    status.target_selection.observed_peer_count,
+                )
+            } else {
+                format!(
+                    "buy mode blocked roster={}/{} reason={}",
+                    status.target_selection.eligible_peer_count,
+                    status.target_selection.observed_peer_count,
+                    status
+                        .target_selection
+                        .blocked_reason_code
+                        .as_deref()
+                        .unwrap_or("no-target")
+                )
+            }
+        }
     }
 }
 
@@ -1157,6 +1219,8 @@ fn buy_mode_status_changed(
             || previous.payable_provider_pubkey != current.payable_provider_pubkey
             || previous.payment_blocker_codes != current.payment_blocker_codes
             || previous.payment_blocker_summary != current.payment_blocker_summary
+            || previous.target_selection != current.target_selection
+            || previous.peer_roster != current.peer_roster
             || previous.recent_requests != current.recent_requests
     })
 }
@@ -1627,6 +1691,7 @@ fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionR
 
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
     let now = Instant::now();
+    let now_epoch_seconds = current_epoch_seconds();
     let buy_mode_requests = crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
         &state.network_requests,
         &state.spark_wallet,
@@ -1652,6 +1717,15 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         .provider_blockers()
         .into_iter()
         .map(|blocker| blocker.code().to_string())
+        .collect::<Vec<_>>();
+    let buy_mode_target_selection = state
+        .autopilot_chat
+        .select_autopilot_buy_mode_target(now_epoch_seconds);
+    let buy_mode_peer_roster = state
+        .autopilot_chat
+        .autopilot_peer_roster(now_epoch_seconds)
+        .into_iter()
+        .map(desktop_control_autopilot_peer_status)
         .collect::<Vec<_>>();
     let nip28 = desktop_control_nip28_status(&state.autopilot_chat);
     let recent_request_rows = buy_mode_requests
@@ -1756,6 +1830,16 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             payment_blocker_summary: buy_mode_request
                 .as_ref()
                 .and_then(|request| request.payment_blocker_summary.clone()),
+            target_selection: DesktopControlBuyModeTargetSelectionStatus {
+                selected_peer_pubkey: buy_mode_target_selection.selected_peer_pubkey,
+                selected_relay_url: buy_mode_target_selection.selected_relay_url,
+                selected_ready_model: buy_mode_target_selection.selected_ready_model,
+                observed_peer_count: buy_mode_target_selection.observed_peer_count,
+                eligible_peer_count: buy_mode_target_selection.eligible_peer_count,
+                blocked_reason_code: buy_mode_target_selection.blocked_reason_code,
+                blocked_reason: buy_mode_target_selection.blocked_reason,
+            },
+            peer_roster: buy_mode_peer_roster,
             recent_requests: recent_request_rows,
         },
         active_job: compute_flow.active_job.map(|active_job| {
@@ -2000,6 +2084,22 @@ fn desktop_control_buy_mode_request_status(
     }
 }
 
+fn desktop_control_autopilot_peer_status(
+    row: crate::autopilot_peer_roster::AutopilotPeerRosterRow,
+) -> DesktopControlAutopilotPeerStatus {
+    DesktopControlAutopilotPeerStatus {
+        pubkey: row.pubkey,
+        relay_url: row.source_relay_url,
+        ready_model: row.ready_model,
+        online_for_compute: row.online_for_compute,
+        eligible_for_buy_mode: row.eligible_for_buy_mode,
+        eligibility_reason: row.eligibility_reason,
+        last_chat_message_at: row.last_chat_message_at,
+        last_presence_at: row.last_presence_at,
+        presence_expires_at: row.presence_expires_at,
+    }
+}
+
 fn active_job_stage_label(
     active_job: &crate::nip90_compute_flow::ActiveJobFlowSnapshot,
 ) -> &'static str {
@@ -2079,6 +2179,13 @@ fn current_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64)
+        .unwrap_or(0)
+}
+
+fn current_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
         .unwrap_or(0)
 }
 
@@ -2359,7 +2466,8 @@ fn run_desktop_control_runtime_loop(
 mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
-        DesktopControlAppleFmStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
+        DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
+        DesktopControlBuyModeTargetSelectionStatus, DesktopControlEventBatch,
         DesktopControlEventDraft, DesktopControlMissionControlStatus, DesktopControlProviderStatus,
         DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
         DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlWalletStatus,
@@ -2450,6 +2558,8 @@ mod tests {
                 payable_provider_pubkey: None,
                 payment_blocker_codes: Vec::new(),
                 payment_blocker_summary: None,
+                target_selection: DesktopControlBuyModeTargetSelectionStatus::default(),
+                peer_roster: Vec::new(),
                 recent_requests: Vec::new(),
             },
             active_job: None,
@@ -2457,6 +2567,39 @@ mod tests {
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
             last_command: None,
         }
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_buy_mode_event_when_target_selection_changes() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        let selected_peer_pubkey = "11".repeat(32);
+        current.buy_mode.enabled = true;
+        current.buy_mode.target_selection = DesktopControlBuyModeTargetSelectionStatus {
+            selected_peer_pubkey: Some(selected_peer_pubkey.clone()),
+            selected_relay_url: Some("wss://relay.openagents.test".to_string()),
+            selected_ready_model: Some("apple-foundation-model".to_string()),
+            observed_peer_count: 2,
+            eligible_peer_count: 1,
+            blocked_reason_code: None,
+            blocked_reason: None,
+        };
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        let buy_mode = events
+            .iter()
+            .find(|event| event.event_type == "buyer.lifecycle.changed")
+            .expect("buy mode change event should be emitted");
+
+        assert_eq!(
+            buy_mode
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("target_selection"))
+                .and_then(|value| value.get("selected_peer_pubkey"))
+                .and_then(Value::as_str),
+            Some(selected_peer_pubkey.as_str())
+        );
     }
 
     fn repeated_hex(ch: char, len: usize) -> String {
