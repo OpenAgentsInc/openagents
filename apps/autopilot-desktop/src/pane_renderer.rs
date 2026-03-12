@@ -1595,13 +1595,26 @@ fn mission_control_active_jobs_panel_state(
     )
     .expect("active job snapshot should exist when job exists");
 
-    let mut lines = vec![
-        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
-        format!(
+    let flow_line = match flow_snapshot.phase {
+        crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
+            "FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
+            "FLOW // RESULT DELIVERED / PREPARING BUYER INVOICE".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => {
+            "FLOW // RESULT DELIVERED / BUYER NEVER PAID".to_string()
+        }
+        _ => format!(
             "FLOW // {} / {}",
             flow_snapshot.authority.as_str().to_ascii_uppercase(),
             flow_snapshot.phase.as_str().to_ascii_uppercase()
         ),
+    };
+
+    let mut lines = vec![
+        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
+        flow_line,
         format!(
             "NEXT // {}",
             flow_snapshot.next_expected_event.to_ascii_uppercase()
@@ -1637,6 +1650,25 @@ fn mission_control_active_jobs_panel_state(
             );
         }
         lines.push(settlement);
+    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
+        let mut settlement = "SETTLE // AWAITING BUYER PAYMENT".to_string();
+        if flow_snapshot.payment_pointer.is_some() {
+            settlement.push_str(" // POINTER READY");
+        }
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
+    } else if flow_snapshot.phase
+        == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+    {
+        let mut settlement = "SETTLE // PREPARING BUYER INVOICE".to_string();
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
     } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
         let mut settlement = "SETTLE // BUYER NEVER PAID".to_string();
         if flow_snapshot.pending_bolt11.is_some() {
@@ -1652,7 +1684,14 @@ fn mission_control_active_jobs_panel_state(
     }
 
     MissionControlActiveJobsPanelState {
-        headline: if flow_snapshot.phase
+        headline: if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+        {
+            "AWAITING PAYMENT".to_string()
+        } else if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+        {
+            "INVOICING".to_string()
+        } else if flow_snapshot.phase
             == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
         {
             "UNPAID".to_string()
@@ -1662,6 +1701,24 @@ fn mission_control_active_jobs_panel_state(
             "ACTIVE".to_string()
         },
         lines,
+    }
+}
+
+fn active_job_stage_display(
+    stage: JobLifecycleStage,
+    phase: crate::nip90_compute_flow::Nip90FlowPhase,
+) -> String {
+    match phase {
+        crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
+            "delivered (awaiting buyer payment)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
+            "delivered (preparing buyer invoice)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => {
+            "delivered-unpaid (buyer never paid)".to_string()
+        }
+        _ => stage.label().to_string(),
     }
 }
 
@@ -5303,6 +5360,7 @@ fn build_active_job_scroll_lines(
         .pending_result_publish_event_id
         .as_deref()
         .unwrap_or("n/a");
+    let stage_display = active_job_stage_display(job.stage, flow_snapshot.phase);
     let metadata_rows = [
         ("Job ID", job.job_id.as_str()),
         ("Requester", job.requester.as_str()),
@@ -5310,7 +5368,7 @@ fn build_active_job_scroll_lines(
         ("Demand source", job.demand_source.label()),
         ("Demand risk", job.demand_risk_class.label()),
         ("Risk policy", job.demand_risk_disposition.label()),
-        ("Stage", job.stage.label()),
+        ("Stage", stage_display.as_str()),
         ("Flow authority", flow_snapshot.authority.as_str()),
         ("Flow phase", flow_snapshot.phase.as_str()),
         ("Next event", flow_snapshot.next_expected_event.as_str()),
@@ -5402,6 +5460,24 @@ fn build_active_job_scroll_lines(
             &mut lines,
             "Settlement invoice: ",
             "none",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "compute completed and the result was delivered; preparing a Lightning invoice for buyer settlement",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "compute completed and the result was delivered; awaiting buyer Lightning payment",
             chunk_len,
             theme::text::PRIMARY,
         );
@@ -6847,6 +6923,38 @@ mod tests {
     }
 
     #[test]
+    fn delivered_active_job_says_awaiting_buyer_payment() {
+        let request = fixture_active_job_request("req-active-job-awaiting-payment");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1awaitingbuyer".to_string());
+        active_job.job.as_mut().expect("active job").stage = JobLifecycleStage::Delivered;
+
+        let lines = build_active_job_scroll_lines(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            120,
+        );
+        let texts = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(texts.iter().any(|text| {
+            text.contains("Stage: delivered (awaiting buyer payment)")
+        }));
+        assert!(texts.iter().any(|text| {
+            text.contains("Next event: buyer Lightning payment")
+        }));
+        assert!(texts.iter().any(|text| {
+            text.contains(
+                "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment",
+            )
+        }));
+    }
+
+    #[test]
     fn active_job_clipboard_text_includes_header_and_request_id() {
         let request = fixture_active_job_request("req-active-job-copy");
         let mut active_job = ActiveJobState::default();
@@ -7503,20 +7611,24 @@ mod tests {
             &SparkPaneState::default(),
         );
 
+        assert_eq!(panel.headline, "AWAITING PAYMENT");
         assert!(
             panel
                 .lines
                 .iter()
-                .any(|line| { line.contains("FLOW // WALLET / AWAITING-PAYMENT") })
+                .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") })
         );
         assert!(
             panel
                 .lines
                 .iter()
-                .any(|line| { line.contains("NEXT // WALLET SETTLEMENT") })
+                .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") })
         );
         assert!(panel.lines.iter().any(|line| {
-            line.contains("CONT // WAITING ON SETTLEMENT") && line.contains("WINDOW 195S")
+            line.contains("CONT // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
+        }));
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("SETTLE // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
         }));
     }
 
@@ -7551,7 +7663,7 @@ mod tests {
             panel
                 .lines
                 .iter()
-                .any(|line| { line.contains("FLOW // WALLET / DELIVERED-UNPAID") })
+                .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") })
         );
         assert!(
             panel

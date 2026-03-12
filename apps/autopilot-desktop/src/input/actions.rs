@@ -11714,7 +11714,7 @@ fn note_active_job_waiting_for_payment_evidence(
     request_id: &str,
 ) {
     let waiting_detail = format!(
-        "{} delivered job {} is awaiting wallet-authoritative payment evidence",
+        "{} delivered job {} and is awaiting buyer Lightning payment confirmation",
         demand_source.label(),
         request_id
     );
@@ -11728,7 +11728,7 @@ fn note_active_job_waiting_for_payment_evidence(
     let first_waiting_transition =
         active_job.last_action.as_deref() != Some(waiting_detail.as_str());
     if first_waiting_transition {
-        active_job.append_event("awaiting wallet-authoritative payment evidence");
+        active_job.append_event("result delivered; awaiting buyer Lightning payment");
         crate::nip90_compute_domain_events::emit_provider_delivered_awaiting_settlement(
             request_id,
             active_job.pending_bolt11.is_some(),
@@ -14483,13 +14483,13 @@ mod tests {
         assert_eq!(
             active_job.last_action.as_deref(),
             Some(
-                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+                "open-network delivered job req-open-network-001 and is awaiting buyer Lightning payment confirmation"
             )
         );
         assert_eq!(
             provider_runtime.last_result.as_deref(),
             Some(
-                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+                "open-network delivered job req-open-network-001 and is awaiting buyer Lightning payment confirmation"
             )
         );
         assert_eq!(provider_runtime.last_error_detail, None);

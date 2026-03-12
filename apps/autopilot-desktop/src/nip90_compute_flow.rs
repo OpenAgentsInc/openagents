@@ -563,7 +563,7 @@ impl ActiveJobFlowSnapshot {
                     .unwrap_or_else(|| "-".to_string()),
             )),
             Nip90FlowPhase::AwaitingPayment => Some(format!(
-                "waiting on settlement // pointer {} // window {}",
+                "awaiting buyer payment // pointer {} // window {}",
                 self.payment_pointer
                     .as_deref()
                     .map(|pointer| short_id(pointer).to_string())
@@ -588,12 +588,7 @@ impl ActiveJobFlowSnapshot {
                     .unwrap_or_else(|| "-".to_string()),
             )),
             Nip90FlowPhase::RequestingPayment => Some(format!(
-                "{} // window {}",
-                if self.pending_bolt11.is_some() {
-                    "waiting on wallet payment"
-                } else {
-                    "waiting on provider invoice"
-                },
+                "preparing buyer invoice // window {}",
                 self.continuity_window_seconds
                     .map(|window| format!("{window}s"))
                     .unwrap_or_else(|| "-".to_string()),
@@ -929,14 +924,14 @@ pub(crate) fn build_active_job_flow_snapshot(
                 (
                     Nip90FlowAuthority::Wallet,
                     Nip90FlowPhase::AwaitingPayment,
-                    "wallet settlement".to_string(),
+                    "buyer Lightning payment".to_string(),
                     Some(continuity_window),
                 )
             } else {
                 (
                     Nip90FlowAuthority::Provider,
                     Nip90FlowPhase::RequestingPayment,
-                    "Lightning invoice".to_string(),
+                    "publish buyer Lightning invoice".to_string(),
                     Some(continuity_window),
                 )
             }
@@ -2127,7 +2122,7 @@ mod tests {
         assert_eq!(snapshot.status, NetworkRequestStatus::PaymentRequired);
         assert_eq!(snapshot.authority, Nip90FlowAuthority::Wallet);
         assert_eq!(snapshot.phase, Nip90FlowPhase::AwaitingPayment);
-        assert_eq!(snapshot.next_expected_event, "wallet settlement");
+        assert_eq!(snapshot.next_expected_event, "buyer Lightning payment");
         assert_eq!(snapshot.wallet_status, "pending");
     }
 
@@ -2389,7 +2384,7 @@ mod tests {
 
         assert_eq!(snapshot.phase, Nip90FlowPhase::AwaitingPayment);
         assert_eq!(snapshot.authority, Nip90FlowAuthority::Wallet);
-        assert_eq!(snapshot.next_expected_event, "wallet settlement");
+        assert_eq!(snapshot.next_expected_event, "buyer Lightning payment");
         assert_eq!(snapshot.payment_pointer, None);
     }
 
