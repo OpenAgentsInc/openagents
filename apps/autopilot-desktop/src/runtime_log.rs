@@ -96,6 +96,48 @@ pub(crate) fn record_mission_control_line(
     }));
 }
 
+pub(crate) fn record_control_event(
+    event: &str,
+    summary: impl Into<String>,
+    payload: Value,
+) {
+    let event = event.trim();
+    if event.is_empty() {
+        return;
+    }
+    let summary = summary.into();
+    let summary = summary.trim();
+    if summary.is_empty() {
+        return;
+    }
+
+    let mut entry = json!({
+        "source": "desktop_control",
+        "event": event,
+        "summary": summary,
+        "payload": payload,
+    });
+    if let Value::Object(object) = &mut entry {
+        object.insert("domain_event".to_string(), Value::String(event.to_string()));
+        let mut domain = serde_json::Map::new();
+        domain.insert("event".to_string(), Value::String(event.to_string()));
+        domain.insert("summary".to_string(), Value::String(summary.to_string()));
+        match object.get("payload") {
+            Some(Value::Object(payload)) => {
+                for (key, value) in payload {
+                    domain.insert(key.clone(), value.clone());
+                }
+            }
+            Some(value) => {
+                domain.insert("payload".to_string(), value.clone());
+            }
+            None => {}
+        }
+        object.insert("domain".to_string(), Value::Object(domain));
+    }
+    session_log_writer().record_entry(entry);
+}
+
 #[cfg(test)]
 fn session_log_writer_for_tests(config: SessionLogConfig) -> SessionLogWriter {
     SessionLogWriter::spawn(config)
@@ -489,7 +531,7 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     use super::{
@@ -607,5 +649,69 @@ mod tests {
             Some(&Value::String("pay-1".to_string()))
         );
         assert_eq!(projection.get("fees_sats"), Some(&Value::from(2)));
+    }
+
+    #[test]
+    fn control_event_entries_persist_as_desktop_control_domain_rows() {
+        let temp = tempdir().expect("create temp log dir");
+        let writer = session_log_writer_for_tests(SessionLogConfig {
+            base_dir: temp.path().join("logs"),
+            max_session_files: DEFAULT_MAX_SESSION_FILES,
+            session_id: "20260311T230000Z-pid67890".to_string(),
+        });
+
+        let mut entry = json!({
+            "source": "desktop_control",
+            "event": "control.command.applied",
+            "summary": "provider-online applied",
+            "payload": {
+                "command_label": "provider-online",
+                "snapshot_revision": 7,
+                "state_signature": "sig-007",
+            },
+        });
+        if let Value::Object(object) = &mut entry {
+            object.insert(
+                "domain_event".to_string(),
+                Value::String("control.command.applied".to_string()),
+            );
+            object.insert(
+                "domain".to_string(),
+                json!({
+                    "event": "control.command.applied",
+                    "summary": "provider-online applied",
+                    "command_label": "provider-online",
+                    "snapshot_revision": 7,
+                    "state_signature": "sig-007",
+                }),
+            );
+        }
+        writer.record_entry(entry);
+        writer.flush();
+
+        let session_path = temp
+            .path()
+            .join("logs")
+            .join("sessions")
+            .join("20260311T230000Z-pid67890.jsonl");
+        let lines = std::fs::read_to_string(&session_path)
+            .expect("read session log")
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).expect("parse session log line"))
+            .collect::<Vec<_>>();
+
+        assert!(
+            lines.iter().any(|entry| {
+                entry.get("source") == Some(&Value::String("desktop_control".to_string()))
+                    && entry.get("event")
+                        == Some(&Value::String("control.command.applied".to_string()))
+                    && entry
+                        .get("domain")
+                        .and_then(Value::as_object)
+                        .and_then(|domain| domain.get("command_label"))
+                        == Some(&Value::String("provider-online".to_string()))
+            }),
+            "expected desktop control domain event in session log"
+        );
     }
 }
