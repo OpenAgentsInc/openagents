@@ -27,6 +27,10 @@ path = "src/bin/autopilot_codex_exec.rs"
 name = "autopilot-headless-compute"
 path = "src/bin/autopilot_headless_compute.rs"
 
+[[bin]]
+name = "autopilotctl"
+path = "src/bin/autopilotctl.rs"
+
 [lints]
 workspace = true
 
