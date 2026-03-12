@@ -108,6 +108,150 @@ fn default_config_opts_out_legacy_codex_event_stream() {
 }
 
 #[test]
+fn lazy_start_defers_codex_connect_until_first_command() {
+    let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+    let (client_read, client_write) = tokio::io::split(client_stream);
+    let (server_read, mut server_write) = tokio::io::split(server_stream);
+    let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap_or_else(|_| panic!("failed to build runtime"));
+    let _entered = runtime_guard.enter();
+    let (client, channels) =
+        AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+    drop(_entered);
+
+    let saw_initialize = Arc::new(AtomicBool::new(false));
+    let saw_initialize_clone = Arc::clone(&saw_initialize);
+    let server = std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(_) => return,
+        };
+        runtime.block_on(async move {
+            let mut reader = BufReader::new(server_read);
+            let mut request_line = String::new();
+            loop {
+                request_line.clear();
+                let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                if bytes == 0 {
+                    break;
+                }
+                let value: Value = match serde_json::from_str(request_line.trim()) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+                if value.get("id").is_none() {
+                    continue;
+                }
+                let method = value
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let response = match method {
+                    "initialize" => {
+                        saw_initialize_clone.store(true, Ordering::SeqCst);
+                        json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        })
+                    }
+                    "model/list" => json!({
+                        "id": value["id"].clone(),
+                        "result": {
+                            "data": [
+                                {
+                                    "id": "default",
+                                    "model": "o4-mini",
+                                    "displayName": "o4-mini",
+                                    "description": "o4-mini",
+                                    "supportedReasoningEfforts": [],
+                                    "defaultReasoningEffort": "medium",
+                                    "isDefault": true
+                                }
+                            ],
+                            "nextCursor": null
+                        }
+                    }),
+                    "thread/list" => json!({
+                        "id": value["id"].clone(),
+                        "result": {
+                            "data": [],
+                            "nextCursor": null
+                        }
+                    }),
+                    "thread/loaded/list" => json!({
+                        "id": value["id"].clone(),
+                        "result": {
+                            "data": [],
+                            "nextCursor": null
+                        }
+                    }),
+                    _ => json!({
+                        "id": value["id"].clone(),
+                        "result": {}
+                    }),
+                };
+                if let Ok(line) = serde_json::to_string(&response) {
+                    let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                    let _ = server_write.flush().await;
+                }
+            }
+            drop(server_write);
+        });
+    });
+
+    let mut config = CodexLaneConfig::default();
+    config.connect_on_startup = false;
+    config.bootstrap_thread = false;
+    let mut worker = CodexLaneWorker::spawn_with_runtime(
+        config,
+        Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+    );
+
+    let snapshot = wait_for_snapshot(&mut worker, Duration::from_secs(1), |snapshot| {
+        snapshot.lifecycle == CodexLaneLifecycle::Stopped
+    });
+    assert_eq!(snapshot.last_status.as_deref(), Some("Codex lane idle"));
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(
+        !saw_initialize.load(Ordering::SeqCst),
+        "codex initialize should not run before the first explicit command"
+    );
+
+    worker
+        .enqueue(
+            1,
+            CodexLaneCommand::ThreadList(ThreadListParams {
+                cursor: None,
+                limit: Some(5),
+                cwd: None,
+                sort_key: None,
+                model_providers: None,
+                source_kinds: None,
+                archived: None,
+                search_term: None,
+            }),
+        )
+        .expect("queue thread list");
+
+    let ready = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+        snapshot.lifecycle == CodexLaneLifecycle::Ready
+    });
+    assert_eq!(ready.lifecycle, CodexLaneLifecycle::Ready);
+    assert!(
+        saw_initialize.load(Ordering::SeqCst),
+        "codex initialize should run once a command is enqueued"
+    );
+
+    shutdown_worker(&mut worker);
+    join_server(server);
+}
+
+#[test]
 fn startup_bootstrap_transitions_to_ready_snapshot() {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
     let (client_read, client_write) = tokio::io::split(client_stream);

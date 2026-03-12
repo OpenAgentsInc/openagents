@@ -192,7 +192,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
-        let codex_lane_config = CodexLaneConfig::default();
+        let mut codex_lane_config = CodexLaneConfig::default();
+        codex_lane_config.connect_on_startup = false;
+        codex_lane_config.bootstrap_thread = false;
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
@@ -298,7 +300,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             desktop_control: crate::app_state::DesktopControlState::default(),
             codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
-            codex_lane: CodexLaneSnapshot::default(),
+            codex_lane: CodexLaneSnapshot::idle(),
             codex_lane_config,
             codex_lane_worker,
             codex_command_responses: Vec::new(),

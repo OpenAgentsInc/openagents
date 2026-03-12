@@ -2493,7 +2493,7 @@ impl Default for AutopilotChatState {
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
             direct_message_projection: DirectMessageProjectionState::default(),
-            startup_new_thread_bootstrap_pending: true,
+            startup_new_thread_bootstrap_pending: false,
             startup_new_thread_bootstrap_sent: false,
             messages: Vec::new(),
             next_message_id: 1,
@@ -9125,8 +9125,16 @@ impl RenderState {
         let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
         let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
         previous.shutdown_async();
-        self.codex_lane = CodexLaneSnapshot::default();
-        self.autopilot_chat.set_connection_status("starting");
+        self.codex_lane = if self.codex_lane_config.connect_on_startup {
+            CodexLaneSnapshot::default()
+        } else {
+            CodexLaneSnapshot::idle()
+        };
+        self.autopilot_chat.set_connection_status(if self.codex_lane_config.connect_on_startup {
+            "starting"
+        } else {
+            "idle"
+        });
         tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
     }
 

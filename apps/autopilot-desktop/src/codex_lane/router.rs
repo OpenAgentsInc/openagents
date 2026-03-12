@@ -28,14 +28,25 @@ pub(super) fn run_codex_lane_loop(
     };
 
     let mut state = CodexLaneState::new();
-    state.publish_snapshot(&update_tx);
-    state.handle_connect(&runtime, &config, &update_tx, runtime_impl.as_mut());
+    if config.connect_on_startup {
+        state.publish_snapshot(&update_tx);
+        state.handle_connect(&runtime, &config, &update_tx, runtime_impl.as_mut());
+    } else {
+        state.set_idle(&update_tx);
+    }
 
     loop {
         state.drain_server_updates(&runtime, &update_tx);
 
         match command_rx.recv_timeout(CODEX_LANE_POLL) {
             Ok(CodexLaneControl::Command(envelope)) => {
+                if state.client.is_none() {
+                    state.snapshot.lifecycle = CodexLaneLifecycle::Starting;
+                    state.snapshot.last_error = None;
+                    state.snapshot.last_status = Some("Codex lane starting".to_string());
+                    state.publish_snapshot(&update_tx);
+                    state.handle_connect(&runtime, &config, &update_tx, runtime_impl.as_mut());
+                }
                 state.handle_command(&runtime, *envelope, &update_tx);
             }
             Ok(CodexLaneControl::Shutdown) => {
