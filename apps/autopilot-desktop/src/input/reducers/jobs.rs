@@ -139,8 +139,7 @@ pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool
         if let Some(reason) = speculative_open_network_block_reason_for(
             state.job_inbox.requests.as_slice(),
             state.nostr_identity.as_ref(),
-        )
-        {
+        ) {
             if state.job_inbox.last_action.as_deref() != Some(reason.as_str()) {
                 state.job_inbox.last_action = Some(reason.clone());
             }
@@ -2475,7 +2474,8 @@ fn accept_request_by_id(
 
     state.job_inbox.last_error = None;
     state.job_inbox.load_state = PaneLoadState::Ready;
-    let demand_risk = provider_demand_risk_assessment_for(&selected_request, state.nostr_identity.as_ref());
+    let demand_risk =
+        provider_demand_risk_assessment_for(&selected_request, state.nostr_identity.as_ref());
     state.provider_runtime.last_result = Some(format!(
         "{} request {} [{} / {}]",
         if source == "job.inbox.auto_accept" {
@@ -2922,23 +2922,19 @@ fn speculative_open_network_block_reason_for(
     requests: &[JobInboxRequest],
     identity: Option<&NostrIdentity>,
 ) -> Option<String> {
-    requests
-        .iter()
-        .find_map(|request| {
-            if !matches!(request.decision, JobInboxDecision::Pending)
-                || !matches!(request.validation, JobInboxValidation::Valid)
-            {
-                return None;
-            }
-            let assessment = provider_demand_risk_assessment_for(request, identity);
-            (assessment.disposition == JobDemandRiskDisposition::ManualReviewOnly).then_some(
-                format!(
-                    "Auto-accept paused: {} demand is {}",
-                    assessment.class.label(),
-                    assessment.disposition.label()
-                ),
-            )
-        })
+    requests.iter().find_map(|request| {
+        if !matches!(request.decision, JobInboxDecision::Pending)
+            || !matches!(request.validation, JobInboxValidation::Valid)
+        {
+            return None;
+        }
+        let assessment = provider_demand_risk_assessment_for(request, identity);
+        (assessment.disposition == JobDemandRiskDisposition::ManualReviewOnly).then_some(format!(
+            "Auto-accept paused: {} demand is {}",
+            assessment.class.label(),
+            assessment.disposition.label()
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -2951,16 +2947,15 @@ mod tests {
         build_nip90_feedback_event, clear_active_job_phase_deadline,
         extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
         next_invalid_request_rejection_for, ollama_request_accept_block_reason,
-        provider_demand_risk_assessment_for,
-        provider_execution_backend_for_kind, result_publish_retry_due,
-        set_active_job_phase_deadline_at, speculative_open_network_block_reason_for,
-        turn_completed_failed,
+        provider_demand_risk_assessment_for, provider_execution_backend_for_kind,
+        result_publish_retry_due, set_active_job_phase_deadline_at,
+        speculative_open_network_block_reason_for, turn_completed_failed,
         visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandRiskClass, JobDemandRiskDisposition,
-        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
-        JobLifecycleStage, PaneLoadState,
+        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation, JobLifecycleStage,
+        PaneLoadState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
