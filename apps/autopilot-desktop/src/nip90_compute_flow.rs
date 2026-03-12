@@ -13,7 +13,7 @@ use crate::spark_wallet::{
     wallet_payment_total_debit_sats,
 };
 use crate::state::operations::{
-    NetworkRequestStatus, NetworkRequestsState, SubmittedNetworkRequest,
+    BuyerResolutionReason, NetworkRequestStatus, NetworkRequestsState, SubmittedNetworkRequest,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,10 +106,27 @@ pub(crate) struct BuyerRequestFlowSnapshot {
 }
 
 impl BuyerRequestFlowSnapshot {
+    pub(crate) fn selected_provider_pubkey(&self) -> Option<&str> {
+        self.selected_provider_pubkey.as_deref()
+    }
+
     pub(crate) fn provider_pubkey(&self) -> Option<&str> {
         self.payable_provider_pubkey
             .as_deref()
             .or(self.selected_provider_pubkey.as_deref())
+    }
+
+    pub(crate) fn selected_provider_label(&self) -> String {
+        self.selected_provider_pubkey()
+            .map(short_id)
+            .unwrap_or_else(|| "none".to_string())
+    }
+
+    pub(crate) fn payable_provider_label(&self) -> String {
+        self.payable_provider_pubkey
+            .as_deref()
+            .map(short_id)
+            .unwrap_or_else(|| "none".to_string())
     }
 
     pub(crate) fn provider_label(&self) -> String {
@@ -122,6 +139,26 @@ impl BuyerRequestFlowSnapshot {
         self.provider_pubkey()
             .map(|provider| format!("provider {}", short_id(provider)))
             .unwrap_or_else(|| "awaiting provider".to_string())
+    }
+
+    pub(crate) fn winner_selection_summary(&self) -> String {
+        match (
+            self.selected_provider_pubkey(),
+            self.payable_provider_pubkey.as_deref(),
+        ) {
+            (Some(selected), Some(payable))
+                if normalize_pubkey(selected) != normalize_pubkey(payable) =>
+            {
+                format!(
+                    "selected {} // payable {}",
+                    short_id(selected),
+                    short_id(payable)
+                )
+            }
+            (_, Some(payable)) => format!("payable {}", short_id(payable)),
+            (Some(selected), None) => format!("selected {}", short_id(selected)),
+            (None, None) => "awaiting provider".to_string(),
+        }
     }
 
     pub(crate) fn work_label(&self) -> String {
@@ -277,6 +314,27 @@ impl BuyerRequestFlowSnapshot {
         if let Some(pointer) = self.payment_pointer.as_deref() {
             line.push_str(" pointer=");
             line.push_str(mission_control_log_short_id(pointer).as_str());
+        }
+        if let Some(selected) = self.selected_provider_pubkey() {
+            line.push_str(" selected=");
+            line.push_str(mission_control_log_short_id(selected).as_str());
+        }
+        if let Some(payable) = self.payable_provider_pubkey.as_deref() {
+            if self
+                .selected_provider_pubkey()
+                .is_none_or(|selected| normalize_pubkey(selected) != normalize_pubkey(payable))
+            {
+                line.push_str(" payable=");
+                line.push_str(mission_control_log_short_id(payable).as_str());
+            }
+        }
+        if self.loser_provider_count > 0 {
+            line.push_str(" losers=");
+            line.push_str(self.loser_provider_count.to_string().as_str());
+        }
+        if let Some(summary) = self.loser_reason_summary.as_deref() {
+            line.push_str(" loser_summary=");
+            line.push_str(summary);
         }
         if let Some(fees) = self.fees_sats {
             line.push_str(" fee_sats=");
@@ -864,6 +922,10 @@ struct BuyModePaymentLedgerEntry {
     authority: Nip90FlowAuthority,
     phase: Nip90FlowPhase,
     next_expected_event: String,
+    selected_provider_pubkey: String,
+    payable_provider_pubkey: String,
+    loser_provider_count: usize,
+    loser_reason_summary: Option<String>,
     payment_pointer: String,
     request_event_id: String,
     result_event_id: String,
@@ -915,6 +977,59 @@ fn buy_mode_payment_ledger_entries(
     entries
 }
 
+fn observation_has_non_error_result(
+    observation: &crate::state::operations::NetworkRequestProviderObservation,
+) -> bool {
+    observation.last_result_event_id.is_some()
+        && !matches!(
+            observation
+                .last_result_status
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("error")
+        )
+}
+
+fn observation_has_valid_invoice(
+    observation: &crate::state::operations::NetworkRequestProviderObservation,
+) -> bool {
+    observation
+        .last_feedback_bolt11
+        .as_deref()
+        .is_some_and(|bolt11| !bolt11.trim().is_empty())
+}
+
+fn observation_has_error_only_signal(
+    observation: &crate::state::operations::NetworkRequestProviderObservation,
+) -> bool {
+    let feedback_error = matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("error")
+    );
+    let result_error = matches!(
+        observation
+            .last_result_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("error")
+    );
+    (feedback_error || result_error)
+        && !observation_has_non_error_result(observation)
+        && !observation_has_valid_invoice(observation)
+}
+
 fn buy_mode_request_ledger_entry(
     index: usize,
     request: &BuyerRequestFlowSnapshot,
@@ -943,6 +1058,16 @@ fn buy_mode_request_ledger_entry(
         authority: request.authority,
         phase: request.phase,
         next_expected_event: request.next_expected_event.clone(),
+        selected_provider_pubkey: request
+            .selected_provider_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        payable_provider_pubkey: request
+            .payable_provider_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        loser_provider_count: request.loser_provider_count,
+        loser_reason_summary: request.loser_reason_summary.clone(),
         payment_pointer: request
             .payment_pointer
             .clone()
@@ -1035,6 +1160,10 @@ fn buy_mode_wallet_backfill_entry(
         } else {
             "wallet settlement".to_string()
         },
+        selected_provider_pubkey: "-".to_string(),
+        payable_provider_pubkey: "-".to_string(),
+        loser_provider_count: 0,
+        loser_reason_summary: None,
         payment_pointer: payment.id.clone(),
         request_event_id: "-".to_string(),
         result_event_id: "-".to_string(),
@@ -1095,6 +1224,18 @@ fn push_buy_mode_payment_entry_rows(
             entry.source,
         ),
     ));
+    if entry.source == "request" {
+        rows.push((
+            entry.stream.clone(),
+            format!(
+                "selected_provider={}  payable_provider={}  losers={}  loser_summary={}",
+                entry.selected_provider_pubkey,
+                entry.payable_provider_pubkey,
+                entry.loser_provider_count,
+                entry.loser_reason_summary.as_deref().unwrap_or("-"),
+            ),
+        ));
+    }
     if entry.destination_pubkey != "-"
         || entry.htlc_status != "-"
         || entry.htlc_expiry_epoch_seconds.is_some()
@@ -1138,32 +1279,44 @@ fn loser_provider_summary(
     payable_provider_pubkey: Option<&str>,
 ) -> (usize, Option<String>) {
     let winner = payable_provider_pubkey.map(normalize_pubkey);
-    let mut losers = 0usize;
+    let mut loser_pubkeys = std::collections::BTreeSet::<String>::new();
     let mut no_invoice = 0usize;
     let mut error_only = 0usize;
+    let mut late_result = 0usize;
+    let mut non_winning_noise = 0usize;
     let mut other = 0usize;
 
     for observation in &request.provider_observations {
-        if winner.as_deref()
-            == Some(normalize_pubkey(observation.provider_pubkey.as_str()).as_str())
-        {
+        let provider_pubkey = normalize_pubkey(observation.provider_pubkey.as_str());
+        if winner.as_deref() == Some(provider_pubkey.as_str()) {
             continue;
         }
-        losers = losers.saturating_add(1);
-        let feedback_error = observation
-            .last_feedback_status
-            .as_deref()
-            .is_some_and(|status| status.eq_ignore_ascii_case("error"));
-        if observation.last_result_event_id.is_some() && observation.last_feedback_bolt11.is_none()
+        loser_pubkeys.insert(provider_pubkey);
+        if observation_has_non_error_result(observation)
+            && !observation_has_valid_invoice(observation)
         {
             no_invoice = no_invoice.saturating_add(1);
-        } else if feedback_error && observation.last_result_event_id.is_none() {
+        } else if observation_has_error_only_signal(observation) {
             error_only = error_only.saturating_add(1);
+        }
+    }
+
+    for outcome in &request.duplicate_outcomes {
+        let provider_pubkey = normalize_pubkey(outcome.provider_pubkey.as_str());
+        if winner.as_deref() == Some(provider_pubkey.as_str()) {
+            continue;
+        }
+        loser_pubkeys.insert(provider_pubkey);
+        if outcome.reason_code == BuyerResolutionReason::LateResultUnpaid.code() {
+            late_result = late_result.saturating_add(1);
+        } else if outcome.reason_code == BuyerResolutionReason::LostRace.code() {
+            non_winning_noise = non_winning_noise.saturating_add(1);
         } else {
             other = other.saturating_add(1);
         }
     }
 
+    let losers = loser_pubkeys.len();
     if losers == 0 {
         return (0, None);
     }
@@ -1174,6 +1327,12 @@ fn loser_provider_summary(
     }
     if error_only > 0 {
         reasons.push("error-only");
+    }
+    if late_result > 0 {
+        reasons.push("late result");
+    }
+    if non_winning_noise > 0 {
+        reasons.push("non-winning provider noise ignored");
     }
     if other > 0 {
         reasons.push("other");
@@ -1485,6 +1644,98 @@ mod tests {
         );
         assert!(lines[0].contains("phase=submitted"));
         assert!(lines[0].contains("auth=relay"));
+    }
+
+    #[test]
+    fn buyer_snapshot_surfaces_selected_payable_and_loser_reasons() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-snapshot-winner-001".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 75,
+                authority_command_seq: 10,
+            })
+            .expect("queue request");
+        let payable_provider = "31".repeat(32);
+        let losing_provider = "41".repeat(32);
+
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-snapshot-winner-001",
+            3,
+            1,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            payable_provider.as_str(),
+            "feedback-snapshot-winner-001",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1snapshotwinner001"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            payable_provider.as_str(),
+            "result-snapshot-winner-001",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            losing_provider.as_str(),
+            "result-snapshot-loser-001",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            losing_provider.as_str(),
+            "feedback-snapshot-loser-001",
+            Some("processing"),
+            Some("still working"),
+            None,
+            None,
+        );
+
+        let request = requests
+            .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+            .expect("latest request");
+        let snapshot = build_buyer_request_flow_snapshot(request, &SparkPaneState::default());
+
+        assert_eq!(
+            snapshot.selected_provider_pubkey.as_deref(),
+            Some(losing_provider.as_str())
+        );
+        assert_eq!(
+            snapshot.payable_provider_pubkey.as_deref(),
+            Some(payable_provider.as_str())
+        );
+        assert_eq!(snapshot.loser_provider_count, 1);
+        assert!(
+            snapshot
+                .loser_reason_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("no invoice"))
+        );
+        assert!(
+            snapshot
+                .loser_reason_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("late result"))
+        );
+        assert!(
+            snapshot
+                .loser_reason_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("non-winning provider noise ignored"))
+        );
     }
 
     #[test]

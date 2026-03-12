@@ -12503,6 +12503,69 @@ mod tests {
     }
 
     #[test]
+    fn buy_mode_payments_pane_surfaces_selected_payable_and_loser_summary() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-buy-ledger-3388", 31);
+        let payable_provider = "31".repeat(32);
+        let losing_provider = "41".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-ledger-3388",
+            3,
+            1,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            payable_provider.as_str(),
+            "feedback-buy-ledger-3388",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1buyledger3388"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            payable_provider.as_str(),
+            "result-buy-ledger-3388",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            losing_provider.as_str(),
+            "result-buy-ledger-loser-3388",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            losing_provider.as_str(),
+            "feedback-buy-ledger-loser-3388",
+            Some("processing"),
+            Some("still working"),
+            None,
+            None,
+        );
+
+        let mut pane = super::BuyModePaymentsPaneState::default();
+        pane.sync_rows(&requests, &SparkPaneState::default());
+        let lines = pane.ledger.recent_lines(12);
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("selected_provider=")
+                && line.text.contains(losing_provider.as_str())
+                && line.text.contains("payable_provider=")
+                && line.text.contains(payable_provider.as_str())
+                && line.text.contains("losers=1")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("loser_summary=")
+                && line.text.contains("no invoice")
+                && line.text.contains("late result")
+                && line.text.contains("non-winning provider noise ignored")
+        }));
+    }
+
+    #[test]
     fn buy_mode_payments_pane_surfaces_wallet_failure_detail() {
         let mut requests = NetworkRequestsState::default();
         let request_id =
