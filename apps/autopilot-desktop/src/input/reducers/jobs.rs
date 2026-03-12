@@ -1212,11 +1212,11 @@ fn apply_payment_required_feedback_publish_outcome(
         outcome.event_id
     ));
     active_job.last_action = Some(format!(
-        "Awaiting Lightning settlement after publishing {}",
+        "Awaiting buyer Lightning payment after publishing {}",
         outcome.event_id
     ));
     provider_runtime.last_result = Some(format!(
-        "provider requested Lightning settlement for request {}",
+        "provider requested buyer Lightning payment for request {}",
         outcome.request_id
     ));
     nip90_compute_domain_events::emit_provider_payment_requested(
@@ -3574,7 +3574,7 @@ mod tests {
         assert_eq!(active_job.load_state, PaneLoadState::Ready);
         assert_eq!(
             active_job.last_action.as_deref(),
-            Some("Awaiting Lightning settlement after publishing feedback-event-002")
+            Some("Awaiting buyer Lightning payment after publishing feedback-event-002")
         );
         assert!(
             active_job
