@@ -1322,6 +1322,31 @@ impl NetworkRequestsState {
         resolution_action
     }
 
+    pub fn should_process_buyer_response_event(
+        &self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+    ) -> bool {
+        let Some(request) = self
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+        else {
+            return false;
+        };
+        if request.status.is_terminal() {
+            return false;
+        }
+        if !request_targets_provider(request, provider_pubkey) {
+            return false;
+        }
+        !request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
+    }
+
     pub fn apply_nip90_buyer_result_event(
         &mut self,
         request_id: &str,

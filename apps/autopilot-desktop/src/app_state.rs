@@ -2382,7 +2382,28 @@ pub struct AutopilotChatState {
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
     pub buy_mode_last_targeted_peer_pubkey: Option<String>,
+    autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
+    buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+}
+
+#[derive(Clone)]
+struct AutopilotPeerRosterCacheEntry {
+    projection_revision: u64,
+    now_epoch_seconds: u64,
+    local_pubkey: Option<String>,
+    config: DefaultNip28ChannelConfig,
+    rows: Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow>,
+}
+
+#[derive(Clone)]
+struct AutopilotBuyModeTargetSelectionCacheEntry {
+    projection_revision: u64,
+    now_epoch_seconds: u64,
+    local_pubkey: Option<String>,
+    config: DefaultNip28ChannelConfig,
+    last_targeted_peer_pubkey: Option<String>,
+    selection: crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection,
 }
 
 impl Default for AutopilotChatState {
@@ -2482,6 +2503,8 @@ impl Default for AutopilotChatState {
             copy_notice: None,
             copy_notice_until: None,
             buy_mode_last_targeted_peer_pubkey: None,
+            autopilot_peer_roster_cache: RefCell::new(None),
+            buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
         }
     }
@@ -4061,10 +4084,32 @@ impl AutopilotChatState {
         &self,
         now_epoch_seconds: u64,
     ) -> Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow> {
-        self.autopilot_peer_roster_with_config(
-            &DefaultNip28ChannelConfig::from_env_or_default(),
+        let config = DefaultNip28ChannelConfig::from_env_or_default();
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let local_pubkey = self.managed_chat_local_pubkey().map(str::to_string);
+        if let Some(cached) = self
+            .autopilot_peer_roster_cache
+            .borrow()
+            .as_ref()
+            .filter(|cached| {
+                cached.projection_revision == projection_revision
+                    && cached.now_epoch_seconds == now_epoch_seconds
+                    && cached.local_pubkey == local_pubkey
+                    && cached.config == config
+            })
+        {
+            return cached.rows.clone();
+        }
+
+        let rows = self.autopilot_peer_roster_with_config(&config, now_epoch_seconds);
+        *self.autopilot_peer_roster_cache.borrow_mut() = Some(AutopilotPeerRosterCacheEntry {
+            projection_revision,
             now_epoch_seconds,
-        )
+            local_pubkey,
+            config,
+            rows: rows.clone(),
+        });
+        rows
     }
 
     pub(crate) fn autopilot_peer_roster_with_config(
@@ -4085,10 +4130,37 @@ impl AutopilotChatState {
         &self,
         now_epoch_seconds: u64,
     ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
-        self.select_autopilot_buy_mode_target_with_config(
-            &DefaultNip28ChannelConfig::from_env_or_default(),
-            now_epoch_seconds,
-        )
+        let config = DefaultNip28ChannelConfig::from_env_or_default();
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let local_pubkey = self.managed_chat_local_pubkey().map(str::to_string);
+        let last_targeted_peer_pubkey = self.buy_mode_last_targeted_peer_pubkey.clone();
+        if let Some(cached) = self
+            .buy_mode_target_selection_cache
+            .borrow()
+            .as_ref()
+            .filter(|cached| {
+                cached.projection_revision == projection_revision
+                    && cached.now_epoch_seconds == now_epoch_seconds
+                    && cached.local_pubkey == local_pubkey
+                    && cached.config == config
+                    && cached.last_targeted_peer_pubkey == last_targeted_peer_pubkey
+            })
+        {
+            return cached.selection.clone();
+        }
+
+        let selection =
+            self.select_autopilot_buy_mode_target_with_config(&config, now_epoch_seconds);
+        *self.buy_mode_target_selection_cache.borrow_mut() =
+            Some(AutopilotBuyModeTargetSelectionCacheEntry {
+                projection_revision,
+                now_epoch_seconds,
+                local_pubkey,
+                config,
+                last_targeted_peer_pubkey,
+                selection: selection.clone(),
+            });
+        selection
     }
 
     pub(crate) fn select_autopilot_buy_mode_target_with_config(
@@ -12678,6 +12750,11 @@ mod tests {
         assert!(request.provider_observations.is_empty());
         assert_eq!(request.status, NetworkRequestStatus::Submitted);
         assert!(request.last_feedback_event_id.is_none());
+        assert!(!requests.should_process_buyer_response_event(
+            request_id.as_str(),
+            untargeted_provider.as_str(),
+            "feedback-untargeted"
+        ));
     }
 
     #[test]

@@ -642,6 +642,11 @@ pub(super) fn apply_buyer_response_event(
             .unwrap_or_else(|| "none".to_string()),
         event.bolt11.as_ref().is_some_and(|bolt11| !bolt11.trim().is_empty())
     );
+    let should_process_auto_payment = state.network_requests.should_process_buyer_response_event(
+        event.request_id.as_str(),
+        event.provider_pubkey.as_str(),
+        event.event_id.as_str(),
+    );
     let resolution_action = match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
             state.network_requests.apply_nip90_buyer_feedback_event(
@@ -663,7 +668,7 @@ pub(super) fn apply_buyer_response_event(
             )
         }
     };
-    if resolution_action.is_none() {
+    if resolution_action.is_none() && should_process_auto_payment {
         queue_auto_payment_for_buyer_event(state, &event, now_epoch_seconds);
     }
 

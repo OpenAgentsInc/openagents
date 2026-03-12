@@ -151,6 +151,7 @@ pub struct ManagedChatProjectionState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub stream_id: String,
+    pub projection_revision: u64,
     pub relay_events: Vec<Event>,
     pub outbound_messages: Vec<ManagedChatOutboundMessage>,
     pub local_state: ManagedChatLocalState,
@@ -185,6 +186,7 @@ impl ManagedChatProjectionState {
                         outbound_messages.len()
                     )),
                     stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
+                    projection_revision: 1,
                     relay_events,
                     outbound_messages,
                     local_state,
@@ -198,6 +200,7 @@ impl ManagedChatProjectionState {
                 last_error: Some(error),
                 last_action: Some("Managed chat projection stream load failed".to_string()),
                 stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
+                projection_revision: 1,
                 relay_events: Vec::new(),
                 outbound_messages: Vec::new(),
                 local_state: ManagedChatLocalState::default(),
@@ -222,6 +225,10 @@ impl ManagedChatProjectionState {
 
     pub fn local_pubkey(&self) -> Option<&str> {
         self.local_pubkey.as_deref()
+    }
+
+    pub fn projection_revision(&self) -> u64 {
+        self.projection_revision
     }
 
     pub fn is_pubkey_muted(&self, pubkey: &str) -> bool {
@@ -540,6 +547,7 @@ impl ManagedChatProjectionState {
         );
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
+        self.projection_revision = self.projection_revision.saturating_add(1);
         self.last_action = Some(format!(
             "Managed chat projection reloaded ({} relay events / {} outbound)",
             self.relay_events.len(),
@@ -560,6 +568,7 @@ impl ManagedChatProjectionState {
             &self.local_state,
             self.local_pubkey.as_deref(),
         );
+        self.projection_revision = self.projection_revision.saturating_add(1);
         let action = format!(
             "{} ({} relay events / {} outbound / {} channels)",
             action.into(),
@@ -590,6 +599,7 @@ impl ManagedChatProjectionState {
             &self.outbound_messages,
             &self.local_state,
         )?;
+        self.projection_revision = self.projection_revision.saturating_add(1);
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(action);

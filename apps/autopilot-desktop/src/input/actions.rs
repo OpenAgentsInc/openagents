@@ -9281,7 +9281,6 @@ pub(super) fn run_mission_control_action(
                     crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
                     crate::app_state::mission_control_buy_mode_interval_label()
                 ));
-                let _ = run_mission_control_buy_mode_tick(state, now);
             }
             true
         }
