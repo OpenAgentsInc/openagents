@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
-const LANE_POLL: Duration = Duration::from_millis(120);
-const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(4);
+const LANE_POLL: Duration = Duration::from_millis(15);
+const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(1);
 const MAX_MESSAGES_PER_RELAY_POLL: usize = 64;
 const SUBSCRIPTION_ID: &str = "autopilot-nip28-chat";
 

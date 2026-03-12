@@ -40,7 +40,7 @@ use crate::state::job_inbox::JobInboxNetworkRequest;
 pub const HEADLESS_BUY_MODE_REQUEST_TYPE: &str = "mission_control.buy_mode.5050";
 pub const HEADLESS_BUY_MODE_REQUEST_KIND: u16 = KIND_JOB_TEXT_GENERATION;
 pub const HEADLESS_BUY_MODE_BUDGET_SATS: u64 = 2;
-pub const HEADLESS_BUY_MODE_INTERVAL_SECONDS: u64 = 12;
+pub const HEADLESS_BUY_MODE_INTERVAL_SECONDS: u64 = 1;
 pub const HEADLESS_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
 pub const HEADLESS_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
 

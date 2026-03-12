@@ -9277,9 +9277,9 @@ pub(super) fn run_mission_control_action(
                 state.provider_runtime.last_error_detail = Some(reason);
             } else if state.mission_control.toggle_buy_mode_loop(now) {
                 state.mission_control.record_action(format!(
-                    "Buy Mode armed // 5050 // {} sats // every {}s",
+                    "Buy Mode armed // 5050 // {} sats // every {}",
                     crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                    crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+                    crate::app_state::mission_control_buy_mode_interval_label()
                 ));
                 let _ = run_mission_control_buy_mode_tick(state, now);
             }
@@ -10148,6 +10148,9 @@ pub(super) fn run_mission_control_buy_mode_tick(
 
     match submit_mission_control_buy_mode_request(state, vec![target_provider_pubkey.clone()]) {
         Ok(request_id) => {
+            state
+                .autopilot_chat
+                .note_buy_mode_target_dispatch(target_provider_pubkey.as_str());
             state.mission_control.schedule_next_buy_mode_dispatch(now);
             tracing::info!(
                 target: "autopilot_desktop::buy_mode",
@@ -10456,6 +10459,7 @@ pub(crate) fn build_mission_control_buy_mode_request_event(
                 "timeout_seconds",
                 crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS.to_string(),
             )
+            .add_param("oa_dispatch_nonce", mission_control_buy_mode_dispatch_nonce())
             .with_bid(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS.saturating_mul(1000));
     for relay in normalized_relays {
         request = request.add_relay(relay);
@@ -10469,6 +10473,13 @@ pub(crate) fn build_mission_control_buy_mode_request_event(
 
     let template = nostr::nip90::create_job_request_event(&request);
     sign_nip90_template(identity, &template)
+}
+
+fn mission_control_buy_mode_dispatch_nonce() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos().to_string())
+        .unwrap_or_else(|_| "0".to_string())
 }
 
 fn nip90_request_kind_for_request_type(request_type: &str) -> u16 {
