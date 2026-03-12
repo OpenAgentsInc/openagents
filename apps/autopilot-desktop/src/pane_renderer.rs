@@ -230,6 +230,7 @@ impl PaneRenderer {
                         content_bounds,
                         desktop_shell_mode,
                         buy_mode_enabled,
+                        autopilot_chat,
                         nostr_identity,
                         mission_control,
                         provider_runtime,
@@ -558,6 +559,7 @@ fn paint_go_online_pane(
     content_bounds: Bounds,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
+    autopilot_chat: &AutopilotChatState,
     nostr_identity: Option<&nostr::NostrIdentity>,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
@@ -1348,6 +1350,7 @@ fn paint_go_online_pane(
         paint_mission_control_buy_mode_panel(
             content_bounds,
             layout.buy_mode_panel,
+            autopilot_chat,
             mission_control,
             network_requests,
             spark_wallet,
@@ -1476,6 +1479,7 @@ fn paint_mission_control_section_panel(
 fn paint_mission_control_buy_mode_panel(
     content_bounds: Bounds,
     panel_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
     mission_control: &MissionControlPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
@@ -1484,6 +1488,7 @@ fn paint_mission_control_buy_mode_panel(
 ) {
     let Some(panel_state) = mission_control_buy_mode_panel_state(
         true,
+        autopilot_chat,
         mission_control,
         network_requests,
         spark_wallet,
@@ -1685,6 +1690,7 @@ struct MissionControlBuyModePanelState {
 
 fn mission_control_buy_mode_panel_state(
     buy_mode_enabled: bool,
+    autopilot_chat: &AutopilotChatState,
     mission_control: &MissionControlPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
@@ -1696,6 +1702,11 @@ fn mission_control_buy_mode_panel_state(
 
     let request = network_requests
         .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let target_selection = autopilot_chat.select_autopilot_buy_mode_target(now_epoch_seconds);
     let request_snapshot = request.map(|request| {
         crate::nip90_compute_flow::build_buyer_request_flow_snapshot(request, spark_wallet)
     });
@@ -1724,11 +1735,28 @@ fn mission_control_buy_mode_panel_state(
     let provider = request_snapshot
         .as_ref()
         .map(crate::nip90_compute_flow::BuyerRequestFlowSnapshot::provider_label)
-        .unwrap_or_else(|| "none".to_string());
+        .unwrap_or_else(|| {
+            target_selection
+                .selected_peer_pubkey
+                .as_deref()
+                .map(compact_mission_control_id)
+                .unwrap_or_else(|| "none".to_string())
+        });
     let work = request_snapshot
         .as_ref()
         .map(crate::nip90_compute_flow::BuyerRequestFlowSnapshot::work_label)
-        .unwrap_or_else(|| "idle".to_string());
+        .unwrap_or_else(|| {
+            if target_selection.selected_peer_pubkey.is_some() {
+                format!(
+                    "{}/{}",
+                    target_selection.eligible_peer_count, target_selection.observed_peer_count
+                )
+            } else if target_selection.blocked_reason_code.is_some() {
+                "blocked".to_string()
+            } else {
+                "idle".to_string()
+            }
+        });
     let payment = request_snapshot
         .as_ref()
         .map(|snapshot| snapshot.wallet_status.clone())
@@ -1748,6 +1776,13 @@ fn mission_control_buy_mode_panel_state(
                     snapshot.next_expected_event,
                     snapshot.payment_summary(),
                 );
+                if let Some(target_pubkey) = request
+                    .as_ref()
+                    .and_then(|request| request.target_provider_pubkeys.first())
+                {
+                    summary.push_str(" // target ");
+                    summary.push_str(compact_mission_control_id(target_pubkey).as_str());
+                }
                 if let Some(loser_summary) = snapshot.loser_reason_summary.as_deref() {
                     summary.push_str(" // ");
                     summary.push_str(loser_summary);
@@ -1760,23 +1795,53 @@ fn mission_control_buy_mode_panel_state(
             })
             .or_else(|| {
                 blocked_while_idle.then(|| {
-                    format!(
+                    let mut summary = format!(
                         "Buy Mode blocked // {}",
                         block_reason.as_deref().unwrap_or("wallet funding required")
-                    )
+                    );
+                    summary.push_str(" // roster ");
+                    summary.push_str(
+                        format!(
+                            "{}/{}",
+                            target_selection.eligible_peer_count, target_selection.observed_peer_count
+                        )
+                        .as_str(),
+                    );
+                    if let Some(target_pubkey) = target_selection.selected_peer_pubkey.as_deref() {
+                        summary.push_str(" // target ");
+                        summary.push_str(compact_mission_control_id(target_pubkey).as_str());
+                    } else if let Some(blocked_reason) = target_selection.blocked_reason.as_deref() {
+                        summary.push_str(" // ");
+                        summary.push_str(blocked_reason);
+                    }
+                    summary
                 })
             })
             .unwrap_or_else(|| {
-                format!(
-                    "{} // 5050 // {} sats // every {}s",
+                let mut summary = format!(
+                    "{} // 5050 // {} sats // every {}s // roster {}/{}",
                     if mission_control.buy_mode_loop_enabled {
                         "Buy Mode armed"
                     } else {
                         "Buy Mode off"
                     },
                     crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                    crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
-                )
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
+                    target_selection.eligible_peer_count,
+                    target_selection.observed_peer_count,
+                );
+                if let Some(target_pubkey) = target_selection.selected_peer_pubkey.as_deref() {
+                    summary.push_str(" // target ");
+                    summary.push_str(compact_mission_control_id(target_pubkey).as_str());
+                    if let Some(model) = target_selection.selected_ready_model.as_deref() {
+                        summary.push_str(" // model ");
+                        summary.push_str(model);
+                    }
+                } else if let Some(blocked_reason) = target_selection.blocked_reason.as_deref() {
+                    summary.push_str(" // ");
+                    summary.push_str(blocked_reason);
+                }
+                summary
             }),
         mode: if mission_control.buy_mode_loop_enabled {
             "on".to_string()
@@ -1785,17 +1850,8 @@ fn mission_control_buy_mode_panel_state(
         },
         next,
         provider,
-        work: request_snapshot.as_ref().map(|_| work).unwrap_or_else(|| {
-            if blocked_while_idle {
-                "blocked".to_string()
-            } else {
-                "idle".to_string()
-            }
-        }),
-        payment: request_snapshot
-            .as_ref()
-            .map(|_| payment)
-            .unwrap_or_else(|| "idle".to_string()),
+        work,
+        payment,
         button_label: if mission_control.buy_mode_loop_enabled {
             "STOP BUY MODE".to_string()
         } else {
@@ -6501,8 +6557,8 @@ mod tests {
         payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
-        ActiveJobState, EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision,
-        JobInboxRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
+        JobInboxDecision, JobInboxRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
         MissionControlPaneState, PaneLoadState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
@@ -6534,6 +6590,109 @@ mod tests {
 
     fn fixture_mission_control() -> MissionControlPaneState {
         MissionControlPaneState::default()
+    }
+
+    fn fixture_autopilot_chat() -> AutopilotChatState {
+        AutopilotChatState::default()
+    }
+
+    fn fixture_autopilot_chat_with_buy_mode_peer(
+        peer_pubkey: &str,
+        online_for_compute: bool,
+    ) -> AutopilotChatState {
+        let config = crate::app_state::DefaultNip28ChannelConfig::from_env_or_default();
+        let mut chat = AutopilotChatState::default();
+        let group_id = "oa-main".to_string();
+        let now_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0);
+        let presence_mode = if online_for_compute {
+            crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE
+        } else {
+            crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_OFFLINE_MODE
+        };
+        let presence_payload = serde_json::json!({
+            "type": crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            "mode": presence_mode,
+            "pubkey": peer_pubkey,
+            "capabilities": ["5050"],
+            "ready_model": "apple-foundation-model",
+            "started_at": now_epoch_seconds.saturating_sub(20),
+            "expires_at": now_epoch_seconds.saturating_add(120)
+        })
+        .to_string();
+        let chat_message = crate::app_state::ManagedChatMessageProjection {
+            event_id: "chat-target-001".to_string(),
+            group_id: group_id.clone(),
+            channel_id: config.channel_id.clone(),
+            author_pubkey: peer_pubkey.to_string(),
+            content: "online".to_string(),
+            created_at: now_epoch_seconds.saturating_sub(30),
+            reply_to_event_id: None,
+            mention_pubkeys: Vec::new(),
+            reaction_summaries: Vec::new(),
+            reply_child_ids: Vec::new(),
+            delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
+            delivery_error: None,
+            attempt_count: 0,
+        };
+        let presence_message = crate::app_state::ManagedChatMessageProjection {
+            event_id: "presence-target-001".to_string(),
+            group_id: group_id.clone(),
+            channel_id: config.channel_id.clone(),
+            author_pubkey: peer_pubkey.to_string(),
+            content: presence_payload,
+            created_at: now_epoch_seconds.saturating_sub(10),
+            reply_to_event_id: None,
+            mention_pubkeys: Vec::new(),
+            reaction_summaries: Vec::new(),
+            reply_child_ids: Vec::new(),
+            delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
+            delivery_error: None,
+            attempt_count: 0,
+        };
+        chat.managed_chat_projection.snapshot.groups.push(
+            crate::app_state::ManagedChatGroupProjection {
+                group_id: group_id.clone(),
+                metadata: nostr::GroupMetadata::new().with_name("OpenAgents Main"),
+                roles: Vec::new(),
+                members: Vec::new(),
+                channel_ids: vec![config.channel_id.clone()],
+                unread_count: 0,
+                mention_count: 0,
+            },
+        );
+        chat.managed_chat_projection.snapshot.channels.push(
+            crate::app_state::ManagedChatChannelProjection {
+                channel_id: config.channel_id.clone(),
+                group_id,
+                room_mode: nostr::ManagedRoomMode::ManagedChannel,
+                metadata: nostr::ChannelMetadata::new("main", "", ""),
+                hints: nostr::ManagedChannelHints::default(),
+                relay_url: Some(config.relay_url.clone()),
+                message_ids: vec![
+                    chat_message.event_id.clone(),
+                    presence_message.event_id.clone(),
+                ],
+                root_message_ids: vec![
+                    chat_message.event_id.clone(),
+                    presence_message.event_id.clone(),
+                ],
+                unread_count: 0,
+                mention_count: 0,
+                latest_message_id: Some(presence_message.event_id.clone()),
+            },
+        );
+        chat.managed_chat_projection
+            .snapshot
+            .messages
+            .insert(chat_message.event_id.clone(), chat_message);
+        chat.managed_chat_projection
+            .snapshot
+            .messages
+            .insert(presence_message.event_id.clone(), presence_message);
+        chat
     }
 
     fn fixture_active_job_request(request_id: &str) -> JobInboxRequest {
@@ -6997,17 +7156,31 @@ mod tests {
     fn mission_control_buy_mode_panel_state_respects_feature_gate() {
         let requests = NetworkRequestsState::default();
         let wallet = SparkPaneState::default();
+        let autopilot_chat = fixture_autopilot_chat();
         let mission_control = fixture_mission_control();
         let now = std::time::Instant::now();
 
         assert_eq!(
-            mission_control_buy_mode_panel_state(false, &mission_control, &requests, &wallet, now),
+            mission_control_buy_mode_panel_state(
+                false,
+                &autopilot_chat,
+                &mission_control,
+                &requests,
+                &wallet,
+                now,
+            ),
             None
         );
 
-        let panel =
-            mission_control_buy_mode_panel_state(true, &mission_control, &requests, &wallet, now)
-                .expect("enabled buy mode should expose panel state");
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &requests,
+            &wallet,
+            now,
+        )
+        .expect("enabled buy mode should expose panel state");
         assert!(panel.summary.contains("Buy Mode blocked"));
         assert_eq!(panel.mode, "off");
         assert_eq!(panel.next, "off");
@@ -7025,6 +7198,7 @@ mod tests {
         });
         let funded_panel = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &funded_wallet,
@@ -7033,15 +7207,21 @@ mod tests {
         .expect("funded buy mode should expose panel state");
         assert!(funded_panel.summary.contains("Buy Mode off"));
         assert_eq!(funded_panel.provider, "none");
-        assert_eq!(funded_panel.work, "idle");
+        assert_eq!(funded_panel.work, "blocked");
         assert_eq!(funded_panel.payment, "idle");
         assert!(funded_panel.button_enabled);
 
         let mut armed = fixture_mission_control();
         armed.toggle_buy_mode_loop(now);
-        let armed_panel =
-            mission_control_buy_mode_panel_state(true, &armed, &requests, &wallet, now)
-                .expect("armed buy mode should expose panel state");
+        let armed_panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &armed,
+            &requests,
+            &wallet,
+            now,
+        )
+        .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
         assert_eq!(armed_panel.next, "now");
         assert_eq!(armed_panel.work, "blocked");
@@ -7052,6 +7232,7 @@ mod tests {
     #[test]
     fn mission_control_buy_mode_panel_state_requires_payment_settlement() {
         let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
         mission_control.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
@@ -7083,6 +7264,7 @@ mod tests {
 
         let paying = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &SparkPaneState::default(),
@@ -7108,6 +7290,7 @@ mod tests {
         );
         let before_payment = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &SparkPaneState::default(),
@@ -7135,6 +7318,7 @@ mod tests {
         );
         let settled = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &SparkPaneState::default(),
@@ -7148,8 +7332,72 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_buy_mode_panel_state_surfaces_selected_target_when_idle() {
+        let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat_with_buy_mode_peer(&"66".repeat(32), true);
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut wallet = SparkPaneState::default();
+        wallet.balance = Some(openagents_spark::Balance {
+            spark_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &NetworkRequestsState::default(),
+            &wallet,
+            now,
+        )
+        .expect("buy mode panel should render selected idle target");
+
+        assert_eq!(panel.provider, "666666..6666");
+        assert_eq!(panel.work, "1/1");
+        assert!(panel.summary.contains("target 666666..6666"));
+        assert!(panel.summary.contains("roster 1/1"));
+        assert!(panel.summary.contains("model apple-foundation-model"));
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_surfaces_target_blocker_when_no_peer_is_eligible() {
+        let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat_with_buy_mode_peer(&"77".repeat(32), false);
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut wallet = SparkPaneState::default();
+        wallet.balance = Some(openagents_spark::Balance {
+            spark_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &NetworkRequestsState::default(),
+            &wallet,
+            now,
+        )
+        .expect("buy mode panel should render target blocker");
+
+        assert_eq!(panel.provider, "none");
+        assert_eq!(panel.work, "blocked");
+        assert!(
+            panel
+                .summary
+                .contains("no eligible Autopilot peers are online for compute")
+        );
+        assert!(panel.summary.contains("provider-offline"));
+    }
+
+    #[test]
     fn mission_control_buy_mode_panel_state_surfaces_payable_winner_and_loser_summary() {
         let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
         mission_control.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
@@ -7196,6 +7444,7 @@ mod tests {
 
         let panel = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &SparkPaneState::default(),
@@ -7350,6 +7599,7 @@ mod tests {
     #[test]
     fn mission_control_buy_mode_panel_state_shows_pending_and_failed_wallet_payment_states() {
         let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
         mission_control.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
@@ -7375,6 +7625,7 @@ mod tests {
 
         let pending = mission_control_buy_mode_panel_state(
             true,
+            &autopilot_chat,
             &mission_control,
             &requests,
             &SparkPaneState::default(),
@@ -7404,9 +7655,15 @@ mod tests {
             ..Default::default()
         });
 
-        let failed =
-            mission_control_buy_mode_panel_state(true, &mission_control, &requests, &wallet, now)
-                .expect("buy mode panel should render failed wallet state");
+        let failed = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &requests,
+            &wallet,
+            now,
+        )
+        .expect("buy mode panel should render failed wallet state");
         assert_eq!(failed.payment, "failed");
         assert!(
             failed
