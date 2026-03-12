@@ -6489,8 +6489,8 @@ pub use crate::state::{
         AlertDomain, AlertLifecycle, AlertSeverity, AlertsRecoveryState, RecoveryAlertRow,
     },
     job_inbox::{
-        JobDemandSource, JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,
-        JobInboxValidation,
+        JobDemandRiskClass, JobDemandRiskDisposition, JobDemandSource, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxRequest, JobInboxState, JobInboxValidation,
     },
 };
 
@@ -7499,6 +7499,9 @@ pub struct ActiveJobRecord {
     pub request_id: String,
     pub requester: String,
     pub demand_source: JobDemandSource,
+    pub demand_risk_class: JobDemandRiskClass,
+    pub demand_risk_disposition: JobDemandRiskDisposition,
+    pub demand_risk_note: String,
     pub request_kind: u16,
     pub capability: String,
     pub execution_input: Option<String>,
@@ -7610,11 +7613,15 @@ impl ActiveJobState {
 
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
         let job_id = format!("job-{}", request.request_id);
+        let demand_risk = request.demand_risk_assessment();
         self.job = Some(ActiveJobRecord {
             job_id,
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
             demand_source: request.demand_source,
+            demand_risk_class: demand_risk.class,
+            demand_risk_disposition: demand_risk.disposition,
+            demand_risk_note: demand_risk.note,
             request_kind: request.request_kind,
             capability: request.capability.clone(),
             execution_input: request.execution_input.clone(),

@@ -22,7 +22,10 @@ use crate::provider_nip90_lane::{
     ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90PublishOutcome,
     ProviderNip90PublishRole,
 };
-use crate::state::job_inbox::JobDemandSource;
+use crate::state::job_inbox::{
+    JobDemandRiskAssessment, JobDemandRiskClass, JobDemandRiskDisposition, JobDemandSource,
+    local_provider_keys, normalize_provider_keys,
+};
 use crate::state::provider_runtime::{
     LocalInferenceBackend, ProviderAppleFmRuntimeState, ProviderOllamaRuntimeState,
 };
@@ -132,10 +135,18 @@ pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool
     }
 
     let Some(request_id) = next_auto_accept_request_id(state) else {
-        if let Some(reason) =
-            speculative_open_network_block_reason_for(state.job_inbox.requests.as_slice())
+        if let Some(reason) = speculative_open_network_block_reason_for(
+            state.job_inbox.requests.as_slice(),
+            state.nostr_identity.as_ref(),
+        )
         {
-            state.job_inbox.last_action = Some(reason);
+            if state.job_inbox.last_action.as_deref() != Some(reason.as_str()) {
+                state.job_inbox.last_action = Some(reason.clone());
+            }
+            let provider_summary = "manual-only demand visible: speculative-open-network";
+            if state.provider_runtime.last_result.as_deref() != Some(provider_summary) {
+                state.provider_runtime.last_result = Some(provider_summary.to_string());
+            }
             state.job_inbox.load_state = PaneLoadState::Ready;
         }
         return false;
@@ -2456,14 +2467,17 @@ fn accept_request_by_id(
 
     state.job_inbox.last_error = None;
     state.job_inbox.load_state = PaneLoadState::Ready;
+    let demand_risk = provider_demand_risk_assessment_for(&selected_request, state.nostr_identity.as_ref());
     state.provider_runtime.last_result = Some(format!(
-        "{} request {}",
+        "{} request {} [{} / {}]",
         if source == "job.inbox.auto_accept" {
             "auto-accepted"
         } else {
             "runtime accepted"
         },
-        request_id
+        request_id,
+        demand_risk.class.label(),
+        demand_risk.disposition.label()
     ));
     state.active_job.start_from_request(&selected_request);
     sync_provider_publish_continuity(state);
@@ -2591,6 +2605,14 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         JobInboxValidation::Invalid(reason) => {
             return Some(format!("Request is invalid: {reason}"));
         }
+    }
+
+    let demand_risk = provider_demand_risk_assessment_for(request, state.nostr_identity.as_ref());
+    if demand_risk.disposition == JobDemandRiskDisposition::RejectByDefault {
+        return Some(format!(
+            "Provider demand policy rejected request: {}",
+            demand_risk.note
+        ));
     }
 
     if request.price_sats < MIN_PROVIDER_PRICE_SATS {
@@ -2837,7 +2859,8 @@ fn next_auto_accept_request_id_for(
     requests.iter().find_map(|request| {
         if matches!(request.decision, JobInboxDecision::Pending)
             && matches!(request.validation, JobInboxValidation::Valid)
-            && (request.demand_source == JobDemandSource::StarterDemand || request.is_targeted())
+            && request.demand_risk_assessment().disposition
+                == JobDemandRiskDisposition::AutoAcceptSafe
         {
             Some(request.request_id.clone())
         } else {
@@ -2846,17 +2869,67 @@ fn next_auto_accept_request_id_for(
     })
 }
 
-fn speculative_open_network_block_reason_for(requests: &[JobInboxRequest]) -> Option<String> {
+fn provider_demand_risk_assessment_for(
+    request: &JobInboxRequest,
+    identity: Option<&NostrIdentity>,
+) -> JobDemandRiskAssessment {
+    let baseline = request.demand_risk_assessment();
+    if request.demand_source == JobDemandSource::StarterDemand || !request.is_targeted() {
+        return baseline;
+    }
+
+    let targets = normalize_provider_keys(request.target_provider_pubkeys.as_slice());
+    if targets.is_empty() {
+        return JobDemandRiskAssessment {
+            class: JobDemandRiskClass::TargetedMismatch,
+            disposition: JobDemandRiskDisposition::RejectByDefault,
+            note: "targeted open-network demand contained no usable provider keys".to_string(),
+        };
+    }
+
+    let Some(identity) = identity else {
+        return JobDemandRiskAssessment {
+            class: JobDemandRiskClass::TargetedMismatch,
+            disposition: JobDemandRiskDisposition::RejectByDefault,
+            note: "targeted open-network demand cannot be trusted without local Nostr identity"
+                .to_string(),
+        };
+    };
+    let local_keys = local_provider_keys(identity);
+    let target_match = targets
+        .iter()
+        .any(|target| local_keys.iter().any(|local| local == target));
+    if target_match {
+        return baseline;
+    }
+
+    JobDemandRiskAssessment {
+        class: JobDemandRiskClass::TargetedMismatch,
+        disposition: JobDemandRiskDisposition::RejectByDefault,
+        note: "targeted open-network demand is addressed to a different provider".to_string(),
+    }
+}
+
+fn speculative_open_network_block_reason_for(
+    requests: &[JobInboxRequest],
+    identity: Option<&NostrIdentity>,
+) -> Option<String> {
     requests
         .iter()
-        .any(|request| {
-            matches!(request.decision, JobInboxDecision::Pending)
-                && matches!(request.validation, JobInboxValidation::Valid)
-                && request.demand_source == JobDemandSource::OpenNetwork
-                && !request.is_targeted()
-        })
-        .then(|| {
-            "Auto-accept paused: untargeted open-network jobs require manual review".to_string()
+        .find_map(|request| {
+            if !matches!(request.decision, JobInboxDecision::Pending)
+                || !matches!(request.validation, JobInboxValidation::Valid)
+            {
+                return None;
+            }
+            let assessment = provider_demand_risk_assessment_for(request, identity);
+            (assessment.disposition == JobDemandRiskDisposition::ManualReviewOnly).then_some(
+                format!(
+                    "Auto-accept paused: {} demand is {}",
+                    assessment.class.label(),
+                    assessment.disposition.label()
+                ),
+            )
         })
 }
 
@@ -2870,14 +2943,16 @@ mod tests {
         build_nip90_feedback_event, clear_active_job_phase_deadline,
         extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
         next_invalid_request_rejection_for, ollama_request_accept_block_reason,
+        provider_demand_risk_assessment_for,
         provider_execution_backend_for_kind, result_publish_retry_due,
         set_active_job_phase_deadline_at, speculative_open_network_block_reason_for,
         turn_completed_failed,
         visible_result_content_for_job_kind,
     };
     use crate::app_state::{
-        ActiveJobState, EarnFailureClass, JobDemandSource, JobInboxDecision, JobInboxRequest,
-        JobInboxValidation, JobLifecycleStage, PaneLoadState,
+        ActiveJobState, EarnFailureClass, JobDemandRiskClass, JobDemandRiskDisposition,
+        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
+        JobLifecycleStage, PaneLoadState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
@@ -3090,8 +3165,67 @@ mod tests {
         );
 
         assert_eq!(
-            speculative_open_network_block_reason_for([request].as_slice()),
-            Some("Auto-accept paused: untargeted open-network jobs require manual review".to_string())
+            speculative_open_network_block_reason_for([request].as_slice(), None),
+            Some("Auto-accept paused: speculative-open-network demand is manual-only".to_string())
+        );
+    }
+
+    #[test]
+    fn demand_risk_model_marks_starter_demand_safe_for_auto_accept() {
+        let mut request = fixture_request(
+            "req-starter",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.demand_source = JobDemandSource::StarterDemand;
+
+        let assessment = provider_demand_risk_assessment_for(&request, None);
+        assert_eq!(assessment.class, JobDemandRiskClass::StarterDemand);
+        assert_eq!(
+            assessment.disposition,
+            JobDemandRiskDisposition::AutoAcceptSafe
+        );
+    }
+
+    #[test]
+    fn demand_risk_model_marks_untargeted_open_network_manual_only() {
+        let request = fixture_request(
+            "req-open-network",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+
+        let assessment = provider_demand_risk_assessment_for(&request, None);
+        assert_eq!(assessment.class, JobDemandRiskClass::SpeculativeOpenNetwork);
+        assert_eq!(
+            assessment.disposition,
+            JobDemandRiskDisposition::ManualReviewOnly
+        );
+    }
+
+    #[test]
+    fn demand_risk_model_rejects_targeted_request_for_other_provider() {
+        let mut request = fixture_request(
+            "req-targeted-other",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.target_provider_pubkeys = vec!["aa".repeat(32)];
+
+        let identity = NostrIdentity {
+            identity_path: PathBuf::from("/tmp/provider-demand-risk-test.mnemonic"),
+            mnemonic: "test test test test test test test test test test test ball".to_string(),
+            npub: "npub1providerdemandrisktest".to_string(),
+            nsec: "nsec1providerdemandrisktest".to_string(),
+            public_key_hex: "bb".repeat(32),
+            private_key_hex: "11".repeat(32),
+        };
+
+        let assessment = provider_demand_risk_assessment_for(&request, Some(&identity));
+        assert_eq!(assessment.class, JobDemandRiskClass::TargetedMismatch);
+        assert_eq!(
+            assessment.disposition,
+            JobDemandRiskDisposition::RejectByDefault
         );
     }
 

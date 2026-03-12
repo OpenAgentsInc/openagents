@@ -3512,6 +3512,11 @@ mod tests {
             request_id: "req-ollama-001".to_string(),
             requester: "npub1buyer".to_string(),
             demand_source: JobDemandSource::OpenNetwork,
+            demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
+            demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_note:
+                "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
             request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
             capability: "text.generation".to_string(),
             execution_input: Some("Write a haiku about rust".to_string()),
