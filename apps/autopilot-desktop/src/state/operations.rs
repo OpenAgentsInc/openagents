@@ -844,6 +844,7 @@ pub struct NetworkRequestsState {
     pub accepted_forward_orders: Vec<AcceptedForwardComputeOrder>,
     pub submitted: Vec<SubmittedNetworkRequest>,
     pub pending_auto_payment_request_id: Option<String>,
+    next_pending_auto_payment_refresh_at: Option<std::time::Instant>,
     next_request_seq: u64,
 }
 
@@ -864,10 +865,14 @@ impl Default for NetworkRequestsState {
             accepted_forward_orders: Vec::new(),
             submitted: Vec::new(),
             pending_auto_payment_request_id: None,
+            next_pending_auto_payment_refresh_at: None,
             next_request_seq: 0,
         }
     }
 }
+
+pub(crate) const BUYER_AUTO_PAYMENT_REFRESH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(5);
 
 impl NetworkRequestsState {
     pub fn latest_request_by_type(&self, request_type: &str) -> Option<&SubmittedNetworkRequest> {
@@ -880,6 +885,43 @@ impl NetworkRequestsState {
         self.submitted
             .iter()
             .any(|request| request.request_type == request_type && !request.status.is_terminal())
+    }
+
+    pub fn active_auto_payment_observation_request_id(&self) -> Option<&str> {
+        let pending_request_id = self.pending_auto_payment_request_id.as_deref();
+        if let Some(request_id) = pending_request_id
+            && self.submitted.iter().any(|request| {
+                request.request_id == request_id
+                    && request_needs_auto_payment_observation(request, pending_request_id)
+            })
+        {
+            return Some(request_id);
+        }
+
+        self.submitted
+            .iter()
+            .find(|request| request_needs_auto_payment_observation(request, pending_request_id))
+            .map(|request| request.request_id.as_str())
+    }
+
+    pub fn buyer_payment_watchdog_due(&mut self, now: std::time::Instant) -> Option<String> {
+        let request_id = match self.active_auto_payment_observation_request_id() {
+            Some(request_id) => request_id.to_string(),
+            None => {
+                self.next_pending_auto_payment_refresh_at = None;
+                return None;
+            }
+        };
+
+        if matches!(
+            self.next_pending_auto_payment_refresh_at,
+            Some(next_refresh_at) if now < next_refresh_at
+        ) {
+            return None;
+        }
+
+        self.next_pending_auto_payment_refresh_at = Some(now + BUYER_AUTO_PAYMENT_REFRESH_INTERVAL);
+        Some(request_id)
     }
 
     pub fn queue_request_submission(
@@ -1642,6 +1684,7 @@ impl NetworkRequestsState {
         request.payment_failed_at_epoch_seconds = None;
         request.status = NetworkRequestStatus::PaymentRequired;
         self.pending_auto_payment_request_id = Some(request_id.to_string());
+        self.next_pending_auto_payment_refresh_at = None;
 
         let amount_sats = analyze_invoice_amount_msats(amount_msats, Some(bolt11))
             .effective_amount_msats
@@ -1683,6 +1726,7 @@ impl NetworkRequestsState {
             request.status = compute_request_status(request);
         }
         self.pending_auto_payment_request_id = None;
+        self.next_pending_auto_payment_refresh_at = None;
         self.pane_set_ready(format!(
             "Request {} settled buyer payment pointer {}",
             request_id, payment_pointer
@@ -1773,6 +1817,9 @@ impl NetworkRequestsState {
         if self.pending_auto_payment_request_id.as_deref() == Some(request_id) {
             self.pending_auto_payment_request_id = None;
         }
+        if self.active_auto_payment_observation_request_id().is_none() {
+            self.next_pending_auto_payment_refresh_at = None;
+        }
         let _ = self.pane_set_error(format!("Request {} payment failed: {}", request_id, error));
     }
 
@@ -1838,6 +1885,21 @@ impl NetworkRequestsState {
         }
         let _ = self.pane_set_error(message.to_string());
     }
+}
+
+fn request_needs_auto_payment_observation(
+    request: &SubmittedNetworkRequest,
+    pending_request_id: Option<&str>,
+) -> bool {
+    if request.status.is_terminal()
+        || request.payment_sent_at_epoch_seconds.is_some()
+        || request.payment_failed_at_epoch_seconds.is_some()
+    {
+        return false;
+    }
+
+    pending_request_id == Some(request.request_id.as_str())
+        || request.last_payment_pointer.is_some()
 }
 
 fn maybe_race_resolution_action_for_feedback(

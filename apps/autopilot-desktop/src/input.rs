@@ -623,6 +623,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_mission_control_buy_mode_tick(state, now) {
         changed = true;
     }
+    if run_pending_buyer_payment_watchdog_tick(state, now) {
+        changed = true;
+    }
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
     }
