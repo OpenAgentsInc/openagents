@@ -120,6 +120,8 @@ pub struct JobInboxRequest {
     pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
+    pub created_at_epoch_seconds: Option<u64>,
+    pub expires_at_epoch_seconds: Option<u64>,
     pub validation: JobInboxValidation,
     pub arrival_seq: u64,
     pub decision: JobInboxDecision,
@@ -161,6 +163,22 @@ impl JobInboxRequest {
         } else {
             "claimable"
         }
+    }
+
+    pub fn is_expired_at(&self, now_epoch_seconds: u64) -> bool {
+        self.expires_at_epoch_seconds
+            .is_some_and(|expires_at| now_epoch_seconds >= expires_at)
+    }
+
+    pub fn expires_in_seconds(&self, now_epoch_seconds: u64) -> Option<u64> {
+        self.expires_at_epoch_seconds
+            .map(|expires_at| expires_at.saturating_sub(now_epoch_seconds))
+    }
+
+    pub fn expired_for_seconds(&self, now_epoch_seconds: u64) -> Option<u64> {
+        self.expires_at_epoch_seconds
+            .filter(|expires_at| now_epoch_seconds >= *expires_at)
+            .map(|expires_at| now_epoch_seconds.saturating_sub(expires_at))
     }
 }
 
@@ -204,6 +222,8 @@ pub struct JobInboxNetworkRequest {
     pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
+    pub created_at_epoch_seconds: Option<u64>,
+    pub expires_at_epoch_seconds: Option<u64>,
     pub validation: JobInboxValidation,
 }
 
@@ -262,6 +282,8 @@ impl JobInboxState {
             existing.ac_envelope_event_id = request.ac_envelope_event_id;
             existing.price_sats = request.price_sats;
             existing.ttl_seconds = request.ttl_seconds;
+            existing.created_at_epoch_seconds = request.created_at_epoch_seconds;
+            existing.expires_at_epoch_seconds = request.expires_at_epoch_seconds;
             existing.validation = request.validation;
             return;
         }
@@ -288,6 +310,8 @@ impl JobInboxState {
             ac_envelope_event_id: request.ac_envelope_event_id,
             price_sats: request.price_sats,
             ttl_seconds: request.ttl_seconds,
+            created_at_epoch_seconds: request.created_at_epoch_seconds,
+            expires_at_epoch_seconds: request.expires_at_epoch_seconds,
             validation: request.validation,
             arrival_seq,
             decision: JobInboxDecision::Pending,
@@ -411,6 +435,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 42,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_060),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Pending,
