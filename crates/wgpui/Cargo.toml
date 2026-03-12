@@ -119,6 +119,10 @@ web-time = "1.1.0"
 rodio = { version = "0.20", optional = true }
 reqwest = { workspace = true, optional = true, features = ["blocking"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = "0.2.2"
+objc2-foundation = "0.2.2"
+
 [dev-dependencies]
 criterion = "0.5"
 insta = { workspace = true }

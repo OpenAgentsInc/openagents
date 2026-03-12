@@ -296,11 +296,6 @@ impl SparkPaneState {
     fn refresh(&mut self, runtime: &Runtime) {
         self.last_error = None;
 
-        // A fresh SDK session is the most reliable way to pick up external Spark activity,
-        // including funding or settlement changes initiated by another process sharing the
-        // same wallet identity/storage during packaged roundtrip tests.
-        self.wallet = None;
-
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return;
