@@ -33,6 +33,7 @@ APP_START_TIMEOUT_SECONDS="${OPENAGENTS_AUTOPILOTCTL_APP_START_TIMEOUT_SECONDS:-
 WAIT_TIMEOUT_MS="${OPENAGENTS_AUTOPILOTCTL_WAIT_TIMEOUT_MS:-120000}"
 BUY_TIMEOUT_MS="${OPENAGENTS_AUTOPILOTCTL_BUY_TIMEOUT_MS:-240000}"
 SKIP_BUILD="${OPENAGENTS_AUTOPILOTCTL_SKIP_BUILD:-0}"
+SKIP_TEST_GATES="${OPENAGENTS_AUTOPILOTCTL_SKIP_TEST_GATES:-0}"
 
 BRIDGE_PID=""
 RELAY_PID=""
@@ -51,6 +52,19 @@ die() {
 require_command() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1 || die "Missing required command: $cmd"
+}
+
+run_release_regression_gates() {
+  log "Running deterministic autopilot release gates"
+  cargo test -p autopilot-desktop --lib \
+    input::reducers::jobs::tests::auto_accept_policy_skips_expired_targeted_request_even_if_target_matches \
+    -- --exact
+  cargo test -p autopilot-desktop --lib \
+    app_state::tests::network_requests_buyer_payment_watchdog_stays_active_after_seller_settlement_feedback \
+    -- --exact
+  cargo test -p autopilot-desktop --lib \
+    nip90_compute_flow::tests::buyer_snapshot_distinguishes_seller_settlement_from_local_wallet_confirmation \
+    -- --exact
 }
 
 ensure_cargo_bundle() {
@@ -489,6 +503,10 @@ trap cleanup EXIT
 require_command cargo
 require_command curl
 require_command python3
+
+if [[ "$SKIP_TEST_GATES" != "1" ]]; then
+  run_release_regression_gates
+fi
 
 if [[ -f "$ROOT_DIR/.env.local" ]]; then
   # shellcheck disable=SC1091
