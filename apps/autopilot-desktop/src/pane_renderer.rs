@@ -1470,6 +1470,9 @@ fn mission_control_buy_mode_panel_state(
 
     let request = network_requests
         .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE);
+    let request_snapshot = request.map(|request| {
+        crate::nip90_compute_flow::build_buyer_request_flow_snapshot(request, spark_wallet)
+    });
     let block_reason = crate::app_state::mission_control_buy_mode_start_block_reason(spark_wallet);
     let blocked_while_idle = request.is_none() && block_reason.is_some();
     let next = if !mission_control.buy_mode_loop_enabled {
@@ -1490,18 +1493,30 @@ fn mission_control_buy_mode_panel_state(
             })
             .unwrap_or_else(|| "now".to_string())
     };
-    let provider = mission_control_buy_mode_provider_label(request);
-    let work = mission_control_buy_mode_work_label(request);
-    let payment = mission_control_buy_mode_payment_label(request, spark_wallet);
+    let provider = request_snapshot
+        .as_ref()
+        .map(crate::nip90_compute_flow::BuyerRequestFlowSnapshot::provider_label)
+        .unwrap_or_else(|| "none".to_string());
+    let work = request_snapshot
+        .as_ref()
+        .map(crate::nip90_compute_flow::BuyerRequestFlowSnapshot::work_label)
+        .unwrap_or_else(|| "idle".to_string());
+    let payment = request_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.wallet_status.clone())
+        .unwrap_or_else(|| "idle".to_string());
     Some(MissionControlBuyModePanelState {
-        summary: request
-            .map(|request| {
+        summary: request_snapshot
+            .as_ref()
+            .map(|snapshot| {
                 format!(
-                    "req {} // {} // {} // payment {}",
-                    compact_mission_control_id(request.request_id.as_str()),
-                    mission_control_buy_mode_provider_summary(request),
-                    mission_control_buy_mode_work_summary(request),
-                    mission_control_buy_mode_payment_summary(request, spark_wallet)
+                    "req {} // {} // {} // phase {} // next {} // payment {}",
+                    compact_mission_control_id(snapshot.request_id.as_str()),
+                    snapshot.provider_summary(),
+                    snapshot.work_summary(),
+                    snapshot.phase.as_str(),
+                    snapshot.next_expected_event,
+                    snapshot.payment_summary(),
                 )
             })
             .or_else(|| {
@@ -1531,14 +1546,15 @@ fn mission_control_buy_mode_panel_state(
         },
         next,
         provider,
-        work: request.map(|_| work).unwrap_or_else(|| {
+        work: request_snapshot.as_ref().map(|_| work).unwrap_or_else(|| {
             if blocked_while_idle {
                 "blocked".to_string()
             } else {
                 "idle".to_string()
             }
         }),
-        payment: request
+        payment: request_snapshot
+            .as_ref()
             .map(|_| payment)
             .unwrap_or_else(|| "idle".to_string()),
         button_label: if mission_control.buy_mode_loop_enabled {
@@ -4969,8 +4985,12 @@ fn build_active_job_scroll_lines(
         });
         return lines;
     };
+    let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+        active_job,
+        earn_job_lifecycle_projection,
+    )
+    .expect("active job snapshot should exist when job exists");
 
-    let result_publish_status = active_job_result_publish_status(active_job);
     let pending_result_event_id = active_job
         .pending_result_publish_event_id
         .as_deref()
@@ -4981,9 +5001,12 @@ fn build_active_job_scroll_lines(
         ("Capability", job.capability.as_str()),
         ("Demand source", job.demand_source.label()),
         ("Stage", job.stage.label()),
+        ("Flow authority", flow_snapshot.authority.as_str()),
+        ("Flow phase", flow_snapshot.phase.as_str()),
+        ("Next event", flow_snapshot.next_expected_event.as_str()),
         (
             "Projection authority",
-            earn_job_lifecycle_projection.authority.as_str(),
+            flow_snapshot.projection_authority.as_str(),
         ),
         (
             "Skill scope",
@@ -5020,13 +5043,25 @@ fn build_active_job_scroll_lines(
         ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
         ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
         ("Result event", pending_result_event_id),
-        ("Result publish", result_publish_status.as_str()),
+        (
+            "Result publish",
+            flow_snapshot.result_publish_status.as_str(),
+        ),
     ];
     for (label, value) in metadata_rows {
         push_active_job_wrapped_line(
             &mut lines,
             &format!("{label}: "),
             value,
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if let Some(window_seconds) = flow_snapshot.continuity_window_seconds {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Continuity window: ",
+            &format!("{window_seconds}s"),
             chunk_len,
             theme::text::PRIMARY,
         );

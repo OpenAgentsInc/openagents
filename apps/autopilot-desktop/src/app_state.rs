@@ -1138,47 +1138,7 @@ pub(crate) fn buy_mode_payments_summary_text(
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
-    let entries = buy_mode_payment_ledger_entries(network_requests, spark_wallet);
-    let live_rows = entries
-        .iter()
-        .filter(|entry| entry.source == "request")
-        .count();
-    let wallet_backfill_rows = entries.len().saturating_sub(live_rows);
-    let mut paid = 0usize;
-    let mut pending = 0usize;
-    let mut returned = 0usize;
-    let mut failed = 0usize;
-    let mut sats_sent = 0u64;
-    let mut fee_sats = 0u64;
-    let mut wallet_debit_sats = 0u64;
-    for entry in &entries {
-        fee_sats = fee_sats.saturating_add(entry.fees_sats.unwrap_or(0));
-        wallet_debit_sats = wallet_debit_sats.saturating_add(entry.total_debit_sats.unwrap_or(0));
-        if entry.wallet_status == "sent" {
-            paid = paid.saturating_add(1);
-            sats_sent = sats_sent.saturating_add(entry.amount_sats);
-        } else if entry.wallet_status == "returned" {
-            returned = returned.saturating_add(1);
-        } else if entry.wallet_status == "failed" {
-            failed = failed.saturating_add(1);
-        } else {
-            pending = pending.saturating_add(1);
-        }
-    }
-
-    format!(
-        "{} rows  //  {} live  //  {} wallet-backfill  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats  //  {} fee sats  //  {} wallet debit sats",
-        entries.len(),
-        live_rows,
-        wallet_backfill_rows,
-        paid,
-        pending,
-        returned,
-        failed,
-        sats_sent,
-        fee_sats,
-        wallet_debit_sats
-    )
+    crate::nip90_compute_flow::buy_mode_payments_summary_text(network_requests, spark_wallet)
 }
 
 pub(crate) fn buy_mode_payments_status_lines(
@@ -1186,67 +1146,12 @@ pub(crate) fn buy_mode_payments_status_lines(
     network_requests: &crate::state::operations::NetworkRequestsState,
     now: Instant,
 ) -> Vec<String> {
-    let live_requests = buy_mode_payment_history_requests(network_requests);
-    let in_flight = live_requests
-        .iter()
-        .copied()
-        .find(|request| !request.status.is_terminal());
-    let loop_line = if !mission_control.buy_mode_loop_enabled {
-        format!(
-            "Dispatch loop: off // cadence={}s // policy=single-flight",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
-        )
-    } else if let Some(request) = in_flight {
-        format!(
-            "Dispatch loop: on // cadence={}s // policy=single-flight // blocked by {} [{}]",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
-            compact_buy_mode_request_id(request.request_id.as_str()),
-            request.status.label(),
-        )
-    } else {
-        let next = mission_control
-            .buy_mode_next_dispatch_countdown_seconds(now)
-            .map(|seconds| {
-                if seconds == 0 {
-                    "now".to_string()
-                } else {
-                    format!("{seconds}s")
-                }
-            })
-            .unwrap_or_else(|| "now".to_string());
-        format!(
-            "Dispatch loop: on // cadence={}s // policy=single-flight // next={}",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, next
-        )
-    };
-
-    let recent_statuses = if live_requests.is_empty() {
-        "Recent live request statuses: none yet".to_string()
-    } else {
-        let preview = live_requests
-            .iter()
-            .take(4)
-            .map(|request| {
-                format!(
-                    "{}={}",
-                    compact_buy_mode_request_id(request.request_id.as_str()),
-                    request.status.label()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" // ");
-        if live_requests.len() > 4 {
-            format!(
-                "Recent live request statuses: {} // +{} more",
-                preview,
-                live_requests.len().saturating_sub(4)
-            )
-        } else {
-            format!("Recent live request statuses: {preview}")
-        }
-    };
-
-    vec![loop_line, recent_statuses]
+    crate::nip90_compute_flow::buy_mode_payments_status_lines(
+        mission_control,
+        network_requests,
+        &SparkPaneState::default(),
+        now,
+    )
 }
 
 pub(crate) fn buy_mode_payments_clipboard_text(
@@ -1254,73 +1159,18 @@ pub(crate) fn buy_mode_payments_clipboard_text(
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
-    let mut sections = vec![
-        "Buy Mode Payments".to_string(),
-        buy_mode_payments_summary_text(network_requests, spark_wallet),
-        buy_mode_payments_status_lines(mission_control, network_requests, Instant::now()).join("\n"),
-        "Rows are sourced from buy-mode requests plus wallet-backed Spark send history. Live requests stay linked by wallet pointer; older buy-mode sends are backfilled from Spark payment metadata.".to_string(),
-        String::new(),
-    ];
-    for (_, text) in build_buy_mode_payment_rows(network_requests, spark_wallet) {
-        if text.trim().is_empty() {
-            sections.push(String::new());
-        } else {
-            sections.push(text);
-        }
-    }
-    sections.join("\n")
+    crate::nip90_compute_flow::buy_mode_payments_clipboard_text(
+        mission_control,
+        network_requests,
+        spark_wallet,
+    )
 }
 
 fn build_buy_mode_payment_rows(
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> Vec<(TerminalStream, String)> {
-    let mut rows = Vec::<(TerminalStream, String)>::new();
-    let entries = buy_mode_payment_ledger_entries(network_requests, spark_wallet);
-    let request_entries = entries
-        .iter()
-        .filter(|entry| entry.source == "request")
-        .collect::<Vec<_>>();
-    let wallet_backfill_entries = entries
-        .iter()
-        .filter(|entry| entry.source == "wallet-backfill")
-        .collect::<Vec<_>>();
-
-    if !request_entries.is_empty() {
-        rows.push((TerminalStream::Stdout, "LIVE BUY MODE REQUESTS".to_string()));
-        rows.push((TerminalStream::Stdout, String::new()));
-        for entry in request_entries {
-            push_buy_mode_payment_entry_rows(&mut rows, entry);
-        }
-    }
-
-    if !wallet_backfill_entries.is_empty() {
-        if !rows.is_empty() {
-            rows.push((TerminalStream::Stdout, String::new()));
-        }
-        rows.push((
-            TerminalStream::Stdout,
-            "WALLET-BACKFILL HISTORY".to_string(),
-        ));
-        rows.push((
-            TerminalStream::Stdout,
-            "These rows are inferred from Spark send history; they are not live request records."
-                .to_string(),
-        ));
-        rows.push((TerminalStream::Stdout, String::new()));
-        for entry in wallet_backfill_entries {
-            push_buy_mode_payment_entry_rows(&mut rows, entry);
-        }
-    }
-
-    if rows.is_empty() {
-        rows.push((
-            TerminalStream::Stdout,
-            "No Buy Mode requests yet.".to_string(),
-        ));
-    }
-
-    rows
+    crate::nip90_compute_flow::build_buy_mode_payment_rows(network_requests, spark_wallet)
 }
 
 fn push_buy_mode_payment_entry_rows(
@@ -1417,57 +1267,18 @@ pub(crate) fn buy_mode_wallet_payment<'a>(
     request: &crate::state::operations::SubmittedNetworkRequest,
     spark_wallet: &'a SparkPaneState,
 ) -> Option<&'a openagents_spark::PaymentSummary> {
-    request
-        .last_payment_pointer
-        .as_deref()
-        .and_then(|payment_id| {
-            spark_wallet
-                .recent_payments
-                .iter()
-                .find(|payment| payment.id == payment_id)
-        })
+    crate::nip90_compute_flow::buy_mode_wallet_payment(request, spark_wallet)
 }
 
 pub(crate) fn buy_mode_wallet_state_label(
     request: &crate::state::operations::SubmittedNetworkRequest,
     wallet_payment: Option<&openagents_spark::PaymentSummary>,
 ) -> String {
-    if request.payment_sent_at_epoch_seconds.is_some()
-        || request.status == crate::state::operations::NetworkRequestStatus::Paid
-    {
-        return "sent".to_string();
-    }
-    if let Some(payment) = wallet_payment {
-        if payment.is_returned_htlc_failure() {
-            return "returned".to_string();
-        }
-        if crate::spark_wallet::is_terminal_wallet_payment_status(payment.status.as_str()) {
-            return "failed".to_string();
-        }
-        return "pending".to_string();
-    }
-    if request.last_payment_pointer.is_some() {
-        return "pending".to_string();
-    }
-    if request.pending_bolt11.is_some() {
-        return "queued".to_string();
-    }
-    if request.payment_required_at_epoch_seconds.is_some() {
-        return "invoice".to_string();
-    }
-    if request.payment_error.is_some() {
-        return "failed".to_string();
-    }
-    "idle".to_string()
+    crate::nip90_compute_flow::buy_mode_wallet_state_label(request, wallet_payment)
 }
 
 pub(crate) fn compact_payment_invoice(invoice: &str) -> String {
-    let trimmed = invoice.trim();
-    if trimmed.len() <= 40 {
-        trimmed.to_string()
-    } else {
-        format!("{}..{}", &trimmed[..18], &trimmed[trimmed.len() - 12..])
-    }
+    crate::nip90_compute_flow::compact_payment_invoice(invoice)
 }
 
 fn mission_control_log_timestamp(epoch_secs: u64) -> String {
@@ -1516,6 +1327,12 @@ fn build_mission_control_log_lines(
             entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string()));
         }
     };
+    let compute_flow_snapshot = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
+        network_requests,
+        spark_wallet,
+        active_job,
+        earn_job_lifecycle_projection,
+    );
 
     let mode_line = match provider_runtime.mode {
         crate::state::provider_runtime::ProviderMode::Offline => {
@@ -1679,10 +1496,10 @@ fn build_mission_control_log_lines(
         );
     }
 
-    for request in network_requests.submitted.iter().take(4).rev() {
+    for request in compute_flow_snapshot.recent_requests.iter().take(4) {
         push_entry(
             mission_control_log_stream_for_request_status(request.status),
-            mission_control_network_request_log_line(request, spark_wallet),
+            request.mission_control_log_line(),
             None,
         );
     }
@@ -1716,15 +1533,18 @@ fn build_mission_control_log_lines(
         push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
     }
 
-    if let Some(job) = active_job.job.as_ref() {
+    if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
         push_entry(
             mission_control_log_stream_for_stage(job.stage),
             format!(
-                "Active {} -> {} [{}] {}",
+                "Active {} -> {} [{}] {} auth={} phase={} next={}",
                 job.job_id,
                 job.capability,
                 job.stage.label(),
-                format_mission_control_amount(job.quoted_price_sats)
+                format_mission_control_amount(job.quoted_price_sats),
+                job.authority.as_str(),
+                job.phase.as_str(),
+                job.next_expected_event,
             ),
             None,
         );
@@ -1969,75 +1789,8 @@ fn mission_control_network_request_log_line(
     request: &crate::state::operations::SubmittedNetworkRequest,
     spark_wallet: &SparkPaneState,
 ) -> String {
-    let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
-    let provider_state = request
-        .winning_provider_pubkey
-        .as_deref()
-        .or(request.last_provider_pubkey.as_deref())
-        .map(mission_control_log_short_id)
-        .unwrap_or_else(|| "awaiting".to_string());
-    let work_state = if request.status == crate::state::operations::NetworkRequestStatus::Failed {
-        "failed".to_string()
-    } else if request.last_result_event_id.is_some() {
-        "result-received".to_string()
-    } else {
-        match request.last_feedback_status.as_deref() {
-            Some(status) if status.eq_ignore_ascii_case("processing") => {
-                "provider-working".to_string()
-            }
-            Some(status) if status.eq_ignore_ascii_case("payment-required") => {
-                "invoice-requested".to_string()
-            }
-            Some(status) => format!("feedback-{status}"),
-            None if request.published_request_event_id.is_some() => "awaiting-provider".to_string(),
-            None => "queued".to_string(),
-        }
-    };
-    let payment_state = buy_mode_wallet_state_label(request, wallet_payment);
-    let mut line = format!(
-        "Buyer {} [{}] {} {} provider={} work={} payment={}",
-        mission_control_log_short_id(request.request_id.as_str()),
-        request.request_type,
-        request.status.label(),
-        format_mission_control_amount(request.budget_sats),
-        provider_state,
-        work_state,
-        payment_state,
-    );
-    if let Some(event_id) = request.published_request_event_id.as_deref() {
-        line.push_str(" event=");
-        line.push_str(mission_control_log_short_id(event_id).as_str());
-    }
-    if let Some(status) = request.last_feedback_status.as_deref() {
-        line.push_str(" feedback=");
-        line.push_str(status);
-    }
-    if request.last_result_event_id.is_some() {
-        line.push_str(" result=received");
-    }
-    if let Some(pointer) = request.last_payment_pointer.as_deref() {
-        line.push_str(" pointer=");
-        line.push_str(mission_control_log_short_id(pointer).as_str());
-    }
-    if let Some(payment) = wallet_payment {
-        line.push_str(" fee_sats=");
-        line.push_str(&payment.fees_sats.to_string());
-        line.push_str(" wallet_debit_sats=");
-        line.push_str(&crate::spark_wallet::wallet_payment_total_debit_sats(payment).to_string());
-    }
-    if let Some(invoice) = request.pending_bolt11.as_deref() {
-        line.push_str(" invoice=");
-        line.push_str(compact_payment_invoice(invoice).as_str());
-    }
-    if let Some(notice) = request.payment_notice.as_deref() {
-        line.push_str(" notice=");
-        line.push_str(notice);
-    }
-    if let Some(error) = request.payment_error.as_deref() {
-        line.push_str(" error=");
-        line.push_str(error);
-    }
-    line
+    crate::nip90_compute_flow::build_buyer_request_flow_snapshot(request, spark_wallet)
+        .mission_control_log_line()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
