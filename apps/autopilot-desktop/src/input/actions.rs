@@ -538,16 +538,8 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             state.autopilot_chat.last_error = Some(error);
             return true;
         }
+        state.autopilot_chat.last_error = None;
         state.autopilot_chat.reset_transcript_scroll();
-        if let Err(error) = state
-            .autopilot_chat
-            .managed_chat_projection
-            .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
-        {
-            state.autopilot_chat.last_error = Some(error);
-            return true;
-        }
-        state.autopilot_chat.last_error = Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
         return true;
     }
 
@@ -712,8 +704,6 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
                     return true;
                 }
             };
-            let event_id = outbound_message.event.id.clone();
-
             state.chat_inputs.composer.set_value(String::new());
             if let Err(error) = state
                 .autopilot_chat
@@ -723,17 +713,8 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
                 state.autopilot_chat.last_error = Some(error);
                 return true;
             }
+            state.autopilot_chat.last_error = None;
             state.autopilot_chat.reset_transcript_scroll();
-            if let Err(error) = state
-                .autopilot_chat
-                .managed_chat_projection
-                .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
-            {
-                state.autopilot_chat.last_error = Some(error);
-                return true;
-            }
-            state.autopilot_chat.last_error =
-                Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
             true
         }
         ManagedChatComposerIntent::DeleteMessage {

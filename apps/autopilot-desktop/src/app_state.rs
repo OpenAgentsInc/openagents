@@ -3753,6 +3753,18 @@ impl AutopilotChatState {
             && !self.managed_chat_projection.snapshot.channels.is_empty()
     }
 
+    /// Auto-selects the first managed chat workspace when no workspace is selected yet.
+    /// No-op if the user has already selected a workspace or if there is no content.
+    pub fn maybe_auto_select_default_nip28_channel(&mut self) -> bool {
+        if self.selected_workspace != ChatWorkspaceSelection::Autopilot {
+            return false;
+        }
+        if !self.has_managed_chat_browseable_content() {
+            return false;
+        }
+        self.select_chat_workspace_by_index(0)
+    }
+
     pub fn has_direct_message_browseable_content(&self) -> bool {
         !self.direct_message_projection.snapshot.rooms.is_empty()
     }
@@ -6793,6 +6805,34 @@ pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://nexus.openagents
 const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 2] =
     ["wss://relay.primal.net", "wss://relay.damus.io"];
 
+pub(crate) const ENV_DEFAULT_NIP28_RELAY_URL: &str = "OA_DEFAULT_NIP28_RELAY_URL";
+pub(crate) const ENV_DEFAULT_NIP28_CHANNEL_ID: &str = "OA_DEFAULT_NIP28_CHANNEL_ID";
+const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
+const DEFAULT_NIP28_CHANNEL_ID: &str =
+    "ebf2e35092632ecb81b0f7da7d3b25b4c1b0e8e7eb98d7d766ef584e9edd68c8";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefaultNip28ChannelConfig {
+    pub relay_url: String,
+    pub channel_id: String,
+}
+
+impl DefaultNip28ChannelConfig {
+    pub fn from_env_or_default() -> Self {
+        Self {
+            relay_url: std::env::var(ENV_DEFAULT_NIP28_RELAY_URL)
+                .unwrap_or_else(|_| DEFAULT_NIP28_RELAY_URL.to_string()),
+            channel_id: std::env::var(ENV_DEFAULT_NIP28_CHANNEL_ID)
+                .unwrap_or_else(|_| DEFAULT_NIP28_CHANNEL_ID.to_string()),
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let id = &self.channel_id;
+        id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsDocumentV1 {
     pub schema_version: u16,
@@ -8741,6 +8781,7 @@ pub struct RenderState {
     pub ac_lane_worker: AcLaneWorker,
     pub provider_nip90_lane: ProviderNip90LaneSnapshot,
     pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
+    pub nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
     pub ollama_execution: LocalInferenceExecutionSnapshot,
@@ -11276,6 +11317,74 @@ mod tests {
             Some("beta")
         );
         assert_eq!(chat.active_managed_chat_messages().len(), 1);
+    }
+
+    #[test]
+    fn chat_state_auto_selects_default_nip28_channel_once_content_exists() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("alpha", "", ""),
+            20,
+        )
+        .expect("channel");
+
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            ),
+        ]);
+
+        assert_eq!(
+            chat.selected_workspace,
+            super::ChatWorkspaceSelection::Autopilot
+        );
+        assert!(chat.maybe_auto_select_default_nip28_channel());
+        assert_eq!(
+            chat.selected_workspace,
+            super::ChatWorkspaceSelection::ManagedGroup("oa-main".to_string())
+        );
+        assert!(!chat.maybe_auto_select_default_nip28_channel());
     }
 
     #[test]
