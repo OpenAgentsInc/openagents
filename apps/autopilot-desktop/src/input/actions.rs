@@ -10074,11 +10074,13 @@ fn submit_signed_network_request(
 
 fn submit_mission_control_buy_mode_request(
     state: &mut crate::app_state::RenderState,
+    target_provider_pubkeys: Vec<String>,
 ) -> Result<String, String> {
     let configured_relays = state.configured_provider_relay_urls();
     let request_event = build_mission_control_buy_mode_request_event(
         state.nostr_identity.as_ref(),
         configured_relays.as_slice(),
+        target_provider_pubkeys.as_slice(),
     )?;
     submit_signed_network_request_with_event(
         state,
@@ -10088,7 +10090,7 @@ fn submit_mission_control_buy_mode_request(
         None,
         crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
         crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
-        Vec::new(),
+        target_provider_pubkeys,
         request_event,
     )
 }
@@ -10118,19 +10120,46 @@ pub(super) fn run_mission_control_buy_mode_tick(
         return false;
     }
 
-    match submit_mission_control_buy_mode_request(state) {
+    let now_epoch_seconds = current_epoch_seconds();
+    let target_selection = state
+        .autopilot_chat
+        .select_autopilot_buy_mode_target(now_epoch_seconds);
+    let Some(target_provider_pubkey) = target_selection.selected_peer_pubkey.clone() else {
+        state.mission_control.schedule_buy_mode_retry(now);
+        let detail = target_selection.blocked_reason.unwrap_or_else(|| {
+            "Buy Mode blocked: no eligible Autopilot peer is available".to_string()
+        });
+        let blocked_reason_code = target_selection
+            .blocked_reason_code
+            .as_deref()
+            .unwrap_or("unknown");
+        state.provider_runtime.last_result = Some(detail.clone());
+        tracing::info!(
+            target: "autopilot_desktop::buy_mode",
+            "Buy Mode dispatch blocked: code={} observed_peers={} eligible_peers={} detail={}",
+            blocked_reason_code,
+            target_selection.observed_peer_count,
+            target_selection.eligible_peer_count,
+            detail
+        );
+        state.mission_control.record_action(detail);
+        return true;
+    };
+
+    match submit_mission_control_buy_mode_request(state, vec![target_provider_pubkey.clone()]) {
         Ok(request_id) => {
             state.mission_control.schedule_next_buy_mode_dispatch(now);
             tracing::info!(
                 target: "autopilot_desktop::buy_mode",
-                "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={}",
+                "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={} target_provider={}",
                 request_id,
                 crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS
+                crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                target_provider_pubkey
             );
-            state
-                .mission_control
-                .record_action(format!("Buy Mode dispatched {request_id}"));
+            state.mission_control.record_action(format!(
+                "Buy Mode dispatched {request_id} -> {target_provider_pubkey}"
+            ));
             true
         }
         Err(error) => {
@@ -10391,6 +10420,7 @@ fn build_nip90_request_event_for_network_submission(
 fn build_mission_control_buy_mode_request_event(
     identity: Option<&nostr::NostrIdentity>,
     relay_urls: &[String],
+    target_provider_pubkeys: &[String],
 ) -> Result<nostr::Event, String> {
     let Some(identity) = identity else {
         return Err("Cannot publish NIP-90 request: Nostr identity unavailable".to_string());
@@ -10429,6 +10459,12 @@ fn build_mission_control_buy_mode_request_event(
             .with_bid(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS.saturating_mul(1000));
     for relay in normalized_relays {
         request = request.add_relay(relay);
+    }
+    for provider in target_provider_pubkeys {
+        let provider = provider.trim();
+        if !provider.is_empty() {
+            request = request.add_service_provider(provider.to_string());
+        }
     }
 
     let template = nostr::nip90::create_job_request_event(&request);
@@ -13538,11 +13574,12 @@ mod tests {
     }
 
     #[test]
-    fn builds_mission_control_buy_mode_request_with_fixed_5050_contract() {
+    fn builds_mission_control_buy_mode_request_with_fixed_5050_contract_and_target_provider() {
         let identity = fixture_identity();
         let event = build_mission_control_buy_mode_request_event(
             Some(&identity),
             &["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            &["provider-pubkey-1".to_string()],
         )
         .expect("buy mode request event should build");
         assert_eq!(
@@ -13556,6 +13593,10 @@ mod tests {
             Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000)
         );
         assert_eq!(request.relays.len(), 2);
+        assert_eq!(
+            request.service_providers,
+            vec!["provider-pubkey-1".to_string()]
+        );
         assert_eq!(request.inputs.len(), 1);
         assert_eq!(request.inputs[0].data, MISSION_CONTROL_BUY_MODE_PROMPT);
         assert_eq!(request.inputs[0].marker.as_deref(), Some("prompt"));

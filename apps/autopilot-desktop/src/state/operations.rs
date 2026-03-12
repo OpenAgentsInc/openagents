@@ -1226,6 +1226,16 @@ impl NetworkRequestsState {
         if request.status.is_terminal() {
             return None;
         }
+        if !request_targets_provider(request, provider_pubkey) {
+            tracing::info!(
+                target: "autopilot_desktop::buyer",
+                "Ignoring buyer feedback for targeted request_id={} provider={} targets=[{}]",
+                request_id,
+                provider_pubkey,
+                request.target_provider_pubkeys.join(",")
+            );
+            return None;
+        }
         if request
             .observed_buyer_event_ids
             .iter()
@@ -1327,6 +1337,16 @@ impl NetworkRequestsState {
             return None;
         };
         if request.status.is_terminal() {
+            return None;
+        }
+        if !request_targets_provider(request, provider_pubkey) {
+            tracing::info!(
+                target: "autopilot_desktop::buyer",
+                "Ignoring buyer result for targeted request_id={} provider={} targets=[{}]",
+                request_id,
+                provider_pubkey,
+                request.target_provider_pubkeys.join(",")
+            );
             return None;
         }
         if request
@@ -1926,6 +1946,18 @@ fn observed_provider_mut<'a>(
         .provider_observations
         .last_mut()
         .expect("new observation should be present")
+}
+
+fn request_targets_provider(request: &SubmittedNetworkRequest, provider_pubkey: &str) -> bool {
+    if request.target_provider_pubkeys.is_empty() {
+        return true;
+    }
+
+    let normalized_provider = normalize_pubkey(provider_pubkey);
+    request
+        .target_provider_pubkeys
+        .iter()
+        .any(|target| normalize_pubkey(target.as_str()) == normalized_provider)
 }
 
 fn as_shared_provider_observation(

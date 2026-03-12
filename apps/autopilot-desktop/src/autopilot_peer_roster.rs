@@ -22,6 +22,12 @@ pub(crate) const AUTOPILOT_PEER_ELIGIBILITY_PRESENCE_EXPIRED: &str = "presence-e
 pub(crate) const AUTOPILOT_PEER_ELIGIBILITY_MISSING_CAPABILITY: &str = "missing-capability-5050";
 pub(crate) const AUTOPILOT_PEER_ELIGIBILITY_LOCALLY_MUTED: &str = "locally-muted";
 pub(crate) const AUTOPILOT_PEER_ELIGIBILITY_INVALID_PUBKEY: &str = "invalid-pubkey";
+pub(crate) const AUTOPILOT_BUY_MODE_TARGET_BLOCK_INVALID_MAIN_CHANNEL_CONFIG: &str =
+    "invalid-main-channel-config";
+pub(crate) const AUTOPILOT_BUY_MODE_TARGET_BLOCK_WAITING_FOR_MAIN_CHANNEL: &str =
+    "waiting-for-main-channel";
+pub(crate) const AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_PEERS_OBSERVED: &str = "no-peers-observed";
+pub(crate) const AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_ELIGIBLE_PEERS: &str = "no-eligible-peers";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct AutopilotPeerRosterRow {
@@ -42,6 +48,17 @@ pub(crate) struct AutopilotPeerRosterRow {
     pub source_relay_url: String,
     pub eligible_for_buy_mode: bool,
     pub eligibility_reason: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct AutopilotBuyModeTargetSelection {
+    pub selected_peer_pubkey: Option<String>,
+    pub selected_relay_url: Option<String>,
+    pub selected_ready_model: Option<String>,
+    pub observed_peer_count: usize,
+    pub eligible_peer_count: usize,
+    pub blocked_reason_code: Option<String>,
+    pub blocked_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -172,6 +189,82 @@ pub(crate) fn build_autopilot_peer_roster(
     rows
 }
 
+pub(crate) fn select_autopilot_buy_mode_target(
+    snapshot: &ManagedChatProjectionSnapshot,
+    local_state: &ManagedChatLocalState,
+    local_pubkey: Option<&str>,
+    config: &DefaultNip28ChannelConfig,
+    now_epoch_seconds: u64,
+) -> AutopilotBuyModeTargetSelection {
+    if !config.is_valid() {
+        return blocked_buy_mode_target_selection(
+            AUTOPILOT_BUY_MODE_TARGET_BLOCK_INVALID_MAIN_CHANNEL_CONFIG,
+            "Buy Mode blocked: invalid main NIP-28 channel configuration",
+            0,
+            0,
+        );
+    }
+
+    if snapshot
+        .channels
+        .iter()
+        .all(|channel| channel.channel_id != config.channel_id)
+    {
+        return blocked_buy_mode_target_selection(
+            AUTOPILOT_BUY_MODE_TARGET_BLOCK_WAITING_FOR_MAIN_CHANNEL,
+            "Buy Mode blocked: waiting for the configured main NIP-28 channel",
+            0,
+            0,
+        );
+    }
+
+    let rows = build_autopilot_peer_roster(
+        snapshot,
+        local_state,
+        local_pubkey,
+        config,
+        now_epoch_seconds,
+    );
+    let observed_peer_count = rows.len();
+    let eligible_peer_count = rows.iter().filter(|row| row.eligible_for_buy_mode).count();
+
+    if let Some(selected) = rows.iter().find(|row| row.eligible_for_buy_mode) {
+        return AutopilotBuyModeTargetSelection {
+            selected_peer_pubkey: Some(selected.pubkey.clone()),
+            selected_relay_url: Some(selected.source_relay_url.clone()),
+            selected_ready_model: selected.ready_model.clone(),
+            observed_peer_count,
+            eligible_peer_count,
+            blocked_reason_code: None,
+            blocked_reason: None,
+        };
+    }
+
+    if rows.is_empty() {
+        return blocked_buy_mode_target_selection(
+            AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_PEERS_OBSERVED,
+            "Buy Mode blocked: no Autopilot peers observed in the configured main NIP-28 channel",
+            observed_peer_count,
+            eligible_peer_count,
+        );
+    }
+
+    let eligibility_summary = summarize_roster_eligibility_counts(rows.as_slice());
+    let blocked_reason = if eligibility_summary.is_empty() {
+        "Buy Mode blocked: no eligible Autopilot peers are online for compute".to_string()
+    } else {
+        format!(
+            "Buy Mode blocked: no eligible Autopilot peers are online for compute ({eligibility_summary})"
+        )
+    };
+    blocked_buy_mode_target_selection(
+        AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_ELIGIBLE_PEERS,
+        blocked_reason.as_str(),
+        observed_peer_count,
+        eligible_peer_count,
+    )
+}
+
 pub(crate) fn parse_autopilot_compute_presence_message(
     content: &str,
     author_pubkey: &str,
@@ -289,6 +382,35 @@ fn normalize_capabilities(capabilities: Vec<String>) -> Vec<String> {
     capabilities.sort();
     capabilities.dedup();
     capabilities
+}
+
+fn blocked_buy_mode_target_selection(
+    blocked_reason_code: &str,
+    blocked_reason: &str,
+    observed_peer_count: usize,
+    eligible_peer_count: usize,
+) -> AutopilotBuyModeTargetSelection {
+    AutopilotBuyModeTargetSelection {
+        selected_peer_pubkey: None,
+        selected_relay_url: None,
+        selected_ready_model: None,
+        observed_peer_count,
+        eligible_peer_count,
+        blocked_reason_code: Some(blocked_reason_code.to_string()),
+        blocked_reason: Some(blocked_reason.to_string()),
+    }
+}
+
+fn summarize_roster_eligibility_counts(rows: &[AutopilotPeerRosterRow]) -> String {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for row in rows.iter().filter(|row| !row.eligible_for_buy_mode) {
+        *counts.entry(row.eligibility_reason.clone()).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(reason, count)| format!("{reason}={count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn finalize_roster_row(
@@ -718,6 +840,135 @@ mod tests {
         });
         assert!(
             parse_autopilot_compute_presence_message(&mismatched.to_string(), &author).is_none()
+        );
+    }
+
+    #[test]
+    fn buy_mode_target_selection_chooses_first_eligible_peer_deterministically() {
+        let main_channel_id = &"aa".repeat(32);
+        let older = "11".repeat(32);
+        let newer = "22".repeat(32);
+        let older_presence = serde_json::json!({
+            "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+            "pubkey": older,
+            "capabilities": ["5050"],
+            "expires_at": 100
+        });
+        let newer_presence = serde_json::json!({
+            "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+            "pubkey": newer,
+            "capabilities": ["5050"],
+            "ready_model": "apple-foundation-model",
+            "expires_at": 100
+        });
+        let snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message(
+                    "presence-older",
+                    main_channel_id,
+                    &older,
+                    &older_presence.to_string(),
+                    30,
+                ),
+                fixture_message(
+                    "presence-newer",
+                    main_channel_id,
+                    &newer,
+                    &newer_presence.to_string(),
+                    40,
+                ),
+            ],
+        );
+
+        let selection = select_autopilot_buy_mode_target(
+            &snapshot,
+            &ManagedChatLocalState::default(),
+            None,
+            &fixture_config(main_channel_id),
+            50,
+        );
+
+        assert_eq!(selection.observed_peer_count, 2);
+        assert_eq!(selection.eligible_peer_count, 2);
+        assert_eq!(
+            selection.selected_peer_pubkey.as_deref(),
+            Some(newer.as_str())
+        );
+        assert_eq!(
+            selection.selected_relay_url.as_deref(),
+            Some("wss://relay.openagents.test")
+        );
+        assert_eq!(
+            selection.selected_ready_model.as_deref(),
+            Some("apple-foundation-model")
+        );
+        assert!(selection.blocked_reason_code.is_none());
+    }
+
+    #[test]
+    fn buy_mode_target_selection_blocks_when_main_channel_is_missing() {
+        let main_channel_id = &"aa".repeat(32);
+        let selection = select_autopilot_buy_mode_target(
+            &ManagedChatProjectionSnapshot::default(),
+            &ManagedChatLocalState::default(),
+            None,
+            &fixture_config(main_channel_id),
+            50,
+        );
+
+        assert_eq!(
+            selection.blocked_reason_code.as_deref(),
+            Some(AUTOPILOT_BUY_MODE_TARGET_BLOCK_WAITING_FOR_MAIN_CHANNEL)
+        );
+        assert!(selection.selected_peer_pubkey.is_none());
+    }
+
+    #[test]
+    fn buy_mode_target_selection_blocks_when_no_peer_is_eligible() {
+        let main_channel_id = &"aa".repeat(32);
+        let author = "11".repeat(32);
+        let presence = serde_json::json!({
+            "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            "mode": AUTOPILOT_COMPUTE_PRESENCE_OFFLINE_MODE,
+            "pubkey": author,
+            "capabilities": ["5050"],
+            "expires_at": 90
+        });
+        let snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![fixture_message(
+                "presence",
+                main_channel_id,
+                &author,
+                &presence.to_string(),
+                30,
+            )],
+        );
+
+        let selection = select_autopilot_buy_mode_target(
+            &snapshot,
+            &ManagedChatLocalState::default(),
+            None,
+            &fixture_config(main_channel_id),
+            40,
+        );
+
+        assert_eq!(selection.observed_peer_count, 1);
+        assert_eq!(selection.eligible_peer_count, 0);
+        assert_eq!(
+            selection.blocked_reason_code.as_deref(),
+            Some(AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_ELIGIBLE_PEERS)
+        );
+        assert!(
+            selection
+                .blocked_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(AUTOPILOT_PEER_ELIGIBILITY_PROVIDER_OFFLINE))
         );
     }
 }
