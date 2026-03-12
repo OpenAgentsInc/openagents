@@ -15578,11 +15578,12 @@ mod tests {
             mission_control.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
-        assert!(!mission_control.buy_mode_dispatch_due(
-            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL.saturating_sub(
-                std::time::Duration::from_millis(1)
+        assert!(
+            !mission_control.buy_mode_dispatch_due(
+                now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
+                    .saturating_sub(std::time::Duration::from_millis(1))
             )
-        ));
+        );
 
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);

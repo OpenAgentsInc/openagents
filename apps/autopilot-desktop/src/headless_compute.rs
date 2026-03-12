@@ -10,7 +10,12 @@ use nostr::nip90::{
     JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
     create_job_feedback_event, create_job_request_event, create_job_result_event,
 };
-use nostr::{Event, EventTemplate, NostrIdentity, load_or_create_identity};
+use nostr::{
+    ChannelMetadata, Event, EventTemplate, GroupMetadata, GroupMetadataEvent,
+    ManagedChannelCreateEvent, ManagedChannelHints, ManagedChannelType, NostrIdentity,
+    load_or_create_identity,
+};
+use nostr_client::{PoolConfig, RelayPool};
 use serde_json::Value;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, mpsc};
@@ -131,12 +136,125 @@ pub struct HeadlessIdentitySummary {
     pub public_key_hex: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct HeadlessNip28SeedConfig {
+    pub relay_urls: Vec<String>,
+    pub identity_path: Option<PathBuf>,
+}
+
+impl Default for HeadlessNip28SeedConfig {
+    fn default() -> Self {
+        Self {
+            relay_urls: Vec::new(),
+            identity_path: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HeadlessNip28SeedSummary {
+    pub identity_path: PathBuf,
+    pub npub: String,
+    pub public_key_hex: String,
+    pub relay_urls: Vec<String>,
+    pub group_id: String,
+    pub group_metadata_event_id: String,
+    pub channel_id: String,
+}
+
 pub fn identity_summary(identity_path: Option<PathBuf>) -> Result<HeadlessIdentitySummary> {
     let identity = load_identity(identity_path.as_deref())?;
     Ok(HeadlessIdentitySummary {
         identity_path: identity.identity_path.clone(),
         npub: identity.npub.clone(),
         public_key_hex: identity.public_key_hex.clone(),
+    })
+}
+
+pub async fn seed_headless_nip28_main_channel(
+    config: HeadlessNip28SeedConfig,
+) -> Result<HeadlessNip28SeedSummary> {
+    ensure_relays(config.relay_urls.as_slice(), "nip28 seed")?;
+    let relay_urls = normalized_relays(config.relay_urls.as_slice());
+    let identity = load_identity(config.identity_path.as_deref())?;
+    let created_at = now_epoch_seconds();
+    let group_id = "oa-main".to_string();
+
+    let group_template = GroupMetadataEvent::new(
+        group_id.as_str(),
+        GroupMetadata::new().with_name("OpenAgents Main"),
+        created_at,
+    )
+    .map_err(|error| anyhow!("failed to build group metadata event: {error}"))?;
+    let group_event = sign_template(
+        &identity,
+        &EventTemplate {
+            kind: 39_000,
+            tags: group_template.to_tags(),
+            content: String::new(),
+            created_at,
+        },
+    )?;
+
+    let channel_template = ManagedChannelCreateEvent::new(
+        group_id.as_str(),
+        ChannelMetadata::new("main", "OpenAgents main channel", ""),
+        created_at.saturating_add(1),
+    )
+    .map_err(|error| anyhow!("failed to build managed channel event: {error}"))?
+    .with_hints(
+        ManagedChannelHints::new()
+            .with_slug("main")
+            .with_channel_type(ManagedChannelType::Ops)
+            .with_category_id("main")
+            .with_category_label("Main")
+            .with_position(1),
+    )
+    .map_err(|error| anyhow!("failed to attach managed channel hints: {error}"))?;
+    let channel_event = sign_template(
+        &identity,
+        &EventTemplate {
+            kind: 40,
+            tags: channel_template
+                .to_tags()
+                .map_err(|error| anyhow!("failed to encode managed channel tags: {error}"))?,
+            content: channel_template
+                .content()
+                .map_err(|error| anyhow!("failed to encode managed channel content: {error}"))?,
+            created_at: created_at.saturating_add(1),
+        },
+    )?;
+
+    let pool = RelayPool::new(PoolConfig::default());
+    for relay_url in relay_urls.iter() {
+        pool.add_relay(relay_url.as_str())
+            .await
+            .map_err(|error| anyhow!("failed to add relay {relay_url}: {error}"))?;
+        pool.connect_relay(relay_url.as_str())
+            .await
+            .map_err(|error| anyhow!("failed to connect relay {relay_url}: {error}"))?;
+    }
+
+    publish_seed_event(&pool, &group_event, "group metadata").await?;
+    publish_seed_event(&pool, &channel_event, "managed channel").await?;
+    let _ = pool.disconnect_all().await;
+
+    info!(
+        target: "autopilot_desktop::headless_seed",
+        relay_count = relay_urls.len(),
+        channel_id = %channel_event.id,
+        pubkey = %identity.public_key_hex,
+        "seeded NIP-28 main channel"
+    );
+
+    Ok(HeadlessNip28SeedSummary {
+        identity_path: identity.identity_path.clone(),
+        npub: identity.npub.clone(),
+        public_key_hex: identity.public_key_hex.clone(),
+        relay_urls,
+        group_id,
+        group_metadata_event_id: group_event.id,
+        channel_id: channel_event.id,
     })
 }
 
@@ -187,6 +305,24 @@ pub async fn run_headless_relay(config: HeadlessRelayConfig) -> Result<()> {
             }
         }
     }
+}
+
+async fn publish_seed_event(pool: &RelayPool, event: &Event, label: &str) -> Result<()> {
+    let confirmations = pool
+        .publish(event)
+        .await
+        .map_err(|error| anyhow!("failed to publish {label}: {error}"))?;
+    if confirmations
+        .iter()
+        .any(|confirmation| confirmation.accepted)
+    {
+        return Ok(());
+    }
+    let detail = confirmations
+        .first()
+        .map(|confirmation| confirmation.message.clone())
+        .unwrap_or_else(|| "relay rejected event".to_string());
+    bail!("failed to publish {label}: {detail}")
 }
 
 pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
@@ -1371,6 +1507,13 @@ fn load_identity(identity_path: Option<&Path>) -> Result<NostrIdentity> {
         }
     };
     load_or_create_identity().context("failed to load or create Nostr identity")
+}
+
+fn now_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn ensure_relays(relays: &[String], label: &str) -> Result<()> {

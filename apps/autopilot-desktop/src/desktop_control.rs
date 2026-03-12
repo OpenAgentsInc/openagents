@@ -1208,8 +1208,8 @@ fn buy_mode_status_changed(
     previous: Option<&DesktopControlBuyModeStatus>,
     current: &DesktopControlBuyModeStatus,
 ) -> bool {
-        previous.is_none_or(|previous| {
-            previous.enabled != current.enabled
+    previous.is_none_or(|previous| {
+        previous.enabled != current.enabled
             || previous.approved_budget_sats != current.approved_budget_sats
             || previous.cadence_seconds != current.cadence_seconds
             || previous.cadence_millis != current.cadence_millis

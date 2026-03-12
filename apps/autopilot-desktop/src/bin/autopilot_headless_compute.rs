@@ -10,8 +10,10 @@ use anyhow::Result;
 use autopilot_desktop::headless_compute::{
     HEADLESS_BUY_MODE_BUDGET_SATS, HEADLESS_BUY_MODE_INTERVAL_SECONDS, HEADLESS_BUY_MODE_PROMPT,
     HEADLESS_BUY_MODE_REQUEST_TYPE, HEADLESS_BUY_MODE_TIMEOUT_SECONDS, HeadlessBuyerConfig,
-    HeadlessIdentitySummary, HeadlessProviderBackend, HeadlessProviderConfig, HeadlessRelayConfig,
-    identity_summary, run_headless_buyer, run_headless_provider, run_headless_relay,
+    HeadlessIdentitySummary, HeadlessNip28SeedConfig, HeadlessNip28SeedSummary,
+    HeadlessProviderBackend, HeadlessProviderConfig, HeadlessRelayConfig, identity_summary,
+    run_headless_buyer, run_headless_provider, run_headless_relay,
+    seed_headless_nip28_main_channel,
 };
 use autopilot_desktop::logging;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -67,6 +69,12 @@ enum Command {
         fail_fast: bool,
     },
     Identity {
+        #[arg(long)]
+        identity_path: Option<PathBuf>,
+    },
+    SeedNip28Main {
+        #[arg(long = "relay", required = true)]
+        relay_urls: Vec<String>,
         #[arg(long)]
         identity_path: Option<PathBuf>,
     },
@@ -152,6 +160,18 @@ async fn main() -> Result<()> {
             print_identity_summary(&summary);
             Ok(())
         }
+        Command::SeedNip28Main {
+            relay_urls,
+            identity_path,
+        } => {
+            let summary = seed_headless_nip28_main_channel(HeadlessNip28SeedConfig {
+                relay_urls,
+                identity_path,
+            })
+            .await?;
+            print_nip28_seed_summary(&summary);
+            Ok(())
+        }
     }
 }
 
@@ -162,6 +182,25 @@ fn print_identity_summary(summary: &HeadlessIdentitySummary) {
             "identityPath": summary.identity_path.display().to_string(),
             "npub": summary.npub,
             "publicKeyHex": summary.public_key_hex,
+        }))
+        .unwrap_or_else(|error| format!(
+            "{{\"error\":\"{}\"}}",
+            escape_json_string(error.to_string().as_str())
+        ))
+    );
+}
+
+fn print_nip28_seed_summary(summary: &HeadlessNip28SeedSummary) {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "identityPath": summary.identity_path.display().to_string(),
+            "npub": summary.npub,
+            "publicKeyHex": summary.public_key_hex,
+            "relayUrls": summary.relay_urls,
+            "groupId": summary.group_id,
+            "groupMetadataEventId": summary.group_metadata_event_id,
+            "channelId": summary.channel_id,
         }))
         .unwrap_or_else(|error| format!(
             "{{\"error\":\"{}\"}}",

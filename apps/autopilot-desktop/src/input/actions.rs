@@ -10459,7 +10459,10 @@ pub(crate) fn build_mission_control_buy_mode_request_event(
                 "timeout_seconds",
                 crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS.to_string(),
             )
-            .add_param("oa_dispatch_nonce", mission_control_buy_mode_dispatch_nonce())
+            .add_param(
+                "oa_dispatch_nonce",
+                mission_control_buy_mode_dispatch_nonce(),
+            )
             .with_bid(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS.saturating_mul(1000));
     for relay in normalized_relays {
         request = request.add_relay(relay);
