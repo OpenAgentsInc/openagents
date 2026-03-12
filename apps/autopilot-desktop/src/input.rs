@@ -3193,13 +3193,6 @@ fn handle_mission_control_keyboard_input(
                 );
                 return true;
             }
-            if s.mission_control.withdraw_invoice.is_focused() {
-                let _ = run_mission_control_action(
-                    s,
-                    crate::pane_system::MissionControlPaneAction::SendWithdrawal,
-                );
-                return true;
-            }
             false
         },
     )

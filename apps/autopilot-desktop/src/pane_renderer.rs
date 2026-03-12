@@ -47,7 +47,6 @@ use crate::pane_system::{
     mission_control_load_funds_layout, mission_control_local_fm_test_button_bounds,
     mission_control_local_model_button_bounds, mission_control_send_invoice_input_bounds,
     mission_control_send_lightning_button_bounds, mission_control_wallet_refresh_button_bounds,
-    mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
     network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
     network_requests_payload_input_bounds, network_requests_quote_row_bounds,
@@ -1046,47 +1045,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    let withdraw_input_bounds = mission_control_withdraw_invoice_input_bounds(content_bounds);
-    paint.scene.draw_text(paint.text.layout_mono(
-        "LIGHTNING WITHDRAW",
-        Point::new(
-            withdraw_input_bounds.origin.x,
-            withdraw_input_bounds.origin.y - 12.0,
-        ),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    ));
-    mission_control
-        .withdraw_invoice
-        .set_max_width(withdraw_input_bounds.size.width);
-    mission_control
-        .withdraw_invoice
-        .paint(withdraw_input_bounds, paint);
-
-    let withdraw_bounds = mission_control_withdraw_button_bounds(content_bounds);
-    if mission_control
-        .withdraw_invoice
-        .get_value()
-        .trim()
-        .is_empty()
-    {
-        paint_mission_control_command_button(
-            withdraw_bounds,
-            "WITHDRAW",
-            mission_control_muted_color(),
-            false,
-            paint,
-        );
-    } else {
-        paint_mission_control_command_button(
-            withdraw_bounds,
-            "WITHDRAW",
-            mission_control_green_color(),
-            true,
-            paint,
-        );
-    }
-
     let load_funds_layout = mission_control_load_funds_layout(content_bounds, buy_mode_enabled);
     let lightning_amount_valid = mission_control
         .load_funds_amount_sats
@@ -1141,7 +1099,7 @@ fn paint_go_online_pane(
     let send_invoice_bounds =
         mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled);
     paint.scene.draw_text(paint.text.layout_mono(
-        "LIGHTNING SEND",
+        "LIGHTNING WITHDRAW",
         Point::new(
             send_invoice_bounds.origin.x,
             send_invoice_bounds.origin.y - 12.0,
@@ -1157,7 +1115,7 @@ fn paint_go_online_pane(
         .paint(send_invoice_bounds, paint);
     paint_mission_control_command_button(
         mission_control_send_lightning_button_bounds(content_bounds, buy_mode_enabled),
-        "LIGHTNING SEND",
+        "LIGHTNING WITHDRAW",
         mission_control_orange_color(),
         !mission_control.send_invoice.get_value().trim().is_empty(),
         paint,

@@ -639,7 +639,7 @@ impl Default for MissionControlPaneState {
                 .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             send_invoice: TextInput::new()
-                .placeholder("Paste Lightning invoice to send")
+                .placeholder("Paste Lightning invoice to withdraw")
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
                 .border_color(wgpui::Hsla::from_hex(0x3A5D66))

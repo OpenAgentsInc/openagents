@@ -1399,9 +1399,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                         content_bounds,
                         state.mission_control_buy_mode_enabled(),
                     )
-                    .contains(point)
-                    || mission_control_withdraw_invoice_input_bounds(content_bounds)
-                        .contains(point))
+                    .contains(point))
             {
                 return CursorIcon::Text;
             }
@@ -1539,7 +1537,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                         state.mission_control_buy_mode_enabled(),
                     )
                     .contains(point)
-                    || mission_control_withdraw_invoice_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
                 }
@@ -5158,17 +5155,6 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::RunLocalFmSummaryTest,
                 ))
-            } else if mission_control_withdraw_button_bounds(content_bounds).contains(point)
-                && !state
-                    .mission_control
-                    .withdraw_invoice
-                    .get_value()
-                    .trim()
-                    .is_empty()
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::SendWithdrawal,
-                ))
             } else {
                 None
             }
@@ -6201,17 +6187,8 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
             &mut state.event_context,
         )
         .is_handled();
-    let withdraw_handled = state
-        .mission_control
-        .withdraw_invoice
-        .event(
-            event,
-            mission_control_withdraw_invoice_input_bounds(content_bounds),
-            &mut state.event_context,
-        )
-        .is_handled();
 
-    amount_handled || send_handled || withdraw_handled
+    amount_handled || send_handled
 }
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
