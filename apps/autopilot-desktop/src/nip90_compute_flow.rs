@@ -80,6 +80,8 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub result_provider_pubkey: Option<String>,
     pub invoice_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
+    pub payment_blocker_codes: Vec<String>,
+    pub payment_blocker_summary: Option<String>,
     pub last_feedback_status: Option<String>,
     pub last_feedback_event_id: Option<String>,
     pub last_result_event_id: Option<String>,
@@ -198,6 +200,10 @@ impl BuyerRequestFlowSnapshot {
             }
             (None, None, None) => "awaiting provider".to_string(),
         }
+    }
+
+    pub(crate) fn payment_blocker_codes_label(&self) -> Option<String> {
+        (!self.payment_blocker_codes.is_empty()).then(|| self.payment_blocker_codes.join(","))
     }
 
     pub(crate) fn work_label(&self) -> String {
@@ -388,10 +394,22 @@ impl BuyerRequestFlowSnapshot {
             "queued" => invoice_summary
                 .map(|invoice| format!("payment queued ({invoice})"))
                 .unwrap_or_else(|| "payment queued".to_string()),
-            "invoice" => invoice_summary
-                .map(|invoice| format!("invoice received ({invoice})"))
-                .unwrap_or_else(|| "invoice received".to_string()),
-            _ => "payment idle".to_string(),
+            "invoice" => {
+                if self.pending_bolt11.is_some() {
+                    invoice_summary
+                        .map(|invoice| format!("invoice received ({invoice})"))
+                        .unwrap_or_else(|| "invoice received".to_string())
+                } else if let Some(blocker) = self.payment_blocker_summary.as_deref() {
+                    format!("blocked ({blocker})")
+                } else {
+                    "invoice received".to_string()
+                }
+            }
+            _ => self
+                .payment_blocker_summary
+                .as_deref()
+                .map(|blocker| format!("blocked ({blocker})"))
+                .unwrap_or_else(|| "payment idle".to_string()),
         }
     }
 
@@ -437,6 +455,14 @@ impl BuyerRequestFlowSnapshot {
         if let Some(payable) = self.payable_provider_pubkey.as_deref() {
             line.push_str(" payable_provider=");
             line.push_str(mission_control_log_short_id(payable).as_str());
+        }
+        if let Some(blocker_codes) = self.payment_blocker_codes_label() {
+            line.push_str(" blocker_codes=");
+            line.push_str(blocker_codes.as_str());
+        }
+        if let Some(blocker_summary) = self.payment_blocker_summary.as_deref() {
+            line.push_str(" blocker=");
+            line.push_str(blocker_summary);
         }
         if self.loser_provider_count > 0 {
             line.push_str(" losers=");
@@ -670,6 +696,15 @@ pub(crate) fn build_buyer_request_flow_snapshot(
                     .or(selected_provider_pubkey.as_deref()),
             )
         });
+    let (payment_blocker_codes, payment_blocker_summary) = if request.last_payment_pointer.is_some()
+        || request.pending_bolt11.is_some()
+        || request.winning_provider_pubkey.is_some()
+        || request.payment_error.is_some()
+    {
+        (Vec::new(), None)
+    } else {
+        derive_buyer_payment_blockers(request)
+    };
 
     let (authority, phase, next_expected_event) =
         if request.payment_error.is_some() || request.status == NetworkRequestStatus::Failed {
@@ -764,6 +799,8 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         result_provider_pubkey,
         invoice_provider_pubkey,
         payable_provider_pubkey,
+        payment_blocker_codes,
+        payment_blocker_summary,
         last_feedback_status: request.last_feedback_status.clone(),
         last_feedback_event_id: request.last_feedback_event_id.clone(),
         last_result_event_id: request.last_result_event_id.clone(),
@@ -1012,13 +1049,18 @@ pub(crate) fn buy_mode_payments_status_lines(
             .iter()
             .take(4)
             .map(|request| {
-                format!(
+                let mut line = format!(
                     "{}={}({}/{})",
                     compact_buy_mode_request_id(request.request_id.as_str()),
                     request.status.label(),
                     request.phase.as_str(),
                     request.authority.as_str()
-                )
+                );
+                if let Some(blocker_codes) = request.payment_blocker_codes_label() {
+                    line.push_str(" blocker=");
+                    line.push_str(blocker_codes.as_str());
+                }
+                line
             })
             .collect::<Vec<_>>()
             .join(" // ");
@@ -1147,6 +1189,8 @@ struct BuyModePaymentLedgerEntry {
     result_provider_pubkey: String,
     invoice_provider_pubkey: String,
     payable_provider_pubkey: String,
+    payment_blocker_codes: Vec<String>,
+    payment_blocker_summary: Option<String>,
     loser_provider_count: usize,
     loser_reason_summary: Option<String>,
     payment_pointer: String,
@@ -1299,6 +1343,8 @@ fn buy_mode_request_ledger_entry(
             .payable_provider_pubkey
             .clone()
             .unwrap_or_else(|| "-".to_string()),
+        payment_blocker_codes: request.payment_blocker_codes.clone(),
+        payment_blocker_summary: request.payment_blocker_summary.clone(),
         loser_provider_count: request.loser_provider_count,
         loser_reason_summary: request.loser_reason_summary.clone(),
         payment_pointer: request
@@ -1399,6 +1445,8 @@ fn buy_mode_wallet_backfill_entry(
         result_provider_pubkey: "-".to_string(),
         invoice_provider_pubkey: "-".to_string(),
         payable_provider_pubkey: "-".to_string(),
+        payment_blocker_codes: Vec::new(),
+        payment_blocker_summary: None,
         loser_provider_count: 0,
         loser_reason_summary: None,
         payment_pointer: payment.id.clone(),
@@ -1467,11 +1515,16 @@ fn push_buy_mode_payment_entry_rows(
         rows.push((
             entry.stream.clone(),
             format!(
-                "selected_provider={}  result_provider={}  invoice_provider={}  payable_provider={}  losers={}  loser_summary={}",
+                "selected_provider={}  result_provider={}  invoice_provider={}  payable_provider={}  blockers={}  losers={}  loser_summary={}",
                 entry.selected_provider_pubkey,
                 entry.result_provider_pubkey,
                 entry.invoice_provider_pubkey,
                 entry.payable_provider_pubkey,
+                if entry.payment_blocker_codes.is_empty() {
+                    "-".to_string()
+                } else {
+                    entry.payment_blocker_codes.join(",")
+                },
                 entry.loser_provider_count,
                 entry.loser_reason_summary.as_deref().unwrap_or("-"),
             ),
@@ -1511,6 +1564,12 @@ fn push_buy_mode_payment_entry_rows(
     }
     if let Some(notice) = entry.payment_notice.as_deref() {
         rows.push((TerminalStream::Stderr, format!("payment_notice={notice}")));
+    }
+    if let Some(blocker_summary) = entry.payment_blocker_summary.as_deref() {
+        rows.push((
+            TerminalStream::Stderr,
+            format!("payment_blocker={blocker_summary}"),
+        ));
     }
     rows.push((TerminalStream::Stdout, String::new()));
 }
@@ -1772,6 +1831,144 @@ fn request_provider_invoice_amount_sats(
         })
         .map(msats_to_sats_ceil)
         .filter(|amount| *amount > 0)
+}
+
+fn observation_by_provider<'a>(
+    request: &'a SubmittedNetworkRequest,
+    provider_pubkey: Option<&str>,
+) -> Option<&'a crate::state::operations::NetworkRequestProviderObservation> {
+    let provider_pubkey = provider_pubkey?;
+    request.provider_observations.iter().find(|observation| {
+        normalize_pubkey(observation.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+    })
+}
+
+fn observation_has_payment_feedback(
+    observation: &crate::state::operations::NetworkRequestProviderObservation,
+) -> bool {
+    observation
+        .last_feedback_status
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some_and(|status| status.eq_ignore_ascii_case("payment-required"))
+}
+
+fn observation_has_payment_feedback_without_bolt11(
+    observation: &crate::state::operations::NetworkRequestProviderObservation,
+) -> bool {
+    observation_has_payment_feedback(observation) && !observation_has_valid_invoice(observation)
+}
+
+fn push_unique_blocker_code(blockers: &mut Vec<String>, code: &str) {
+    if blockers.iter().all(|existing| existing != code) {
+        blockers.push(code.to_string());
+    }
+}
+
+fn push_unique_blocker_detail(details: &mut Vec<String>, detail: String) {
+    if details.iter().all(|existing| existing != &detail) {
+        details.push(detail);
+    }
+}
+
+fn derive_buyer_payment_blockers(
+    request: &SubmittedNetworkRequest,
+) -> (Vec<String>, Option<String>) {
+    let mut blocker_codes = Vec::<String>::new();
+    let mut blocker_details = Vec::<String>::new();
+
+    let result_observation =
+        observation_by_provider(request, request.result_provider_pubkey.as_deref());
+    let invoice_observation =
+        observation_by_provider(request, request.invoice_provider_pubkey.as_deref());
+
+    if let Some(observation) = result_observation {
+        if !observation_has_valid_invoice(observation) {
+            push_unique_blocker_code(&mut blocker_codes, "result_without_invoice");
+            push_unique_blocker_detail(
+                &mut blocker_details,
+                format!(
+                    "result provider {} has no valid invoice",
+                    short_id(observation.provider_pubkey.as_str())
+                ),
+            );
+        }
+    }
+
+    if let Some(observation) = invoice_observation {
+        if !observation_has_non_error_result(observation) {
+            push_unique_blocker_code(&mut blocker_codes, "invoice_without_result");
+            push_unique_blocker_detail(
+                &mut blocker_details,
+                format!(
+                    "invoice provider {} has no non-error result",
+                    short_id(observation.provider_pubkey.as_str())
+                ),
+            );
+        }
+        if let Some(amount_msats) = observation.last_feedback_amount_msats {
+            let invoice_sats = msats_to_sats_ceil(amount_msats);
+            if invoice_sats > request.budget_sats {
+                push_unique_blocker_code(&mut blocker_codes, "invoice_over_budget");
+                push_unique_blocker_detail(
+                    &mut blocker_details,
+                    format!(
+                        "invoice provider {} requested {} sats above approved budget {}",
+                        short_id(observation.provider_pubkey.as_str()),
+                        invoice_sats,
+                        request.budget_sats
+                    ),
+                );
+            }
+        }
+    }
+
+    if let Some(observation) = request
+        .provider_observations
+        .iter()
+        .rev()
+        .find(|observation| observation_has_payment_feedback_without_bolt11(observation))
+    {
+        push_unique_blocker_code(&mut blocker_codes, "invoice_missing_bolt11");
+        push_unique_blocker_detail(
+            &mut blocker_details,
+            format!(
+                "provider {} sent payment-required without bolt11 invoice",
+                short_id(observation.provider_pubkey.as_str())
+            ),
+        );
+    }
+
+    let error_only_count = request
+        .provider_observations
+        .iter()
+        .filter(|observation| observation_has_error_only_signal(observation))
+        .count();
+    if blocker_codes.is_empty()
+        && request.winning_provider_pubkey.is_none()
+        && error_only_count > 0
+        && request.result_provider_pubkey.is_none()
+        && request.invoice_provider_pubkey.is_none()
+    {
+        push_unique_blocker_code(&mut blocker_codes, "loser_provider_noise_only");
+        push_unique_blocker_detail(
+            &mut blocker_details,
+            format!("only loser-provider noise remains from {error_only_count} provider(s)"),
+        );
+    }
+
+    if blocker_codes.is_empty() {
+        if let Some(notice) = request.payment_notice.as_deref() {
+            let notice = notice.trim();
+            if !notice.is_empty() {
+                push_unique_blocker_detail(&mut blocker_details, notice.to_string());
+            }
+        }
+    }
+
+    let blocker_summary = (!blocker_details.is_empty()).then(|| blocker_details.join(" // "));
+    (blocker_codes, blocker_summary)
 }
 
 #[cfg(test)]
@@ -2113,6 +2310,8 @@ mod tests {
             Some(payable_provider.as_str())
         );
         assert_eq!(snapshot.loser_provider_count, 1);
+        assert!(snapshot.payment_blocker_codes.is_empty());
+        assert_eq!(snapshot.payment_blocker_summary, None);
         assert!(
             snapshot
                 .loser_reason_summary
@@ -2130,6 +2329,92 @@ mod tests {
                 .loser_reason_summary
                 .as_deref()
                 .is_some_and(|summary| summary.contains("non-winning provider noise ignored"))
+        );
+    }
+
+    #[test]
+    fn buyer_snapshot_derives_missing_bolt11_and_over_budget_blockers() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-snapshot-blockers-001".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 75,
+                authority_command_seq: 11,
+            })
+            .expect("queue request");
+        let result_provider = "51".repeat(32);
+        let invoice_provider = "61".repeat(32);
+        let missing_bolt11_provider = "71".repeat(32);
+
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-snapshot-blockers-001",
+            3,
+            1,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            result_provider.as_str(),
+            "result-snapshot-blockers-001",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            invoice_provider.as_str(),
+            "feedback-snapshot-blockers-001",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(25_000),
+            Some("lnbc250n1snapshotblockers"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            missing_bolt11_provider.as_str(),
+            "feedback-snapshot-blockers-missing-001",
+            Some("payment-required"),
+            Some("send sats"),
+            Some(2_000),
+            None,
+        );
+
+        let request = requests
+            .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+            .expect("latest request");
+        let snapshot = build_buyer_request_flow_snapshot(request, &SparkPaneState::default());
+
+        assert_eq!(snapshot.payable_provider_pubkey, None);
+        assert_eq!(
+            snapshot.payment_blocker_codes,
+            vec![
+                "result_without_invoice".to_string(),
+                "invoice_without_result".to_string(),
+                "invoice_over_budget".to_string(),
+                "invoice_missing_bolt11".to_string(),
+            ]
+        );
+        assert!(
+            snapshot
+                .payment_blocker_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains(
+                    "invoice provider 616161..6161 requested 25 sats above approved budget 2"
+                ))
+        );
+        assert!(
+            snapshot
+                .payment_blocker_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains(
+                    "provider 717171..7171 sent payment-required without bolt11 invoice"
+                ))
         );
     }
 

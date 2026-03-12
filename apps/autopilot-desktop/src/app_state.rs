@@ -12585,6 +12585,64 @@ mod tests {
     }
 
     #[test]
+    fn buy_mode_payments_pane_surfaces_blockers_without_payable_winner() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-buy-ledger-blocker-001", 32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-ledger-blocker-001",
+            3,
+            1,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            "77".repeat(32).as_str(),
+            "result-buy-ledger-blocker-001",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "88".repeat(32).as_str(),
+            "feedback-buy-ledger-blocker-001",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(25_000),
+            Some("lnbc250n1buyledgerblocker"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "99".repeat(32).as_str(),
+            "feedback-buy-ledger-blocker-missing-001",
+            Some("payment-required"),
+            Some("invoice missing"),
+            Some(2_000),
+            None,
+        );
+
+        let mut pane = super::BuyModePaymentsPaneState::default();
+        pane.sync_rows(&requests, &SparkPaneState::default());
+        let lines = pane.ledger.recent_lines(12);
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("blockers=result_without_invoice,invoice_without_result,invoice_over_budget,invoice_missing_bolt11")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("payment_blocker=")
+                && line.text.contains(
+                    "invoice provider 888888..8888 requested 25 sats above approved budget 2",
+                )
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("payment_blocker=")
+                && line
+                    .text
+                    .contains("provider 999999..9999 sent payment-required without bolt11 invoice")
+        }));
+    }
+
+    #[test]
     fn buy_mode_payments_pane_surfaces_wallet_failure_detail() {
         let mut requests = NetworkRequestsState::default();
         let request_id =
@@ -14713,6 +14771,59 @@ mod tests {
                 && line.text.contains("buy_mode")
                 && line.text.contains("work=awaiting-provider")
                 && line.text.contains("payment=idle")
+        }));
+    }
+
+    #[test]
+    fn mission_control_log_lines_surface_buyer_payment_blockers() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-buy-blocker-1234567890".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Buy Mode blocker payload".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 9,
+            })
+            .expect("queue buyer request");
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-blocker-abcdef123456",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            "77".repeat(32).as_str(),
+            "result-buy-blocker-001",
+            Some("success"),
+        );
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &ProviderRuntimeState::default(),
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &requests,
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("blocker_codes=result_without_invoice")
+                && line
+                    .text
+                    .contains("blocker=result provider 777777..7777 has no valid invoice")
         }));
     }
 

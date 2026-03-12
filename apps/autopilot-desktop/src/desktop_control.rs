@@ -128,6 +128,8 @@ pub struct DesktopControlBuyModeRequestStatus {
     pub winning_result_event_id: Option<String>,
     pub payment_pointer: Option<String>,
     pub pending_bolt11: Option<String>,
+    pub payment_blocker_codes: Vec<String>,
+    pub payment_blocker_summary: Option<String>,
     pub payment_notice: Option<String>,
     pub payment_error: Option<String>,
     pub wallet_status: String,
@@ -146,6 +148,8 @@ pub struct DesktopControlBuyModeStatus {
     pub result_provider_pubkey: Option<String>,
     pub invoice_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
+    pub payment_blocker_codes: Vec<String>,
+    pub payment_blocker_summary: Option<String>,
     pub recent_requests: Vec<DesktopControlBuyModeRequestStatus>,
 }
 
@@ -1020,6 +1024,8 @@ fn buy_mode_status_changed(
             || previous.result_provider_pubkey != current.result_provider_pubkey
             || previous.invoice_provider_pubkey != current.invoice_provider_pubkey
             || previous.payable_provider_pubkey != current.payable_provider_pubkey
+            || previous.payment_blocker_codes != current.payment_blocker_codes
+            || previous.payment_blocker_summary != current.payment_blocker_summary
             || previous.recent_requests != current.recent_requests
     })
 }
@@ -1418,6 +1424,13 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             payable_provider_pubkey: buy_mode_request
                 .as_ref()
                 .and_then(|request| request.payable_provider_pubkey.clone()),
+            payment_blocker_codes: buy_mode_request
+                .as_ref()
+                .map(|request| request.payment_blocker_codes.clone())
+                .unwrap_or_default(),
+            payment_blocker_summary: buy_mode_request
+                .as_ref()
+                .and_then(|request| request.payment_blocker_summary.clone()),
             recent_requests: recent_request_rows,
         },
         active_job: compute_flow.active_job.map(|active_job| {
@@ -1524,6 +1537,8 @@ fn desktop_control_buy_mode_request_status(
         winning_result_event_id: request.winning_result_event_id.clone(),
         payment_pointer: request.payment_pointer.clone(),
         pending_bolt11: request.pending_bolt11.clone(),
+        payment_blocker_codes: request.payment_blocker_codes.clone(),
+        payment_blocker_summary: request.payment_blocker_summary.clone(),
         payment_notice: request.payment_notice.clone(),
         payment_error: request.payment_error.clone(),
         wallet_status: request.wallet_status.clone(),
@@ -1960,6 +1975,8 @@ mod tests {
                 result_provider_pubkey: None,
                 invoice_provider_pubkey: None,
                 payable_provider_pubkey: None,
+                payment_blocker_codes: Vec::new(),
+                payment_blocker_summary: None,
                 recent_requests: Vec::new(),
             },
             active_job: None,
@@ -2019,6 +2036,14 @@ mod tests {
                 payment_sent_at_epoch_seconds: None,
                 payment_failed_at_epoch_seconds: None,
                 pending_bolt11: None,
+                payment_blocker_codes: vec![
+                    "result_without_invoice".to_string(),
+                    "invoice_without_result".to_string(),
+                ],
+                payment_blocker_summary: Some(
+                    "result provider bbbbbb..bbbb has no valid invoice // invoice provider cccccc..cccc has no non-error result"
+                        .to_string(),
+                ),
                 payment_error: None,
                 payment_notice: Some("invoice missing bolt11".to_string()),
                 timestamp: None,
@@ -2053,6 +2078,19 @@ mod tests {
             Some(invoice.as_str())
         );
         assert_eq!(status.payable_provider_pubkey, None);
+        assert_eq!(
+            status.payment_blocker_codes,
+            vec![
+                "result_without_invoice".to_string(),
+                "invoice_without_result".to_string(),
+            ]
+        );
+        assert!(
+            status
+                .payment_blocker_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("result provider"))
+        );
     }
 
     #[test]
