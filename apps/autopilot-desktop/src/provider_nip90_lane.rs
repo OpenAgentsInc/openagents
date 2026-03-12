@@ -559,14 +559,21 @@ fn run_lane_loop(
             state.snapshot.last_request_event_id = Some(request.request_id.clone());
             state.snapshot.last_request_at = Some(Instant::now());
             state.snapshot.last_error = None;
-            state.snapshot.last_action = Some(format!(
-                "ingressed live NIP-90 request {} from relays",
-                request.request_id
-            ));
+            state.snapshot.last_action =
+                Some(if matches!(desired_state, DesiredLaneState::Preview) {
+                    "Relay preview observing market activity".to_string()
+                } else {
+                    format!(
+                        "ingressed live NIP-90 request {} from relays",
+                        request.request_id
+                    )
+                });
             let _ = update_tx.send(ProviderNip90LaneUpdate::IngressedRequest(request));
-            let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
-                state.snapshot.clone(),
-            )));
+            if !matches!(desired_state, DesiredLaneState::Preview) {
+                let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
+                    state.snapshot.clone(),
+                )));
+            }
         }
 
         for buyer_event in outcome.buyer_events {
