@@ -2163,6 +2163,37 @@ mod tests {
     }
 
     #[test]
+    fn managed_chat_projection_persists_relay_events() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(path.clone());
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('b', 10, "Ops"),
+            build_channel_metadata_event('c', 21, &channel_create.id, "ops", 1),
+            channel_create.clone(),
+        ]);
+
+        let message = build_message_event('d', 'e', 30, &channel_create.id, "hello from relay");
+        projection.record_relay_event(message.clone());
+
+        let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
+        assert!(
+            reloaded
+                .relay_events
+                .iter()
+                .any(|event| event.id == message.id),
+            "relay event not found in reloaded projection"
+        );
+        assert!(
+            reloaded.snapshot.messages.contains_key(&message.id),
+            "relay event not reflected in reloaded snapshot"
+        );
+    }
+
+    #[test]
     fn managed_chat_projection_reconciles_outbound_local_echo_when_relay_echo_arrives() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("managed-chat.json");

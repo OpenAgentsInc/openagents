@@ -198,6 +198,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
+        let nip28_chat_lane_worker = crate::nip28_chat_lane::Nip28ChatLaneWorker::spawn();
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
         let chat_terminal_worker = crate::chat_terminal::ChatTerminalWorker::spawn();
         let local_inference_runtime = default_local_inference_runtime().map_err(|error| {
@@ -311,6 +312,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ac_lane_worker,
             provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
+            nip28_chat_lane_worker,
             apple_fm_execution: AppleFmBridgeSnapshot::default(),
             apple_fm_execution_worker,
             ollama_execution: LocalInferenceExecutionSnapshot::default(),
