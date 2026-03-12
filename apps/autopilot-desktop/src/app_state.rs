@@ -4238,6 +4238,22 @@ impl AutopilotChatState {
         }
     }
 
+    pub fn select_managed_chat_group_by_id(&mut self, group_id: &str) -> bool {
+        match self.managed_chat_projection.set_selected_group(group_id) {
+            Ok(()) => {
+                self.selected_workspace =
+                    ChatWorkspaceSelection::ManagedGroup(group_id.to_string());
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
     pub fn select_managed_chat_channel_by_index(&mut self, index: usize) -> bool {
         let Some(group_id) = self
             .active_managed_chat_group()

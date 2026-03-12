@@ -56,6 +56,10 @@ enum Command {
         #[command(subcommand)]
         command: BuyModeCommand,
     },
+    Chat {
+        #[command(subcommand)]
+        command: ChatCommand,
+    },
     ActiveJob,
     Withdraw {
         bolt11: String,
@@ -133,6 +137,40 @@ enum BuyModeCommand {
     Status,
 }
 
+#[derive(Subcommand, Debug)]
+enum ChatCommand {
+    Status,
+    Main,
+    Groups,
+    Channels,
+    Tail {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    SelectGroup {
+        group_id: String,
+    },
+    SelectChannel {
+        channel_id: String,
+    },
+    Send {
+        content: String,
+        #[arg(long)]
+        reply_to_event_id: Option<String>,
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+    Retry {
+        event_id: String,
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+}
+
 impl ProviderCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
@@ -169,6 +207,34 @@ impl BuyModeCommand {
     }
 }
 
+impl ChatCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status | Self::Groups | Self::Channels | Self::Tail { .. } => None,
+            Self::Main => Some(DesktopControlActionRequest::SelectNip28MainChannel),
+            Self::SelectGroup { group_id } => Some(DesktopControlActionRequest::SelectNip28Group {
+                group_id: group_id.clone(),
+            }),
+            Self::SelectChannel { channel_id } => {
+                Some(DesktopControlActionRequest::SelectNip28Channel {
+                    channel_id: channel_id.clone(),
+                })
+            }
+            Self::Send {
+                content,
+                reply_to_event_id,
+                ..
+            } => Some(DesktopControlActionRequest::SendNip28Message {
+                content: content.clone(),
+                reply_to_event_id: reply_to_event_id.clone(),
+            }),
+            Self::Retry { event_id, .. } => Some(DesktopControlActionRequest::RetryNip28Message {
+                event_id: event_id.clone(),
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum LogSourceArg {
     MissionControl,
@@ -180,6 +246,9 @@ enum WaitConditionArg {
     ProviderOnline,
     ProviderOffline,
     AppleFmReady,
+    Nip28Ready,
+    Nip28MessagePresent,
+    Nip28OutboundIdle,
     BuyModeRunning,
     BuyModeStopped,
     BuyModeInFlight,
@@ -210,6 +279,9 @@ enum WaitCondition {
     ProviderOnline,
     ProviderOffline,
     AppleFmReady,
+    Nip28Ready,
+    Nip28MessagePresent,
+    Nip28OutboundIdle,
     BuyModeRunning,
     BuyModeStopped,
     BuyModeInFlight,
@@ -371,6 +443,90 @@ fn main() -> Result<()> {
                 } else {
                     print_buy_mode_text(&snapshot);
                 }
+            }
+        },
+        Command::Chat { command } => match command {
+            ChatCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.nip28)?;
+                } else {
+                    print_nip28_status_text(&snapshot);
+                }
+            }
+            ChatCommand::Main => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("chat main did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                print_action(json_output, &response, None)?;
+            }
+            ChatCommand::Groups => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.nip28.groups)?;
+                } else {
+                    print_nip28_groups_text(&snapshot);
+                }
+            }
+            ChatCommand::Channels => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.nip28.channels)?;
+                } else {
+                    print_nip28_channels_text(&snapshot);
+                }
+            }
+            ChatCommand::Tail { limit } => {
+                let snapshot = client.snapshot()?;
+                let mut messages = snapshot.nip28.recent_messages.clone();
+                if messages.len() > limit {
+                    messages.drain(0..messages.len().saturating_sub(limit));
+                }
+                if json_output {
+                    print_json(&messages)?;
+                } else {
+                    print_nip28_messages_text(&messages);
+                }
+            }
+            ChatCommand::SelectGroup { .. } | ChatCommand::SelectChannel { .. } => {
+                let action = command.action_request().ok_or_else(|| {
+                    anyhow!("chat selection command did not produce a control action")
+                })?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                print_action(json_output, &response, None)?;
+            }
+            ChatCommand::Send {
+                wait, timeout_ms, ..
+            } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("chat send did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::Nip28OutboundIdle, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
+            }
+            ChatCommand::Retry {
+                wait, timeout_ms, ..
+            } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("chat retry did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::Nip28OutboundIdle, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
             }
         },
         Command::ActiveJob => {
@@ -600,6 +756,9 @@ impl WaitConditionArg {
             Self::ProviderOnline => WaitCondition::ProviderOnline,
             Self::ProviderOffline => WaitCondition::ProviderOffline,
             Self::AppleFmReady => WaitCondition::AppleFmReady,
+            Self::Nip28Ready => WaitCondition::Nip28Ready,
+            Self::Nip28MessagePresent => WaitCondition::Nip28MessagePresent,
+            Self::Nip28OutboundIdle => WaitCondition::Nip28OutboundIdle,
             Self::BuyModeRunning => WaitCondition::BuyModeRunning,
             Self::BuyModeStopped => WaitCondition::BuyModeStopped,
             Self::BuyModeInFlight => WaitCondition::BuyModeInFlight,
@@ -618,6 +777,9 @@ impl WaitConditionArg {
             Self::ProviderOnline => "provider-online",
             Self::ProviderOffline => "provider-offline",
             Self::AppleFmReady => "apple-fm-ready",
+            Self::Nip28Ready => "nip28-ready",
+            Self::Nip28MessagePresent => "nip28-message-present",
+            Self::Nip28OutboundIdle => "nip28-outbound-idle",
             Self::BuyModeRunning => "buy-mode-running",
             Self::BuyModeStopped => "buy-mode-stopped",
             Self::BuyModeInFlight => "buy-mode-in-flight",
@@ -638,6 +800,9 @@ impl WaitCondition {
             Self::ProviderOnline => "provider online",
             Self::ProviderOffline => "provider offline",
             Self::AppleFmReady => "Apple FM ready",
+            Self::Nip28Ready => "NIP-28 ready",
+            Self::Nip28MessagePresent => "NIP-28 message present",
+            Self::Nip28OutboundIdle => "NIP-28 outbound idle",
             Self::BuyModeRunning => "buy mode running",
             Self::BuyModeStopped => "buy mode stopped",
             Self::BuyModeInFlight => "buy mode in flight",
@@ -656,6 +821,11 @@ impl WaitCondition {
             Self::ProviderOnline => snapshot.provider.online,
             Self::ProviderOffline => !snapshot.provider.online,
             Self::AppleFmReady => snapshot.apple_fm.ready,
+            Self::Nip28Ready => {
+                snapshot.nip28.available && snapshot.nip28.selected_channel_id.is_some()
+            }
+            Self::Nip28MessagePresent => !snapshot.nip28.recent_messages.is_empty(),
+            Self::Nip28OutboundIdle => snapshot.nip28.publishing_outbound_count == 0,
             Self::BuyModeRunning => snapshot.buy_mode.enabled,
             Self::BuyModeStopped => !snapshot.buy_mode.enabled,
             Self::BuyModeInFlight => snapshot.buy_mode.in_flight_request_id.is_some(),
@@ -870,6 +1040,19 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
                 .unwrap_or("-")
         );
     }
+    println!(
+        "nip28: available={} selected_group={} selected_channel={} messages={} publishing_outbound={} configured_main={}",
+        snapshot.nip28.available,
+        snapshot.nip28.selected_group_name.as_deref().unwrap_or("-"),
+        snapshot
+            .nip28
+            .selected_channel_name
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.nip28.recent_messages.len(),
+        snapshot.nip28.publishing_outbound_count,
+        snapshot.nip28.configured_channel_id
+    );
     print_active_job_text(snapshot.active_job.as_ref());
 }
 
@@ -936,6 +1119,89 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     }
 }
 
+fn print_nip28_status_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "nip28: available={} browse_mode={} configured_relay={} configured_channel={} loaded={}",
+        snapshot.nip28.available,
+        snapshot.nip28.browse_mode,
+        snapshot.nip28.configured_relay_url,
+        snapshot.nip28.configured_channel_id,
+        snapshot.nip28.configured_channel_loaded
+    );
+    println!(
+        "selected: group={} channel={} relay={} local_pubkey={} publishing_outbound={} retryable_event={}",
+        snapshot.nip28.selected_group_name.as_deref().unwrap_or("-"),
+        snapshot
+            .nip28
+            .selected_channel_name
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .nip28
+            .selected_channel_relay_url
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.nip28.local_pubkey.as_deref().unwrap_or("-"),
+        snapshot.nip28.publishing_outbound_count,
+        snapshot.nip28.retryable_event_id.as_deref().unwrap_or("-")
+    );
+    if let Some(error) = snapshot.nip28.last_error.as_deref() {
+        println!("last_error: {error}");
+    }
+}
+
+fn print_nip28_groups_text(snapshot: &DesktopControlSnapshot) {
+    if snapshot.nip28.groups.is_empty() {
+        println!("nip28 groups: none");
+        return;
+    }
+    for group in &snapshot.nip28.groups {
+        println!(
+            "{} group={} name={} unread={} mentions={} channels={}",
+            if group.selected { "*" } else { "-" },
+            group.group_id,
+            group.name,
+            group.unread_count,
+            group.mention_count,
+            group.channel_count
+        );
+    }
+}
+
+fn print_nip28_channels_text(snapshot: &DesktopControlSnapshot) {
+    if snapshot.nip28.channels.is_empty() {
+        println!("nip28 channels: none");
+        return;
+    }
+    for channel in &snapshot.nip28.channels {
+        println!(
+            "{} channel={} name={} relay={} unread={} mentions={} messages={}",
+            if channel.selected { "*" } else { "-" },
+            channel.channel_id,
+            channel.name,
+            channel.relay_url.as_deref().unwrap_or("-"),
+            channel.unread_count,
+            channel.mention_count,
+            channel.message_count
+        );
+    }
+}
+
+fn print_nip28_messages_text(
+    messages: &[autopilot_desktop::desktop_control::DesktopControlNip28MessageStatus],
+) {
+    if messages.is_empty() {
+        println!("nip28 messages: none");
+        return;
+    }
+    for message in messages {
+        println!(
+            "{} {} {} {}",
+            message.created_at, message.delivery_state, message.author_pubkey, message.content
+        );
+    }
+}
+
 fn blocker_codes_label(codes: &[String]) -> String {
     if codes.is_empty() {
         "-".to_string()
@@ -978,12 +1244,12 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppleFmCommand, BuyModeCommand, ProviderCommand, WaitCondition, WalletCommand,
-        ensure_buy_mode_budget_ack, request_has_payment_required,
+        AppleFmCommand, BuyModeCommand, ChatCommand, ProviderCommand, WaitCondition,
+        WaitConditionArg, WalletCommand, ensure_buy_mode_budget_ack, request_has_payment_required,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
-        DesktopControlBuyModeStatus, DesktopControlSnapshot,
+        DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus, DesktopControlSnapshot,
     };
 
     fn sample_snapshot() -> DesktopControlSnapshot {
@@ -1077,5 +1343,85 @@ mod tests {
             Some(DesktopControlActionRequest::StopBuyMode)
         );
         assert_eq!(BuyModeCommand::Status.action_request(), None);
+        assert_eq!(
+            ChatCommand::Main.action_request(),
+            Some(DesktopControlActionRequest::SelectNip28MainChannel)
+        );
+        assert_eq!(
+            ChatCommand::SelectGroup {
+                group_id: "oa-main".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::SelectNip28Group {
+                group_id: "oa-main".to_string(),
+            })
+        );
+        assert_eq!(
+            ChatCommand::SelectChannel {
+                channel_id: "chan-1".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::SelectNip28Channel {
+                channel_id: "chan-1".to_string(),
+            })
+        );
+        assert_eq!(
+            ChatCommand::Send {
+                content: "hello".to_string(),
+                reply_to_event_id: Some("event-1".to_string()),
+                wait: true,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::SendNip28Message {
+                content: "hello".to_string(),
+                reply_to_event_id: Some("event-1".to_string()),
+            })
+        );
+        assert_eq!(
+            ChatCommand::Retry {
+                event_id: "event-2".to_string(),
+                wait: true,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::RetryNip28Message {
+                event_id: "event-2".to_string(),
+            })
+        );
+        assert_eq!(ChatCommand::Status.action_request(), None);
+        assert_eq!(ChatCommand::Groups.action_request(), None);
+        assert_eq!(ChatCommand::Channels.action_request(), None);
+        assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+    }
+
+    #[test]
+    fn wait_conditions_cover_nip28_readiness_messages_and_outbound_idle() {
+        let mut snapshot = sample_snapshot();
+        snapshot.nip28.available = true;
+        snapshot.nip28.selected_channel_id = Some("chan-1".to_string());
+        snapshot
+            .nip28
+            .recent_messages
+            .push(DesktopControlNip28MessageStatus {
+                event_id: "event-1".to_string(),
+                author_pubkey: "a".repeat(64),
+                content: "hello".to_string(),
+                created_at: 1,
+                reply_to_event_id: None,
+                delivery_state: "confirmed".to_string(),
+                delivery_error: None,
+                attempt_count: 1,
+            });
+        snapshot.nip28.publishing_outbound_count = 0;
+
+        assert!(WaitCondition::Nip28Ready.matches(&snapshot));
+        assert!(WaitCondition::Nip28MessagePresent.matches(&snapshot));
+        assert!(WaitCondition::Nip28OutboundIdle.matches(&snapshot));
+        assert_eq!(
+            WaitConditionArg::Nip28Ready.into_condition(),
+            WaitCondition::Nip28Ready
+        );
+        assert_eq!(WaitConditionArg::Nip28Ready.as_str(), "nip28-ready");
     }
 }
