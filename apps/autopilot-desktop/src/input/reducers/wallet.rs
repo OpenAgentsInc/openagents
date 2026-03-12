@@ -22,40 +22,42 @@ fn reconcile_spark_wallet_update(
     previous_error: Option<String>,
 ) {
     if state.spark_wallet.last_invoice != previous_invoice
-        && state
-            .spark_wallet
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.starts_with("Created invoice"))
         && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
     {
         let invoice = invoice.to_string();
         state.spark_inputs.send_request.set_value(invoice.clone());
-        state.pay_invoice_inputs.payment_request.set_value(invoice);
+        state
+            .pay_invoice_inputs
+            .payment_request
+            .set_value(invoice.clone());
+
+        if invoice.starts_with("ln") {
+            match lightning_invoice_terminal_qr(invoice.as_str()) {
+                Ok(qr) => {
+                    tracing::info!(
+                        target: "autopilot_desktop::spark_wallet",
+                        "Lightning invoice QR:\n{qr}"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "autopilot_desktop::spark_wallet",
+                        "failed to render Lightning invoice QR: {error}"
+                    );
+                }
+            }
+        }
     }
 
     if state.spark_wallet.last_invoice != previous_invoice
-        && state
-            .spark_wallet
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.starts_with("Created Lightning invoice"))
         && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
+        && state.active_job.payment_required_invoice_requested
     {
-        match lightning_invoice_terminal_qr(invoice) {
-            Ok(qr) => {
-                tracing::info!(
-                    target: "autopilot_desktop::spark_wallet",
-                    "Lightning invoice QR:\n{qr}"
-                );
-            }
-            Err(error) => {
-                tracing::warn!(
-                    target: "autopilot_desktop::spark_wallet",
-                    "failed to render Lightning invoice QR: {error}"
-                );
-            }
-        }
+        tracing::info!(
+            target: "autopilot_desktop::provider",
+            "Provider observed Spark invoice update while awaiting payment-required feedback invoice_len={}",
+            invoice.len()
+        );
     }
 
     reconcile_provider_settlement_invoice_state(
@@ -303,10 +305,6 @@ fn reconcile_provider_settlement_invoice_state(
 ) {
     if active_job.payment_required_invoice_requested
         && spark_wallet.last_invoice.as_deref() != previous_invoice
-        && spark_wallet
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.starts_with("Created Lightning invoice"))
         && let Some(invoice) = spark_wallet.last_invoice.as_deref()
     {
         active_job.payment_required_invoice_requested = false;
@@ -422,6 +420,40 @@ mod tests {
                         .message
                         .contains("generated Spark BOLT11 settlement invoice")
                 }))
+        );
+    }
+
+    #[test]
+    fn provider_settlement_invoice_success_survives_followup_wallet_refresh() {
+        let mut active_job = fixture_delivered_active_job("req-provider-invoice-refresh");
+        let mut provider_runtime = ProviderRuntimeState::default();
+        let mut spark_wallet = SparkPaneState::default();
+        active_job.payment_required_invoice_requested = true;
+        spark_wallet.last_action = Some("Wallet refreshed".to_string());
+        spark_wallet.last_invoice = Some("lnbc20n1providerrefresh".to_string());
+        spark_wallet.last_invoice_created_at_epoch_seconds = Some(1_762_700_456);
+
+        reconcile_provider_settlement_invoice_state(
+            &mut active_job,
+            &mut provider_runtime,
+            &spark_wallet,
+            None,
+            None,
+        );
+
+        assert!(!active_job.payment_required_invoice_requested);
+        assert!(!active_job.payment_required_failed);
+        assert_eq!(
+            active_job.pending_bolt11.as_deref(),
+            Some("lnbc20n1providerrefresh")
+        );
+        assert_eq!(
+            active_job.pending_bolt11_created_at_epoch_seconds,
+            Some(1_762_700_456)
+        );
+        assert_eq!(
+            provider_runtime.last_result.as_deref(),
+            Some("provider settlement invoice generated; queueing payment-required feedback")
         );
     }
 
