@@ -1655,7 +1655,7 @@ impl NetworkRequestsState {
             request.payment_error = None;
             request.payment_notice = None;
             request.pending_bolt11 = None;
-            request.status = NetworkRequestStatus::Paid;
+            request.status = compute_request_status(request);
         }
         self.pending_auto_payment_request_id = None;
         self.pane_set_ready(format!(
@@ -1680,6 +1680,8 @@ impl NetworkRequestsState {
             return;
         }
         request.last_payment_pointer = Some(payment_pointer.to_string());
+        request.payment_notice = None;
+        request.status = compute_request_status(request);
     }
 
     pub fn record_auto_payment_notice(
@@ -1701,6 +1703,9 @@ impl NetworkRequestsState {
             return;
         };
         if request.status.is_terminal() {
+            return;
+        }
+        if request.last_payment_pointer.is_some() || request.pending_bolt11.is_some() {
             return;
         }
 
@@ -2172,8 +2177,21 @@ fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestSt
     if request.payment_error.is_some() {
         return NetworkRequestStatus::Failed;
     }
-    if request.last_payment_pointer.is_some() {
+    if request.payment_sent_at_epoch_seconds.is_some()
+        || (request.status == NetworkRequestStatus::Paid && request.last_payment_pointer.is_some())
+    {
         return NetworkRequestStatus::Paid;
+    }
+
+    if request.pending_bolt11.is_some()
+        || request.last_payment_pointer.is_some()
+        || request.payment_notice.is_some()
+        || request
+            .provider_observations
+            .iter()
+            .any(provider_has_payment_feedback)
+    {
+        return NetworkRequestStatus::PaymentRequired;
     }
 
     let has_non_error_result = request
@@ -2182,16 +2200,6 @@ fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestSt
         .any(provider_has_non_error_result);
     if has_non_error_result {
         return NetworkRequestStatus::ResultReceived;
-    }
-
-    if request.pending_bolt11.is_some()
-        || request.payment_notice.is_some()
-        || request
-            .provider_observations
-            .iter()
-            .any(provider_has_payment_feedback)
-    {
-        return NetworkRequestStatus::PaymentRequired;
     }
 
     if request

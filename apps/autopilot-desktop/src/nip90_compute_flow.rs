@@ -2073,7 +2073,7 @@ mod tests {
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::operations::{
-        BuyerResolutionMode, NetworkRequestSubmission, NetworkRequestsState,
+        BuyerResolutionMode, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
     };
 
     #[test]
@@ -2124,9 +2124,11 @@ mod tests {
             .expect("latest request");
         let snapshot = build_buyer_request_flow_snapshot(request, &SparkPaneState::default());
 
+        assert_eq!(snapshot.status, NetworkRequestStatus::PaymentRequired);
         assert_eq!(snapshot.authority, Nip90FlowAuthority::Wallet);
         assert_eq!(snapshot.phase, Nip90FlowPhase::AwaitingPayment);
         assert_eq!(snapshot.next_expected_event, "wallet settlement");
+        assert_eq!(snapshot.wallet_status, "pending");
     }
 
     #[test]
