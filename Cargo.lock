@@ -10343,6 +10343,8 @@ dependencies = [
  "insta",
  "js-sys",
  "log",
+ "objc2-app-kit",
+ "objc2-foundation",
  "parking_lot 0.12.4",
  "pollster",
  "pulldown-cmark",
