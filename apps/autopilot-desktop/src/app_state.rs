@@ -4016,6 +4016,44 @@ impl AutopilotChatState {
             .collect()
     }
 
+    pub fn configured_main_managed_chat_channel(
+        &self,
+        config: &DefaultNip28ChannelConfig,
+    ) -> Option<&ManagedChatChannelProjection> {
+        if !config.is_valid() {
+            return None;
+        }
+        self.managed_chat_projection
+            .snapshot
+            .channels
+            .iter()
+            .find(|channel| channel.channel_id == config.channel_id)
+    }
+
+    pub(crate) fn autopilot_peer_roster(
+        &self,
+        now_epoch_seconds: u64,
+    ) -> Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow> {
+        self.autopilot_peer_roster_with_config(
+            &DefaultNip28ChannelConfig::from_env_or_default(),
+            now_epoch_seconds,
+        )
+    }
+
+    pub(crate) fn autopilot_peer_roster_with_config(
+        &self,
+        config: &DefaultNip28ChannelConfig,
+        now_epoch_seconds: u64,
+    ) -> Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow> {
+        crate::autopilot_peer_roster::build_autopilot_peer_roster(
+            &self.managed_chat_projection.snapshot,
+            &self.managed_chat_projection.local_state,
+            self.managed_chat_local_pubkey(),
+            config,
+            now_epoch_seconds,
+        )
+    }
+
     pub fn active_managed_chat_channel_rail_rows(&self) -> Vec<ManagedChatChannelRailRow> {
         if self.chat_browse_mode() != ChatBrowseMode::Managed {
             return Vec::new();
