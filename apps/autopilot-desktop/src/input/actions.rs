@@ -9154,7 +9154,9 @@ pub(super) fn run_mission_control_action(
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
             } else {
-                state.mission_control.record_action("Queued Lightning withdrawal");
+                state
+                    .mission_control
+                    .record_action("Queued Lightning withdrawal");
                 state.mission_control.send_invoice.set_value(String::new());
             }
             true
@@ -11980,6 +11982,7 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
     history_rows: &[crate::app_state::JobHistoryReceiptRow],
     recent_payments: &[openagents_spark::PaymentSummary],
 ) -> Option<String> {
+    let _ = settlement_invoice_created_at_epoch_seconds;
     let used_pointers = history_rows
         .iter()
         .map(|row| row.payment_pointer.clone())
@@ -12017,15 +12020,17 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
                     .as_deref()
                     .and_then(normalize_lightning_invoice_ref)
                     .is_some_and(|candidate_invoice| candidate_invoice == expected_invoice)
-            }) || expected_payment_hash.as_deref().is_some_and(|expected_hash| {
-                payment
-                    .payment_hash
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_ascii_lowercase)
-                    .is_some_and(|candidate_hash| candidate_hash == expected_hash)
-            })
+            }) || expected_payment_hash
+                .as_deref()
+                .is_some_and(|expected_hash| {
+                    payment
+                        .payment_hash
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_ascii_lowercase)
+                        .is_some_and(|candidate_hash| candidate_hash == expected_hash)
+                })
         })
         .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
         .map(|payment| payment.id.clone());
@@ -12036,14 +12041,11 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
         return exact_identity_match;
     }
 
-    candidate_payments
-        .filter(|payment| {
-            (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
-                && settlement_invoice_created_at_epoch_seconds
-                    .is_none_or(|created_at| payment.timestamp >= created_at.saturating_sub(5))
-        })
-        .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
-        .map(|payment| payment.id.clone())
+    // Open-network seller settlement must bind to the actual payout invoice or payment hash.
+    // Falling back to amount/timestamp heuristics can incorrectly reuse an old receive and mark
+    // a new delivered job as paid even when wallet balance did not increase.
+    let _ = candidate_payments;
+    None
 }
 
 pub(super) fn run_activity_feed_action(
@@ -13453,8 +13455,7 @@ mod tests {
             requester: "11".repeat(32),
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
-            demand_risk_disposition:
-                crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
             demand_risk_note:
                 "untargeted open-network demand stays visible but requires manual review"
                     .to_string(),
@@ -13597,7 +13598,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive_after_invoice() {
+    fn open_network_wallet_pointer_requires_exact_invoice_or_payment_hash_identity() {
         let job = fixture_open_network_delivered_job(10);
         let history_rows = vec![fixture_history_row("wallet-used-001")];
         let payments = vec![
@@ -13664,9 +13665,8 @@ mod tests {
             Some(1_762_700_010),
             history_rows.as_slice(),
             payments.as_slice(),
-        )
-        .expect("expected wallet pointer candidate");
-        assert_eq!(pointer, "wallet-pointer-002");
+        );
+        assert_eq!(pointer, None);
     }
 
     #[test]
