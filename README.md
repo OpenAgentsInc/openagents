@@ -62,6 +62,9 @@ The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 Docs are indexed in [docs/README.md](docs/README.md).
 
+For the current release cut and honest shipped-vs-planned scope, see
+[docs/v01.md](docs/v01.md).
+
 ## Earn
 
 Autopilot Earn starts with the OpenAgents Compute Market. You run the desktop app, press `Go Online`, and offer standardized compute products into the network. At launch, the first live compute product families are inference and embeddings. Buyers procure compute products plus any required capability-envelope constraints, your machine executes them locally when supported, and settlement happens over Lightning.
@@ -188,3 +191,29 @@ On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models*
 - **Build the bridge once** (from repo root): `cd swift/foundation-bridge && ./build.sh`. This produces `bin/foundation-bridge`. Building requires the Swift compiler (Xcode from the App Store, or `xcode-select --install` for Command Line Tools only).
 - **Test the bridge**: run `./bin/foundation-bridge`, then `curl -s http://127.0.0.1:11435/health` — you should get a JSON response. The desktop app can also start the bridge automatically when you open Mission Control.
 - **Shipping the app** so users don’t build on their machine: build the bridge once, then include `bin/foundation-bridge` in your app bundle (e.g. `YourApp.app/Contents/MacOS/foundation-bridge` or `Contents/Resources/foundation-bridge`). See [swift/foundation-bridge/README.md](swift/foundation-bridge/README.md) for steps and [crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md) for full bridge considerations (architecture, discovery, shipping, user requirements).
+
+## Programmatic Control And Verification
+
+The repo now includes an app-owned control plane for the running desktop app:
+
+- implementation: [apps/autopilot-desktop/src/desktop_control.rs](apps/autopilot-desktop/src/desktop_control.rs)
+- CLI client: [apps/autopilot-desktop/src/bin/autopilotctl.rs](apps/autopilot-desktop/src/bin/autopilotctl.rs)
+- documentation: [docs/headless-compute.md](docs/headless-compute.md)
+
+This is UI-synced control, not a separate fake harness. `autopilotctl` drives
+the same Mission Control state the GUI renders, and the runtime persists:
+
+- `desktop-control.json`
+- `latest.jsonl`
+- per-session JSONL logs
+
+For the strongest packaged end-to-end check, use:
+
+```bash
+scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh
+```
+
+That script builds the bundled app, launches a bundled app plus a runtime app,
+drives both through `autopilotctl`, verifies NIP-28 chat, and proves buyer and
+seller Spark settlement through the real desktop shell. Full details and
+related headless flows are documented in [docs/headless-compute.md](docs/headless-compute.md).
