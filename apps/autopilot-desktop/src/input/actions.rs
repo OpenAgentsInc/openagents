@@ -10124,7 +10124,10 @@ pub(super) fn run_mission_control_buy_mode_tick(
         .autopilot_chat
         .select_autopilot_buy_mode_target(now_epoch_seconds);
     let Some(target_provider_pubkey) = target_selection.selected_peer_pubkey.clone() else {
-        state.mission_control.schedule_buy_mode_retry(now);
+        state.mission_control.schedule_buy_mode_retry_with_interval(
+            now,
+            crate::app_state::MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL,
+        );
         let detail = target_selection.blocked_reason.unwrap_or_else(|| {
             "Buy Mode blocked: no eligible Autopilot peer is available".to_string()
         });
@@ -10132,18 +10135,28 @@ pub(super) fn run_mission_control_buy_mode_tick(
             .blocked_reason_code
             .as_deref()
             .unwrap_or("unknown");
-        state.provider_runtime.last_result = Some(detail.clone());
-        tracing::info!(
-            target: "autopilot_desktop::buy_mode",
-            "Buy Mode dispatch blocked: code={} observed_peers={} eligible_peers={} detail={}",
-            blocked_reason_code,
-            target_selection.observed_peer_count,
-            target_selection.eligible_peer_count,
-            detail
+        let blocked_signature = format!(
+            "{blocked_reason_code}:{}:{}:{detail}",
+            target_selection.observed_peer_count, target_selection.eligible_peer_count
         );
-        state.mission_control.record_action(detail);
+        if state
+            .mission_control
+            .should_emit_buy_mode_blocked_notice(now, blocked_signature.as_str())
+        {
+            state.provider_runtime.last_result = Some(detail.clone());
+            tracing::info!(
+                target: "autopilot_desktop::buy_mode",
+                "Buy Mode dispatch blocked: code={} observed_peers={} eligible_peers={} detail={}",
+                blocked_reason_code,
+                target_selection.observed_peer_count,
+                target_selection.eligible_peer_count,
+                detail
+            );
+            state.mission_control.record_action(detail);
+        }
         return true;
     };
+    state.mission_control.clear_buy_mode_blocked_notice();
 
     match submit_mission_control_buy_mode_request(state, vec![target_provider_pubkey.clone()]) {
         Ok(request_id) => {

@@ -19,6 +19,25 @@ The HTML shell imports `./pkg/deck.js`, so the generated bindgen output should l
 
 The current embedded deck source lives at `apps/deck/content/five-markets.deck.md`.
 
+## Use A Local Deck
+
+The deck app can embed a different source file at build time.
+
+Set `OPENAGENTS_DECK_SOURCE` before running the build:
+
+```bash
+OPENAGENTS_DECK_SOURCE=docs/local/openagents-seed.deck.md cargo test -p deck
+cd apps/deck
+OPENAGENTS_DECK_SOURCE=../../docs/local/openagents-seed.deck.md bun run build:assets
+python3 -m http.server -d dist 8000
+```
+
+Rules:
+
+- absolute paths work
+- relative paths are resolved from either `apps/deck/` or the workspace root
+- if `OPENAGENTS_DECK_SOURCE` is unset, the app falls back to `content/five-markets.deck.md`
+
 ## Cloudflare
 
 This app now follows the historical `crates/web` deployment shape from late December 2025:
