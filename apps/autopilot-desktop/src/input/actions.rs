@@ -10198,6 +10198,39 @@ pub(super) fn run_mission_control_buy_mode_tick(
     }
 }
 
+pub(super) fn run_pending_buyer_payment_watchdog_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some(request_id) = state.network_requests.buyer_payment_watchdog_due(now) else {
+        return false;
+    };
+
+    let payment_pointer = state
+        .network_requests
+        .submitted
+        .iter()
+        .find(|request| request.request_id == request_id)
+        .and_then(|request| request.last_payment_pointer.clone())
+        .unwrap_or_else(|| "none".to_string());
+
+    queue_spark_command(state, SparkWalletCommand::Refresh);
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Buyer queued wallet refresh while awaiting payment confirmation request_id={} pointer={} interval_seconds={}",
+        request_id,
+        payment_pointer,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    );
+    state.provider_runtime.last_result = Some(format!(
+        "buyer queued wallet refresh request={} pointer={} interval_seconds={}",
+        request_id,
+        payment_pointer,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    ));
+    true
+}
+
 fn submit_signed_network_request_with_event(
     state: &mut crate::app_state::RenderState,
     request_type: String,

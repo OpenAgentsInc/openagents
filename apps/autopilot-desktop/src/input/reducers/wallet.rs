@@ -107,8 +107,8 @@ fn reconcile_pending_buyer_payment_confirmation(
 ) {
     let Some(request_id) = state
         .network_requests
-        .pending_auto_payment_request_id
-        .clone()
+        .active_auto_payment_observation_request_id()
+        .map(str::to_string)
     else {
         return;
     };
@@ -133,7 +133,15 @@ fn reconcile_pending_buyer_payment_confirmation(
         return;
     }
 
-    let Some(payment_pointer) = state.spark_wallet.last_payment_id.as_deref() else {
+    let payment_pointer = state.spark_wallet.last_payment_id.clone().or_else(|| {
+        state
+            .network_requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .and_then(|request| request.last_payment_pointer.clone())
+    });
+    let Some(payment_pointer) = payment_pointer.as_deref() else {
         return;
     };
     state
