@@ -10417,7 +10417,7 @@ fn build_nip90_request_event_for_network_submission(
     sign_nip90_template(identity, &template)
 }
 
-fn build_mission_control_buy_mode_request_event(
+pub(crate) fn build_mission_control_buy_mode_request_event(
     identity: Option<&nostr::NostrIdentity>,
     relay_urls: &[String],
     target_provider_pubkeys: &[String],
