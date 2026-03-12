@@ -163,6 +163,31 @@ Keep a retained copy of:
 - incident timeline notes,
 - rollback/restore actions.
 
+## Runtime Log Capture
+
+Autopilot writes durable per-launch session logs by default to:
+
+- `~/.openagents/logs/autopilot/sessions/<session-id>.jsonl`
+- `~/.openagents/logs/autopilot/latest.jsonl`
+
+Optional development override:
+
+- `OPENAGENTS_AUTOPILOT_LOG_DIR`
+
+Use these files for postmortem inspection when Mission Control output or terminal
+history is no longer available. The JSONL stream includes both selected tracing
+events from the buyer/provider/payment flow and synthesized Mission Control
+operator lines.
+
+Recommended operator checks:
+
+1. Confirm the current session log exists:
+   `ls ~/.openagents/logs/autopilot/sessions`
+2. Inspect the latest session:
+   `tail -n 100 ~/.openagents/logs/autopilot/latest.jsonl`
+3. When debugging payout flow, search for:
+   `payment-required`, `buyer payment settled`, `provider settlement confirmed`, `job failed`
+
 ## Reciprocal Loop Verification
 
 For two-key/two-wallet bilateral 10-sat loop setup, pane operation flow, and pass/fail troubleshooting:
