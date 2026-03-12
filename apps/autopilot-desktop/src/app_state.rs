@@ -7689,8 +7689,15 @@ impl ActiveJobState {
     }
 
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
+        self.start_from_request_with_demand_risk(request, request.demand_risk_assessment());
+    }
+
+    pub fn start_from_request_with_demand_risk(
+        &mut self,
+        request: &JobInboxRequest,
+        demand_risk: crate::state::job_inbox::JobDemandRiskAssessment,
+    ) {
         let job_id = format!("job-{}", request.request_id);
-        let demand_risk = request.demand_risk_assessment();
         let accepted_at_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs());
