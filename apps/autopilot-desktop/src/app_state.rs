@@ -13271,6 +13271,88 @@ mod tests {
         );
     }
 
+    #[test]
+    fn network_requests_buyer_payment_watchdog_stays_active_after_seller_settlement_feedback() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-watchdog-003".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 60,
+                authority_command_seq: 15,
+            })
+            .expect("request should queue");
+        let provider_pubkey = "22".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "request-event-pay-watchdog-003",
+            3,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-pay-watchdog-003",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-watchdog-003",
+            Some("payment-required"),
+            Some("pay to continue"),
+            Some(2_000),
+            Some("lnbc1paymentwatchdogthree"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentwatchdogthree",
+                Some(2_000),
+                1_762_700_040,
+            )
+            .expect("auto-payment should prepare");
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-payment-watchdog-003");
+        requests.pending_auto_payment_request_id = None;
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-seller-success-pay-watchdog-003",
+            Some("success"),
+            Some("wallet-confirmed settlement recorded"),
+            Some(2_000),
+            None,
+        );
+
+        let due_at = std::time::Instant::now()
+            + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL;
+        assert_eq!(
+            requests.buyer_payment_watchdog_due(due_at).as_deref(),
+            Some(request_id.as_str())
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-watchdog-003",
+            1_762_700_045,
+        );
+        assert_eq!(
+            requests
+                .buyer_payment_watchdog_due(
+                    due_at + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                )
+                .as_deref(),
+            None
+        );
+    }
+
     fn queue_buy_mode_request_for_tests(
         requests: &mut NetworkRequestsState,
         request_id: &str,

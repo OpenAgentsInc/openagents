@@ -3382,6 +3382,41 @@ mod tests {
     }
 
     #[test]
+    fn auto_accept_policy_skips_expired_targeted_request_even_if_target_matches() {
+        let identity = fixture_nostr_identity();
+        let mut request = fixture_request(
+            "req-expired-targeted-auto",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.target_provider_pubkeys = vec![identity.public_key_hex.clone()];
+        request.created_at_epoch_seconds = Some(1_760_000_000);
+        request.expires_at_epoch_seconds = Some(1_760_000_060);
+
+        assert_eq!(
+            next_auto_accept_request_id_for(
+                [request.clone()].as_slice(),
+                ProviderMode::Online,
+                0,
+                0,
+                1,
+                Some(&identity),
+                1_760_000_061,
+            ),
+            None
+        );
+
+        let assessment =
+            provider_demand_risk_assessment_for(&request, Some(&identity), 1_760_000_061);
+        assert_eq!(assessment.class, JobDemandRiskClass::TargetedOpenNetwork);
+        assert_eq!(
+            assessment.disposition,
+            JobDemandRiskDisposition::RejectByDefault
+        );
+        assert!(assessment.note.contains("expired 1s ago"));
+    }
+
+    #[test]
     fn turn_completed_failure_detection_treats_errors_and_abort_statuses_as_terminal_failures() {
         assert!(turn_completed_failed(
             Some("error"),
