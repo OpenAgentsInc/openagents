@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::app_state::{
     DefaultNip28ChannelConfig, ManagedChatDeliveryState, ManagedChatLocalState,
@@ -215,6 +215,42 @@ pub(crate) fn parse_autopilot_compute_presence_message(
             .map(str::to_string),
         started_at: payload.get("started_at").and_then(Value::as_u64),
         expires_at: payload.get("expires_at").and_then(Value::as_u64),
+    })
+}
+
+pub(crate) fn build_autopilot_compute_presence_content(
+    pubkey: &str,
+    mode: &str,
+    capabilities: &[String],
+    ready_model: Option<&str>,
+    started_at: Option<u64>,
+    expires_at: u64,
+) -> String {
+    let mut capabilities = normalize_capabilities(capabilities.to_vec());
+    if mode == AUTOPILOT_COMPUTE_PRESENCE_OFFLINE_MODE {
+        capabilities.clear();
+    }
+    let mut payload = json!({
+        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+        "pubkey": normalize_pubkey(pubkey),
+        "mode": mode,
+        "capabilities": capabilities,
+        "expires_at": expires_at,
+    });
+    if let Some(started_at) = started_at {
+        payload["started_at"] = Value::from(started_at);
+    }
+    if let Some(ready_model) = ready_model.map(str::trim).filter(|value| !value.is_empty()) {
+        payload["ready_model"] = Value::from(ready_model.to_string());
+    }
+    serde_json::to_string(&payload).unwrap_or_else(|_| {
+        format!(
+            r#"{{"type":"{}","pubkey":"{}","mode":"{}","capabilities":[],"expires_at":{}}}"#,
+            AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            normalize_pubkey(pubkey),
+            mode,
+            expires_at
+        )
     })
 }
 

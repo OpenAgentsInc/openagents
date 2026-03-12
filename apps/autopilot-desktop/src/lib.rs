@@ -16,6 +16,7 @@ use winit::window::WindowId;
 
 mod app_state;
 mod apple_fm_bridge;
+mod autopilot_compute_presence;
 mod autopilot_peer_roster;
 mod bitcoin_display;
 mod cad_rebuild_worker;

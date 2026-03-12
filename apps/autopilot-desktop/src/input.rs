@@ -103,6 +103,7 @@ use actions::*;
 
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
 pub(crate) use actions::queue_managed_chat_channel_message;
+pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
@@ -640,6 +641,15 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if state.spacetime_presence.tick(state.provider_runtime.mode) {
+        changed = true;
+    }
+    if crate::autopilot_compute_presence::pump_provider_chat_presence(
+        &mut state.provider_runtime,
+        &mut state.autopilot_chat,
+        state.nostr_identity.as_ref(),
+        now,
+        current_epoch_seconds(),
+    ) {
         changed = true;
     }
     if state.mission_control.has_pending_mirrored_trace_logs() {

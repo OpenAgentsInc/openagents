@@ -1917,16 +1917,19 @@ fn build_managed_chat_outbound_message(
     identity: &nostr::NostrIdentity,
     group_id: &str,
     channel: &crate::app_state::ManagedChatChannelProjection,
+    relay_url_override: Option<&str>,
     content: &str,
     reply_target: Option<&crate::app_state::ManagedChatMessageProjection>,
     mentions: Vec<nostr::ManagedChatMention>,
 ) -> Result<crate::app_state::ManagedChatOutboundMessage, String> {
-    let relay_url = channel.relay_url.as_deref().ok_or_else(|| {
-        format!(
-            "Managed chat channel {} does not advertise a relay target yet.",
-            channel.channel_id
-        )
-    })?;
+    let relay_url = relay_url_override
+        .or(channel.relay_url.as_deref())
+        .ok_or_else(|| {
+            format!(
+                "Managed chat channel {} does not advertise a relay target yet.",
+                channel.channel_id
+            )
+        })?;
     let now_ms = current_epoch_millis();
     let created_at = (now_ms / 1_000).max(1);
     let mut message_event = nostr::ManagedChannelMessageEvent::new(
@@ -1988,11 +1991,75 @@ pub(crate) fn queue_managed_chat_channel_message(
     content: &str,
     reply_event_id: Option<&str>,
 ) -> Result<String, String> {
+    let Some(channel) = chat.active_managed_chat_channel().cloned() else {
+        return Err("No managed chat channel is selected.".to_string());
+    };
     let Some(group) = chat.active_managed_chat_group().cloned() else {
         return Err("No managed chat group is selected.".to_string());
     };
-    let Some(channel) = chat.active_managed_chat_channel().cloned() else {
-        return Err("No managed chat channel is selected.".to_string());
+    queue_managed_chat_message_to_channel(
+        chat,
+        identity,
+        group.group_id.as_str(),
+        channel.channel_id.as_str(),
+        content,
+        reply_event_id,
+    )
+}
+
+pub(crate) fn queue_managed_chat_message_to_channel(
+    chat: &mut crate::app_state::AutopilotChatState,
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    channel_id: &str,
+    content: &str,
+    reply_event_id: Option<&str>,
+) -> Result<String, String> {
+    queue_managed_chat_message_to_channel_with_relay(
+        chat,
+        identity,
+        group_id,
+        channel_id,
+        None,
+        content,
+        reply_event_id,
+    )
+}
+
+pub(crate) fn queue_managed_chat_message_to_channel_with_relay(
+    chat: &mut crate::app_state::AutopilotChatState,
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    channel_id: &str,
+    relay_url_override: Option<&str>,
+    content: &str,
+    reply_event_id: Option<&str>,
+) -> Result<String, String> {
+    let Some(channel) = chat
+        .managed_chat_projection
+        .snapshot
+        .channels
+        .iter()
+        .find(|channel| channel.channel_id == channel_id)
+        .cloned()
+    else {
+        return Err(format!("Unknown managed chat channel: {channel_id}"));
+    };
+    if channel.group_id != group_id {
+        return Err(format!(
+            "Managed chat channel {} does not belong to group {}",
+            channel_id, group_id
+        ));
+    }
+    let Some(group) = chat
+        .managed_chat_projection
+        .snapshot
+        .groups
+        .iter()
+        .find(|group| group.group_id == group_id)
+        .cloned()
+    else {
+        return Err(format!("Unknown managed chat group: {group_id}"));
     };
     let reply_target = match reply_event_id {
         Some(event_id) => {
@@ -2023,6 +2090,7 @@ pub(crate) fn queue_managed_chat_channel_message(
         identity,
         &group.group_id,
         &channel,
+        relay_url_override,
         content,
         reply_target,
         mentions,
@@ -13859,6 +13927,7 @@ mod tests {
             &fixture_identity(),
             "oa-main",
             &channel,
+            None,
             "ack @2222",
             Some(&target_message),
             vec![nostr::ManagedChatMention::new("22".repeat(32)).unwrap()],
