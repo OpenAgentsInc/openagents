@@ -10319,6 +10319,10 @@ fn submit_signed_network_request_with_event(
                 ac_envelope_event_id: None,
                 price_sats: budget_sats,
                 ttl_seconds: timeout_seconds,
+                created_at_epoch_seconds: Some(current_epoch_seconds()),
+                expires_at_epoch_seconds: Some(
+                    current_epoch_seconds().saturating_add(timeout_seconds),
+                ),
                 validation: JobInboxValidation::Pending,
             });
     }
@@ -10739,6 +10743,8 @@ fn run_hosted_starter_demand_sync(
             ac_envelope_event_id: None,
             price_sats: offer.price_sats,
             ttl_seconds: offer.ttl_seconds,
+            created_at_epoch_seconds: Some(now_epoch_seconds),
+            expires_at_epoch_seconds: Some(now_epoch_seconds.saturating_add(offer.ttl_seconds)),
             validation: JobInboxValidation::Valid,
         };
         let is_new = !state
@@ -11045,6 +11051,8 @@ fn queue_starter_demand_request(
         ac_envelope_event_id: None,
         price_sats: starter_job.payout_sats,
         ttl_seconds: timeout_seconds,
+        created_at_epoch_seconds: Some(now_epoch_seconds),
+        expires_at_epoch_seconds: Some(now_epoch_seconds.saturating_add(timeout_seconds)),
         validation: JobInboxValidation::Valid,
     };
     state
@@ -13487,6 +13495,8 @@ mod tests {
             delivery_rejection_reason_label: None,
             quoted_price_sats,
             ttl_seconds: 75,
+            request_created_at_epoch_seconds: Some(1_760_000_000),
+            request_expires_at_epoch_seconds: Some(1_760_000_075),
             stage: crate::app_state::JobLifecycleStage::Delivered,
             invoice_id: None,
             settlement_bolt11: None,

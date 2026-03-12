@@ -10530,6 +10530,8 @@ mod tests {
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             price_sats: 42,
             ttl_seconds: 120,
+            created_at_epoch_seconds: Some(1_762_000_000),
+            expires_at_epoch_seconds: Some(1_762_000_120),
             validation: crate::state::job_inbox::JobInboxValidation::Valid,
         }
     }
@@ -10604,6 +10606,8 @@ mod tests {
             delivery_rejection_reason_label: None,
             quoted_price_sats: 42,
             ttl_seconds: 120,
+            request_created_at_epoch_seconds: Some(1_762_000_000),
+            request_expires_at_epoch_seconds: Some(1_762_000_120),
             stage: JobLifecycleStage::Paid,
             invoice_id: None,
             settlement_bolt11: None,
@@ -11944,6 +11948,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 75,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_762_000_000),
+            expires_at_epoch_seconds: Some(1_762_000_060),
             validation: crate::state::job_inbox::JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: crate::state::job_inbox::JobInboxDecision::Pending,

@@ -375,6 +375,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 2,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_060),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Accepted {

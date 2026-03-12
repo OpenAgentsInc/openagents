@@ -2603,6 +2603,7 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         .requests
         .iter()
         .find(|request| request.request_id == request_id)?;
+    let now_epoch_seconds = current_epoch_seconds();
     match &request.validation {
         JobInboxValidation::Valid => {}
         JobInboxValidation::Pending => {
@@ -2613,6 +2614,10 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         JobInboxValidation::Invalid(reason) => {
             return Some(format!("Request is invalid: {reason}"));
         }
+    }
+
+    if let Some(reason) = open_network_expiry_block_reason_for(request, now_epoch_seconds) {
+        return Some(reason);
     }
 
     let demand_risk = provider_demand_risk_assessment_for(request, state.nostr_identity.as_ref());
@@ -2675,6 +2680,25 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
     }
 
     None
+}
+
+fn open_network_expiry_block_reason_for(
+    request: &JobInboxRequest,
+    now_epoch_seconds: u64,
+) -> Option<String> {
+    if request.demand_source != JobDemandSource::OpenNetwork
+        || !request.is_expired_at(now_epoch_seconds)
+    {
+        return None;
+    }
+
+    let expired_for_seconds = request
+        .expired_for_seconds(now_epoch_seconds)
+        .unwrap_or_default();
+    Some(format!(
+        "Request already expired {}s ago and cannot be executed safely",
+        expired_for_seconds
+    ))
 }
 
 fn next_invalid_request_rejection(state: &RenderState) -> Option<(String, String)> {
@@ -2947,10 +2971,10 @@ mod tests {
         build_nip90_feedback_event, clear_active_job_phase_deadline,
         extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
         next_invalid_request_rejection_for, ollama_request_accept_block_reason,
-        provider_demand_risk_assessment_for, provider_execution_backend_for_kind,
-        result_publish_retry_due, set_active_job_phase_deadline_at,
-        speculative_open_network_block_reason_for, turn_completed_failed,
-        visible_result_content_for_job_kind,
+        open_network_expiry_block_reason_for, provider_demand_risk_assessment_for,
+        provider_execution_backend_for_kind, result_publish_retry_due,
+        set_active_job_phase_deadline_at, speculative_open_network_block_reason_for,
+        turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         ActiveJobState, EarnFailureClass, JobDemandRiskClass, JobDemandRiskDisposition,
@@ -2990,6 +3014,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 120,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_060),
             validation,
             arrival_seq: 1,
             decision,
@@ -3246,6 +3272,23 @@ mod tests {
                 "req-invalid".to_string(),
                 "auto policy rejected invalid request: decrypt failed".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn targeted_open_network_requests_are_blocked_once_expired() {
+        let mut request = fixture_request(
+            "req-expired-targeted",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.target_provider_pubkeys = vec!["provider-pubkey".to_string()];
+        request.created_at_epoch_seconds = Some(1_760_000_000);
+        request.expires_at_epoch_seconds = Some(1_760_000_075);
+
+        assert_eq!(
+            open_network_expiry_block_reason_for(&request, 1_760_000_076),
+            Some("Request already expired 1s ago and cannot be executed safely".to_string())
         );
     }
 

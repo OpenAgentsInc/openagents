@@ -3562,6 +3562,8 @@ mod tests {
             delivery_rejection_reason_label: None,
             quoted_price_sats: 21,
             ttl_seconds: 90,
+            request_created_at_epoch_seconds: Some(1_760_000_000),
+            request_expires_at_epoch_seconds: Some(1_760_000_090),
             stage: JobLifecycleStage::Delivered,
             invoice_id: None,
             settlement_bolt11: None,
