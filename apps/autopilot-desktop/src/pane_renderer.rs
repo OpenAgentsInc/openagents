@@ -1558,6 +1558,9 @@ fn mission_control_active_jobs_panel_state(
         crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
             "FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT".to_string()
         }
+        crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => {
+            "FLOW // SELLER SETTLED / BUYER LOCAL WALLET PENDING".to_string()
+        }
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
             "FLOW // RESULT DELIVERED / PREPARING BUYER INVOICE".to_string()
         }
@@ -1609,6 +1612,18 @@ fn mission_control_active_jobs_panel_state(
             );
         }
         lines.push(settlement);
+    } else if flow_snapshot.phase
+        == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+    {
+        let mut settlement = "SETTLE // SELLER SETTLED // BUYER LOCAL WALLET PENDING".to_string();
+        if flow_snapshot.payment_pointer.is_some() {
+            settlement.push_str(" // POINTER READY");
+        }
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
     } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
         let mut settlement = "SETTLE // AWAITING BUYER PAYMENT".to_string();
         if flow_snapshot.payment_pointer.is_some() {
@@ -1646,6 +1661,10 @@ fn mission_control_active_jobs_panel_state(
         {
             "AWAITING PAYMENT".to_string()
         } else if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+        {
+            "LOCAL CONFIRM".to_string()
+        } else if flow_snapshot.phase
             == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
         {
             "INVOICING".to_string()
@@ -1668,6 +1687,9 @@ fn active_job_stage_display(
     match phase {
         crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
             "delivered (awaiting buyer payment)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => {
+            "delivered (seller settled / buyer local wallet pending)".to_string()
         }
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
             "delivered (preparing buyer invoice)".to_string()
@@ -5547,6 +5569,7 @@ fn build_active_job_scroll_lines(
     } else if matches!(
         flow_snapshot.phase,
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
             | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
             | crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
     ) {
@@ -5572,6 +5595,16 @@ fn build_active_job_scroll_lines(
             &mut lines,
             "Settlement outcome: ",
             "compute completed and the result was delivered; awaiting buyer Lightning payment",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+    {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "seller settlement appears confirmed, but local buyer wallet confirmation is still pending",
             chunk_len,
             theme::text::PRIMARY,
         );
@@ -7885,5 +7918,81 @@ mod tests {
         assert!(failed.summary.contains("3 sats fee"));
         assert!(failed.summary.contains("5 sats total debit"));
         assert!(failed.summary.contains("wallet delta -5 sats"));
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_distinguishes_seller_settled_local_pending() {
+        let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat();
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut requests = queue_buy_mode_request_for_tests();
+        let provider_pubkey = "88".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            "req-buy-render-001",
+            "event-buy-render-settled",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "result-buy-render-settled",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-settled-invoice",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1buyrendersettled"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                "req-buy-render-001",
+                "lnbc1buyrendersettled",
+                Some(2_000),
+                1_762_700_060,
+            )
+            .expect("payment-required invoice should prepare");
+        requests.record_auto_payment_pointer("req-buy-render-001", "wallet-buy-settled-001");
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-settled-success",
+            Some("success"),
+            Some("wallet-confirmed settlement recorded"),
+            Some(2_000),
+            None,
+        );
+
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &requests,
+            &SparkPaneState::default(),
+            now,
+        )
+        .expect("buy mode panel should render seller-settled pending local wallet state");
+
+        assert_eq!(panel.next, "buyer local wallet confirmation");
+        assert_eq!(panel.provider, "888888..8888");
+        assert_eq!(panel.work, "settled");
+        assert_eq!(panel.payment, "pending");
+        assert!(panel.summary.contains("seller settlement confirmed"));
+        assert!(
+            panel
+                .summary
+                .contains("seller settled; awaiting local wallet confirmation")
+        );
+        assert!(
+            panel
+                .summary
+                .contains("phase seller-settled-pending-wallet")
+        );
     }
 }

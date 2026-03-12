@@ -15,6 +15,7 @@ use crate::spark_wallet::{
 };
 use crate::state::operations::{
     BuyerResolutionReason, NetworkRequestStatus, NetworkRequestsState, SubmittedNetworkRequest,
+    buyer_request_seller_settled_pending_local_wallet, buyer_request_seller_settlement_feedback,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,6 +47,7 @@ pub(crate) enum Nip90FlowPhase {
     Delivered,
     RequestingPayment,
     AwaitingPayment,
+    SellerSettledPendingWallet,
     DeliveredUnpaid,
     Paid,
     Failed,
@@ -62,6 +64,7 @@ impl Nip90FlowPhase {
             Self::Delivered => "delivered",
             Self::RequestingPayment => "requesting-payment",
             Self::AwaitingPayment => "awaiting-payment",
+            Self::SellerSettledPendingWallet => "seller-settled-pending-wallet",
             Self::DeliveredUnpaid => "delivered-unpaid",
             Self::Paid => "paid",
             Self::Failed => "failed",
@@ -90,6 +93,7 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub last_result_event_id: Option<String>,
     pub winning_result_event_id: Option<String>,
     pub payment_pointer: Option<String>,
+    pub seller_success_feedback_event_id: Option<String>,
     pub payment_required_at_epoch_seconds: Option<u64>,
     pub payment_sent_at_epoch_seconds: Option<u64>,
     pub payment_failed_at_epoch_seconds: Option<u64>,
@@ -213,12 +217,15 @@ impl BuyerRequestFlowSnapshot {
         if self.status == NetworkRequestStatus::Failed {
             return "fault".to_string();
         }
-        if self.last_result_event_id.is_some() {
+        if self.last_result_event_id.is_some()
+            && self.phase != Nip90FlowPhase::SellerSettledPendingWallet
+        {
             return "done".to_string();
         }
         match self.phase {
             Nip90FlowPhase::Paid => "done".to_string(),
             Nip90FlowPhase::AwaitingPayment => "invoice".to_string(),
+            Nip90FlowPhase::SellerSettledPendingWallet => "settled".to_string(),
             Nip90FlowPhase::RequestingPayment => "invoice".to_string(),
             Nip90FlowPhase::DeliveredUnpaid => "unpaid".to_string(),
             Nip90FlowPhase::Delivered => "done".to_string(),
@@ -241,12 +248,15 @@ impl BuyerRequestFlowSnapshot {
         if self.status == NetworkRequestStatus::Failed {
             return "request failed".to_string();
         }
-        if self.last_result_event_id.is_some() {
+        if self.last_result_event_id.is_some()
+            && self.phase != Nip90FlowPhase::SellerSettledPendingWallet
+        {
             return "result received".to_string();
         }
         match self.phase {
             Nip90FlowPhase::Paid => "payment settled".to_string(),
             Nip90FlowPhase::AwaitingPayment => "invoice received".to_string(),
+            Nip90FlowPhase::SellerSettledPendingWallet => "seller settlement confirmed".to_string(),
             Nip90FlowPhase::RequestingPayment => {
                 if self.pending_bolt11.is_some() {
                     "invoice received".to_string()
@@ -275,13 +285,18 @@ impl BuyerRequestFlowSnapshot {
         if self.status == NetworkRequestStatus::Failed {
             return "failed".to_string();
         }
-        if self.last_result_event_id.is_some() {
+        if self.last_result_event_id.is_some()
+            && self.phase != Nip90FlowPhase::SellerSettledPendingWallet
+        {
             return "result-received".to_string();
         }
         match self.phase {
             Nip90FlowPhase::Paid | Nip90FlowPhase::Delivered => "result-received".to_string(),
             Nip90FlowPhase::AwaitingPayment | Nip90FlowPhase::RequestingPayment => {
                 "invoice-requested".to_string()
+            }
+            Nip90FlowPhase::SellerSettledPendingWallet => {
+                "seller-settled-local-wallet-pending".to_string()
             }
             Nip90FlowPhase::DeliveredUnpaid => "delivered-unpaid".to_string(),
             Nip90FlowPhase::Executing => "provider-working".to_string(),
@@ -307,6 +322,30 @@ impl BuyerRequestFlowSnapshot {
             .net_wallet_delta_sats
             .map(crate::spark_wallet::format_wallet_delta_sats)
             .map(|delta| format!("wallet delta {delta}"));
+        if self.phase == Nip90FlowPhase::SellerSettledPendingWallet {
+            let mut parts = Vec::new();
+            if let Some(invoice_summary) = invoice_summary.clone() {
+                parts.push(invoice_summary);
+            }
+            if let Some(pointer) = self.payment_pointer.as_deref() {
+                parts.push(format!("pointer {}", short_id(pointer)));
+            }
+            if let Some(fees) = self.fees_sats {
+                parts.push(format!("{fees} sats fee"));
+            }
+            if let Some(total) = self.total_debit_sats {
+                parts.push(format!("{total} sats total debit"));
+            }
+            if let Some(net_delta_summary) = net_delta_summary.clone() {
+                parts.push(net_delta_summary);
+            }
+            let detail = "seller settled; awaiting local wallet confirmation";
+            return if parts.is_empty() {
+                detail.to_string()
+            } else {
+                format!("{detail} ({})", parts.join("; "))
+            };
+        }
         match self.wallet_status.as_str() {
             "sent" => {
                 let mut parts = Vec::new();
@@ -449,6 +488,10 @@ impl BuyerRequestFlowSnapshot {
         if let Some(pointer) = self.payment_pointer.as_deref() {
             line.push_str(" pointer=");
             line.push_str(mission_control_log_short_id(pointer).as_str());
+        }
+        if let Some(feedback_event_id) = self.seller_success_feedback_event_id.as_deref() {
+            line.push_str(" seller_settlement_feedback=");
+            line.push_str(mission_control_log_short_id(feedback_event_id).as_str());
         }
         if let Some(result_provider) = self.result_provider_pubkey() {
             line.push_str(" result_provider=");
@@ -691,6 +734,12 @@ pub(crate) fn build_buyer_request_flow_snapshot(
 ) -> BuyerRequestFlowSnapshot {
     let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
     let wallet_status = buy_mode_wallet_state_label(request, wallet_payment);
+    let seller_settlement_feedback = buyer_request_seller_settlement_feedback(request).map(
+        |(provider_pubkey, feedback_event_id)| {
+            (provider_pubkey.to_string(), feedback_event_id.to_string())
+        },
+    );
+    let seller_settled_pending_wallet = buyer_request_seller_settled_pending_local_wallet(request);
     let result_provider_pubkey = request.result_provider_pubkey.clone();
     let invoice_provider_pubkey = request.invoice_provider_pubkey.clone();
     let payable_provider_pubkey = request.winning_provider_pubkey.clone();
@@ -732,6 +781,12 @@ pub(crate) fn build_buyer_request_flow_snapshot(
                 },
                 Nip90FlowPhase::Failed,
                 "none".to_string(),
+            )
+        } else if seller_settled_pending_wallet {
+            (
+                Nip90FlowAuthority::Provider,
+                Nip90FlowPhase::SellerSettledPendingWallet,
+                "buyer local wallet confirmation".to_string(),
             )
         } else if request.last_payment_pointer.is_some() {
             if request.payment_sent_at_epoch_seconds.is_some()
@@ -822,6 +877,9 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         last_result_event_id: request.last_result_event_id.clone(),
         winning_result_event_id: request.winning_result_event_id.clone(),
         payment_pointer: request.last_payment_pointer.clone(),
+        seller_success_feedback_event_id: seller_settlement_feedback
+            .as_ref()
+            .map(|(_, feedback_event_id)| feedback_event_id.clone()),
         payment_required_at_epoch_seconds: request.payment_required_at_epoch_seconds,
         payment_sent_at_epoch_seconds: request.payment_sent_at_epoch_seconds,
         payment_failed_at_epoch_seconds: request.payment_failed_at_epoch_seconds,
@@ -2169,6 +2227,103 @@ mod tests {
         assert_eq!(snapshot.invoice_amount_sats, Some(25));
         assert_eq!(snapshot.net_wallet_delta_sats, None);
         assert!(snapshot.payment_summary().contains("25 sats invoice"));
+    }
+
+    #[test]
+    fn buyer_snapshot_distinguishes_seller_settlement_from_local_wallet_confirmation() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-snapshot-seller-settled".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 75,
+                authority_command_seq: 3,
+            })
+            .expect("queue request");
+        let provider_pubkey = "cd".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-snapshot-seller-settled",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-snapshot-seller-settled",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-snapshot-payment-required",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1snapshotsettled"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1snapshotsettled",
+                Some(2_000),
+                1_762_700_090,
+            )
+            .expect("payment-required invoice should queue");
+        requests.record_auto_payment_pointer(
+            request_id.as_str(),
+            "wallet-snapshot-settled-pending-001",
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-snapshot-seller-settled",
+            Some("success"),
+            Some("wallet-confirmed settlement recorded"),
+            Some(2_000),
+            None,
+        );
+
+        let request = requests
+            .latest_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
+            .expect("latest request");
+        let snapshot = build_buyer_request_flow_snapshot(request, &SparkPaneState::default());
+
+        assert_eq!(snapshot.status, NetworkRequestStatus::PaymentRequired);
+        assert_eq!(snapshot.authority, Nip90FlowAuthority::Provider);
+        assert_eq!(snapshot.phase, Nip90FlowPhase::SellerSettledPendingWallet);
+        assert_eq!(
+            snapshot.next_expected_event,
+            "buyer local wallet confirmation"
+        );
+        assert_eq!(snapshot.wallet_status, "pending");
+        assert_eq!(
+            snapshot.seller_success_feedback_event_id.as_deref(),
+            Some("feedback-snapshot-seller-settled")
+        );
+        assert_eq!(snapshot.work_label(), "settled");
+        assert!(
+            snapshot
+                .work_summary()
+                .contains("seller settlement confirmed")
+        );
+        assert!(
+            snapshot
+                .payment_summary()
+                .contains("seller settled; awaiting local wallet confirmation")
+        );
+        assert!(
+            snapshot
+                .mission_control_log_line()
+                .contains("seller_settlement_feedback=")
+        );
     }
 
     #[test]

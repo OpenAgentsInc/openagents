@@ -2113,7 +2113,8 @@ fn active_job_stage_label(
 ) -> &'static str {
     match active_job.phase {
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
-        | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => "settling",
+        | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+        | crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => "settling",
         crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => "unpaid",
         _ => active_job.stage.label(),
     }
@@ -3569,6 +3570,7 @@ mod tests {
                 last_feedback_status: Some("payment-required".to_string()),
                 last_feedback_event_id: Some("feedback-role-split".to_string()),
                 last_result_event_id: Some("result-role-split".to_string()),
+                seller_success_feedback_event_id: None,
                 winning_result_event_id: None,
                 payment_pointer: None,
                 payment_required_at_epoch_seconds: None,
