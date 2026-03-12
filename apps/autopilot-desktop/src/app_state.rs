@@ -2033,7 +2033,7 @@ pub struct AutopilotTerminalSession {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct AutopilotTurnMetadata {
+pub(crate) struct AutopilotTurnMetadata {
     pub submission_seq: u64,
     pub thread_id: String,
     pub run_classification: CodexRunClassification,
@@ -2347,10 +2347,10 @@ pub struct AutopilotChatState {
     pub pending_assistant_message_ids: VecDeque<u64>,
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub next_turn_submission_seq: u64,
-    pub pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
+    pub(crate) pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
     pending_steer_submissions: VecDeque<AutopilotPendingSteerSubmission>,
-    pub turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
-    pub last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
+    pub(crate) turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
+    pub(crate) last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
     last_agent_item_ids: std::collections::HashMap<String, String>,
     last_reasoning_item_ids: std::collections::HashMap<String, String>,
     last_agent_delta_signature: Option<AutopilotDeltaSignature>,
@@ -4836,7 +4836,7 @@ impl AutopilotChatState {
         self.last_error = is_error.then(|| trimmed_response.to_string());
     }
 
-    pub fn record_turn_submission_metadata(
+    pub(crate) fn record_turn_submission_metadata(
         &mut self,
         thread_id: &str,
         run_classification: CodexRunClassification,
@@ -4894,28 +4894,31 @@ impl AutopilotChatState {
         }
     }
 
-    pub fn turn_metadata_for(&self, turn_id: &str) -> Option<&AutopilotTurnMetadata> {
+    pub(crate) fn turn_metadata_for(&self, turn_id: &str) -> Option<&AutopilotTurnMetadata> {
         self.turn_metadata_by_turn_id.get(turn_id)
     }
 
-    pub fn active_turn_metadata(&self) -> Option<&AutopilotTurnMetadata> {
+    pub(crate) fn active_turn_metadata(&self) -> Option<&AutopilotTurnMetadata> {
         self.active_turn_id
             .as_deref()
             .and_then(|turn_id| self.turn_metadata_for(turn_id))
             .or(self.last_submitted_turn_metadata.as_ref())
     }
 
-    pub fn turn_labor_binding_for(&self, turn_id: &str) -> Option<&CodexLaborBinding> {
+    pub(crate) fn turn_labor_binding_for(&self, turn_id: &str) -> Option<&CodexLaborBinding> {
         self.turn_metadata_for(turn_id)
             .and_then(|metadata| metadata.labor_binding.as_ref())
     }
 
-    pub fn turn_labor_submission_for(&self, turn_id: &str) -> Option<&CodexLaborSubmissionState> {
+    pub(crate) fn turn_labor_submission_for(
+        &self,
+        turn_id: &str,
+    ) -> Option<&CodexLaborSubmissionState> {
         self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.submission.as_ref())
     }
 
-    pub fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
+    pub(crate) fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
         self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.verdict.as_ref())
     }
@@ -5027,7 +5030,7 @@ impl AutopilotChatState {
         Ok(Some(binding.evidence_payload()))
     }
 
-    pub fn assemble_turn_labor_submission(
+    pub(crate) fn assemble_turn_labor_submission(
         &mut self,
         turn_id: &str,
         created_at_epoch_ms: u64,
@@ -5038,7 +5041,7 @@ impl AutopilotChatState {
         Ok(Some(binding.assemble_submission(created_at_epoch_ms)))
     }
 
-    pub fn finalize_turn_labor_verdict(
+    pub(crate) fn finalize_turn_labor_verdict(
         &mut self,
         turn_id: &str,
         verified_at_epoch_ms: u64,
@@ -5049,7 +5052,7 @@ impl AutopilotChatState {
         binding.finalize_verdict(verified_at_epoch_ms).map(Some)
     }
 
-    pub fn open_turn_labor_claim(
+    pub(crate) fn open_turn_labor_claim(
         &mut self,
         turn_id: &str,
         opened_at_epoch_ms: u64,
@@ -5064,7 +5067,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn review_turn_labor_claim(
+    pub(crate) fn review_turn_labor_claim(
         &mut self,
         turn_id: &str,
         reviewed_at_epoch_ms: u64,
@@ -5078,7 +5081,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn issue_turn_labor_remedy(
+    pub(crate) fn issue_turn_labor_remedy(
         &mut self,
         turn_id: &str,
         issued_at_epoch_ms: u64,
@@ -5093,7 +5096,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn deny_turn_labor_claim(
+    pub(crate) fn deny_turn_labor_claim(
         &mut self,
         turn_id: &str,
         denied_at_epoch_ms: u64,
@@ -5108,7 +5111,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn resolve_turn_labor_claim(
+    pub(crate) fn resolve_turn_labor_claim(
         &mut self,
         turn_id: &str,
         resolved_at_epoch_ms: u64,
@@ -8925,7 +8928,7 @@ pub struct RenderState {
     pub sync_bootstrap_stream_grants: Vec<String>,
     pub hosted_control_base_url: Option<String>,
     pub hosted_control_bearer_token: Option<String>,
-    pub kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
+    pub(crate) kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
     pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
     pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,
