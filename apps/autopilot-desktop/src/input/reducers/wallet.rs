@@ -157,11 +157,14 @@ fn reconcile_pending_buyer_payment_confirmation(
     if is_settled_wallet_payment_status(payment.status.as_str()) {
         tracing::info!(
             target: "autopilot_desktop::buyer",
-            "Buyer Spark payment settled request_id={} pointer={} method={} status={} detail={}",
+            "Buyer Spark payment settled request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} detail={}",
             request_id,
             payment_pointer,
             payment.method,
             payment.status,
+            payment.amount_sats,
+            payment.fees_sats,
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment),
             payment.status_detail.as_deref().unwrap_or("wallet confirmed")
         );
         state.network_requests.mark_auto_payment_sent(
@@ -170,8 +173,11 @@ fn reconcile_pending_buyer_payment_confirmation(
             now_epoch_seconds,
         );
         state.provider_runtime.last_result = Some(format!(
-            "buyer payment settled request={} pointer={}",
-            request_id, payment_pointer
+            "buyer payment settled request={} pointer={} fees_sats={} total_debit_sats={}",
+            request_id,
+            payment_pointer,
+            payment.fees_sats,
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment)
         ));
         return;
     }
@@ -180,11 +186,14 @@ fn reconcile_pending_buyer_payment_confirmation(
         let detail = buyer_payment_failure_detail(payment_pointer, request_id.as_str(), payment);
         tracing::error!(
             target: "autopilot_desktop::buyer",
-            "Buyer Spark payment failed request_id={} pointer={} method={} status={} htlc_status={} detail={}",
+            "Buyer Spark payment failed request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} htlc_status={} detail={}",
             request_id,
             payment_pointer,
             payment.method,
             payment.status,
+            payment.amount_sats,
+            payment.fees_sats,
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment),
             payment.htlc_status.as_deref().unwrap_or("-"),
             detail
         );
@@ -194,29 +203,38 @@ fn reconcile_pending_buyer_payment_confirmation(
             now_epoch_seconds,
         );
         state.provider_runtime.last_result = Some(format!(
-            "buyer payment failed request={} pointer={} detail={}",
-            request_id, payment_pointer, detail
+            "buyer payment failed request={} pointer={} fees_sats={} total_debit_sats={} detail={}",
+            request_id,
+            payment_pointer,
+            payment.fees_sats,
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+            detail
         ));
         return;
     }
 
     tracing::info!(
         target: "autopilot_desktop::buyer",
-        "Buyer Spark payment in-flight request_id={} pointer={} method={} status={} detail={}",
+        "Buyer Spark payment in-flight request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} detail={}",
         request_id,
         payment_pointer,
         payment.method,
         payment.status,
+        payment.amount_sats,
+        payment.fees_sats,
+        crate::spark_wallet::wallet_payment_total_debit_sats(payment),
         payment
             .status_detail
             .as_deref()
             .unwrap_or(payment.status.as_str())
     );
     state.provider_runtime.last_result = Some(format!(
-        "buyer payment pending Spark confirmation request={} pointer={} status={} detail={}",
+        "buyer payment pending Spark confirmation request={} pointer={} status={} fees_sats={} total_debit_sats={} detail={}",
         request_id,
         payment_pointer,
         payment.status,
+        payment.fees_sats,
+        crate::spark_wallet::wallet_payment_total_debit_sats(payment),
         payment
             .status_detail
             .as_deref()
@@ -235,10 +253,14 @@ fn buyer_payment_failure_detail(
         .unwrap_or(payment.status.as_str());
     if payment.is_returned_htlc_failure() {
         return format!(
-            "Spark payment {payment_pointer} for {request_id} returned after expiry; provider was not paid and the refund should settle back to the wallet"
+            "Spark payment {payment_pointer} for {request_id} returned after expiry; provider was not paid and the refund should settle back to the wallet ({})",
+            crate::spark_wallet::wallet_payment_amount_summary(payment)
         );
     }
-    format!("Spark payment {payment_pointer} for {request_id} failed: {wallet_detail}")
+    format!(
+        "Spark payment {payment_pointer} for {request_id} failed: {wallet_detail} ({})",
+        crate::spark_wallet::wallet_payment_amount_summary(payment)
+    )
 }
 
 fn lightning_invoice_terminal_qr(invoice: &str) -> Result<String, String> {

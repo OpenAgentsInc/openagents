@@ -239,8 +239,11 @@ pub fn paint_wallet_pane(
 
         for payment in spark_wallet.recent_payments.iter().take(6) {
             let line = format!(
-                "{} {} {} sats [{}]",
-                payment.direction, payment.status, payment.amount_sats, payment.id
+                "{} {} {} [{}]",
+                payment.direction,
+                payment.status,
+                crate::spark_wallet::wallet_payment_amount_summary(payment),
+                payment.id
             );
             paint.scene.draw_text(paint.text.layout_mono(
                 &line,

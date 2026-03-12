@@ -150,6 +150,12 @@ async fn run(cli: Cli) -> Result<()> {
                             "direction": payment.direction,
                             "status": payment.status,
                             "amountSats": payment.amount_sats,
+                            "feesSats": payment.fees_sats,
+                            "totalDebitSats": if payment.direction.eq_ignore_ascii_case("send") {
+                                payment.amount_sats.saturating_add(payment.fees_sats)
+                            } else {
+                                payment.amount_sats
+                            },
                             "timestamp": payment.timestamp,
                         })
                     }).collect::<Vec<_>>(),
@@ -238,6 +244,12 @@ async fn run(cli: Cli) -> Result<()> {
                 .get_balance()
                 .await
                 .context("failed to refresh balance")?;
+            let matched_payment = wallet
+                .list_payments(Some(20), None)
+                .await
+                .context("failed to refresh payment history after send")?
+                .into_iter()
+                .find(|payment| payment.id == payment_id);
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
@@ -245,6 +257,21 @@ async fn run(cli: Cli) -> Result<()> {
                     "paymentId": payment_id,
                     "amountSats": amount_sats,
                     "apiKeySource": cli.api_key_source.label(),
+                    "matchedPayment": matched_payment.map(|payment| {
+                        json!({
+                            "id": payment.id,
+                            "direction": payment.direction,
+                            "status": payment.status,
+                            "amountSats": payment.amount_sats,
+                            "feesSats": payment.fees_sats,
+                            "totalDebitSats": if payment.direction.eq_ignore_ascii_case("send") {
+                                payment.amount_sats.saturating_add(payment.fees_sats)
+                            } else {
+                                payment.amount_sats
+                            },
+                            "timestamp": payment.timestamp,
+                        })
+                    }),
                     "postBalance": {
                         "sparkSats": balance.spark_sats,
                         "lightningSats": balance.lightning_sats,

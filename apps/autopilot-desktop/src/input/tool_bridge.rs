@@ -5006,15 +5006,23 @@ fn execute_wallet_check_tool(
     let sent_sats = payments
         .iter()
         .filter(|payment| payment.direction.eq_ignore_ascii_case("send"))
+        .fold(0u64, |acc, payment| acc.saturating_add(payment.amount_sats));
+    let sent_fee_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("send"))
+        .fold(0u64, |acc, payment| acc.saturating_add(payment.fees_sats));
+    let sent_total_debit_sats = payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("send"))
         .fold(0u64, |acc, payment| {
-            acc.saturating_add(payment.amount_sats.max(0) as u64)
+            acc.saturating_add(crate::spark_wallet::wallet_payment_total_debit_sats(
+                payment,
+            ))
         });
     let received_sats = payments
         .iter()
         .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
-        .fold(0u64, |acc, payment| {
-            acc.saturating_add(payment.amount_sats.max(0) as u64)
-        });
+        .fold(0u64, |acc, payment| acc.saturating_add(payment.amount_sats));
 
     let payment_rows = if args.include_payments {
         payments
@@ -5026,6 +5034,8 @@ fn execute_wallet_check_tool(
                     "direction": payment.direction,
                     "status": payment.status,
                     "amount_sats": payment.amount_sats,
+                    "fees_sats": payment.fees_sats,
+                    "total_debit_sats": crate::spark_wallet::wallet_payment_total_debit_sats(payment),
                     "timestamp": payment.timestamp,
                 })
             })
@@ -5049,6 +5059,8 @@ fn execute_wallet_check_tool(
             "payment_summary": {
                 "count": payments.len(),
                 "sent_sats": sent_sats,
+                "sent_fee_sats": sent_fee_sats,
+                "sent_total_debit_sats": sent_total_debit_sats,
                 "received_sats": received_sats,
             },
             "payments": payment_rows,
