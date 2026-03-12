@@ -101,6 +101,8 @@ mod shortcuts;
 mod tool_bridge;
 use actions::*;
 
+#[cfg(test)]
+pub(crate) use actions::build_mission_control_buy_mode_request_event;
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;

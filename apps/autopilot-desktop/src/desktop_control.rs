@@ -2476,19 +2476,33 @@ mod tests {
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
-        ManagedChatProjectionState,
+        ManagedChatProjectionState, NetworkRequestSubmission,
     };
+    use crate::autopilot_compute_presence::pump_provider_chat_presence;
     use crate::nip28_chat_lane::{Nip28ChatLaneUpdate, Nip28ChatLaneWorker};
     use crate::pane_system::MissionControlPaneAction;
+    use crate::provider_nip90_lane::{
+        ProviderNip90AuthIdentity, ProviderNip90ComputeCapability, ProviderNip90LaneCommand,
+        ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90PublishOutcome,
+        ProviderNip90PublishRole,
+    };
+    use crate::spark_wallet::SparkPaneState;
+    use crate::state::operations::{BuyerResolutionMode, NetworkRequestStatus};
+    use crate::state::provider_runtime::{ProviderMode, ProviderRuntimeState};
     use futures_util::{SinkExt, StreamExt};
+    use nostr::nip90::{
+        JobFeedback, JobResult, JobStatus, create_job_feedback_event, create_job_result_event,
+    };
     use nostr::{
-        ChannelMetadata, Event, GroupMetadata, GroupMetadataEvent, ManagedChannelCreateEvent,
-        ManagedChannelHints, ManagedChannelMessageEvent, ManagedChannelType,
+        ChannelMetadata, Event, EventTemplate, GroupMetadata, GroupMetadataEvent,
+        ManagedChannelCreateEvent, ManagedChannelHints, ManagedChannelMessageEvent,
+        ManagedChannelType, NostrIdentity,
     };
     use serde_json::{Value, json};
     use std::collections::{HashMap, HashSet, VecDeque};
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex, mpsc};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use tempfile::tempdir;
     use tokio::net::TcpListener;
     use tokio::sync::{mpsc as tokio_mpsc, oneshot};
@@ -3102,8 +3116,273 @@ mod tests {
             "Provider offline".to_string()
         });
         snapshot.nip28 = super::desktop_control_nip28_status(chat);
+        let now_epoch_seconds = super::current_epoch_seconds();
+        let target_selection = chat.select_autopilot_buy_mode_target(now_epoch_seconds);
+        snapshot.buy_mode.target_selection = DesktopControlBuyModeTargetSelectionStatus {
+            selected_peer_pubkey: target_selection.selected_peer_pubkey,
+            selected_relay_url: target_selection.selected_relay_url,
+            selected_ready_model: target_selection.selected_ready_model,
+            observed_peer_count: target_selection.observed_peer_count,
+            eligible_peer_count: target_selection.eligible_peer_count,
+            blocked_reason_code: target_selection.blocked_reason_code,
+            blocked_reason: target_selection.blocked_reason,
+        };
+        snapshot.buy_mode.peer_roster = chat
+            .autopilot_peer_roster(now_epoch_seconds)
+            .into_iter()
+            .map(super::desktop_control_autopilot_peer_status)
+            .collect();
         snapshot.state_signature = snapshot_sync_signature(&snapshot);
         snapshot
+    }
+
+    fn overlay_buy_mode_snapshot(
+        snapshot: &mut DesktopControlSnapshot,
+        requests: &crate::state::operations::NetworkRequestsState,
+        wallet: &SparkPaneState,
+        loop_enabled: bool,
+    ) {
+        let flows = crate::nip90_compute_flow::buy_mode_request_flow_snapshots(requests, wallet);
+        let active = flows.first();
+        snapshot.buy_mode.enabled = loop_enabled;
+        snapshot.buy_mode.next_dispatch_countdown_seconds =
+            (loop_enabled && active.is_none()).then_some(0);
+        snapshot.buy_mode.in_flight_request_id =
+            active.as_ref().map(|flow| flow.request_id.clone());
+        snapshot.buy_mode.in_flight_status =
+            active.as_ref().map(|flow| flow.status.label().to_string());
+        snapshot.buy_mode.in_flight_phase =
+            active.as_ref().map(|flow| flow.phase.as_str().to_string());
+        snapshot.buy_mode.selected_provider_pubkey =
+            active.and_then(|flow| flow.selected_provider_pubkey.clone());
+        snapshot.buy_mode.result_provider_pubkey =
+            active.and_then(|flow| flow.result_provider_pubkey.clone());
+        snapshot.buy_mode.invoice_provider_pubkey =
+            active.and_then(|flow| flow.invoice_provider_pubkey.clone());
+        snapshot.buy_mode.payable_provider_pubkey =
+            active.and_then(|flow| flow.payable_provider_pubkey.clone());
+        snapshot.buy_mode.payment_blocker_codes = active
+            .map(|flow| flow.payment_blocker_codes.clone())
+            .unwrap_or_default();
+        snapshot.buy_mode.payment_blocker_summary =
+            active.and_then(|flow| flow.payment_blocker_summary.clone());
+        snapshot.buy_mode.recent_requests = flows
+            .iter()
+            .take(8)
+            .map(super::desktop_control_buy_mode_request_status)
+            .collect();
+    }
+
+    fn sync_test_snapshot_with_buy_mode(
+        runtime: &DesktopControlRuntime,
+        previous_snapshot: &mut Option<DesktopControlSnapshot>,
+        chat: &AutopilotChatState,
+        provider_online: bool,
+        next_revision: &mut u64,
+        requests: &crate::state::operations::NetworkRequestsState,
+        wallet: &SparkPaneState,
+        loop_enabled: bool,
+    ) -> DesktopControlSnapshot {
+        let mut snapshot = build_test_snapshot(chat, provider_online, *next_revision);
+        overlay_buy_mode_snapshot(&mut snapshot, requests, wallet, loop_enabled);
+        *next_revision = next_revision.saturating_add(1);
+        runtime
+            .sync_snapshot(snapshot.clone())
+            .expect("sync test snapshot with buy mode");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &snapshot,
+            ))
+            .expect("append snapshot events");
+        *previous_snapshot = Some(snapshot.clone());
+        snapshot
+    }
+
+    fn test_identity(seed: u8, label: &str) -> NostrIdentity {
+        let private_key = [seed; 32];
+        NostrIdentity {
+            identity_path: PathBuf::from(format!("/tmp/openagents-{label}-identity")),
+            mnemonic: format!("test mnemonic {label}"),
+            npub: String::new(),
+            nsec: String::new(),
+            public_key_hex: nostr::get_public_key_hex(&private_key).expect("fixture pubkey"),
+            private_key_hex: hex::encode(private_key),
+        }
+    }
+
+    fn provider_auth_identity(identity: &NostrIdentity) -> ProviderNip90AuthIdentity {
+        ProviderNip90AuthIdentity {
+            npub: identity.npub.clone(),
+            public_key_hex: identity.public_key_hex.clone(),
+            private_key_hex: identity.private_key_hex.clone(),
+        }
+    }
+
+    fn ready_provider_runtime(now: Instant) -> ProviderRuntimeState {
+        let mut runtime = ProviderRuntimeState::default();
+        runtime.mode = ProviderMode::Online;
+        runtime.mode_changed_at = now;
+        runtime.inventory_session_started_at_ms = Some(25_000);
+        runtime.apple_fm.reachable = true;
+        runtime.apple_fm.model_available = true;
+        runtime.apple_fm.ready_model = Some("apple-foundation-model".to_string());
+        runtime
+    }
+
+    fn fixture_compute_capability() -> ProviderNip90ComputeCapability {
+        ProviderNip90ComputeCapability {
+            backend: "apple-foundation-model".to_string(),
+            reachable: true,
+            configured_model: Some("apple-foundation-model".to_string()),
+            ready_model: Some("apple-foundation-model".to_string()),
+            available_models: vec!["apple-foundation-model".to_string()],
+            loaded_models: vec!["apple-foundation-model".to_string()],
+            last_error: None,
+        }
+    }
+
+    fn sign_test_template(identity: &NostrIdentity, template: &EventTemplate) -> Event {
+        let key_bytes = hex::decode(identity.private_key_hex.as_str()).expect("decode key hex");
+        let private_key: [u8; 32] = key_bytes
+            .try_into()
+            .expect("identity private key length should be 32");
+        nostr::finalize_event(template, &private_key).expect("sign test nostr event")
+    }
+
+    fn build_provider_result_event(
+        identity: &NostrIdentity,
+        request: &crate::app_state::JobInboxNetworkRequest,
+        output: &str,
+    ) -> Event {
+        let mut result = JobResult::new(
+            request.request_kind,
+            request.request_id.clone(),
+            request.requester.clone(),
+            output.trim().to_string(),
+        )
+        .expect("provider result");
+        if request.price_sats > 0 {
+            result = result.with_amount(request.price_sats.saturating_mul(1000), None);
+        }
+        let template = create_job_result_event(&result);
+        sign_test_template(identity, &template)
+    }
+
+    fn build_provider_payment_required_feedback_event(
+        identity: &NostrIdentity,
+        request: &crate::app_state::JobInboxNetworkRequest,
+        bolt11: &str,
+    ) -> Event {
+        let feedback = JobFeedback::new(
+            JobStatus::PaymentRequired,
+            request.request_id.as_str(),
+            request.requester.as_str(),
+        )
+        .with_status_extra("lightning settlement required".to_string())
+        .with_amount(
+            request.price_sats.saturating_mul(1000),
+            Some(bolt11.to_string()),
+        );
+        let template = create_job_feedback_event(&feedback);
+        sign_test_template(identity, &template)
+    }
+
+    fn wait_for_provider_lane_online(worker: &mut ProviderNip90LaneWorker) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::Snapshot(snapshot) = update
+                    && snapshot.mode == crate::provider_nip90_lane::ProviderNip90LaneMode::Online
+                    && snapshot.connected_relays > 0
+                {
+                    return;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("timed out waiting for provider lane online");
+    }
+
+    fn wait_for_ingressed_request(
+        worker: &mut ProviderNip90LaneWorker,
+        request_id: &str,
+        timeout: Duration,
+    ) -> Option<crate::app_state::JobInboxNetworkRequest> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::IngressedRequest(request) = update
+                    && request.request_id == request_id
+                {
+                    return Some(request);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    fn wait_for_publish_outcome(
+        worker: &mut ProviderNip90LaneWorker,
+        request_id: &str,
+        role: ProviderNip90PublishRole,
+        timeout: Duration,
+    ) -> Option<ProviderNip90PublishOutcome> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.request_id == request_id
+                    && outcome.role == role
+                {
+                    return Some(outcome);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    fn pump_nip28_pair_until_snapshot(
+        runtime: &DesktopControlRuntime,
+        previous_snapshot: &mut Option<DesktopControlSnapshot>,
+        buyer_chat: &mut AutopilotChatState,
+        buyer_lane: &mut Nip28ChatLaneWorker,
+        remote_chat: &mut AutopilotChatState,
+        remote_lane: &mut Nip28ChatLaneWorker,
+        provider_online: bool,
+        next_revision: &mut u64,
+        requests: &crate::state::operations::NetworkRequestsState,
+        wallet: &SparkPaneState,
+        loop_enabled: bool,
+        predicate: impl Fn(&DesktopControlSnapshot) -> bool,
+    ) -> DesktopControlSnapshot {
+        for _ in 0..160 {
+            let remote_changed = pump_nip28_lane(remote_chat, remote_lane);
+            let buyer_changed = pump_nip28_lane(buyer_chat, buyer_lane);
+            if remote_changed || buyer_changed {
+                let snapshot = sync_test_snapshot_with_buy_mode(
+                    runtime,
+                    previous_snapshot,
+                    buyer_chat,
+                    provider_online,
+                    next_revision,
+                    requests,
+                    wallet,
+                    loop_enabled,
+                );
+                if predicate(&snapshot) {
+                    return snapshot;
+                }
+            } else if let Some(snapshot) = previous_snapshot.as_ref()
+                && predicate(snapshot)
+            {
+                return snapshot.clone();
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting for paired NIP-28 desktop control snapshot predicate");
     }
 
     fn sync_test_snapshot(
@@ -3911,6 +4190,526 @@ mod tests {
                 .events
                 .iter()
                 .any(|event| event.summary.contains("nip28-send applied"))
+        );
+    }
+
+    #[test]
+    fn desktop_control_http_harness_targets_nip28_autopilot_peer_and_settles_buy_mode() {
+        let relay = TestNip28Relay::spawn();
+        let config = DefaultNip28ChannelConfig::from_env_or_default();
+        relay.store_events(vec![
+            build_test_group_metadata_event(),
+            build_test_channel_create_event(config.channel_id.as_str()),
+        ]);
+
+        let buyer_identity = test_identity(0x31, "buyer");
+        let target_identity = test_identity(0x32, "target-provider");
+        let non_target_identity = test_identity(0x33, "non-target-provider");
+
+        let buyer_temp = tempdir().expect("buyer tempdir");
+        let buyer_projection_path = buyer_temp.path().join("buyer-managed-chat.json");
+        let mut buyer_chat = AutopilotChatState::default();
+        buyer_chat.managed_chat_projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(buyer_projection_path);
+        buyer_chat
+            .managed_chat_projection
+            .set_local_pubkey(Some(buyer_identity.public_key_hex.as_str()));
+        let mut buyer_chat_lane = Nip28ChatLaneWorker::spawn_with_config(config.clone());
+
+        let target_temp = tempdir().expect("target tempdir");
+        let target_projection_path = target_temp.path().join("target-managed-chat.json");
+        let mut target_chat = AutopilotChatState::default();
+        target_chat.managed_chat_projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(target_projection_path);
+        target_chat
+            .managed_chat_projection
+            .set_local_pubkey(Some(target_identity.public_key_hex.as_str()));
+        let mut target_chat_lane = Nip28ChatLaneWorker::spawn_with_config(config.clone());
+
+        let token = "token-targeted-buy-mode".to_string();
+        let mut runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        let client = reqwest::blocking::Client::new();
+        let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
+        let action_url = format!("http://{}/v1/action", runtime.listen_addr());
+        let events_url = format!("http://{}/v1/events", runtime.listen_addr());
+
+        let mut previous_snapshot = None;
+        let mut next_revision = 1;
+        let mut requests = crate::state::operations::NetworkRequestsState::default();
+        let mut wallet = SparkPaneState::default();
+        wallet.balance = Some(openagents_spark::Balance {
+            spark_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        let initial_snapshot = sync_test_snapshot_with_buy_mode(
+            &runtime,
+            &mut previous_snapshot,
+            &buyer_chat,
+            false,
+            &mut next_revision,
+            &requests,
+            &wallet,
+            false,
+        );
+        assert!(!initial_snapshot.buy_mode.enabled);
+        assert!(
+            initial_snapshot
+                .buy_mode
+                .target_selection
+                .selected_peer_pubkey
+                .is_none()
+        );
+
+        let channel_loaded_snapshot = pump_nip28_pair_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut buyer_chat,
+            &mut buyer_chat_lane,
+            &mut target_chat,
+            &mut target_chat_lane,
+            false,
+            &mut next_revision,
+            &requests,
+            &wallet,
+            false,
+            |snapshot| snapshot.nip28.available && snapshot.nip28.configured_channel_loaded,
+        );
+        assert!(
+            channel_loaded_snapshot.nip28.configured_channel_loaded,
+            "buyer should load the configured main channel"
+        );
+        assert!(
+            target_chat
+                .configured_main_managed_chat_channel(&config)
+                .is_some(),
+            "target provider should load the configured main channel"
+        );
+
+        let now = Instant::now();
+        let now_epoch_seconds = super::current_epoch_seconds();
+        let mut target_provider_runtime = ready_provider_runtime(now);
+        assert!(pump_provider_chat_presence(
+            &mut target_provider_runtime,
+            &mut target_chat,
+            Some(&target_identity),
+            now,
+            now_epoch_seconds,
+        ));
+
+        let roster_snapshot = pump_nip28_pair_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut buyer_chat,
+            &mut buyer_chat_lane,
+            &mut target_chat,
+            &mut target_chat_lane,
+            false,
+            &mut next_revision,
+            &requests,
+            &wallet,
+            false,
+            |snapshot| {
+                snapshot
+                    .buy_mode
+                    .target_selection
+                    .selected_peer_pubkey
+                    .as_deref()
+                    == Some(target_identity.public_key_hex.as_str())
+            },
+        );
+        assert_eq!(
+            roster_snapshot
+                .buy_mode
+                .target_selection
+                .selected_peer_pubkey
+                .as_deref(),
+            Some(target_identity.public_key_hex.as_str())
+        );
+        assert_eq!(
+            roster_snapshot
+                .buy_mode
+                .target_selection
+                .eligible_peer_count,
+            1
+        );
+        assert!(
+            roster_snapshot
+                .buy_mode
+                .peer_roster
+                .iter()
+                .any(|peer| peer.pubkey == target_identity.public_key_hex
+                    && peer.online_for_compute
+                    && peer.eligible_for_buy_mode)
+        );
+
+        let start_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::StartBuyMode,
+        );
+        let start_request = wait_for_action_request(&mut runtime);
+        assert_eq!(
+            start_request.action,
+            DesktopControlActionRequest::StartBuyMode
+        );
+        runtime
+            .append_events(vec![command_received_event(&start_request.action)])
+            .expect("append buy mode start command received");
+        let armed_snapshot = sync_test_snapshot_with_buy_mode(
+            &runtime,
+            &mut previous_snapshot,
+            &buyer_chat,
+            false,
+            &mut next_revision,
+            &requests,
+            &wallet,
+            true,
+        );
+        let start_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok("Started buy mode"),
+            &armed_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &start_request.action,
+                &start_response,
+            )])
+            .expect("append buy mode start command outcome");
+        start_request.respond(start_response.clone());
+        let start_response = start_join.join().expect("join buy mode start action");
+        assert!(start_response.success);
+        assert!(armed_snapshot.buy_mode.enabled);
+
+        let mut buyer_request_lane = ProviderNip90LaneWorker::spawn(vec![relay.url.clone()]);
+        buyer_request_lane
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(provider_auth_identity(&buyer_identity)),
+            })
+            .expect("configure buyer request identity");
+
+        let mut target_provider_lane = ProviderNip90LaneWorker::spawn(vec![relay.url.clone()]);
+        target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(provider_auth_identity(&target_identity)),
+            })
+            .expect("configure target provider identity");
+        target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_compute_capability(),
+            })
+            .expect("configure target provider capability");
+        target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("bring target provider online");
+
+        let mut non_target_provider_lane = ProviderNip90LaneWorker::spawn(vec![relay.url.clone()]);
+        non_target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(provider_auth_identity(&non_target_identity)),
+            })
+            .expect("configure non-target provider identity");
+        non_target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_compute_capability(),
+            })
+            .expect("configure non-target provider capability");
+        non_target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("bring non-target provider online");
+
+        wait_for_provider_lane_online(&mut target_provider_lane);
+        wait_for_provider_lane_online(&mut non_target_provider_lane);
+
+        let request_event = crate::input::build_mission_control_buy_mode_request_event(
+            Some(&buyer_identity),
+            &[relay.url.clone()],
+            &[target_identity.public_key_hex.clone()],
+        )
+        .expect("build targeted buy mode request");
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some(request_event.id.clone()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Reply with the exact text BUY MODE OK.".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![target_identity.public_key_hex.clone()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 1,
+            })
+            .expect("queue targeted buy mode request");
+        assert_eq!(request_id, request_event.id);
+
+        buyer_request_lane
+            .enqueue(ProviderNip90LaneCommand::TrackBuyerRequestIds {
+                request_ids: vec![request_id.clone()],
+            })
+            .expect("track buyer request id");
+        buyer_request_lane
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request_id.clone(),
+                role: ProviderNip90PublishRole::Request,
+                event: Box::new(request_event),
+            })
+            .expect("publish targeted buy mode request");
+
+        let request_publish = wait_for_publish_outcome(
+            &mut buyer_request_lane,
+            request_id.as_str(),
+            ProviderNip90PublishRole::Request,
+            Duration::from_secs(5),
+        )
+        .expect("buyer request publish outcome");
+        assert!(request_publish.accepted_relays >= 1);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            request_publish.event_id.as_str(),
+            request_publish.accepted_relays,
+            request_publish.rejected_relays,
+            request_publish.first_error.as_deref(),
+        );
+
+        let published_snapshot = sync_test_snapshot_with_buy_mode(
+            &runtime,
+            &mut previous_snapshot,
+            &buyer_chat,
+            false,
+            &mut next_revision,
+            &requests,
+            &wallet,
+            true,
+        );
+        assert_eq!(
+            published_snapshot.buy_mode.in_flight_request_id.as_deref(),
+            Some(request_id.as_str())
+        );
+
+        let targeted_request = wait_for_ingressed_request(
+            &mut target_provider_lane,
+            request_id.as_str(),
+            Duration::from_secs(5),
+        )
+        .expect("target provider should ingest targeted request");
+        assert_eq!(
+            targeted_request.target_provider_pubkeys,
+            vec![target_identity.public_key_hex.clone()]
+        );
+
+        let result_event =
+            build_provider_result_event(&target_identity, &targeted_request, "BUY MODE OK.");
+        let invoice = "lnbc20n1targetedbuymodeinvoice".to_string();
+        let feedback_event = build_provider_payment_required_feedback_event(
+            &target_identity,
+            &targeted_request,
+            invoice.as_str(),
+        );
+        target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request_id.clone(),
+                role: ProviderNip90PublishRole::Result,
+                event: Box::new(result_event.clone()),
+            })
+            .expect("publish targeted provider result");
+        let result_publish = wait_for_publish_outcome(
+            &mut target_provider_lane,
+            request_id.as_str(),
+            ProviderNip90PublishRole::Result,
+            Duration::from_secs(5),
+        )
+        .expect("target provider result publish outcome");
+        assert!(result_publish.accepted_relays >= 1);
+
+        target_provider_lane
+            .enqueue(ProviderNip90LaneCommand::PublishEvent {
+                request_id: request_id.clone(),
+                role: ProviderNip90PublishRole::Feedback,
+                event: Box::new(feedback_event.clone()),
+            })
+            .expect("publish targeted provider payment-required feedback");
+        let feedback_publish = wait_for_publish_outcome(
+            &mut target_provider_lane,
+            request_id.as_str(),
+            ProviderNip90PublishRole::Feedback,
+            Duration::from_secs(5),
+        )
+        .expect("target provider feedback publish outcome");
+        assert!(feedback_publish.accepted_relays >= 1);
+
+        let settle_deadline = Instant::now() + Duration::from_secs(5);
+        let mut saw_result = false;
+        let mut saw_payment_required = false;
+        while Instant::now() < settle_deadline {
+            let mut changed = false;
+            for update in buyer_request_lane.drain_updates() {
+                if let ProviderNip90LaneUpdate::BuyerResponseEvent(event) = update
+                    && event.request_id == request_id
+                {
+                    changed = true;
+                    match event.kind {
+                        crate::provider_nip90_lane::ProviderNip90BuyerResponseKind::Result => {
+                            saw_result = true;
+                            let _ = requests.apply_nip90_buyer_result_event(
+                                event.request_id.as_str(),
+                                event.provider_pubkey.as_str(),
+                                event.event_id.as_str(),
+                                event.status.as_deref(),
+                            );
+                        }
+                        crate::provider_nip90_lane::ProviderNip90BuyerResponseKind::Feedback => {
+                            if event.status.as_deref() == Some("payment-required") {
+                                saw_payment_required = true;
+                            }
+                            let _ = requests.apply_nip90_buyer_feedback_event(
+                                event.request_id.as_str(),
+                                event.provider_pubkey.as_str(),
+                                event.event_id.as_str(),
+                                event.status.as_deref(),
+                                event.status_extra.as_deref(),
+                                event.amount_msats,
+                                event.bolt11.as_deref(),
+                            );
+                        }
+                    }
+                    if let Some((_bolt11, amount_sats)) = requests
+                        .prepare_auto_payment_attempt_for_provider(
+                            request_id.as_str(),
+                            target_identity.public_key_hex.as_str(),
+                            now_epoch_seconds.saturating_add(30),
+                        )
+                    {
+                        assert_eq!(
+                            amount_sats,
+                            Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS)
+                        );
+                        requests.record_auto_payment_pointer(
+                            request_id.as_str(),
+                            "wallet-targeted-buy-mode-001",
+                        );
+                        requests.mark_auto_payment_sent(
+                            request_id.as_str(),
+                            "wallet-targeted-buy-mode-001",
+                            now_epoch_seconds.saturating_add(31),
+                        );
+                        wallet
+                            .recent_payments
+                            .push(openagents_spark::PaymentSummary {
+                                id: "wallet-targeted-buy-mode-001".to_string(),
+                                direction: "send".to_string(),
+                                status: "succeeded".to_string(),
+                                amount_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                                fees_sats: 0,
+                                timestamp: now_epoch_seconds.saturating_add(31),
+                                method: "lightning".to_string(),
+                                description: Some("Targeted buy mode settlement".to_string()),
+                                invoice: Some(invoice.clone()),
+                                destination_pubkey: Some(target_identity.public_key_hex.clone()),
+                                payment_hash: Some("payment-hash-targeted-buy-mode".to_string()),
+                                htlc_status: None,
+                                htlc_expiry_epoch_seconds: None,
+                                status_detail: None,
+                            });
+                    }
+                }
+            }
+            if changed {
+                let snapshot = sync_test_snapshot_with_buy_mode(
+                    &runtime,
+                    &mut previous_snapshot,
+                    &buyer_chat,
+                    false,
+                    &mut next_revision,
+                    &requests,
+                    &wallet,
+                    true,
+                );
+                if saw_result
+                    && saw_payment_required
+                    && snapshot.buy_mode.in_flight_status.as_deref() == Some("paid")
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let settled_snapshot = fetch_snapshot(&client, snapshot_url.as_str(), token.as_str());
+        assert_eq!(
+            settled_snapshot
+                .buy_mode
+                .target_selection
+                .selected_peer_pubkey
+                .as_deref(),
+            Some(target_identity.public_key_hex.as_str())
+        );
+        assert_eq!(
+            settled_snapshot.buy_mode.in_flight_status.as_deref(),
+            Some(NetworkRequestStatus::Paid.label())
+        );
+        assert_eq!(
+            settled_snapshot.buy_mode.payable_provider_pubkey.as_deref(),
+            Some(target_identity.public_key_hex.as_str())
+        );
+        assert!(
+            settled_snapshot
+                .buy_mode
+                .recent_requests
+                .iter()
+                .any(|request| {
+                    request.request_id == request_id
+                        && (request.payable_provider_pubkey.as_deref()
+                            == Some(target_identity.public_key_hex.as_str())
+                            || request.selected_provider_pubkey.as_deref()
+                                == Some(target_identity.public_key_hex.as_str()))
+                        && request.wallet_status == "sent"
+                })
+        );
+
+        let events = fetch_events(&client, events_url.as_str(), token.as_str());
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.event_type == "nip28.state.changed")
+        );
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.event_type == "buyer.lifecycle.changed")
+        );
+        assert!(
+            events.events.iter().any(|event| {
+                event.event_type == "buyer.lifecycle.changed"
+                    && event
+                        .payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("target_selection"))
+                        .and_then(|selection| selection.get("selected_peer_pubkey"))
+                        .and_then(Value::as_str)
+                        == Some(target_identity.public_key_hex.as_str())
+            }),
+            "buyer lifecycle events should carry the selected targeted provider"
+        );
+        assert!(
+            events.events.iter().any(|event| {
+                event.event_type == "buyer.lifecycle.changed"
+                    && event
+                        .payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("in_flight_status"))
+                        .and_then(Value::as_str)
+                        == Some(NetworkRequestStatus::Paid.label())
+            }),
+            "buyer lifecycle events should show paid settlement after targeted payment succeeds"
         );
     }
 }
