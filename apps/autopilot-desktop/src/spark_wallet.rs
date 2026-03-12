@@ -637,13 +637,19 @@ impl SparkPaneState {
         self.balance = Some(balance);
         self.pending_balance_confirmation_payment_id = None;
         if is_settled_wallet_payment_status(payment.status.as_str()) {
-            self.last_action = Some(format!("Payment settled ({payment_id}); wallet confirmed"));
+            self.last_action = Some(format!(
+                "Payment settled ({payment_id}); wallet confirmed; {}",
+                wallet_payment_amount_summary(payment)
+            ));
         } else {
             let status_detail = payment
                 .status_detail
                 .as_deref()
                 .unwrap_or(payment.status.as_str());
-            self.last_action = Some(format!("Payment failed ({payment_id}); {status_detail}"));
+            self.last_action = Some(format!(
+                "Payment failed ({payment_id}); {status_detail}; {}",
+                wallet_payment_amount_summary(payment)
+            ));
         }
     }
 }
@@ -661,6 +667,32 @@ pub(crate) fn is_terminal_wallet_payment_status(status: &str) -> bool {
             status.to_ascii_lowercase().as_str(),
             "failed" | "error" | "expired" | "cancelled" | "canceled" | "rejected"
         )
+}
+
+pub(crate) fn wallet_payment_total_debit_sats(payment: &PaymentSummary) -> u64 {
+    if payment.direction.eq_ignore_ascii_case("send") {
+        payment.amount_sats.saturating_add(payment.fees_sats)
+    } else {
+        payment.amount_sats
+    }
+}
+
+pub(crate) fn wallet_payment_amount_summary(payment: &PaymentSummary) -> String {
+    if payment.direction.eq_ignore_ascii_case("send") {
+        format!(
+            "{} sats + {} sats fee ({} sats total debit)",
+            payment.amount_sats,
+            payment.fees_sats,
+            wallet_payment_total_debit_sats(payment)
+        )
+    } else if payment.fees_sats > 0 {
+        format!(
+            "{} sats ({} sats fee)",
+            payment.amount_sats, payment.fees_sats
+        )
+    } else {
+        format!("{} sats", payment.amount_sats)
+    }
 }
 
 fn timeout_message(action: &str, timeout: Duration) -> String {

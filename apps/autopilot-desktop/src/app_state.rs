@@ -887,6 +887,8 @@ struct BuyModePaymentLedgerEntry {
     stream: TerminalStream,
     status: String,
     amount_sats: u64,
+    fees_sats: Option<u64>,
+    total_debit_sats: Option<u64>,
     wallet_status: String,
     wallet_method: String,
     provider_pubkey: String,
@@ -999,6 +1001,8 @@ fn buy_mode_request_ledger_entry(
         stream,
         status: request.status.label().to_string(),
         amount_sats,
+        fees_sats: wallet_payment.map(|payment| payment.fees_sats),
+        total_debit_sats: wallet_payment.map(crate::spark_wallet::wallet_payment_total_debit_sats),
         wallet_status,
         wallet_method: wallet_payment
             .map(|payment| payment.method.clone())
@@ -1056,6 +1060,10 @@ fn buy_mode_wallet_backfill_entry(
         stream,
         status: "wallet-backfill".to_string(),
         amount_sats: payment.amount_sats,
+        fees_sats: Some(payment.fees_sats),
+        total_debit_sats: Some(crate::spark_wallet::wallet_payment_total_debit_sats(
+            payment,
+        )),
         wallet_status,
         wallet_method: payment.method.clone(),
         provider_pubkey: payment
@@ -1141,7 +1149,11 @@ pub(crate) fn buy_mode_payments_summary_text(
     let mut returned = 0usize;
     let mut failed = 0usize;
     let mut sats_sent = 0u64;
+    let mut fee_sats = 0u64;
+    let mut wallet_debit_sats = 0u64;
     for entry in &entries {
+        fee_sats = fee_sats.saturating_add(entry.fees_sats.unwrap_or(0));
+        wallet_debit_sats = wallet_debit_sats.saturating_add(entry.total_debit_sats.unwrap_or(0));
         if entry.wallet_status == "sent" {
             paid = paid.saturating_add(1);
             sats_sent = sats_sent.saturating_add(entry.amount_sats);
@@ -1155,7 +1167,7 @@ pub(crate) fn buy_mode_payments_summary_text(
     }
 
     format!(
-        "{} rows  //  {} live  //  {} wallet-backfill  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats",
+        "{} rows  //  {} live  //  {} wallet-backfill  //  {} sent  //  {} pending  //  {} returned  //  {} failed  //  {} sats  //  {} fee sats  //  {} wallet debit sats",
         entries.len(),
         live_rows,
         wallet_backfill_rows,
@@ -1163,7 +1175,9 @@ pub(crate) fn buy_mode_payments_summary_text(
         pending,
         returned,
         failed,
-        sats_sent
+        sats_sent,
+        fee_sats,
+        wallet_debit_sats
     )
 }
 
@@ -1316,10 +1330,12 @@ fn push_buy_mode_payment_entry_rows(
     rows.push((
         entry.stream.clone(),
         format!(
-            "{}  status={}  amount={} sats  wallet_status={}  wallet_method={}  provider_pubkey={}",
+            "{}  status={}  amount={} sats  fee={}  total_debit={}  wallet_status={}  wallet_method={}  provider_pubkey={}",
             buy_mode_payment_timestamp_label(entry.timestamp),
             entry.status,
             entry.amount_sats,
+            buy_mode_optional_sats_label(entry.fees_sats),
+            buy_mode_optional_sats_label(entry.total_debit_sats),
             entry.wallet_status,
             entry.wallet_method,
             entry.provider_pubkey,
@@ -1389,6 +1405,12 @@ fn buy_mode_payment_timestamp_label(epoch_seconds: Option<u64>) -> String {
         .and_then(|value| Local.timestamp_opt(value as i64, 0).single())
         .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
         .unwrap_or_else(|| "timestamp=-".to_string())
+}
+
+fn buy_mode_optional_sats_label(value: Option<u64>) -> String {
+    value
+        .map(|amount| format!("{amount} sats"))
+        .unwrap_or_else(|| "-".to_string())
 }
 
 pub(crate) fn buy_mode_wallet_payment<'a>(
@@ -1947,6 +1969,7 @@ fn mission_control_network_request_log_line(
     request: &crate::state::operations::SubmittedNetworkRequest,
     spark_wallet: &SparkPaneState,
 ) -> String {
+    let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
     let provider_state = request
         .winning_provider_pubkey
         .as_deref()
@@ -1970,8 +1993,7 @@ fn mission_control_network_request_log_line(
             None => "queued".to_string(),
         }
     };
-    let payment_state =
-        buy_mode_wallet_state_label(request, buy_mode_wallet_payment(request, spark_wallet));
+    let payment_state = buy_mode_wallet_state_label(request, wallet_payment);
     let mut line = format!(
         "Buyer {} [{}] {} {} provider={} work={} payment={}",
         mission_control_log_short_id(request.request_id.as_str()),
@@ -1996,6 +2018,12 @@ fn mission_control_network_request_log_line(
     if let Some(pointer) = request.last_payment_pointer.as_deref() {
         line.push_str(" pointer=");
         line.push_str(mission_control_log_short_id(pointer).as_str());
+    }
+    if let Some(payment) = wallet_payment {
+        line.push_str(" fee_sats=");
+        line.push_str(&payment.fees_sats.to_string());
+        line.push_str(" wallet_debit_sats=");
+        line.push_str(&crate::spark_wallet::wallet_payment_total_debit_sats(payment).to_string());
     }
     if let Some(invoice) = request.pending_bolt11.as_deref() {
         line.push_str(" invoice=");
@@ -12692,6 +12720,7 @@ mod tests {
                 direction: "send".to_string(),
                 status: "succeeded".to_string(),
                 amount_sats: 2,
+                fees_sats: 1,
                 method: "lightning".to_string(),
                 destination_pubkey: Some(provider_pubkey.clone()),
                 payment_hash: Some("hash-buy-ledger-001".to_string()),
@@ -12705,6 +12734,8 @@ mod tests {
 
         assert!(lines.iter().any(|line| {
             line.text.contains("status=paid")
+                && line.text.contains("fee=1 sats")
+                && line.text.contains("total_debit=3 sats")
                 && line.text.contains("wallet_status=sent")
                 && line.text.contains("wallet_method=lightning")
                 && line.text.contains(provider_pubkey.as_str())
@@ -12773,6 +12804,8 @@ mod tests {
 
         assert!(lines.iter().any(|line| {
             line.text.contains("status=failed")
+                && line.text.contains("fee=1 sats")
+                && line.text.contains("total_debit=3 sats")
                 && line.text.contains("wallet_status=failed")
                 && line.text.contains("wallet_method=lightning")
         }));
@@ -12840,6 +12873,7 @@ mod tests {
                 direction: "send".to_string(),
                 status: "succeeded".to_string(),
                 amount_sats: 2,
+                fees_sats: 3,
                 method: "lightning".to_string(),
                 description: Some("DVM textgen 6872f65774d7e233".to_string()),
                 destination_pubkey: Some(provider_pubkey.clone()),
@@ -12869,7 +12903,7 @@ mod tests {
 
         assert_eq!(
             summary,
-            "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats"
+            "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats  //  3 fee sats  //  5 wallet debit sats"
         );
         assert!(
             lines
@@ -12886,6 +12920,9 @@ mod tests {
                 .contains("request_id=wallet-inferred:6872f65774d7e233")
                 && line.text.contains("wallet-payment-history-001")
                 && line.text.contains("source=wallet-backfill")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("fee=3 sats") && line.text.contains("total_debit=5 sats")
         }));
         assert!(lines.iter().any(|line| {
             line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
@@ -14841,6 +14878,85 @@ mod tests {
                 && line.text.contains("buy_mode")
                 && line.text.contains("work=awaiting-provider")
                 && line.text.contains("payment=idle")
+        }));
+    }
+
+    #[test]
+    fn mission_control_log_lines_include_buyer_payment_fee_details() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-buy-fee-1234567890".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "Buy Mode fee test payload".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                timeout_seconds: crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
+                authority_command_seq: 8,
+            })
+            .expect("queue buyer request");
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "event-buy-fee-abcdef123456",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "55".repeat(32).as_str(),
+            "feedback-buy-fee-001",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1buyfeeinvoice"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1buyfeeinvoice",
+                Some(2_000),
+                1_762_700_222,
+            )
+            .expect("payment-required invoice should prepare");
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-buy-fee-001");
+        requests.mark_auto_payment_sent(request_id.as_str(), "wallet-buy-fee-001", 1_762_700_223);
+
+        let mut wallet = SparkPaneState::default();
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-buy-fee-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                fees_sats: 3,
+                timestamp: 1_762_700_223,
+                ..Default::default()
+            });
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &ProviderRuntimeState::default(),
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &wallet,
+            &requests,
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("Buyer req-buy-fee")
+                && line.text.contains("payment=sent")
+                && line.text.contains("fee_sats=3")
+                && line.text.contains("wallet_debit_sats=5")
         }));
     }
 

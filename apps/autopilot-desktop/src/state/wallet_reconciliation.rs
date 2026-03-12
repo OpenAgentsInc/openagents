@@ -200,18 +200,24 @@ pub fn reconcile_wallet_events_for_goal(
             continue;
         }
         if payment.direction.eq_ignore_ascii_case("send") {
-            non_swap_spend_sats = non_swap_spend_sats.saturating_add(payment.amount_sats);
+            let total_debit_sats = crate::spark_wallet::wallet_payment_total_debit_sats(payment);
+            non_swap_spend_sats = non_swap_spend_sats.saturating_add(total_debit_sats);
             events.push(WalletLedgerEvent {
                 event_id: format!("wallet:send:{}", payment.id),
                 occurred_at_epoch_seconds: payment.timestamp,
                 kind: WalletLedgerEventKind::WalletSpend,
-                sats_delta: -(payment.amount_sats as i64),
+                sats_delta: -(total_debit_sats as i64),
                 cents_delta: 0,
                 job_id: None,
                 payment_pointer: Some(payment.id.clone()),
                 quote_id: None,
                 transaction_id: None,
-                note: None,
+                note: (payment.fees_sats > 0).then(|| {
+                    format!(
+                        "amount_sats={} fees_sats={} total_debit_sats={}",
+                        payment.amount_sats, payment.fees_sats, total_debit_sats
+                    )
+                }),
             });
         } else if payment.direction.eq_ignore_ascii_case("receive") {
             unattributed_receive_sats =
@@ -388,6 +394,7 @@ mod tests {
                 direction: "send".to_string(),
                 status: "succeeded".to_string(),
                 amount_sats: 200,
+                fees_sats: 7,
                 timestamp: 1_700_000_120,
                 ..Default::default()
             },
@@ -451,7 +458,7 @@ mod tests {
         assert_eq!(report.swap_converted_out_sats, 1_000);
         assert_eq!(report.swap_converted_in_sats, 640);
         assert_eq!(report.swap_fee_sats, 40);
-        assert_eq!(report.non_swap_spend_sats, 200);
+        assert_eq!(report.non_swap_spend_sats, 207);
         assert_eq!(report.total_swap_cents, 1_260);
         assert!(
             report
@@ -465,5 +472,13 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.kind, super::WalletLedgerEventKind::SwapFeeDebit))
         );
+        assert!(report.events.iter().any(|event| {
+            matches!(event.kind, super::WalletLedgerEventKind::WalletSpend)
+                && event.sats_delta == -207
+                && event
+                    .note
+                    .as_deref()
+                    .is_some_and(|note| note.contains("fees_sats=7"))
+        }));
     }
 }

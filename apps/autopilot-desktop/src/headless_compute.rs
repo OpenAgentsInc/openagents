@@ -396,11 +396,13 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                 if let Some(payment) = spark_state.recent_payments.first() {
                     info!(
                         target: "autopilot_desktop::headless_provider",
-                        "provider wallet payment id={} direction={} status={} amount_sats={}",
+                        "provider wallet payment id={} direction={} status={} amount_sats={} fees_sats={} total_debit_sats={}",
                         payment.id,
                         payment.direction,
                         payment.status,
-                        payment.amount_sats
+                        payment.amount_sats,
+                        payment.fees_sats,
+                        crate::spark_wallet::wallet_payment_total_debit_sats(payment)
                     );
                 }
                 last_provider_payment_id = newest_payment;
@@ -786,7 +788,10 @@ fn handle_provider_wallet_update(
         );
     }
 
-    if job.bolt11.is_some() && !job.settled && provider_payment_observed(job, spark_state) {
+    if job.bolt11.is_some()
+        && !job.settled
+        && let Some(payment) = provider_settlement_payment(job, spark_state)
+    {
         let success_feedback = build_provider_feedback_event(
             identity,
             &job.request,
@@ -807,9 +812,12 @@ fn handle_provider_wallet_update(
         job.settled = true;
         info!(
             target: "autopilot_desktop::headless_provider",
-            "provider settlement confirmed request_id={} success_feedback_id={} balance_before={} balance_after={}",
+            "provider settlement confirmed request_id={} success_feedback_id={} payment_id={} amount_sats={} fees_sats={} balance_before={} balance_after={}",
             job.request.request_id,
             success_feedback_id,
+            payment.id,
+            payment.amount_sats,
+            payment.fees_sats,
             job.balance_before_sats,
             spark_total_sats(spark_state)
         );
@@ -928,10 +936,12 @@ fn handle_buyer_wallet_update(request: &mut ActiveBuyerRequest, spark_state: &Sp
             request.payment_settled = true;
             info!(
                 target: "autopilot_desktop::headless_buyer",
-                "buyer payment settled request_id={} payment_id={} amount_sats={}",
+                "buyer payment settled request_id={} payment_id={} amount_sats={} fees_sats={} total_debit_sats={}",
                 request.request_id,
                 payment.id,
-                payment.amount_sats
+                payment.amount_sats,
+                payment.fees_sats,
+                crate::spark_wallet::wallet_payment_total_debit_sats(payment)
             );
         }
         return;
@@ -939,14 +949,20 @@ fn handle_buyer_wallet_update(request: &mut ActiveBuyerRequest, spark_state: &Sp
 
     if is_terminal_wallet_payment_status(payment.status.as_str()) {
         request.failed_reason = Some(format!(
-            "Spark payment {} for {} is {}",
-            pointer, request.request_id, payment.status
+            "Spark payment {} for {} is {} ({})",
+            pointer,
+            request.request_id,
+            payment.status,
+            crate::spark_wallet::wallet_payment_amount_summary(payment)
         ));
     }
 }
 
-fn provider_payment_observed(job: &ActiveProviderJob, spark_state: &SparkPaneState) -> bool {
-    spark_state.recent_payments.iter().any(|payment| {
+fn provider_settlement_payment<'a>(
+    job: &ActiveProviderJob,
+    spark_state: &'a SparkPaneState,
+) -> Option<&'a openagents_spark::PaymentSummary> {
+    spark_state.recent_payments.iter().find(|payment| {
         payment.direction == "receive"
             && is_settled_wallet_payment_status(payment.status.as_str())
             && payment.amount_sats == job.request.price_sats

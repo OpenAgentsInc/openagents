@@ -1752,22 +1752,37 @@ fn mission_control_buy_mode_payment_summary(
     if request.payment_sent_at_epoch_seconds.is_some()
         || request.status == crate::state::operations::NetworkRequestStatus::Paid
     {
-        return "payment sent".to_string();
+        return wallet_payment
+            .map(|payment| {
+                format!(
+                    "payment sent ({})",
+                    crate::spark_wallet::wallet_payment_amount_summary(payment)
+                )
+            })
+            .unwrap_or_else(|| "payment sent".to_string());
     }
     if let Some(wallet_payment) = wallet_payment {
+        let amount_summary = crate::spark_wallet::wallet_payment_amount_summary(wallet_payment);
         if wallet_payment.is_returned_htlc_failure() {
-            return "payment returned; refund should settle back to wallet".to_string();
+            return format!(
+                "payment returned ({amount_summary}); refund should settle back to wallet"
+            );
         }
         if crate::spark_wallet::is_terminal_wallet_payment_status(wallet_payment.status.as_str()) {
-            return wallet_payment
+            let detail = wallet_payment
                 .status_detail
                 .clone()
                 .unwrap_or_else(|| "payment failed".to_string());
+            return format!("{detail} ({amount_summary})");
         }
-        return wallet_payment
+        let detail = wallet_payment
             .status_detail
-            .clone()
-            .unwrap_or_else(|| "payment pending Spark confirmation".to_string());
+            .as_deref()
+            .unwrap_or("payment pending Spark confirmation");
+        if wallet_payment.fees_sats > 0 {
+            return format!("{detail} ({amount_summary})");
+        }
+        return detail.to_string();
     }
     if request.last_payment_pointer.is_some() {
         return "payment pending Spark confirmation".to_string();
@@ -6604,6 +6619,7 @@ mod tests {
             direction: "send".to_string(),
             status: "failed".to_string(),
             amount_sats: 2,
+            fees_sats: 3,
             method: "lightning".to_string(),
             status_detail: Some(
                 "lightning send failed before preimage settlement; see Mission Control log for Breez terminal detail"
@@ -6622,5 +6638,6 @@ mod tests {
                 .summary
                 .contains("lightning send failed before preimage settlement")
         );
+        assert!(failed.summary.contains("2 sats + 3 sats fee"));
     }
 }
