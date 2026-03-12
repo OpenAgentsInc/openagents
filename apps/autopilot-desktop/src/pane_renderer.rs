@@ -1509,15 +1509,21 @@ fn mission_control_buy_mode_panel_state(
         summary: request_snapshot
             .as_ref()
             .map(|snapshot| {
-                format!(
-                    "req {} // {} // {} // phase {} // next {} // payment {}",
+                let mut summary = format!(
+                    "req {} // {} // {} // {} // phase {} // next {} // payment {}",
                     compact_mission_control_id(snapshot.request_id.as_str()),
                     snapshot.provider_summary(),
+                    snapshot.winner_selection_summary(),
                     snapshot.work_summary(),
                     snapshot.phase.as_str(),
                     snapshot.next_expected_event,
                     snapshot.payment_summary(),
-                )
+                );
+                if let Some(loser_summary) = snapshot.loser_reason_summary.as_deref() {
+                    summary.push_str(" // ");
+                    summary.push_str(loser_summary);
+                }
+                summary
             })
             .or_else(|| {
                 blocked_while_idle.then(|| {
@@ -6605,6 +6611,70 @@ mod tests {
         assert_eq!(settled.payment, "sent");
         assert!(settled.summary.contains("payment sent"));
         assert!(settled.button_enabled);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_surfaces_payable_winner_and_loser_summary() {
+        let mut mission_control = fixture_mission_control();
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut requests = queue_buy_mode_request_for_tests();
+        let payable_provider = "31".repeat(32);
+        let losing_provider = "41".repeat(32);
+
+        requests.apply_nip90_request_publish_outcome(
+            "req-buy-render-001",
+            "event-buy-render-001",
+            3,
+            1,
+            None,
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            payable_provider.as_str(),
+            "feedback-buy-render-3388",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1buyrender3388"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            "req-buy-render-001",
+            payable_provider.as_str(),
+            "result-buy-render-3388",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_result_event(
+            "req-buy-render-001",
+            losing_provider.as_str(),
+            "result-buy-render-loser-3388",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            losing_provider.as_str(),
+            "feedback-buy-render-loser-3388",
+            Some("processing"),
+            Some("still working"),
+            None,
+            None,
+        );
+
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &mission_control,
+            &requests,
+            &SparkPaneState::default(),
+            now,
+        )
+        .expect("enabled buy mode should expose panel state");
+
+        assert_eq!(panel.provider, "313131..3131");
+        assert!(panel.summary.contains("selected 414141..4141"));
+        assert!(panel.summary.contains("payable 313131..3131"));
+        assert!(panel.summary.contains("1 losers ignored"));
+        assert!(panel.summary.contains("late result"));
+        assert!(panel.summary.contains("non-winning provider noise ignored"));
     }
 
     #[test]
