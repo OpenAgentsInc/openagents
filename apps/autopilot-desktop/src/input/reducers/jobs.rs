@@ -802,7 +802,7 @@ fn active_job_timeout_reason(
             active_job_result_publish_continuity_timeout_seconds(ttl_seconds)
         ),
         JobLifecycleStage::Delivered => format!(
-            "job settlement timed out after {}s while awaiting payment flow",
+            "job delivered but unpaid timed out after {}s while awaiting buyer settlement",
             active_job_settlement_timeout_seconds(ttl_seconds)
         ),
         _ => format!("job execution timed out after {}s", ttl_seconds),
@@ -3025,7 +3025,7 @@ mod tests {
     fn timeout_reason_uses_settlement_wording_after_delivery() {
         assert_eq!(
             active_job_timeout_reason(JobLifecycleStage::Delivered, true, 75),
-            "job settlement timed out after 195s while awaiting payment flow"
+            "job delivered but unpaid timed out after 195s while awaiting buyer settlement"
         );
     }
 
