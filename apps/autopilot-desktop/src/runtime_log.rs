@@ -50,14 +50,26 @@ pub(crate) fn record_tracing_event(
         return;
     }
 
-    session_log_writer().record_entry(json!({
+    let mut entry = json!({
         "source": "tracing",
         "target": target,
         "level": level.as_str(),
         "message": message.map(str::trim).filter(|value| !value.is_empty()),
         "fields": fields,
         "line": line,
-    }));
+    });
+    if let Some(domain) = domain_projection(target, entry["fields"].as_object()) {
+        if let Value::Object(object) = &mut entry {
+            if let Some(domain_event) = domain.get("event") {
+                object.insert("domain_event".to_string(), domain_event.clone());
+            }
+            if let Some(domain_role) = domain.get("role") {
+                object.insert("domain_role".to_string(), domain_role.clone());
+            }
+            object.insert("domain".to_string(), domain);
+        }
+    }
+    session_log_writer().record_entry(entry);
 }
 
 pub(crate) fn record_mission_control_line(
@@ -149,6 +161,62 @@ fn with_session_metadata(mut entry: Value, session_id: &str) -> Value {
         );
     }
     entry
+}
+
+fn domain_projection(
+    target: &str,
+    fields: Option<&serde_json::Map<String, Value>>,
+) -> Option<Value> {
+    let fields = fields?;
+    let event = fields
+        .get("domain_event")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+
+    if !target.starts_with("autopilot_desktop::compute_domain") {
+        return None;
+    }
+
+    let mut domain = serde_json::Map::new();
+    domain.insert("event".to_string(), Value::String(event.to_string()));
+    if let Some(role) = fields
+        .get("flow_role")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        domain.insert("role".to_string(), Value::String(role.to_string()));
+    }
+
+    for key in [
+        "request_id",
+        "provider_pubkey",
+        "previous_provider_pubkey",
+        "winner_provider_pubkey",
+        "event_id",
+        "result_event_id",
+        "feedback_event_id",
+        "payment_pointer",
+        "payment_id",
+        "success_feedback_id",
+        "amount_sats",
+        "amount_msats",
+        "fees_sats",
+        "total_debit_sats",
+        "accepted_relays",
+        "rejected_relays",
+        "selection_source",
+        "ignore_reason",
+        "status",
+        "status_extra",
+    ] {
+        if let Some(value) = fields.get(key) {
+            domain.insert(key.to_string(), value.clone());
+        }
+    }
+
+    Some(Value::Object(domain))
 }
 
 fn run_session_log_writer(
@@ -410,8 +478,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DEFAULT_MAX_SESSION_FILES, SessionLogConfig, current_timestamp_ms, resolve_log_dir_from,
-        session_log_writer_for_tests,
+        DEFAULT_MAX_SESSION_FILES, SessionLogConfig, current_timestamp_ms, domain_projection,
+        resolve_log_dir_from, session_log_writer_for_tests,
     };
 
     #[test]
@@ -485,5 +553,44 @@ mod tests {
             std::fs::read_to_string(&latest_path).expect("read latest session log"),
             std::fs::read_to_string(&session_path).expect("read session log for comparison")
         );
+    }
+
+    #[test]
+    fn domain_projection_extracts_normalized_compute_event_fields() {
+        let fields = [
+            (
+                "domain_event".to_string(),
+                Value::String("buyer.payment_settled".to_string()),
+            ),
+            ("flow_role".to_string(), Value::String("buyer".to_string())),
+            ("request_id".to_string(), Value::String("req-1".to_string())),
+            (
+                "provider_pubkey".to_string(),
+                Value::String("provider-1".to_string()),
+            ),
+            (
+                "payment_pointer".to_string(),
+                Value::String("pay-1".to_string()),
+            ),
+            ("fees_sats".to_string(), Value::from(2)),
+        ]
+        .into_iter()
+        .collect::<serde_json::Map<String, Value>>();
+        let projection = domain_projection("autopilot_desktop::compute_domain", Some(&fields))
+            .expect("domain projection");
+
+        assert_eq!(
+            projection.get("event"),
+            Some(&Value::String("buyer.payment_settled".to_string()))
+        );
+        assert_eq!(
+            projection.get("role"),
+            Some(&Value::String("buyer".to_string()))
+        );
+        assert_eq!(
+            projection.get("payment_pointer"),
+            Some(&Value::String("pay-1".to_string()))
+        );
+        assert_eq!(projection.get("fees_sats"), Some(&Value::from(2)));
     }
 }

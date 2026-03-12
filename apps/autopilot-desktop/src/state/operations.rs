@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::app_state::{PaneLoadState, PaneStatusAccess};
 use crate::bitcoin_display::format_sats_amount;
+use crate::nip90_compute_domain_events;
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
 use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
@@ -1648,6 +1649,14 @@ fn maybe_race_resolution_action_for_feedback(
         .map(ToString::to_string);
     let normalized_status = status.as_deref().map(str::to_ascii_lowercase);
     if matches!(normalized_status.as_deref(), Some("error")) {
+        nip90_compute_domain_events::emit_provider_loser_feedback_ignored(
+            request.request_id.as_str(),
+            provider_pubkey,
+            Some(winner),
+            status.as_deref(),
+            status_extra,
+            "non-winning error feedback ignored",
+        );
         return None;
     }
     let reason = BuyerResolutionReason::LostRace;
@@ -1848,10 +1857,8 @@ fn select_payable_winner(
     }
 
     let preferred_provider = preferred_provider_pubkey.map(normalize_pubkey);
-    let current_winner = request
-        .winning_provider_pubkey
-        .as_deref()
-        .map(normalize_pubkey);
+    let previous_winner = request.winning_provider_pubkey.clone();
+    let current_winner = previous_winner.as_deref().map(normalize_pubkey);
 
     let preferred_candidate = preferred_provider.as_deref().and_then(|preferred| {
         request.provider_observations.iter().find(|observation| {
@@ -1870,15 +1877,39 @@ fn select_payable_winner(
         .iter()
         .find(|observation| provider_has_payable_result(observation));
 
-    let selected = current_candidate
-        .or(preferred_candidate)
-        .or(first_candidate);
+    let selected = if let Some(observation) = current_candidate {
+        Some(("retained_current_winner", observation))
+    } else if let Some(observation) = preferred_candidate {
+        Some(("preferred_provider_became_payable", observation))
+    } else if let Some(observation) = first_candidate {
+        Some(("first_payable_provider", observation))
+    } else {
+        None
+    };
 
-    if let Some(observation) = selected {
-        request.winning_provider_pubkey = Some(observation.provider_pubkey.clone());
-        request.winning_result_event_id = observation.last_result_event_id.clone();
+    if let Some((selection_source, observation)) = selected {
+        let selected_provider_pubkey = observation.provider_pubkey.clone();
+        let selected_result_event_id = observation.last_result_event_id.clone();
+        let selected_feedback_event_id = observation.last_feedback_event_id.clone();
+        let selected_amount_msats = observation.last_feedback_amount_msats;
+        let provider_changed = previous_winner.as_deref().map(normalize_pubkey)
+            != Some(normalize_pubkey(selected_provider_pubkey.as_str()));
+
+        request.winning_provider_pubkey = Some(selected_provider_pubkey.clone());
+        request.winning_result_event_id = selected_result_event_id.clone();
         request.resolution_reason_code =
             Some(BuyerResolutionReason::FirstValidResult.code().to_string());
+        if provider_changed {
+            nip90_compute_domain_events::emit_buyer_selected_payable_provider(
+                request.request_id.as_str(),
+                selected_provider_pubkey.as_str(),
+                previous_winner.as_deref(),
+                selected_result_event_id.as_deref(),
+                selected_feedback_event_id.as_deref(),
+                selected_amount_msats,
+                selection_source,
+            );
+        }
         return;
     }
 

@@ -32,6 +32,7 @@ mod kernel_control;
 mod labor_orchestrator;
 mod local_inference_runtime;
 pub mod logging;
+mod nip90_compute_domain_events;
 mod nip90_compute_flow;
 mod nip_sa_wallet_bridge;
 #[cfg(test)]

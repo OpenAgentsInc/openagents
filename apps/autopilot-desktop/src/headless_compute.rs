@@ -21,6 +21,7 @@ use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeUpdate, AppleFmBridgeWorker,
     AppleFmGenerateJob,
 };
+use crate::nip90_compute_domain_events;
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind,
     ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
@@ -713,8 +714,13 @@ fn handle_provider_execution_complete(
         target: "autopilot_desktop::headless_provider",
         "provider result queued request_id={} event_id={} chars={}",
         job.request.request_id,
-        result_event_id,
+        result_event_id.as_str(),
         output.chars().count()
+    );
+    nip90_compute_domain_events::emit_provider_result_signed(
+        job.request.request_id.as_str(),
+        result_event_id.as_str(),
+        1,
     );
 
     spark_worker
@@ -775,8 +781,13 @@ fn handle_provider_wallet_update(
             target: "autopilot_desktop::headless_provider",
             "provider queued payment-required feedback request_id={} event_id={} amount_sats={}",
             job.request.request_id,
-            feedback_event_id,
+            feedback_event_id.as_str(),
             job.request.price_sats
+        );
+        nip90_compute_domain_events::emit_provider_payment_requested(
+            job.request.request_id.as_str(),
+            feedback_event_id.as_str(),
+            job.request.price_sats,
         );
     }
 
@@ -814,12 +825,19 @@ fn handle_provider_wallet_update(
             target: "autopilot_desktop::headless_provider",
             "provider settlement confirmed request_id={} success_feedback_id={} payment_id={} amount_sats={} fees_sats={} balance_before={} balance_after={}",
             job.request.request_id,
-            success_feedback_id,
+            success_feedback_id.as_str(),
             payment.id,
             payment.amount_sats,
             payment.fees_sats,
             job.balance_before_sats,
             spark_total_sats(spark_state)
+        );
+        nip90_compute_domain_events::emit_provider_settlement_confirmed(
+            job.request.request_id.as_str(),
+            Some(payment.id.as_str()),
+            Some(success_feedback_id.as_str()),
+            Some(payment.amount_sats),
+            Some(payment.fees_sats),
         );
     }
 
@@ -877,6 +895,12 @@ fn handle_buyer_response_event(
                         amount_sats
                             .map(|value| value.to_string())
                             .unwrap_or_else(|| "none".to_string())
+                    );
+                    nip90_compute_domain_events::emit_buyer_queued_payment(
+                        event.request_id.as_str(),
+                        Some(event.provider_pubkey.as_str()),
+                        Some(event.event_id.as_str()),
+                        amount_sats,
                     );
                 }
             }
@@ -942,6 +966,14 @@ fn handle_buyer_wallet_update(request: &mut ActiveBuyerRequest, spark_state: &Sp
                 payment.amount_sats,
                 payment.fees_sats,
                 crate::spark_wallet::wallet_payment_total_debit_sats(payment)
+            );
+            nip90_compute_domain_events::emit_buyer_payment_settled(
+                request.request_id.as_str(),
+                request.provider_pubkey.as_deref(),
+                payment.id.as_str(),
+                payment.amount_sats,
+                payment.fees_sats,
+                crate::spark_wallet::wallet_payment_total_debit_sats(payment),
             );
         }
         return;
@@ -1427,15 +1459,25 @@ fn log_lane_snapshot(
 
 fn log_publish_outcome(label: &str, outcome: &ProviderNip90PublishOutcome) {
     match (label, outcome.accepted_relays > 0) {
-        ("provider", true) => info!(
-            target: "autopilot_desktop::headless_provider",
-            "provider publish role={} request_id={} event_id={} accepted_relays={} rejected_relays={}",
-            outcome.role.label(),
-            outcome.request_id,
-            outcome.event_id,
-            outcome.accepted_relays,
-            outcome.rejected_relays
-        ),
+        ("provider", true) => {
+            info!(
+                target: "autopilot_desktop::headless_provider",
+                "provider publish role={} request_id={} event_id={} accepted_relays={} rejected_relays={}",
+                outcome.role.label(),
+                outcome.request_id,
+                outcome.event_id,
+                outcome.accepted_relays,
+                outcome.rejected_relays
+            );
+            if outcome.role == ProviderNip90PublishRole::Result {
+                nip90_compute_domain_events::emit_provider_result_published(
+                    outcome.request_id.as_str(),
+                    outcome.event_id.as_str(),
+                    outcome.accepted_relays,
+                    outcome.rejected_relays,
+                );
+            }
+        }
         ("provider", false) => error!(
             target: "autopilot_desktop::headless_provider",
             "provider publish failed role={} request_id={} event_id={} error={}",

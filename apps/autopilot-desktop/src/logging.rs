@@ -232,6 +232,7 @@ fn should_mirror_to_mission_control(level: Level, target: &str, line: &str) -> b
 
     if target.starts_with("autopilot_desktop::buyer")
         || target.starts_with("autopilot_desktop::buy_mode")
+        || target.starts_with("autopilot_desktop::compute_domain")
     {
         return true;
     }
@@ -266,6 +267,7 @@ fn should_persist_to_session_log(level: Level, target: &str, line: &str) -> bool
     if target.starts_with("autopilot_desktop::provider")
         || target.starts_with("autopilot_desktop::buyer")
         || target.starts_with("autopilot_desktop::buy_mode")
+        || target.starts_with("autopilot_desktop::compute_domain")
     {
         return true;
     }
@@ -337,6 +339,11 @@ mod tests {
             "autopilot_desktop::input",
             "ERROR autopilot_desktop::input: ui error [network.requests]: Request req-1 payment failed"
         ));
+        assert!(should_mirror_to_mission_control(
+            tracing::Level::INFO,
+            "autopilot_desktop::compute_domain",
+            "INFO autopilot_desktop::compute_domain: buyer.payment_settled request_id=req-1"
+        ));
         assert!(!should_mirror_to_mission_control(
             tracing::Level::WARN,
             "spark::events::server_stream",
@@ -360,6 +367,11 @@ mod tests {
             tracing::Level::INFO,
             "autopilot_desktop::buyer",
             "INFO autopilot_desktop::buyer: Queued NIP-90 request request_id=req-1"
+        ));
+        assert!(should_persist_to_session_log(
+            tracing::Level::INFO,
+            "autopilot_desktop::compute_domain",
+            "INFO autopilot_desktop::compute_domain: provider.result_published request_id=req-1"
         ));
         assert!(!should_persist_to_session_log(
             tracing::Level::INFO,

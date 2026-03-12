@@ -2,6 +2,7 @@ use crate::app_state::{
     ActivityEventDomain, ActivityEventRow, EarnFailureClass, PaneLoadState, ProviderMode,
     RelayConnectionRow, RelayConnectionStatus, RenderState,
 };
+use crate::nip90_compute_domain_events;
 use crate::provider_nip90_lane::{
     ProviderNip90BuyerResponseEvent, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
     ProviderNip90LaneMode, ProviderNip90LaneSnapshot, ProviderNip90PublishOutcome,
@@ -796,7 +797,15 @@ fn queue_auto_payment_for_buyer_event(
             format!("failed to enqueue Spark payment command: {error}").as_str(),
             now_epoch_seconds,
         );
+        return;
     }
+
+    nip90_compute_domain_events::emit_buyer_queued_payment(
+        event.request_id.as_str(),
+        Some(event.provider_pubkey.as_str()),
+        Some(event.event_id.as_str()),
+        amount_sats,
+    );
 }
 
 fn emit_buyer_resolution_telemetry(
