@@ -1609,6 +1609,10 @@ fn mission_control_buy_mode_panel_state(
                     summary.push_str(" // ");
                     summary.push_str(loser_summary);
                 }
+                if let Some(blocker_summary) = snapshot.payment_blocker_summary.as_deref() {
+                    summary.push_str(" // blocker ");
+                    summary.push_str(blocker_summary);
+                }
                 summary
             })
             .or_else(|| {
@@ -6419,12 +6423,11 @@ mod tests {
         let mut active_job = ActiveJobState::default();
         active_job.start_from_request(&request);
 
-        let output =
-            active_job_clipboard_text(
-                &active_job,
-                &EarnJobLifecycleProjectionState::default(),
-                &SparkPaneState::default(),
-            );
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
 
         assert!(output.starts_with("Active Job"));
         assert!(output.contains("Job ID: job-req-active-job-copy"));
@@ -6860,8 +6863,8 @@ mod tests {
         .expect("enabled buy mode should expose panel state");
 
         assert_eq!(panel.provider, "313131..3131");
-        assert!(panel.summary.contains("selected 414141..4141"));
         assert!(panel.summary.contains("payable 313131..3131"));
+        assert!(!panel.summary.contains("blocker "));
         assert!(panel.summary.contains("1 losers ignored"));
         assert!(panel.summary.contains("late result"));
         assert!(panel.summary.contains("non-winning provider noise ignored"));

@@ -96,11 +96,7 @@ pub(crate) fn record_mission_control_line(
     }));
 }
 
-pub(crate) fn record_control_event(
-    event: &str,
-    summary: impl Into<String>,
-    payload: Value,
-) {
+pub(crate) fn record_control_event(event: &str, summary: impl Into<String>, payload: Value) {
     let event = event.trim();
     if event.is_empty() {
         return;

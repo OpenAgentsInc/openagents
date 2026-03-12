@@ -364,6 +364,8 @@ fn main() -> Result<()> {
                         "resultProviderPubkey": snapshot.buy_mode.result_provider_pubkey,
                         "invoiceProviderPubkey": snapshot.buy_mode.invoice_provider_pubkey,
                         "payableProviderPubkey": snapshot.buy_mode.payable_provider_pubkey,
+                        "paymentBlockerCodes": snapshot.buy_mode.payment_blocker_codes,
+                        "paymentBlockerSummary": snapshot.buy_mode.payment_blocker_summary,
                         "recentRequests": snapshot.buy_mode.recent_requests,
                     }))?;
                 } else {
@@ -836,7 +838,7 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
     );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "buy mode in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={}",
+            "buy mode in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
@@ -858,6 +860,12 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
             snapshot
                 .buy_mode
                 .payable_provider_pubkey
+                .as_deref()
+                .unwrap_or("-"),
+            blocker_codes_label(snapshot.buy_mode.payment_blocker_codes.as_slice()),
+            snapshot
+                .buy_mode
+                .payment_blocker_summary
                 .as_deref()
                 .unwrap_or("-")
         );
@@ -878,7 +886,7 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={}",
+            "in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
@@ -901,12 +909,18 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
                 .buy_mode
                 .payable_provider_pubkey
                 .as_deref()
+                .unwrap_or("-"),
+            blocker_codes_label(snapshot.buy_mode.payment_blocker_codes.as_slice()),
+            snapshot
+                .buy_mode
+                .payment_blocker_summary
+                .as_deref()
                 .unwrap_or("-")
         );
     }
     for request in snapshot.buy_mode.recent_requests.iter().take(6) {
         println!(
-            "request={} status={} phase={} next={} result_provider={} invoice_provider={} payable_provider={} payment_pointer={} payment_error={}",
+            "request={} status={} phase={} next={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={} payment_pointer={} payment_error={}",
             request.request_id,
             request.status,
             request.phase,
@@ -914,9 +928,19 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
             request.result_provider_pubkey.as_deref().unwrap_or("-"),
             request.invoice_provider_pubkey.as_deref().unwrap_or("-"),
             request.payable_provider_pubkey.as_deref().unwrap_or("-"),
+            blocker_codes_label(request.payment_blocker_codes.as_slice()),
+            request.payment_blocker_summary.as_deref().unwrap_or("-"),
             request.payment_pointer.as_deref().unwrap_or("-"),
             request.payment_error.as_deref().unwrap_or("-")
         );
+    }
+}
+
+fn blocker_codes_label(codes: &[String]) -> String {
+    if codes.is_empty() {
+        "-".to_string()
+    } else {
+        codes.join(",")
     }
 }
 
