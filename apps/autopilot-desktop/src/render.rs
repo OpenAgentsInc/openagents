@@ -294,6 +294,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             codex_mcp: crate::app_state::CodexMcpPaneState::default(),
             codex_apps: crate::app_state::CodexAppsPaneState::default(),
             codex_labs: crate::app_state::CodexLabsPaneState::default(),
+            desktop_control: crate::app_state::DesktopControlState::default(),
             codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
             codex_lane: CodexLaneSnapshot::default(),
@@ -324,6 +325,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             provider_admin_last_error,
             provider_admin_last_sync_signature: None,
             provider_admin_last_sync_at: None,
+            desktop_control_runtime: None,
+            desktop_control_last_sync_signature: None,
+            desktop_control_last_sync_at: None,
             codex_remote_runtime: None,
             codex_remote_last_sync_signature: None,
             codex_remote_last_sync_at: None,
@@ -391,6 +395,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let _ = state.sync_provider_nip90_lane_relays();
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
         open_startup_panes(&mut state);
+        let _ = crate::desktop_control::enable_runtime(&mut state, None);
         Ok(state)
     })
 }

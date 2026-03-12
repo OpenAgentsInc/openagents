@@ -360,6 +360,38 @@ impl Default for CodexRemoteState {
     }
 }
 
+pub struct DesktopControlState {
+    pub enabled: bool,
+    pub requested_bind_addr: String,
+    pub listen_addr: Option<String>,
+    pub base_url: Option<String>,
+    pub manifest_path: Option<String>,
+    pub auth_token_preview: Option<String>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub last_command_summary: Option<String>,
+    pub last_command_error: Option<String>,
+    pub last_command_completed_at_epoch_ms: Option<u64>,
+}
+
+impl Default for DesktopControlState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requested_bind_addr: "127.0.0.1:0".to_string(),
+            listen_addr: None,
+            base_url: None,
+            manifest_path: None,
+            auth_token_preview: None,
+            last_error: None,
+            last_action: Some("Desktop control runtime disabled".to_string()),
+            last_command_summary: None,
+            last_command_error: None,
+            last_command_completed_at_epoch_ms: None,
+        }
+    }
+}
+
 pub struct CodexDiagnosticsMethodCountState {
     pub method: String,
     pub count: u64,

@@ -23,6 +23,7 @@ mod chat_terminal;
 mod codex_lane;
 mod codex_remote;
 mod credentials;
+pub mod desktop_control;
 mod desktop_shell;
 mod economy_kernel_receipts;
 pub mod headless_compute;
