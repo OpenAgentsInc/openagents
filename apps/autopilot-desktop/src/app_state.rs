@@ -617,8 +617,8 @@ pub struct MissionControlPaneState {
     pub last_error: Option<String>,
     buy_mode_last_blocked_signature: Option<String>,
     buy_mode_last_blocked_notice_at: Option<Instant>,
-    /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
-    rendered_log_content: Vec<(TerminalStream, String)>,
+    /// Dedupe keys for already-rendered Mission Control log entries.
+    rendered_log_content: Vec<String>,
     last_mirrored_trace_id: u64,
 }
 
@@ -1353,7 +1353,7 @@ fn build_mission_control_log_lines(
     network_requests: &NetworkRequestsState,
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
-) -> (Vec<TerminalLine>, Vec<(TerminalStream, String)>) {
+) -> (Vec<TerminalLine>, Vec<String>) {
     let now_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1361,16 +1361,29 @@ fn build_mission_control_log_lines(
     let unsupported_sell_platform_offline = provider_runtime.mode
         == crate::state::provider_runtime::ProviderMode::Offline
         && !mission_control_sell_compute_supported(desktop_shell_mode, local_inference_runtime);
-    type LogEntry = (u64, TerminalStream, String);
+    type LogEntry = (u64, TerminalStream, String, String);
     let mut entries: Vec<LogEntry> = Vec::new();
     let mut seen = HashSet::<String>::new();
-    let mut push_entry = |stream: TerminalStream, text: String, at_epoch: Option<u64>| {
+    let mut push_entry = |stream: TerminalStream,
+                          text: String,
+                          at_epoch: Option<u64>,
+                          dedupe_key: Option<String>| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return;
         }
-        if seen.insert(trimmed.to_string()) {
-            entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string()));
+        let key = dedupe_key.unwrap_or_else(|| {
+            format!(
+                "mission_control:live:{}:{}",
+                match stream {
+                    TerminalStream::Stdout => "stdout",
+                    TerminalStream::Stderr => "stderr",
+                },
+                trimmed
+            )
+        });
+        if seen.insert(key.clone()) {
+            entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string(), key));
         }
     };
     let compute_flow_snapshot = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
@@ -1398,11 +1411,11 @@ fn build_mission_control_log_lines(
             "Provider degraded. Review blockers and wallet or relay health.".to_string()
         }
     };
-    push_entry(TerminalStream::Stdout, mode_line, None);
+    push_entry(TerminalStream::Stdout, mode_line, None, None);
 
     if !unsupported_sell_platform_offline {
         if provider_blockers.is_empty() {
-            push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None);
+            push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None, None);
         } else {
             for blocker in provider_blockers.iter().take(3) {
                 push_entry(
@@ -1412,6 +1425,7 @@ fn build_mission_control_log_lines(
                         blocker.code(),
                         blocker.detail()
                     ),
+                    None,
                     None,
                 );
             }
@@ -1478,13 +1492,13 @@ fn build_mission_control_log_lines(
             ),
         }
     };
-    push_entry(model_status_stream, model_status, None);
+    push_entry(model_status_stream, model_status, None, None);
 
     if let Some(action) = mission_action {
-        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None, None);
     }
     if let Some(error) = mission_error {
-        push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None);
+        push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None, None);
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
         if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
@@ -1492,14 +1506,15 @@ fn build_mission_control_log_lines(
                 TerminalStream::Stdout,
                 result.replacen("Relay preview", "Buyer relays", 1),
                 None,
+                None,
             );
         } else if unsupported_sell_platform_offline
             && (result.starts_with("Buyer relay transport")
                 || result.starts_with("Buyer response relay tracking"))
         {
-            push_entry(TerminalStream::Stdout, result.to_string(), None);
+            push_entry(TerminalStream::Stdout, result.to_string(), None, None);
         } else if !unsupported_sell_platform_offline {
-            push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
+            push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None, None);
         }
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
@@ -1507,37 +1522,41 @@ fn build_mission_control_log_lines(
             TerminalStream::Stderr,
             format!("Provider error: {error}"),
             None,
+            None,
         );
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None, None);
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Inventory error: {error}"),
             None,
+            None,
         );
     }
 
     if let Some(action) = provider_runtime.apple_fm.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Apple FM: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("Apple FM: {action}"), None, None);
     }
     if let Some(error) = provider_runtime.apple_fm.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Apple FM error: {error}"),
             None,
+            None,
         );
     }
 
     if let Some(action) = spark_wallet.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None, None);
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Wallet error: {error}"),
+            None,
             None,
         );
     }
@@ -1546,6 +1565,7 @@ fn build_mission_control_log_lines(
         push_entry(
             mission_control_log_stream_for_request_status(request.status),
             request.mission_control_log_line(),
+            None,
             None,
         );
     }
@@ -1561,6 +1581,7 @@ fn build_mission_control_log_lines(
                     "Watching relays for matching jobs.".to_string()
                 },
                 None,
+                None,
             );
         } else {
             let request_count = job_inbox.requests.len();
@@ -1572,11 +1593,12 @@ fn build_mission_control_log_lines(
                     format!("Relay intake: {request_count} observed jobs available.")
                 },
                 None,
+                None,
             );
         }
     }
     if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None, None);
     }
 
     if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
@@ -1602,12 +1624,18 @@ fn build_mission_control_log_lines(
             line.push_str(" wallet_delta_sats=");
             line.push_str(delta.to_string().as_str());
         }
-        push_entry(mission_control_log_stream_for_stage(job.stage), line, None);
+        push_entry(
+            mission_control_log_stream_for_stage(job.stage),
+            line,
+            None,
+            None,
+        );
     }
     if let Some(action) = active_job.last_action.as_deref() {
         push_entry(
             TerminalStream::Stdout,
             format!("Active job: {action}"),
+            None,
             None,
         );
     }
@@ -1616,16 +1644,19 @@ fn build_mission_control_log_lines(
             TerminalStream::Stderr,
             format!("Active job error: {error}"),
             None,
+            None,
         );
     }
 
     const LOG_STREAM_EARN_WINDOW_SECS: u64 = 900;
     let earn_cutoff = now_epoch.saturating_sub(LOG_STREAM_EARN_WINDOW_SECS);
+    let active_job_id = active_job.job.as_ref().map(|job| job.job_id.as_str());
     for row in earn_job_lifecycle_projection
         .rows
         .iter()
         .rev()
         .filter(|row| row.occurred_at_epoch_seconds >= earn_cutoff)
+        .filter(|row| active_job_id != Some(row.job_id.as_str()))
         .take(8)
     {
         let source = if row.source_tag.to_ascii_lowercase().contains("starter") {
@@ -1636,25 +1667,29 @@ fn build_mission_control_log_lines(
         push_entry(
             mission_control_log_stream_for_stage(row.stage),
             format!(
-                "[{source}] {} {} {}",
+                "[REPLAY/{source}] {} {} {}",
                 row.stage.label(),
                 row.job_id,
                 format_mission_control_amount(row.quoted_price_sats)
             ),
             Some(row.occurred_at_epoch_seconds),
+            Some(format!(
+                "mission_control:projection_replay:{}",
+                row.event_id
+            )),
         );
     }
 
     entries.sort_by_key(|e| e.0);
-    let content: Vec<(TerminalStream, String)> = entries
+    let content: Vec<String> = entries
         .iter()
-        .map(|(_, stream, text)| (stream.clone(), text.clone()))
+        .map(|(_, _, _, key)| key.clone())
         .collect();
     let lines: Vec<TerminalLine> = entries
         .into_iter()
-        .map(|(epoch, stream, text)| {
+        .map(|(epoch, stream, text, key)| {
             let timestamp = mission_control_log_timestamp(epoch);
-            TerminalLine::new(stream, format!("{timestamp}  {text}"))
+            TerminalLine::new(stream, format!("{timestamp}  {text}")).with_key(key)
         })
         .collect();
 
@@ -1665,7 +1700,7 @@ fn build_mission_control_log_lines(
                 TerminalStream::Stdout,
                 format!("{}  {fallback}", mission_control_log_timestamp(now_epoch)),
             )],
-            vec![(TerminalStream::Stdout, fallback.to_string())],
+            vec!["mission_control:fallback".to_string()],
         )
     } else {
         (lines, content)
@@ -15704,6 +15739,119 @@ mod tests {
                 && line.text.contains("settlement_sats=2")
                 && line.text.contains("settlement_fee_sats=1")
                 && line.text.contains("wallet_delta_sats=2")
+        }));
+    }
+
+    #[test]
+    fn mission_control_log_lines_mark_projection_rows_as_replay_history() {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_762_000_000);
+        let provider = ProviderRuntimeState::default();
+        let projection = EarnJobLifecycleProjectionState {
+            load_state: super::PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            stream_id: "stream.earn_job_lifecycle_projection.v1".to_string(),
+            authority: "non-authoritative".to_string(),
+            rows: vec![EarnJobLifecycleProjectionRow {
+                stream_seq: 1,
+                event_id: "earn.lifecycle:job-replay-001:delivered:result".to_string(),
+                job_id: "job-replay-001".to_string(),
+                request_id: "req-replay-001".to_string(),
+                stage: JobLifecycleStage::Delivered,
+                source_tag: "open-network".to_string(),
+                occurred_at_epoch_seconds: now_epoch.saturating_sub(30),
+                quoted_price_sats: 2,
+                payment_pointer: None,
+                settlement_authority: "projection.non_authoritative".to_string(),
+                settlement_authoritative: false,
+            }],
+            projection_file_path: earn_projection_test_path("mission-control-replay-mark"),
+        };
+
+        let (lines, keys) = super::build_mission_control_log_lines(
+            Some("Mission Control ready"),
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("[REPLAY/OPEN] delivered job-replay-001")
+        }));
+        assert!(keys.iter().any(|key| {
+            key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
+        }));
+    }
+
+    #[test]
+    fn mission_control_sync_log_stream_keeps_projection_rows_marked_as_replay_after_reopen() {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_762_000_000);
+        let provider = ProviderRuntimeState::default();
+        let projection = EarnJobLifecycleProjectionState {
+            load_state: super::PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            stream_id: "stream.earn_job_lifecycle_projection.v1".to_string(),
+            authority: "non-authoritative".to_string(),
+            rows: vec![EarnJobLifecycleProjectionRow {
+                stream_seq: 1,
+                event_id: "earn.lifecycle:job-replay-002:accepted:req".to_string(),
+                job_id: "job-replay-002".to_string(),
+                request_id: "req-replay-002".to_string(),
+                stage: JobLifecycleStage::Accepted,
+                source_tag: "open-network".to_string(),
+                occurred_at_epoch_seconds: now_epoch.saturating_sub(45),
+                quoted_price_sats: 2,
+                payment_pointer: None,
+                settlement_authority: "projection.non_authoritative".to_string(),
+                settlement_authoritative: false,
+            }],
+            projection_file_path: earn_projection_test_path("mission-control-replay-reopen"),
+        };
+
+        let mut first = MissionControlPaneState::default();
+        first.sync_log_stream(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+        assert!(first.log_stream.recent_lines(32).iter().any(|line| {
+            line.text.contains("[REPLAY/OPEN] accepted job-replay-002")
+        }));
+
+        let mut reopened = MissionControlPaneState::default();
+        reopened.sync_log_stream(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+        assert!(reopened.log_stream.recent_lines(32).iter().any(|line| {
+            line.text.contains("[REPLAY/OPEN] accepted job-replay-002")
         }));
     }
 
