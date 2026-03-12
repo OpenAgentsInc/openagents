@@ -103,6 +103,24 @@ spctl --assess --type open --verbose=4 target/release/Autopilot-0.1.1.dmg
 shasum -a 256 -c target/release/Autopilot-0.1.1.dmg.sha256
 ```
 
+## 6) Runtime Log Verification
+
+Autopilot persists per-launch runtime logs by default under:
+
+- `~/.openagents/logs/autopilot/sessions/<session-id>.jsonl`
+- `~/.openagents/logs/autopilot/latest.jsonl`
+
+Optional development override:
+
+- `OPENAGENTS_AUTOPILOT_LOG_DIR`
+
+After launching the signed `.app`, verify the runtime log path exists and is receiving entries:
+
+```bash
+ls ~/.openagents/logs/autopilot/sessions
+tail -n 50 ~/.openagents/logs/autopilot/latest.jsonl
+```
+
 ## Operational Notes
 
 - Keep secrets in shell profile, 1Password shell plugin, or CI secret store.
