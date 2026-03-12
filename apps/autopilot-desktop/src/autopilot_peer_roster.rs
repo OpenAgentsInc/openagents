@@ -196,6 +196,24 @@ pub(crate) fn select_autopilot_buy_mode_target(
     config: &DefaultNip28ChannelConfig,
     now_epoch_seconds: u64,
 ) -> AutopilotBuyModeTargetSelection {
+    select_autopilot_buy_mode_target_with_policy(
+        snapshot,
+        local_state,
+        local_pubkey,
+        config,
+        now_epoch_seconds,
+        None,
+    )
+}
+
+pub(crate) fn select_autopilot_buy_mode_target_with_policy(
+    snapshot: &ManagedChatProjectionSnapshot,
+    local_state: &ManagedChatLocalState,
+    local_pubkey: Option<&str>,
+    config: &DefaultNip28ChannelConfig,
+    now_epoch_seconds: u64,
+    last_targeted_peer_pubkey: Option<&str>,
+) -> AutopilotBuyModeTargetSelection {
     if !config.is_valid() {
         return blocked_buy_mode_target_selection(
             AUTOPILOT_BUY_MODE_TARGET_BLOCK_INVALID_MAIN_CHANNEL_CONFIG,
@@ -226,9 +244,17 @@ pub(crate) fn select_autopilot_buy_mode_target(
         now_epoch_seconds,
     );
     let observed_peer_count = rows.len();
-    let eligible_peer_count = rows.iter().filter(|row| row.eligible_for_buy_mode).count();
+    let eligible_rows = rows
+        .iter()
+        .filter(|row| row.eligible_for_buy_mode)
+        .collect::<Vec<_>>();
+    let eligible_peer_count = eligible_rows.len();
 
-    if let Some(selected) = rows.iter().find(|row| row.eligible_for_buy_mode) {
+    if let Some(selected) = select_eligible_target(
+        eligible_rows.as_slice(),
+        local_pubkey,
+        last_targeted_peer_pubkey,
+    ) {
         return AutopilotBuyModeTargetSelection {
             selected_peer_pubkey: Some(selected.pubkey.clone()),
             selected_relay_url: Some(selected.source_relay_url.clone()),
@@ -263,6 +289,44 @@ pub(crate) fn select_autopilot_buy_mode_target(
         observed_peer_count,
         eligible_peer_count,
     )
+}
+
+fn select_eligible_target<'a>(
+    eligible_rows: &'a [&'a AutopilotPeerRosterRow],
+    local_pubkey: Option<&str>,
+    last_targeted_peer_pubkey: Option<&str>,
+) -> Option<&'a AutopilotPeerRosterRow> {
+    if eligible_rows.is_empty() {
+        return None;
+    }
+
+    let normalized_last = last_targeted_peer_pubkey
+        .map(normalize_pubkey)
+        .filter(|value| !value.is_empty());
+    if let Some(last) = normalized_last.as_deref()
+        && let Some(last_index) = eligible_rows.iter().position(|row| row.pubkey == last)
+    {
+        let next_index = (last_index + 1) % eligible_rows.len();
+        return eligible_rows.get(next_index).copied();
+    }
+
+    let normalized_local = local_pubkey.map(normalize_pubkey).unwrap_or_default();
+    let offset = stable_peer_offset(
+        normalized_local.as_str(),
+        eligible_rows.len(),
+    );
+    eligible_rows.get(offset).copied()
+}
+
+fn stable_peer_offset(seed: &str, len: usize) -> usize {
+    if len <= 1 {
+        return 0;
+    }
+    let digest = seed
+        .as_bytes()
+        .iter()
+        .fold(0usize, |acc, byte| acc.wrapping_mul(131).wrapping_add(*byte as usize));
+    digest % len
 }
 
 pub(crate) fn parse_autopilot_compute_presence_message(
@@ -970,5 +1034,146 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains(AUTOPILOT_PEER_ELIGIBILITY_PROVIDER_OFFLINE))
         );
+    }
+
+    #[test]
+    fn buy_mode_target_selection_rotates_after_last_targeted_peer() {
+        let main_channel_id = &"aa".repeat(32);
+        let first = "11".repeat(32);
+        let second = "22".repeat(32);
+        let third = "33".repeat(32);
+        let snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message(
+                    "presence-first",
+                    main_channel_id,
+                    &first,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": first,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    10,
+                ),
+                fixture_message(
+                    "presence-second",
+                    main_channel_id,
+                    &second,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": second,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    20,
+                ),
+                fixture_message(
+                    "presence-third",
+                    main_channel_id,
+                    &third,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": third,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    30,
+                ),
+            ],
+        );
+
+        let selection = select_autopilot_buy_mode_target_with_policy(
+            &snapshot,
+            &ManagedChatLocalState::default(),
+            Some(&"44".repeat(32)),
+            &fixture_config(main_channel_id),
+            40,
+            Some(&third),
+        );
+
+        assert_eq!(selection.eligible_peer_count, 3);
+        assert_eq!(
+            selection.selected_peer_pubkey.as_deref(),
+            Some(second.as_str())
+        );
+    }
+
+    #[test]
+    fn buy_mode_target_selection_uses_stable_local_offset_when_no_last_target_exists() {
+        let main_channel_id = &"aa".repeat(32);
+        let first = "11".repeat(32);
+        let second = "22".repeat(32);
+        let third = "33".repeat(32);
+        let local = "44".repeat(32);
+        let snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message(
+                    "presence-first",
+                    main_channel_id,
+                    &first,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": first,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    10,
+                ),
+                fixture_message(
+                    "presence-second",
+                    main_channel_id,
+                    &second,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": second,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    20,
+                ),
+                fixture_message(
+                    "presence-third",
+                    main_channel_id,
+                    &third,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": third,
+                        "capabilities": ["5050"],
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    30,
+                ),
+            ],
+        );
+
+        let selection = select_autopilot_buy_mode_target_with_policy(
+            &snapshot,
+            &ManagedChatLocalState::default(),
+            Some(local.as_str()),
+            &fixture_config(main_channel_id),
+            40,
+            None,
+        );
+
+        let expected_order = [third.as_str(), second.as_str(), first.as_str()];
+        let expected = expected_order[stable_peer_offset(local.as_str(), expected_order.len())];
+        assert_eq!(selection.selected_peer_pubkey.as_deref(), Some(expected));
     }
 }

@@ -716,25 +716,40 @@ impl MissionControlPaneState {
 
     pub fn schedule_next_buy_mode_dispatch(&mut self, now: Instant) {
         self.buy_mode_last_dispatch_at = Some(now);
-        self.buy_mode_next_dispatch_at =
-            Some(now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)));
+        self.buy_mode_next_dispatch_at = Some(now + MISSION_CONTROL_BUY_MODE_INTERVAL);
     }
 
     pub fn schedule_buy_mode_retry(&mut self, now: Instant) {
-        self.buy_mode_next_dispatch_at =
-            Some(now + Duration::from_secs(MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.max(1)));
+        self.buy_mode_next_dispatch_at = Some(now + MISSION_CONTROL_BUY_MODE_INTERVAL);
     }
 
-    pub fn buy_mode_next_dispatch_countdown_seconds(&self, now: Instant) -> Option<u64> {
+    pub fn buy_mode_next_dispatch_countdown_millis(&self, now: Instant) -> Option<u64> {
         let next_due_at = self.buy_mode_next_dispatch_at?;
         if now >= next_due_at {
             return Some(0);
         }
         let wait = next_due_at.saturating_duration_since(now);
-        Some(
-            wait.as_secs()
-                .saturating_add(u64::from(wait.subsec_nanos() > 0)),
-        )
+        Some(wait.as_millis().min(u128::from(u64::MAX)) as u64)
+    }
+
+    pub fn buy_mode_next_dispatch_countdown_seconds(&self, now: Instant) -> Option<u64> {
+        let wait_millis = self.buy_mode_next_dispatch_countdown_millis(now)?;
+        if wait_millis == 0 {
+            return Some(0);
+        }
+        Some(wait_millis.saturating_add(999) / 1_000)
+    }
+
+    pub fn buy_mode_next_dispatch_countdown_label(&self, now: Instant) -> Option<String> {
+        let wait_millis = self.buy_mode_next_dispatch_countdown_millis(now)?;
+        Some(if wait_millis == 0 {
+            "now".to_string()
+        } else if wait_millis < 1_000 {
+            format!("{wait_millis}ms")
+        } else {
+            let seconds = wait_millis.saturating_add(999) / 1_000;
+            format!("{seconds}s")
+        })
     }
 
     pub fn record_action(&mut self, action: impl Into<String>) {
@@ -1636,8 +1651,18 @@ pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_TYPE: &str = "mission_control.
 pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_KIND: u16 =
     nostr::nip90::KIND_JOB_TEXT_GENERATION;
 pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
-pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS: u64 = 12;
+pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS: u64 = 100;
+pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL: Duration =
+    Duration::from_millis(MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS);
 pub(crate) const MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
+
+pub(crate) fn mission_control_buy_mode_interval_label() -> String {
+    if MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS.is_multiple_of(1_000) {
+        format!("{}s", MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS / 1_000)
+    } else {
+        format!("{}ms", MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
+    }
+}
 
 pub(crate) fn mission_control_buy_mode_available_balance_sats(
     spark_wallet: &crate::spark_wallet::SparkPaneState,
@@ -2356,6 +2381,7 @@ pub struct AutopilotChatState {
     pub last_error: Option<String>,
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
+    pub buy_mode_last_targeted_peer_pubkey: Option<String>,
     artifact_projection_file_path: PathBuf,
 }
 
@@ -2455,6 +2481,7 @@ impl Default for AutopilotChatState {
             last_error: artifact_load_error,
             copy_notice: None,
             copy_notice_until: None,
+            buy_mode_last_targeted_peer_pubkey: None,
             artifact_projection_file_path,
         }
     }
@@ -4069,13 +4096,22 @@ impl AutopilotChatState {
         config: &DefaultNip28ChannelConfig,
         now_epoch_seconds: u64,
     ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
-        crate::autopilot_peer_roster::select_autopilot_buy_mode_target(
+        crate::autopilot_peer_roster::select_autopilot_buy_mode_target_with_policy(
             &self.managed_chat_projection.snapshot,
             &self.managed_chat_projection.local_state,
             self.managed_chat_local_pubkey(),
             config,
             now_epoch_seconds,
+            self.buy_mode_last_targeted_peer_pubkey.as_deref(),
         )
+    }
+
+    pub(crate) fn note_buy_mode_target_dispatch(&mut self, provider_pubkey: &str) {
+        let normalized = provider_pubkey.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        self.buy_mode_last_targeted_peer_pubkey = Some(normalized.to_string());
     }
 
     pub fn active_managed_chat_channel_rail_rows(&self) -> Vec<ManagedChatChannelRailRow> {
@@ -15539,12 +15575,12 @@ mod tests {
 
         mission_control.schedule_next_buy_mode_dispatch(now);
         assert_eq!(
-            mission_control.buy_mode_next_dispatch_countdown_seconds(now),
-            Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS)
+            mission_control.buy_mode_next_dispatch_countdown_millis(now),
+            Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
         assert!(!mission_control.buy_mode_dispatch_due(
-            now + std::time::Duration::from_secs(
-                super::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS.saturating_sub(1)
+            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL.saturating_sub(
+                std::time::Duration::from_millis(1)
             )
         ));
 

@@ -18,6 +18,24 @@ pub(crate) fn pump_provider_chat_presence(
     now: Instant,
     now_epoch_seconds: u64,
 ) -> bool {
+    pump_provider_chat_presence_with_config(
+        provider_runtime,
+        chat,
+        identity,
+        now,
+        now_epoch_seconds,
+        &DefaultNip28ChannelConfig::from_env_or_default(),
+    )
+}
+
+pub(crate) fn pump_provider_chat_presence_with_config(
+    provider_runtime: &mut ProviderRuntimeState,
+    chat: &mut AutopilotChatState,
+    identity: Option<&nostr::NostrIdentity>,
+    now: Instant,
+    now_epoch_seconds: u64,
+    config: &DefaultNip28ChannelConfig,
+) -> bool {
     let mut changed =
         reconcile_pending_presence_publish(provider_runtime, chat, now, now_epoch_seconds);
     let Some(desired_mode) = desired_presence_mode(provider_runtime) else {
@@ -71,7 +89,6 @@ pub(crate) fn pump_provider_chat_presence(
         return changed;
     };
 
-    let config = DefaultNip28ChannelConfig::from_env_or_default();
     if !config.is_valid() {
         changed |= record_presence_publish_error(
             provider_runtime,

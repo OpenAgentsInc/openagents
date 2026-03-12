@@ -5,8 +5,8 @@ use wgpui::components::sections::TerminalStream;
 
 use crate::app_state::{
     ActiveJobRecord, ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
-    MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
-    MissionControlPaneState,
+    MISSION_CONTROL_BUY_MODE_REQUEST_TYPE, MissionControlPaneState,
+    mission_control_buy_mode_interval_label,
 };
 use crate::nip90_compute_semantics::analyze_invoice_amount_msats;
 use crate::spark_wallet::{
@@ -1089,13 +1089,13 @@ pub(crate) fn buy_mode_payments_status_lines(
         .find(|request| !request.status.is_terminal());
     let loop_line = if !mission_control.buy_mode_loop_enabled {
         format!(
-            "Dispatch loop: off // cadence={}s // policy=single-flight",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+            "Dispatch loop: off // cadence={} // policy=single-flight",
+            mission_control_buy_mode_interval_label()
         )
     } else if let Some(request) = in_flight {
         format!(
-            "Dispatch loop: on // cadence={}s // policy=single-flight // blocked by {} [{} phase={} auth={} next={}]",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
+            "Dispatch loop: on // cadence={} // policy=single-flight // blocked by {} [{} phase={} auth={} next={}]",
+            mission_control_buy_mode_interval_label(),
             compact_buy_mode_request_id(request.request_id.as_str()),
             request.status.label(),
             request.phase.as_str(),
@@ -1104,18 +1104,12 @@ pub(crate) fn buy_mode_payments_status_lines(
         )
     } else {
         let next = mission_control
-            .buy_mode_next_dispatch_countdown_seconds(now)
-            .map(|seconds| {
-                if seconds == 0 {
-                    "now".to_string()
-                } else {
-                    format!("{seconds}s")
-                }
-            })
+            .buy_mode_next_dispatch_countdown_label(now)
             .unwrap_or_else(|| "now".to_string());
         format!(
-            "Dispatch loop: on // cadence={}s // policy=single-flight // next={}",
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, next
+            "Dispatch loop: on // cadence={} // policy=single-flight // next={}",
+            mission_control_buy_mode_interval_label(),
+            next
         )
     };
 

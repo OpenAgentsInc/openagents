@@ -64,6 +64,7 @@ mod state;
 mod sync_apply;
 mod sync_bootstrap;
 mod sync_lifecycle;
+pub mod throughput_bench;
 
 #[cfg(test)]
 mod chat_regression_tests;

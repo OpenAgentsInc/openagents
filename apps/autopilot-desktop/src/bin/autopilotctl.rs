@@ -432,8 +432,10 @@ fn main() -> Result<()> {
                     print_json(&json!({
                         "approvedBudgetSats": snapshot.buy_mode.approved_budget_sats,
                         "cadenceSeconds": snapshot.buy_mode.cadence_seconds,
+                        "cadenceMillis": snapshot.buy_mode.cadence_millis,
                         "enabled": snapshot.buy_mode.enabled,
                         "nextDispatchCountdownSeconds": snapshot.buy_mode.next_dispatch_countdown_seconds,
+                        "nextDispatchCountdownMillis": snapshot.buy_mode.next_dispatch_countdown_millis,
                         "inFlightRequestId": snapshot.buy_mode.in_flight_request_id,
                         "inFlightPhase": snapshot.buy_mode.in_flight_phase,
                         "inFlightStatus": snapshot.buy_mode.in_flight_status,
@@ -1027,14 +1029,11 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.wallet.can_withdraw
     );
     println!(
-        "buy mode: enabled={} approved_budget={} sats cadence={}s next_dispatch={}s",
+        "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
-        snapshot.buy_mode.cadence_seconds,
-        snapshot
-            .buy_mode
-            .next_dispatch_countdown_seconds
-            .unwrap_or(0)
+        format_buy_mode_cadence(snapshot),
+        format_buy_mode_next_dispatch(snapshot)
     );
     println!(
         "buy mode target: selected={} relay={} model={} roster={}/{} blocked_code={} blocked_reason={}",
@@ -1123,14 +1122,11 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
 
 fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     println!(
-        "buy mode: enabled={} approved_budget={} sats cadence={}s next_dispatch={}s",
+        "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
-        snapshot.buy_mode.cadence_seconds,
-        snapshot
-            .buy_mode
-            .next_dispatch_countdown_seconds
-            .unwrap_or(0)
+        format_buy_mode_cadence(snapshot),
+        format_buy_mode_next_dispatch(snapshot)
     );
     print_buy_mode_target_text(snapshot);
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
@@ -1333,6 +1329,29 @@ fn blocker_codes_label(codes: &[String]) -> String {
     } else {
         codes.join(",")
     }
+}
+
+fn format_buy_mode_cadence(snapshot: &DesktopControlSnapshot) -> String {
+    if snapshot.buy_mode.cadence_millis > 0 && snapshot.buy_mode.cadence_millis < 1_000 {
+        format!("{}ms", snapshot.buy_mode.cadence_millis)
+    } else {
+        format!("{}s", snapshot.buy_mode.cadence_seconds)
+    }
+}
+
+fn format_buy_mode_next_dispatch(snapshot: &DesktopControlSnapshot) -> String {
+    if let Some(millis) = snapshot.buy_mode.next_dispatch_countdown_millis
+        && millis < 1_000
+    {
+        return format!("{millis}ms");
+    }
+    format!(
+        "{}s",
+        snapshot
+            .buy_mode
+            .next_dispatch_countdown_seconds
+            .unwrap_or(0)
+    )
 }
 
 fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {

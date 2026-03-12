@@ -1722,14 +1722,7 @@ fn mission_control_buy_mode_panel_state(
         "in-flight".to_string()
     } else {
         mission_control
-            .buy_mode_next_dispatch_countdown_seconds(now)
-            .map(|seconds| {
-                if seconds == 0 {
-                    "now".to_string()
-                } else {
-                    format!("{seconds}s")
-                }
-            })
+            .buy_mode_next_dispatch_countdown_label(now)
             .unwrap_or_else(|| "now".to_string())
     };
     let provider = request_snapshot
@@ -1819,14 +1812,14 @@ fn mission_control_buy_mode_panel_state(
             })
             .unwrap_or_else(|| {
                 let mut summary = format!(
-                    "{} // 5050 // {} sats // every {}s // roster {}/{}",
+                    "{} // 5050 // {} sats // every {} // roster {}/{}",
                     if mission_control.buy_mode_loop_enabled {
                         "Buy Mode armed"
                     } else {
                         "Buy Mode off"
                     },
                     crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                    crate::app_state::MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
+                    crate::app_state::mission_control_buy_mode_interval_label(),
                     target_selection.eligible_peer_count,
                     target_selection.observed_peer_count,
                 );

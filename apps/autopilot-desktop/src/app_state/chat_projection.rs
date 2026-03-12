@@ -208,7 +208,6 @@ impl ManagedChatProjectionState {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
         Self::from_projection_file_path(projection_file_path)
     }

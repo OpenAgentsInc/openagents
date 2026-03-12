@@ -17,9 +17,9 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-const LANE_POLL: Duration = Duration::from_millis(120);
-const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(4);
-const MAX_MESSAGES_PER_RELAY_POLL: usize = 6;
+const LANE_POLL: Duration = Duration::from_millis(15);
+const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(1);
+const MAX_MESSAGES_PER_RELAY_POLL: usize = 48;
 const SUBSCRIPTION_ID: &str = "autopilot-provider-nip90-ingress";
 const DEFAULT_TTL_SECONDS: u64 = 60;
 const NIP89_HANDLER_KIND: u16 = 31_990;
@@ -463,24 +463,9 @@ fn run_lane_loop(
     loop {
         match command_rx.recv_timeout(LANE_POLL) {
             Ok(command) => {
-                match command {
-                    ProviderNip90LaneCommand::ConfigureIdentity { .. }
-                    | ProviderNip90LaneCommand::ConfigureComputeCapability { .. }
-                    | ProviderNip90LaneCommand::ConfigureRelays { .. }
-                    | ProviderNip90LaneCommand::SetOnline { .. }
-                    | ProviderNip90LaneCommand::TrackProviderPublishRequestIds { .. }
-                    | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
-                        handle_command(&runtime, &mut state, command);
-                    }
-                    ProviderNip90LaneCommand::PublishEvent {
-                        request_id,
-                        role,
-                        event,
-                    } => {
-                        handle_publish_event(
-                            &runtime, &mut state, &update_tx, request_id, role, *event,
-                        );
-                    }
+                handle_command_or_publish(&runtime, &mut state, &update_tx, command);
+                while let Ok(pending) = command_rx.try_recv() {
+                    handle_command_or_publish(&runtime, &mut state, &update_tx, pending);
                 }
                 let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
                     state.snapshot.clone(),
@@ -596,6 +581,31 @@ fn run_lane_loop(
             let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
                 state.snapshot.clone(),
             )));
+        }
+    }
+}
+
+fn handle_command_or_publish(
+    runtime: &tokio::runtime::Runtime,
+    state: &mut ProviderNip90LaneState,
+    update_tx: &Sender<ProviderNip90LaneUpdate>,
+    command: ProviderNip90LaneCommand,
+) {
+    match command {
+        ProviderNip90LaneCommand::ConfigureIdentity { .. }
+        | ProviderNip90LaneCommand::ConfigureComputeCapability { .. }
+        | ProviderNip90LaneCommand::ConfigureRelays { .. }
+        | ProviderNip90LaneCommand::SetOnline { .. }
+        | ProviderNip90LaneCommand::TrackProviderPublishRequestIds { .. }
+        | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
+            handle_command(runtime, state, command);
+        }
+        ProviderNip90LaneCommand::PublishEvent {
+            request_id,
+            role,
+            event,
+        } => {
+            handle_publish_event(runtime, state, update_tx, request_id, role, *event);
         }
     }
 }

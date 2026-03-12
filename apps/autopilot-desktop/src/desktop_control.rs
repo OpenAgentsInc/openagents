@@ -21,7 +21,7 @@ use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
 use crate::app_state::{
     DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-    MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS, RenderState,
+    MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, RenderState, mission_control_buy_mode_interval_label,
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::pane_system::MissionControlPaneAction;
@@ -166,7 +166,9 @@ pub struct DesktopControlBuyModeStatus {
     pub enabled: bool,
     pub approved_budget_sats: u64,
     pub cadence_seconds: u64,
+    pub cadence_millis: u64,
     pub next_dispatch_countdown_seconds: Option<u64>,
+    pub next_dispatch_countdown_millis: Option<u64>,
     pub in_flight_request_id: Option<String>,
     pub in_flight_phase: Option<String>,
     pub in_flight_status: Option<String>,
@@ -1206,10 +1208,12 @@ fn buy_mode_status_changed(
     previous: Option<&DesktopControlBuyModeStatus>,
     current: &DesktopControlBuyModeStatus,
 ) -> bool {
-    previous.is_none_or(|previous| {
-        previous.enabled != current.enabled
+        previous.is_none_or(|previous| {
+            previous.enabled != current.enabled
             || previous.approved_budget_sats != current.approved_budget_sats
             || previous.cadence_seconds != current.cadence_seconds
+            || previous.cadence_millis != current.cadence_millis
+            || previous.next_dispatch_countdown_millis != current.next_dispatch_countdown_millis
             || previous.in_flight_request_id != current.in_flight_request_id
             || previous.in_flight_phase != current.in_flight_phase
             || previous.in_flight_status != current.in_flight_status
@@ -1642,9 +1646,9 @@ fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionRespons
     }
     if state.mission_control.buy_mode_loop_enabled {
         return DesktopControlActionResponse::ok(format!(
-            "Buy Mode already running ({} every {}s)",
+            "Buy Mode already running ({} every {})",
             format_sats_amount(MISSION_CONTROL_BUY_MODE_BUDGET_SATS),
-            MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS
+            mission_control_buy_mode_interval_label()
         ));
     }
     mission_control_action_response(state, MissionControlPaneAction::ToggleBuyModeLoop)
@@ -1798,10 +1802,14 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         buy_mode: DesktopControlBuyModeStatus {
             enabled: state.mission_control.buy_mode_loop_enabled,
             approved_budget_sats: MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-            cadence_seconds: MISSION_CONTROL_BUY_MODE_INTERVAL_SECONDS,
+            cadence_seconds: MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS.saturating_add(999) / 1_000,
+            cadence_millis: MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS,
             next_dispatch_countdown_seconds: state
                 .mission_control
                 .buy_mode_next_dispatch_countdown_seconds(now),
+            next_dispatch_countdown_millis: state
+                .mission_control
+                .buy_mode_next_dispatch_countdown_millis(now),
             in_flight_request_id: buy_mode_request
                 .as_ref()
                 .map(|request| request.request_id.clone()),
@@ -2561,8 +2569,10 @@ mod tests {
             buy_mode: DesktopControlBuyModeStatus {
                 enabled: false,
                 approved_budget_sats: 2,
-                cadence_seconds: 12,
+                cadence_seconds: 1,
+                cadence_millis: 100,
                 next_dispatch_countdown_seconds: None,
+                next_dispatch_countdown_millis: None,
                 in_flight_request_id: None,
                 in_flight_phase: None,
                 in_flight_status: None,
@@ -3146,6 +3156,8 @@ mod tests {
         let active = flows.first();
         snapshot.buy_mode.enabled = loop_enabled;
         snapshot.buy_mode.next_dispatch_countdown_seconds =
+            (loop_enabled && active.is_none()).then_some(0);
+        snapshot.buy_mode.next_dispatch_countdown_millis =
             (loop_enabled && active.is_none()).then_some(0);
         snapshot.buy_mode.in_flight_request_id =
             active.as_ref().map(|flow| flow.request_id.clone());
