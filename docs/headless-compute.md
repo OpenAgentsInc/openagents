@@ -55,6 +55,45 @@ The script emits:
 - per-phase buyer/provider logs
 - Spark status snapshots before, between, and after the two phases
 
+## Packaged app smoke run
+
+This launches the real bundled `Autopilot.app`, points it at a deterministic local relay,
+drives it through `autopilotctl`, and verifies the production shell completes the provider
+side of the paid loop all the way through settlement:
+
+```bash
+scripts/release/check-v01-packaged-compute.sh
+```
+
+What it does:
+
+- builds `Autopilot.app`, `autopilotctl`, `autopilot-headless-compute`, and `spark-wallet-cli`
+- bundles `foundation-bridge` into the app
+- launches the packaged app executable with isolated `HOME` and `OPENAGENTS_AUTOPILOT_LOG_DIR`
+- configures the bundle against a local deterministic relay via its settings file
+- brings the provider online through `autopilotctl`
+- starts a controlled headless buyer targeted to the packaged provider
+- asserts on the bundled app's `latest.jsonl` and per-session JSONL logs:
+  - request accepted
+  - request running
+  - request delivered
+  - `provider.result_published`
+  - `provider.payment_requested`
+  - `provider.settlement_confirmed`
+
+Useful env overrides:
+
+- `OPENAGENTS_PACKAGED_RUN_DIR=/path/to/run-dir`
+- `OPENAGENTS_PACKAGED_FUNDER_HOME=/path/to/funded-home`
+- `OPENAGENTS_PACKAGED_FUNDER_IDENTITY_PATH=/path/to/funded/identity.mnemonic`
+- `OPENAGENTS_PACKAGED_BUYER_FUNDING_SATS=50`
+- `OPENAGENTS_PACKAGED_BUDGET_SATS=2`
+- `OPENAGENTS_PACKAGED_SKIP_BUILD=1`
+
+The packaged smoke script is intentionally app-owned verification, not a library-only harness.
+It proves the production shell, desktop control runtime, and file-backed logs stay in sync
+through the v0.1 paid compute loop.
+
 ## Separate processes
 
 Run a local relay:

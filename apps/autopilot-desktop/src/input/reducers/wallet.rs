@@ -311,6 +311,8 @@ fn reconcile_provider_settlement_invoice_state(
     {
         active_job.payment_required_invoice_requested = false;
         active_job.payment_required_failed = false;
+        active_job.pending_bolt11_created_at_epoch_seconds =
+            spark_wallet.last_invoice_created_at_epoch_seconds;
         active_job.pending_bolt11 = Some(invoice.to_string());
         active_job.append_event("generated Spark BOLT11 settlement invoice for provider payout");
         provider_runtime.last_result = Some(
@@ -324,6 +326,7 @@ fn reconcile_provider_settlement_invoice_state(
     {
         active_job.payment_required_invoice_requested = false;
         active_job.payment_required_failed = true;
+        active_job.pending_bolt11_created_at_epoch_seconds = None;
         let message = format!("provider settlement invoice creation failed: {error}");
         active_job.append_event(message.clone());
         active_job.last_error = Some(message.clone());
@@ -390,6 +393,7 @@ mod tests {
         active_job.payment_required_invoice_requested = true;
         spark_wallet.last_action = Some("Created Lightning invoice for 2 sats".to_string());
         spark_wallet.last_invoice = Some("lnbc20n1providerready".to_string());
+        spark_wallet.last_invoice_created_at_epoch_seconds = Some(1_762_700_123);
 
         reconcile_provider_settlement_invoice_state(
             &mut active_job,
@@ -404,6 +408,10 @@ mod tests {
         assert_eq!(
             active_job.pending_bolt11.as_deref(),
             Some("lnbc20n1providerready")
+        );
+        assert_eq!(
+            active_job.pending_bolt11_created_at_epoch_seconds,
+            Some(1_762_700_123)
         );
         assert!(
             active_job
@@ -435,6 +443,7 @@ mod tests {
 
         assert!(!active_job.payment_required_invoice_requested);
         assert!(active_job.payment_required_failed);
+        assert_eq!(active_job.pending_bolt11_created_at_epoch_seconds, None);
         assert_eq!(
             active_job.last_error.as_deref(),
             Some("provider settlement invoice creation failed: spark timeout")

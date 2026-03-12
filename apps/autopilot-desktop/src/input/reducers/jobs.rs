@@ -2054,6 +2054,8 @@ pub(super) fn transition_active_job_to_paid(
     state.active_job.payment_required_invoice_requested = false;
     state.active_job.payment_required_feedback_in_flight = false;
     state.active_job.payment_required_failed = false;
+    state.active_job.next_payment_evidence_refresh_at = None;
+    state.active_job.pending_bolt11_created_at_epoch_seconds = None;
     state.active_job.pending_bolt11 = None;
     state.active_job.pending_result_publish_event_id = None;
     state.active_job.pending_result_publish_event = None;
