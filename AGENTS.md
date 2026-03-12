@@ -26,6 +26,18 @@
 - Keep changes small, verifiable, and directly tied to current MVP goals.
 - Do not add `.github/workflows/` automation in this repo.
 
+## Programmatic Control And Test Docs
+
+- The running desktop app now has an app-owned control plane plus a thin CLI:
+  - implementation: `apps/autopilot-desktop/src/desktop_control.rs`
+  - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- Full operator/testing docs for `autopilotctl`, headless compute, packaged
+  app roundtrips, and log artifacts live in `docs/headless-compute.md`.
+- The current release-cut/product-scope truth, including the seller-first role
+  of buyer-side smoke-test flows, lives in `docs/v01.md`.
+- When changing programmatic control, packaged verification, or Spark/NIP-90
+  roundtrip behavior, update those docs if the behavior or contract changed.
+
 ## Implementation Guardrails
 
 - Retained implementation is Rust/WGPUI-first.
@@ -55,3 +67,5 @@ The bridge is the Swift HTTP sidecar in `swift/foundation-bridge/`. It exposes A
   - `cargo test -p autopilot-desktop codex_lane`
   - `cargo test -p autopilot-desktop assemble_chat_turn_input`
   - `cargo test -p codex-client --test skills_and_user_input`
+- Programmatic packaged roundtrip:
+  - `scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh`

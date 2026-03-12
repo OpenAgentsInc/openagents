@@ -6,6 +6,50 @@
 - `provider`: headless provider mode with a separate Nostr/Spark identity path
 - `buyer`: headless Buy Mode loop using the current wallet by default
 
+The same repo now also has an app-owned desktop control plane for the running GUI:
+
+- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+
+That control plane is intentionally UI-synced. `autopilotctl` drives the running
+desktop app through the same Mission Control truth model the user sees on
+screen, instead of mutating a separate headless-only state machine.
+
+## Desktop control and `autopilotctl`
+
+`autopilotctl` is the thin CLI client for the running desktop-control runtime.
+It can:
+
+- fetch the current Mission Control snapshot
+- stream desktop-control event batches
+- refresh Apple FM and wallet state
+- bring the provider online or offline
+- inspect active-job and buy-mode state
+- select the managed NIP-28 main channel
+- list NIP-28 groups, channels, and recent messages
+- send or retry NIP-28 chat messages
+- start and stop Buy Mode against the same in-app state used by the GUI
+
+The desktop control runtime writes and exposes:
+
+- `desktop-control.json` manifest
+- `latest.jsonl` session-log alias
+- per-session JSONL logs
+
+Those files are the source of truth for programmatic verification because they
+prove the UI, the control plane, and the runtime logs stayed in sync.
+
+Useful `autopilotctl` starting points:
+
+```bash
+autopilotctl status
+autopilotctl provider online
+autopilotctl chat status
+autopilotctl chat messages --tail 20
+autopilotctl buy-mode status
+autopilotctl logs --tail 50
+```
+
 ## Local smoke run
 
 This uses the current default buyer wallet and creates a fresh provider account under `target/headless-compute-smoke/provider`:
@@ -93,6 +137,34 @@ Useful env overrides:
 The packaged smoke script is intentionally app-owned verification, not a library-only harness.
 It proves the production shell, desktop control runtime, and file-backed logs stay in sync
 through the v0.1 paid compute loop.
+
+## Packaged app buyer + seller + chat roundtrip
+
+This is the stronger packaged verification path for the current release cut:
+
+```bash
+scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh
+```
+
+What it does:
+
+- builds the bundled `Autopilot.app`
+- launches both a bundled app and a separate runtime app
+- drives both apps entirely through `autopilotctl`
+- selects the managed NIP-28 main channel in both apps
+- verifies bidirectional NIP-28 chat
+- brings both providers online
+- funds Spark wallets as needed
+- runs paid buyer/seller flows in both directions
+- asserts on desktop-control snapshots plus `latest.jsonl` / session logs for:
+  - NIP-28 presence and message delivery
+  - targeted NIP-90 request dispatch
+  - buyer payment settlement
+  - provider settlement confirmation
+
+This is the closest thing in the repo to a production-shell end-to-end test.
+Use it when the question is not "does the library path work?" but "does the
+actual app bundle work when steered programmatically?"
 
 ## Separate processes
 
