@@ -228,19 +228,18 @@ pub(super) fn apply_ingressed_request(
     state.job_inbox.upsert_network_request(request.clone());
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
-    state.job_inbox.last_action = Some(format!(
-        "{} NIP-90 request {} from relay lane",
-        if preview_only {
-            "Observed preview"
-        } else {
-            "Ingested live"
-        },
-        request.request_id,
-    ));
+    state.job_inbox.last_action = Some(if preview_only {
+        "Observed preview NIP-90 request from relay lane".to_string()
+    } else {
+        format!(
+            "Ingested live NIP-90 request {} from relay lane",
+            request.request_id
+        )
+    });
 
     if is_new {
         if preview_only {
-            tracing::info!(
+            tracing::debug!(
                 target: "autopilot_desktop::provider",
                 "Provider preview observed request_id={} capability={} price_sats={} ttl_seconds={}",
                 request.request_id,
@@ -261,10 +260,8 @@ pub(super) fn apply_ingressed_request(
     }
 
     if preview_only {
-        state.provider_runtime.last_result = Some(format!(
-            "preview observed request {} ({})",
-            request.request_id, request.capability
-        ));
+        state.provider_runtime.last_result =
+            Some("relay preview observing market activity".to_string());
     } else {
         state.provider_runtime.last_result = Some(format!(
             "relay ingress received request {} ({})",
