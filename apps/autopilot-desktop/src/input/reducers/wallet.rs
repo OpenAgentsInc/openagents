@@ -1,4 +1,5 @@
 use crate::app_state::{EarnFailureClass, RenderState};
+use crate::nip90_compute_domain_events;
 use crate::spark_wallet::{is_settled_wallet_payment_status, is_terminal_wallet_payment_status};
 use openagents_spark::PaymentSummary;
 use qrcode::{QrCode, render::unicode::Dense1x2};
@@ -171,6 +172,20 @@ fn reconcile_pending_buyer_payment_confirmation(
             request_id.as_str(),
             payment_pointer,
             now_epoch_seconds,
+        );
+        let provider_pubkey = state
+            .network_requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .and_then(|request| request.winning_provider_pubkey.as_deref());
+        nip90_compute_domain_events::emit_buyer_payment_settled(
+            request_id.as_str(),
+            provider_pubkey,
+            payment_pointer,
+            payment.amount_sats,
+            payment.fees_sats,
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment),
         );
         state.provider_runtime.last_result = Some(format!(
             "buyer payment settled request={} pointer={} fees_sats={} total_debit_sats={}",

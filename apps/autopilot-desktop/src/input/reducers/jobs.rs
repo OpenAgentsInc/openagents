@@ -14,6 +14,7 @@ use crate::local_inference_runtime::{
     LocalInferenceExecutionStarted, LocalInferenceGenerateJob, LocalInferenceRuntimeCommand,
     LocalInferenceRuntimeUpdate,
 };
+use crate::nip90_compute_domain_events;
 use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
 };
@@ -566,6 +567,12 @@ pub(super) fn apply_active_job_publish_outcome(
                 outcome.event_id,
                 outcome.accepted_relays,
                 outcome.rejected_relays
+            );
+            nip90_compute_domain_events::emit_provider_result_published(
+                outcome.request_id.as_str(),
+                outcome.event_id.as_str(),
+                outcome.accepted_relays,
+                outcome.rejected_relays,
             );
             if let Ok(JobLifecycleStage::Delivered) =
                 transition_active_job_to_delivered(state, "active_job.result_published")
@@ -1193,6 +1200,14 @@ fn apply_payment_required_feedback_publish_outcome(
         "provider requested Lightning settlement for request {}",
         outcome.request_id
     ));
+    nip90_compute_domain_events::emit_provider_payment_requested(
+        outcome.request_id.as_str(),
+        outcome.event_id.as_str(),
+        active_job
+            .job
+            .as_ref()
+            .map_or(0, |job| job.quoted_price_sats),
+    );
     true
 }
 
@@ -1845,6 +1860,13 @@ fn queue_runtime_result_publish(state: &mut RenderState) -> Result<(), String> {
         )
     });
     if let Some(job) = state.active_job.job.as_ref() {
+        if attempt == 1 {
+            nip90_compute_domain_events::emit_provider_result_signed(
+                job.request_id.as_str(),
+                result_event_id.as_str(),
+                attempt,
+            );
+        }
         tracing::info!(
             target: "autopilot_desktop::provider",
             "Provider queued result publish request_id={} event_id={} attempt={}",
@@ -2050,6 +2072,13 @@ pub(super) fn transition_active_job_to_paid(
             job.request_id,
             job.capability,
             job.payment_id.as_deref().unwrap_or("missing")
+        );
+        nip90_compute_domain_events::emit_provider_settlement_confirmed(
+            job.request_id.as_str(),
+            job.payment_id.as_deref(),
+            job.ac_settlement_event_id.as_deref(),
+            Some(job.quoted_price_sats),
+            None,
         );
         let event =
             if crate::kernel_control::is_local_projection_receipt_id(verdict_receipt_id.as_str()) {
