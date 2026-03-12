@@ -22,6 +22,7 @@ use crate::provider_nip90_lane::{
     ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90PublishOutcome,
     ProviderNip90PublishRole,
 };
+use crate::state::job_inbox::JobDemandSource;
 use crate::state::provider_runtime::{
     LocalInferenceBackend, ProviderAppleFmRuntimeState, ProviderOllamaRuntimeState,
 };
@@ -131,6 +132,12 @@ pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool
     }
 
     let Some(request_id) = next_auto_accept_request_id(state) else {
+        if let Some(reason) =
+            speculative_open_network_block_reason_for(state.job_inbox.requests.as_slice())
+        {
+            state.job_inbox.last_action = Some(reason);
+            state.job_inbox.load_state = PaneLoadState::Ready;
+        }
         return false;
     };
 
@@ -2830,12 +2837,27 @@ fn next_auto_accept_request_id_for(
     requests.iter().find_map(|request| {
         if matches!(request.decision, JobInboxDecision::Pending)
             && matches!(request.validation, JobInboxValidation::Valid)
+            && (request.demand_source == JobDemandSource::StarterDemand || request.is_targeted())
         {
             Some(request.request_id.clone())
         } else {
             None
         }
     })
+}
+
+fn speculative_open_network_block_reason_for(requests: &[JobInboxRequest]) -> Option<String> {
+    requests
+        .iter()
+        .any(|request| {
+            matches!(request.decision, JobInboxDecision::Pending)
+                && matches!(request.validation, JobInboxValidation::Valid)
+                && request.demand_source == JobDemandSource::OpenNetwork
+                && !request.is_targeted()
+        })
+        .then(|| {
+            "Auto-accept paused: untargeted open-network jobs require manual review".to_string()
+        })
 }
 
 #[cfg(test)]
@@ -2849,7 +2871,8 @@ mod tests {
         extend_active_job_phase_deadline_at_least, next_auto_accept_request_id_for,
         next_invalid_request_rejection_for, ollama_request_accept_block_reason,
         provider_execution_backend_for_kind, result_publish_retry_due,
-        set_active_job_phase_deadline_at, turn_completed_failed,
+        set_active_job_phase_deadline_at, speculative_open_network_block_reason_for,
+        turn_completed_failed,
         visible_result_content_for_job_kind,
     };
     use crate::app_state::{
@@ -2880,6 +2903,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: None,
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -2992,7 +3016,7 @@ mod tests {
 
         assert_eq!(
             next_auto_accept_request_id_for(requests.as_slice(), ProviderMode::Online, 0, 0, 1,),
-            Some("req-valid".to_string())
+            None
         );
     }
 
@@ -3007,6 +3031,67 @@ mod tests {
         assert_eq!(
             next_auto_accept_request_id_for(requests.as_slice(), ProviderMode::Online, 0, 1, 1,),
             None
+        );
+    }
+
+    #[test]
+    fn auto_accept_policy_allows_targeted_open_network_request() {
+        let mut targeted_request = fixture_request(
+            "req-targeted",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        targeted_request.target_provider_pubkeys = vec!["provider-pubkey".to_string()];
+
+        assert_eq!(
+            next_auto_accept_request_id_for(
+                [targeted_request].as_slice(),
+                ProviderMode::Online,
+                0,
+                0,
+                1,
+            ),
+            Some("req-targeted".to_string())
+        );
+    }
+
+    #[test]
+    fn auto_accept_policy_skips_speculative_open_network_and_accepts_starter_demand() {
+        let open_network_request = fixture_request(
+            "req-open-network",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        let mut starter_request = fixture_request(
+            "req-starter",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        starter_request.demand_source = JobDemandSource::StarterDemand;
+
+        assert_eq!(
+            next_auto_accept_request_id_for(
+                [open_network_request, starter_request].as_slice(),
+                ProviderMode::Online,
+                0,
+                0,
+                1,
+            ),
+            Some("req-starter".to_string())
+        );
+    }
+
+    #[test]
+    fn speculative_open_network_requests_surface_manual_review_reason() {
+        let request = fixture_request(
+            "req-open-network",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+
+        assert_eq!(
+            speculative_open_network_block_reason_for([request].as_slice()),
+            Some("Auto-accept paused: untargeted open-network jobs require manual review".to_string())
         );
     }
 

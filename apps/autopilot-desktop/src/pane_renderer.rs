@@ -6629,6 +6629,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: None,
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
