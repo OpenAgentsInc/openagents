@@ -39,6 +39,8 @@ pub struct DesktopControlRuntimeConfig {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlSnapshot {
     pub schema_version: u16,
+    pub snapshot_revision: u64,
+    pub state_signature: String,
     pub generated_at_epoch_ms: u64,
     pub session: DesktopControlSessionStatus,
     pub mission_control: DesktopControlMissionControlStatus,
@@ -64,14 +66,20 @@ pub struct DesktopControlMissionControlStatus {
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     pub can_go_online: bool,
+    pub blocker_codes: Vec<String>,
     pub log_line_count: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlProviderStatus {
     pub mode: String,
+    pub runtime_mode: String,
+    pub desired_mode_hint: String,
     pub online: bool,
     pub blocker_codes: Vec<String>,
+    pub connected_relays: usize,
+    pub degraded_reason_code: Option<String>,
+    pub last_request_event_id: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     pub relay_urls: Vec<String>,
@@ -93,8 +101,30 @@ pub struct DesktopControlWalletStatus {
     pub balance_sats: u64,
     pub network: String,
     pub network_status: String,
+    pub can_withdraw: bool,
+    pub withdraw_block_reason: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlBuyModeRequestStatus {
+    pub request_id: String,
+    pub phase: String,
+    pub status: String,
+    pub next_expected_event: String,
+    pub request_event_id: Option<String>,
+    pub selected_provider_pubkey: Option<String>,
+    pub payable_provider_pubkey: Option<String>,
+    pub last_feedback_status: Option<String>,
+    pub last_feedback_event_id: Option<String>,
+    pub last_result_event_id: Option<String>,
+    pub winning_result_event_id: Option<String>,
+    pub payment_pointer: Option<String>,
+    pub pending_bolt11: Option<String>,
+    pub payment_notice: Option<String>,
+    pub payment_error: Option<String>,
+    pub wallet_status: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -108,6 +138,7 @@ pub struct DesktopControlBuyModeStatus {
     pub in_flight_status: Option<String>,
     pub selected_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
+    pub recent_requests: Vec<DesktopControlBuyModeRequestStatus>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -116,14 +147,23 @@ pub struct DesktopControlActiveJobStatus {
     pub request_id: String,
     pub capability: String,
     pub stage: String,
+    pub projection_stage: String,
     pub phase: String,
     pub next_expected_event: String,
+    pub projection_authority: String,
     pub quoted_price_sats: u64,
     pub pending_result_publish_event_id: Option<String>,
     pub result_event_id: Option<String>,
+    pub result_publish_status: String,
+    pub result_publish_attempt_count: u32,
+    pub result_publish_age_seconds: Option<u64>,
     pub payment_pointer: Option<String>,
     pub pending_bolt11: Option<String>,
     pub settlement_status: Option<String>,
+    pub settlement_method: Option<String>,
+    pub settlement_amount_sats: Option<u64>,
+    pub settlement_fees_sats: Option<u64>,
+    pub settlement_net_wallet_delta_sats: Option<i64>,
     pub continuity_window_seconds: Option<u64>,
     pub failure_reason: Option<String>,
 }
@@ -133,6 +173,8 @@ pub struct DesktopControlLastCommandStatus {
     pub summary: String,
     pub error: Option<String>,
     pub completed_at_epoch_ms: u64,
+    pub snapshot_revision: u64,
+    pub state_signature: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -184,6 +226,8 @@ pub struct DesktopControlActionResponse {
     pub success: bool,
     pub message: String,
     pub payload: Option<Value>,
+    pub snapshot_revision: Option<u64>,
+    pub state_signature: Option<String>,
 }
 
 impl DesktopControlActionResponse {
@@ -192,6 +236,8 @@ impl DesktopControlActionResponse {
             success: true,
             message: message.into(),
             payload: None,
+            snapshot_revision: None,
+            state_signature: None,
         }
     }
 
@@ -200,6 +246,8 @@ impl DesktopControlActionResponse {
             success: true,
             message: message.into(),
             payload: Some(payload),
+            snapshot_revision: None,
+            state_signature: None,
         }
     }
 
@@ -208,6 +256,8 @@ impl DesktopControlActionResponse {
             success: false,
             message: message.into(),
             payload: None,
+            snapshot_revision: None,
+            state_signature: None,
         }
     }
 }
@@ -358,7 +408,8 @@ pub fn enable_runtime(
     })?;
     let listen_addr = runtime.listen_addr();
     let base_url = control_base_url(listen_addr);
-    runtime.sync_snapshot(snapshot_for_state(state))?;
+    let snapshot = snapshot_for_state(state);
+    runtime.sync_snapshot(snapshot.clone())?;
 
     let manifest = DesktopControlManifest {
         schema_version: DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION,
@@ -381,9 +432,11 @@ pub fn enable_runtime(
     state.desktop_control.auth_token_preview = Some(auth_token_preview(auth_token.as_str()));
     state.desktop_control.last_error = None;
     state.desktop_control.last_action = Some(format!("Desktop control listening on {listen_addr}"));
+    state.desktop_control.last_snapshot_revision = snapshot.snapshot_revision;
+    state.desktop_control.last_snapshot_signature = Some(snapshot.state_signature.clone());
     state.desktop_control_runtime = Some(runtime);
-    state.desktop_control_last_sync_signature = None;
-    state.desktop_control_last_sync_at = None;
+    state.desktop_control_last_sync_signature = Some(snapshot.state_signature.clone());
+    state.desktop_control_last_sync_at = Some(Instant::now());
 
     Ok(format!(
         "Desktop control enabled on {listen_addr}. URL: {base_url} token={}",
@@ -403,6 +456,8 @@ pub fn disable_runtime(state: &mut RenderState) -> String {
     state.desktop_control.auth_token_preview = None;
     state.desktop_control.last_error = None;
     state.desktop_control.last_action = Some("Desktop control runtime disabled".to_string());
+    state.desktop_control.last_snapshot_revision = 0;
+    state.desktop_control.last_snapshot_signature = None;
     state.desktop_control_last_sync_signature = None;
     state.desktop_control_last_sync_at = None;
     "Desktop control runtime disabled".to_string()
@@ -446,13 +501,8 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
         return false;
     };
     let snapshot = snapshot_for_state(state);
-    let signature = match snapshot_sync_signature(&snapshot) {
-        Ok(signature) => signature,
-        Err(error) => {
-            state.desktop_control.last_error = Some(error);
-            return false;
-        }
-    };
+    let snapshot_revision = snapshot.snapshot_revision;
+    let signature = snapshot.state_signature.clone();
     let should_sync = state.desktop_control_last_sync_signature.as_deref()
         != Some(signature.as_str())
         || state
@@ -465,20 +515,26 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
         state.desktop_control.last_error = Some(error);
         return false;
     }
+    state.desktop_control.last_snapshot_revision = snapshot_revision;
+    state.desktop_control.last_snapshot_signature = Some(signature.clone());
     state.desktop_control_last_sync_signature = Some(signature);
     state.desktop_control_last_sync_at = Some(Instant::now());
     true
 }
 
-fn snapshot_sync_signature(snapshot: &DesktopControlSnapshot) -> Result<String, String> {
+fn snapshot_sync_signature(snapshot: &DesktopControlSnapshot) -> String {
     let mut stable_snapshot = snapshot.clone();
     stable_snapshot.generated_at_epoch_ms = 0;
+    stable_snapshot.snapshot_revision = 0;
+    stable_snapshot.state_signature.clear();
     if let Some(last_command) = stable_snapshot.last_command.as_mut() {
         last_command.completed_at_epoch_ms = 0;
+        last_command.snapshot_revision = 0;
+        last_command.state_signature.clear();
     }
     serde_json::to_string(&stable_snapshot)
         .map(|json| sha256_prefixed_text(json.as_str()))
-        .map_err(|error| format!("Failed to encode desktop control snapshot: {error}"))
+        .unwrap_or_else(|_| "desktop-control-signature-unavailable".to_string())
 }
 
 fn apply_action_request(
@@ -506,7 +562,7 @@ fn apply_action_request(
         }
     };
     record_command_outcome(state, action.label(), &response);
-    response
+    attach_snapshot_metadata(state, response)
 }
 
 fn record_command_outcome(
@@ -532,12 +588,30 @@ fn snapshot_payload_response(
     state: &RenderState,
     message: impl Into<String>,
 ) -> DesktopControlActionResponse {
-    match serde_json::to_value(snapshot_for_state(state)) {
+    let snapshot = snapshot_for_state(state);
+    match serde_json::to_value(snapshot) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(message, payload),
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode desktop control snapshot: {error}"
         )),
     }
+}
+
+fn attach_snapshot_metadata(
+    state: &RenderState,
+    response: DesktopControlActionResponse,
+) -> DesktopControlActionResponse {
+    let snapshot = snapshot_for_state(state);
+    apply_response_snapshot_metadata(response, &snapshot)
+}
+
+fn apply_response_snapshot_metadata(
+    mut response: DesktopControlActionResponse,
+    snapshot: &DesktopControlSnapshot,
+) -> DesktopControlActionResponse {
+    response.snapshot_revision = Some(snapshot.snapshot_revision);
+    response.state_signature = Some(snapshot.state_signature.clone());
+    response
 }
 
 fn apply_provider_mode_action(
@@ -671,21 +745,43 @@ fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionR
 
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
     let now = Instant::now();
-    let buy_mode_request = crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
-        &state.network_requests,
-        &state.spark_wallet,
-    )
-    .into_iter()
-    .find(|request| !request.status.is_terminal());
+    let buy_mode_requests =
+        crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
+            &state.network_requests,
+            &state.spark_wallet,
+        );
+    let buy_mode_request = buy_mode_requests
+        .iter()
+        .find(|request| !request.status.is_terminal());
     let compute_flow = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
         &state.network_requests,
         &state.spark_wallet,
         &state.active_job,
         &state.earn_job_lifecycle_projection,
     );
+    let wallet_balance_sats = state
+        .spark_wallet
+        .balance
+        .as_ref()
+        .map_or(0, |balance| balance.total_sats());
+    let wallet_connected = state.spark_wallet.network_status_label() == "connected";
+    let (wallet_can_withdraw, withdraw_block_reason) =
+        withdraw_readiness(wallet_balance_sats, wallet_connected);
+    let blocker_codes = state
+        .provider_blockers()
+        .into_iter()
+        .map(|blocker| blocker.code().to_string())
+        .collect::<Vec<_>>();
+    let recent_request_rows = buy_mode_requests
+        .iter()
+        .take(6)
+        .map(desktop_control_buy_mode_request_status)
+        .collect::<Vec<_>>();
 
-    DesktopControlSnapshot {
+    let mut snapshot = DesktopControlSnapshot {
         schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
+        snapshot_revision: 0,
+        state_signature: String::new(),
         generated_at_epoch_ms: current_epoch_ms(),
         session: DesktopControlSessionStatus {
             pid: std::process::id(),
@@ -701,6 +797,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_action: state.mission_control.last_action.clone(),
             last_error: state.mission_control.last_error.clone(),
             can_go_online: state.mission_control_go_online_enabled(),
+            blocker_codes: blocker_codes.clone(),
             log_line_count: state
                 .mission_control
                 .log_stream
@@ -708,17 +805,18 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
                 .len(),
         },
         provider: DesktopControlProviderStatus {
-            mode: state.provider_runtime.mode.label().to_string(),
+            mode: state.provider_nip90_lane.mode.label().to_string(),
+            runtime_mode: state.provider_runtime.mode.label().to_string(),
+            desired_mode_hint: provider_desired_mode_hint(state).to_string(),
             online: matches!(
-                state.provider_runtime.mode,
-                crate::state::provider_runtime::ProviderMode::Online
-                    | crate::state::provider_runtime::ProviderMode::Connecting
+                state.provider_nip90_lane.mode,
+                crate::provider_nip90_lane::ProviderNip90LaneMode::Online
+                    | crate::provider_nip90_lane::ProviderNip90LaneMode::Degraded
             ),
-            blocker_codes: state
-                .provider_blockers()
-                .into_iter()
-                .map(|blocker| blocker.code().to_string())
-                .collect(),
+            blocker_codes,
+            connected_relays: state.provider_nip90_lane.connected_relays,
+            degraded_reason_code: state.provider_runtime.degraded_reason_code.clone(),
+            last_request_event_id: state.provider_nip90_lane.last_request_event_id.clone(),
             last_action: state.provider_runtime.last_result.clone(),
             last_error: state.provider_runtime.last_error_detail.clone(),
             relay_urls: state.configured_provider_relay_urls(),
@@ -733,13 +831,11 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.provider_runtime.apple_fm.last_error.clone(),
         },
         wallet: DesktopControlWalletStatus {
-            balance_sats: state
-                .spark_wallet
-                .balance
-                .as_ref()
-                .map_or(0, |balance| balance.total_sats()),
+            balance_sats: wallet_balance_sats,
             network: state.spark_wallet.network_name().to_string(),
             network_status: state.spark_wallet.network_status_label().to_string(),
+            can_withdraw: wallet_can_withdraw,
+            withdraw_block_reason,
             last_action: state.spark_wallet.last_action.clone(),
             last_error: state.spark_wallet.last_error.clone(),
         },
@@ -765,24 +861,39 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             payable_provider_pubkey: buy_mode_request
                 .as_ref()
                 .and_then(|request| request.payable_provider_pubkey.clone()),
+            recent_requests: recent_request_rows,
         },
         active_job: compute_flow
             .active_job
-            .map(|active_job| DesktopControlActiveJobStatus {
-                job_id: active_job.job_id,
-                request_id: active_job.request_id,
-                capability: active_job.capability,
-                stage: active_job.stage.label().to_string(),
-                phase: active_job.phase.as_str().to_string(),
-                next_expected_event: active_job.next_expected_event,
-                quoted_price_sats: active_job.quoted_price_sats,
-                pending_result_publish_event_id: active_job.pending_result_publish_event_id,
-                result_event_id: active_job.result_event_id,
-                payment_pointer: active_job.payment_pointer,
-                pending_bolt11: active_job.pending_bolt11,
-                settlement_status: active_job.settlement_status,
-                continuity_window_seconds: active_job.continuity_window_seconds,
-                failure_reason: active_job.failure_reason,
+            .map(|active_job| {
+                let stage = active_job_stage_label(&active_job).to_string();
+                let projection_stage = active_job.stage.label().to_string();
+                let phase = active_job.phase.as_str().to_string();
+                DesktopControlActiveJobStatus {
+                    job_id: active_job.job_id,
+                    request_id: active_job.request_id,
+                    capability: active_job.capability,
+                    stage,
+                    projection_stage,
+                    phase,
+                    next_expected_event: active_job.next_expected_event,
+                    projection_authority: active_job.projection_authority,
+                    quoted_price_sats: active_job.quoted_price_sats,
+                    pending_result_publish_event_id: active_job.pending_result_publish_event_id,
+                    result_event_id: active_job.result_event_id,
+                    result_publish_status: active_job.result_publish_status,
+                    result_publish_attempt_count: active_job.result_publish_attempt_count,
+                    result_publish_age_seconds: active_job.result_publish_age_seconds,
+                    payment_pointer: active_job.payment_pointer,
+                    pending_bolt11: active_job.pending_bolt11,
+                    settlement_status: active_job.settlement_status,
+                    settlement_method: active_job.settlement_method,
+                    settlement_amount_sats: active_job.settlement_amount_sats,
+                    settlement_fees_sats: active_job.settlement_fees_sats,
+                    settlement_net_wallet_delta_sats: active_job.settlement_net_wallet_delta_sats,
+                    continuity_window_seconds: active_job.continuity_window_seconds,
+                    failure_reason: active_job.failure_reason,
+                }
             }),
         recent_logs: mission_control_recent_lines(state, DESKTOP_CONTROL_LOG_TAIL_LIMIT),
         last_command: state
@@ -794,8 +905,78 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
                     summary,
                     error: state.desktop_control.last_command_error.clone(),
                     completed_at_epoch_ms,
+                    snapshot_revision: 0,
+                    state_signature: String::new(),
                 },
             ),
+    };
+
+    let signature = snapshot_sync_signature(&snapshot);
+    let next_revision =
+        if state.desktop_control.last_snapshot_signature.as_deref() == Some(signature.as_str()) {
+            state.desktop_control.last_snapshot_revision
+        } else {
+            state.desktop_control.last_snapshot_revision.saturating_add(1).max(1)
+        };
+    snapshot.snapshot_revision = next_revision;
+    snapshot.state_signature = signature.clone();
+    if let Some(last_command) = snapshot.last_command.as_mut() {
+        last_command.snapshot_revision = next_revision;
+        last_command.state_signature = signature;
+    }
+    snapshot
+}
+
+fn provider_desired_mode_hint(state: &RenderState) -> &'static str {
+    match state.provider_runtime.mode {
+        crate::state::provider_runtime::ProviderMode::Offline => "offline",
+        crate::state::provider_runtime::ProviderMode::Connecting
+        | crate::state::provider_runtime::ProviderMode::Online
+        | crate::state::provider_runtime::ProviderMode::Degraded => "online",
+    }
+}
+
+fn withdraw_readiness(balance_sats: u64, wallet_connected: bool) -> (bool, Option<String>) {
+    if !wallet_connected {
+        return (
+            false,
+            Some("wallet is not connected to Spark".to_string()),
+        );
+    }
+    if balance_sats == 0 {
+        return (false, Some("wallet balance is zero".to_string()));
+    }
+    (true, None)
+}
+
+fn desktop_control_buy_mode_request_status(
+    request: &crate::nip90_compute_flow::BuyerRequestFlowSnapshot,
+) -> DesktopControlBuyModeRequestStatus {
+    DesktopControlBuyModeRequestStatus {
+        request_id: request.request_id.clone(),
+        phase: request.phase.as_str().to_string(),
+        status: request.status.label().to_string(),
+        next_expected_event: request.next_expected_event.clone(),
+        request_event_id: request.published_request_event_id.clone(),
+        selected_provider_pubkey: request.selected_provider_pubkey.clone(),
+        payable_provider_pubkey: request.payable_provider_pubkey.clone(),
+        last_feedback_status: request.last_feedback_status.clone(),
+        last_feedback_event_id: request.last_feedback_event_id.clone(),
+        last_result_event_id: request.last_result_event_id.clone(),
+        winning_result_event_id: request.winning_result_event_id.clone(),
+        payment_pointer: request.payment_pointer.clone(),
+        pending_bolt11: request.pending_bolt11.clone(),
+        payment_notice: request.payment_notice.clone(),
+        payment_error: request.payment_error.clone(),
+        wallet_status: request.wallet_status.clone(),
+    }
+}
+
+fn active_job_stage_label(active_job: &crate::nip90_compute_flow::ActiveJobFlowSnapshot) -> &'static str {
+    match active_job.phase {
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+        | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => "settling",
+        _ => active_job.stage.label(),
     }
 }
 
@@ -1021,7 +1202,9 @@ mod tests {
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
         DesktopControlMissionControlStatus, DesktopControlProviderStatus, DesktopControlRuntime,
         DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlWalletStatus, validate_control_bind_addr,
+        DesktopControlSnapshot, DesktopControlWalletStatus, apply_response_snapshot_metadata,
+        snapshot_sync_signature,
+        validate_control_bind_addr,
     };
 
     use std::time::Duration;
@@ -1029,6 +1212,8 @@ mod tests {
     fn sample_snapshot() -> DesktopControlSnapshot {
         DesktopControlSnapshot {
             schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
+            snapshot_revision: 1,
+            state_signature: "sig-001".to_string(),
             generated_at_epoch_ms: 123,
             session: DesktopControlSessionStatus {
                 pid: 42,
@@ -1040,12 +1225,18 @@ mod tests {
                 last_action: Some("Mission Control ready".to_string()),
                 last_error: None,
                 can_go_online: true,
+                blocker_codes: vec!["APPLE_FM_UNAVAILABLE".to_string()],
                 log_line_count: 3,
             },
             provider: DesktopControlProviderStatus {
                 mode: "offline".to_string(),
+                runtime_mode: "offline".to_string(),
+                desired_mode_hint: "offline".to_string(),
                 online: false,
                 blocker_codes: vec!["APPLE_FM_UNAVAILABLE".to_string()],
+                connected_relays: 0,
+                degraded_reason_code: None,
+                last_request_event_id: None,
                 last_action: None,
                 last_error: None,
                 relay_urls: vec!["wss://relay.example".to_string()],
@@ -1063,6 +1254,8 @@ mod tests {
                 balance_sats: 77,
                 network: "mainnet".to_string(),
                 network_status: "connected".to_string(),
+                can_withdraw: true,
+                withdraw_block_reason: None,
                 last_action: Some("Wallet refreshed".to_string()),
                 last_error: None,
             },
@@ -1076,6 +1269,7 @@ mod tests {
                 in_flight_status: None,
                 selected_provider_pubkey: None,
                 payable_provider_pubkey: None,
+                recent_requests: Vec::new(),
             },
             active_job: None,
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
@@ -1088,6 +1282,34 @@ mod tests {
         let error =
             validate_control_bind_addr("192.168.1.5:4848").expect_err("private ip should fail");
         assert!(error.contains("loopback"));
+    }
+
+    #[test]
+    fn snapshot_signature_ignores_revision_metadata_and_detects_state_changes() {
+        let first = sample_snapshot();
+        let signature = snapshot_sync_signature(&first);
+
+        let mut same_state_new_metadata = first.clone();
+        same_state_new_metadata.snapshot_revision = 9;
+        same_state_new_metadata.state_signature = "other".to_string();
+        same_state_new_metadata.generated_at_epoch_ms = 999;
+        assert_eq!(snapshot_sync_signature(&same_state_new_metadata), signature);
+
+        let mut changed = first;
+        changed.wallet.balance_sats = 88;
+        assert_ne!(snapshot_sync_signature(&changed), signature);
+    }
+
+    #[test]
+    fn action_response_metadata_uses_snapshot_revision_and_signature() {
+        let snapshot = sample_snapshot();
+        let response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok("ok"),
+            &snapshot,
+        );
+
+        assert_eq!(response.snapshot_revision, Some(snapshot.snapshot_revision));
+        assert_eq!(response.state_signature, Some(snapshot.state_signature));
     }
 
     #[test]
@@ -1121,6 +1343,8 @@ mod tests {
             .expect("authorized status")
             .json::<DesktopControlSnapshot>()
             .expect("decode snapshot");
+        assert!(snapshot.snapshot_revision >= 1);
+        assert!(!snapshot.state_signature.is_empty());
         assert_eq!(snapshot.wallet.balance_sats, 77);
 
         let join = std::thread::spawn({
