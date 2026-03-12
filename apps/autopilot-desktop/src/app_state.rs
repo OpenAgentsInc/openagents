@@ -4054,6 +4054,30 @@ impl AutopilotChatState {
         )
     }
 
+    pub(crate) fn select_autopilot_buy_mode_target(
+        &self,
+        now_epoch_seconds: u64,
+    ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
+        self.select_autopilot_buy_mode_target_with_config(
+            &DefaultNip28ChannelConfig::from_env_or_default(),
+            now_epoch_seconds,
+        )
+    }
+
+    pub(crate) fn select_autopilot_buy_mode_target_with_config(
+        &self,
+        config: &DefaultNip28ChannelConfig,
+        now_epoch_seconds: u64,
+    ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
+        crate::autopilot_peer_roster::select_autopilot_buy_mode_target(
+            &self.managed_chat_projection.snapshot,
+            &self.managed_chat_projection.local_state,
+            self.managed_chat_local_pubkey(),
+            config,
+            now_epoch_seconds,
+        )
+    }
+
     pub fn active_managed_chat_channel_rail_rows(&self) -> Vec<ManagedChatChannelRailRow> {
         if self.chat_browse_mode() != ChatBrowseMode::Managed {
             return Vec::new();
@@ -12506,7 +12530,7 @@ mod tests {
                 request_type: "summarize.text".to_string(),
                 payload: "{\"prompt\":\"hello\"}".to_string(),
                 resolution_mode: BuyerResolutionMode::Race,
-                target_provider_pubkeys: vec!["11".repeat(32)],
+                target_provider_pubkeys: Vec::new(),
                 skill_scope_id: None,
                 credit_envelope_ref: None,
                 budget_sats: 10,
@@ -12573,6 +12597,88 @@ mod tests {
             after_result.resolution_reason_code.as_deref(),
             Some(BuyerResolutionReason::FirstValidResult.code())
         );
+    }
+
+    #[test]
+    fn network_requests_ignore_feedback_from_untargeted_provider() {
+        let mut requests = NetworkRequestsState::default();
+        let target_provider = "11".repeat(32);
+        let untargeted_provider = "22".repeat(32);
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-targeted-feedback".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![target_provider.clone()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 10,
+            })
+            .expect("request should queue");
+
+        let action = requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            untargeted_provider.as_str(),
+            "feedback-untargeted",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(10_000),
+            Some("lnbc1untargeted"),
+        );
+        assert_eq!(action, None);
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert!(request.observed_buyer_event_ids.is_empty());
+        assert!(request.provider_observations.is_empty());
+        assert_eq!(request.status, NetworkRequestStatus::Submitted);
+        assert!(request.last_feedback_event_id.is_none());
+    }
+
+    #[test]
+    fn network_requests_ignore_result_from_untargeted_provider() {
+        let mut requests = NetworkRequestsState::default();
+        let target_provider = "11".repeat(32);
+        let untargeted_provider = "22".repeat(32);
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-targeted-result".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![target_provider.clone()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 11,
+            })
+            .expect("request should queue");
+
+        let action = requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            untargeted_provider.as_str(),
+            "result-untargeted",
+            Some("success"),
+        );
+        assert_eq!(action, None);
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert!(request.observed_buyer_event_ids.is_empty());
+        assert!(request.provider_observations.is_empty());
+        assert_eq!(request.status, NetworkRequestStatus::Submitted);
+        assert!(request.last_result_event_id.is_none());
+        assert!(request.winning_provider_pubkey.is_none());
     }
 
     #[test]
