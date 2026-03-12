@@ -1722,6 +1722,16 @@ fn paint_mission_control_alert_band(
         11.0,
         mission_control_text_color(),
     ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        mission_control_truth_legend(),
+        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 22.0),
+        10.0,
+        mission_control_muted_color(),
+    ));
+}
+
+fn mission_control_truth_legend() -> &'static str {
+    "LEGEND // PROV=SELECTED PROVIDER // WORK=MARKET FLOW // PAY=WALLET FLOW // NEXT=EXPECTED EVENT"
 }
 
 fn mission_control_alert_message(
