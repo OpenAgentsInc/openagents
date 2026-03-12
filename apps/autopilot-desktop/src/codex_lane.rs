@@ -114,6 +114,7 @@ fn review_target_label(target: &codex_client::ReviewTarget) -> String {
 #[derive(Clone, Debug)]
 pub struct CodexLaneConfig {
     pub cwd: Option<PathBuf>,
+    pub connect_on_startup: bool,
     pub bootstrap_thread: bool,
     pub bootstrap_model: Option<String>,
     pub wire_log_path: Option<PathBuf>,
@@ -128,6 +129,7 @@ impl Default for CodexLaneConfig {
     fn default() -> Self {
         Self {
             cwd: std::env::current_dir().ok(),
+            connect_on_startup: true,
             bootstrap_thread: true,
             // Use app-server current default model unless the caller overrides.
             bootstrap_model: None,
@@ -186,6 +188,18 @@ impl Default for CodexLaneSnapshot {
             last_error: None,
             last_status: Some("Codex lane starting".to_string()),
             install_probe: codex_client::CodexInstallationProbe::default(),
+        }
+    }
+}
+
+impl CodexLaneSnapshot {
+    pub fn idle() -> Self {
+        Self {
+            lifecycle: CodexLaneLifecycle::Stopped,
+            active_thread_id: None,
+            last_error: None,
+            last_status: Some("Codex lane idle".to_string()),
+            install_probe: codex_client::probe_codex_installation(),
         }
     }
 }
@@ -919,6 +933,13 @@ impl CodexLaneState {
 
     fn publish_snapshot(&self, update_tx: &Sender<CodexLaneUpdate>) {
         let _ = update_tx.send(CodexLaneUpdate::Snapshot(Box::new(self.snapshot.clone())));
+    }
+
+    fn set_idle(&mut self, update_tx: &Sender<CodexLaneUpdate>) {
+        self.snapshot.lifecycle = CodexLaneLifecycle::Stopped;
+        self.snapshot.last_error = None;
+        self.snapshot.last_status = Some("Codex lane idle".to_string());
+        self.publish_snapshot(update_tx);
     }
 
     fn set_error(
