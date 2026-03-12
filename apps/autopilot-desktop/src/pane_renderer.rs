@@ -6595,6 +6595,16 @@ mod tests {
     ) -> AutopilotChatState {
         let config = crate::app_state::DefaultNip28ChannelConfig::from_env_or_default();
         let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection.relay_events.clear();
+        chat.managed_chat_projection.outbound_messages.clear();
+        chat.managed_chat_projection.local_state =
+            crate::app_state::ManagedChatLocalState::default();
+        chat.managed_chat_projection.snapshot =
+            crate::app_state::ManagedChatProjectionSnapshot::default();
+        chat.managed_chat_projection.projection_revision = chat
+            .managed_chat_projection
+            .projection_revision
+            .saturating_add(1);
         let group_id = "oa-main".to_string();
         let now_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
