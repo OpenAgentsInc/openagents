@@ -916,7 +916,7 @@ fn paint_go_online_pane(
         layout.earnings_panel.size.width - 24.0,
         true,
     );
-    earnings_y = paint_mission_control_amount_line(
+    let _ = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
@@ -926,16 +926,6 @@ fn paint_go_online_pane(
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         false,
-    );
-    paint_first_sats_progress(
-        Bounds::new(
-            layout.earnings_panel.origin.x + 12.0,
-            earnings_y + 6.0,
-            layout.earnings_panel.size.width - 24.0,
-            54.0,
-        ),
-        earnings_scoreboard.lifetime_sats,
-        paint,
     );
     paint.scene.pop_clip();
 
@@ -2522,90 +2512,6 @@ fn mission_control_go_online_hint(
         None => String::from(
             "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path.",
         ),
-    }
-}
-
-fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
-    const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
-    let next_target = FIRST_SATS_MILESTONES
-        .into_iter()
-        .find(|target| lifetime_sats < *target);
-    let progress_label = match next_target {
-        Some(target) => format!(
-            "Next milestone: {} / {} ({} to go)",
-            format_mission_control_amount(lifetime_sats),
-            format_mission_control_amount(target),
-            format_mission_control_amount(target.saturating_sub(lifetime_sats))
-        ),
-        None => format!(
-            "{} earned. First ladder cleared.",
-            format_mission_control_amount(lifetime_sats)
-        ),
-    };
-    let progress_ratio = next_target.map_or(1.0, |target| {
-        if target == 0 {
-            1.0
-        } else {
-            (lifetime_sats as f32 / target as f32).clamp(0.0, 1.0)
-        }
-    });
-
-    paint.scene.draw_text(paint.text.layout(
-        "First earnings progression",
-        Point::new(bounds.origin.x, bounds.origin.y),
-        11.0,
-        mission_control_muted_color(),
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &progress_label,
-        Point::new(bounds.origin.x, bounds.origin.y + 16.0),
-        10.0,
-        mission_control_text_color(),
-    ));
-
-    let bar_y = bounds.origin.y + 32.0;
-    let gap = 6.0;
-    let segment_width = ((bounds.size.width - gap * 3.0) / 4.0).max(0.0);
-    for (index, target) in FIRST_SATS_MILESTONES.iter().enumerate() {
-        let segment_bounds = Bounds::new(
-            bounds.origin.x + index as f32 * (segment_width + gap),
-            bar_y,
-            segment_width,
-            10.0,
-        );
-        let segment_color = if lifetime_sats >= *target {
-            mission_control_green_color()
-        } else if next_target == Some(*target) {
-            mission_control_amber_color()
-        } else {
-            mission_control_panel_border_color()
-        };
-        paint.scene.draw_quad(
-            Quad::new(segment_bounds)
-                .with_background(segment_color.with_alpha(if lifetime_sats >= *target {
-                    0.72
-                } else {
-                    0.18
-                }))
-                .with_border(segment_color, 1.0),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &target.to_string(),
-            Point::new(segment_bounds.origin.x, segment_bounds.max_y() + 10.0),
-            9.0,
-            mission_control_muted_color(),
-        ));
-    }
-    if progress_ratio > 0.0 {
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                bounds.origin.x,
-                bar_y + 3.0,
-                bounds.size.width * progress_ratio,
-                4.0,
-            ))
-            .with_background(mission_control_amber_color().with_alpha(0.85)),
-        );
     }
 }
 
