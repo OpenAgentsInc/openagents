@@ -151,6 +151,21 @@ fn is_positive_apple_fm_availability_message(message: &str) -> bool {
         .eq_ignore_ascii_case("Foundation Models is available")
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ProviderAutopilotPresenceState {
+    pub last_published_mode: Option<String>,
+    pub last_published_event_id: Option<String>,
+    pub last_published_at_epoch_seconds: Option<u64>,
+    pub last_expires_at_epoch_seconds: Option<u64>,
+    pub pending_mode: Option<String>,
+    pub pending_event_id: Option<String>,
+    pub pending_queued_at: Option<Instant>,
+    pub retry_after: Option<Instant>,
+    pub next_heartbeat_at: Option<Instant>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
 pub struct ProviderRuntimeState {
     pub mode: ProviderMode,
     pub mode_changed_at: Instant,
@@ -174,6 +189,7 @@ pub struct ProviderRuntimeState {
     pub inventory_last_error: Option<String>,
     pub ollama: ProviderOllamaRuntimeState,
     pub apple_fm: ProviderAppleFmRuntimeState,
+    pub autopilot_presence: ProviderAutopilotPresenceState,
     pub sandbox: ProviderSandboxAvailability,
     sandbox_detection: ProviderSandboxDetectionConfig,
     sandbox_last_scanned_at: Option<Instant>,
@@ -210,6 +226,7 @@ impl Default for ProviderRuntimeState {
             inventory_last_error: None,
             ollama: ProviderOllamaRuntimeState::default(),
             apple_fm: ProviderAppleFmRuntimeState::default(),
+            autopilot_presence: ProviderAutopilotPresenceState::default(),
             sandbox,
             sandbox_detection,
             sandbox_last_scanned_at: Some(now),
