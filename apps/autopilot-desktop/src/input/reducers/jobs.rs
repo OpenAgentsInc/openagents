@@ -971,6 +971,7 @@ pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPa
             let output = crate::pane_renderer::active_job_clipboard_text(
                 &state.active_job,
                 &state.earn_job_lifecycle_projection,
+                &state.spark_wallet,
             );
             match copy_to_clipboard(&output) {
                 Ok(()) => {
@@ -2066,19 +2067,36 @@ pub(super) fn transition_active_job_to_paid(
     state.provider_runtime.last_authoritative_error_class = None;
     state.provider_runtime.last_completed_job_at = Some(now);
     if let Some(job) = state.active_job.job.as_ref().cloned() {
+        let settlement_payment = job.payment_id.as_deref().and_then(|payment_id| {
+            state
+                .spark_wallet
+                .recent_payments
+                .iter()
+                .find(|payment| payment.id == payment_id)
+        });
         tracing::info!(
             target: "autopilot_desktop::provider",
-            "Provider job paid request_id={} capability={} payment_id={}",
+            "Provider job paid request_id={} capability={} payment_id={} amount_sats={} fees_sats={} net_wallet_delta_sats={}",
             job.request_id,
             job.capability,
-            job.payment_id.as_deref().unwrap_or("missing")
+            job.payment_id.as_deref().unwrap_or("missing"),
+            settlement_payment
+                .map(|payment| payment.amount_sats.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            settlement_payment
+                .map(|payment| payment.fees_sats.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            settlement_payment
+                .map(crate::spark_wallet::wallet_payment_net_delta_sats)
+                .map(|delta| delta.to_string())
+                .unwrap_or_else(|| "none".to_string())
         );
         nip90_compute_domain_events::emit_provider_settlement_confirmed(
             job.request_id.as_str(),
             job.payment_id.as_deref(),
             job.ac_settlement_event_id.as_deref(),
-            Some(job.quoted_price_sats),
-            None,
+            settlement_payment.map(|payment| payment.amount_sats),
+            settlement_payment.map(|payment| payment.fees_sats),
         );
         let event =
             if crate::kernel_control::is_local_projection_receipt_id(verdict_receipt_id.as_str()) {

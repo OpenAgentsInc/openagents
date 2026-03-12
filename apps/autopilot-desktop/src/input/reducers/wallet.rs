@@ -158,7 +158,7 @@ fn reconcile_pending_buyer_payment_confirmation(
     if is_settled_wallet_payment_status(payment.status.as_str()) {
         tracing::info!(
             target: "autopilot_desktop::buyer",
-            "Buyer Spark payment settled request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} detail={}",
+            "Buyer Spark payment settled request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={} detail={}",
             request_id,
             payment_pointer,
             payment.method,
@@ -166,6 +166,7 @@ fn reconcile_pending_buyer_payment_confirmation(
             payment.amount_sats,
             payment.fees_sats,
             crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+            crate::spark_wallet::wallet_payment_net_delta_sats(payment),
             payment.status_detail.as_deref().unwrap_or("wallet confirmed")
         );
         state.network_requests.mark_auto_payment_sent(
@@ -188,11 +189,12 @@ fn reconcile_pending_buyer_payment_confirmation(
             crate::spark_wallet::wallet_payment_total_debit_sats(payment),
         );
         state.provider_runtime.last_result = Some(format!(
-            "buyer payment settled request={} pointer={} fees_sats={} total_debit_sats={}",
+            "buyer payment settled request={} pointer={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={}",
             request_id,
             payment_pointer,
             payment.fees_sats,
-            crate::spark_wallet::wallet_payment_total_debit_sats(payment)
+            crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+            crate::spark_wallet::wallet_payment_net_delta_sats(payment)
         ));
         return;
     }
@@ -218,11 +220,12 @@ fn reconcile_pending_buyer_payment_confirmation(
             now_epoch_seconds,
         );
         state.provider_runtime.last_result = Some(format!(
-            "buyer payment failed request={} pointer={} fees_sats={} total_debit_sats={} detail={}",
+            "buyer payment failed request={} pointer={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={} detail={}",
             request_id,
             payment_pointer,
             payment.fees_sats,
             crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+            crate::spark_wallet::wallet_payment_net_delta_sats(payment),
             detail
         ));
         return;
@@ -230,7 +233,7 @@ fn reconcile_pending_buyer_payment_confirmation(
 
     tracing::info!(
         target: "autopilot_desktop::buyer",
-        "Buyer Spark payment in-flight request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} detail={}",
+        "Buyer Spark payment in-flight request_id={} pointer={} method={} status={} amount_sats={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={} detail={}",
         request_id,
         payment_pointer,
         payment.method,
@@ -238,18 +241,20 @@ fn reconcile_pending_buyer_payment_confirmation(
         payment.amount_sats,
         payment.fees_sats,
         crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+        crate::spark_wallet::wallet_payment_net_delta_sats(payment),
         payment
             .status_detail
             .as_deref()
             .unwrap_or(payment.status.as_str())
     );
     state.provider_runtime.last_result = Some(format!(
-        "buyer payment pending Spark confirmation request={} pointer={} status={} fees_sats={} total_debit_sats={} detail={}",
+        "buyer payment pending Spark confirmation request={} pointer={} status={} fees_sats={} total_debit_sats={} net_wallet_delta_sats={} detail={}",
         request_id,
         payment_pointer,
         payment.status,
         payment.fees_sats,
         crate::spark_wallet::wallet_payment_total_debit_sats(payment),
+        crate::spark_wallet::wallet_payment_net_delta_sats(payment),
         payment
             .status_detail
             .as_deref()

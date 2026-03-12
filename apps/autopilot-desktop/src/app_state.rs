@@ -1534,18 +1534,31 @@ fn build_mission_control_log_lines(
     }
 
     if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
+        let mut line = format!(
+            "Active {} -> {} [{}] {} auth={} phase={} next={}",
+            job.job_id,
+            job.capability,
+            job.stage.label(),
+            format_mission_control_amount(job.quoted_price_sats),
+            job.authority.as_str(),
+            job.phase.as_str(),
+            job.next_expected_event,
+        );
+        if let Some(amount) = job.settlement_amount_sats {
+            line.push_str(" settlement_sats=");
+            line.push_str(amount.to_string().as_str());
+        }
+        if let Some(fees) = job.settlement_fees_sats {
+            line.push_str(" settlement_fee_sats=");
+            line.push_str(fees.to_string().as_str());
+        }
+        if let Some(delta) = job.settlement_net_wallet_delta_sats {
+            line.push_str(" wallet_delta_sats=");
+            line.push_str(delta.to_string().as_str());
+        }
         push_entry(
             mission_control_log_stream_for_stage(job.stage),
-            format!(
-                "Active {} -> {} [{}] {} auth={} phase={} next={}",
-                job.job_id,
-                job.capability,
-                job.stage.label(),
-                format_mission_control_amount(job.quoted_price_sats),
-                job.authority.as_str(),
-                job.phase.as_str(),
-                job.next_expected_event,
-            ),
+            line,
             None,
         );
     }
@@ -14775,8 +14788,77 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text.contains("Buyer req-buy-fee")
                 && line.text.contains("payment=sent")
+                && line.text.contains("invoice_sats=2")
                 && line.text.contains("fee_sats=3")
                 && line.text.contains("wallet_debit_sats=5")
+                && line.text.contains("wallet_delta_sats=-5")
+        }));
+    }
+
+    #[test]
+    fn mission_control_log_lines_include_provider_settlement_fee_details() {
+        let request = crate::state::job_inbox::JobInboxRequest {
+            request_id: "req-active-log-fee".to_string(),
+            requester: "npub1requester".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "text.generation".to_string(),
+            execution_input: None,
+            execution_prompt: Some("BUY MODE OK".to_string()),
+            execution_params: Vec::new(),
+            requested_model: None,
+            requested_output_mime: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 2,
+            ttl_seconds: 75,
+            validation: JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: JobInboxDecision::Pending,
+        };
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        let job = active_job.job.as_mut().expect("active job exists");
+        job.stage = JobLifecycleStage::Paid;
+        job.payment_id = Some("wallet-provider-log-fee-001".to_string());
+
+        let mut wallet = SparkPaneState::default();
+        wallet
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-provider-log-fee-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 2,
+                fees_sats: 1,
+                method: "lightning".to_string(),
+                timestamp: 1_762_700_779,
+                ..Default::default()
+            });
+
+        let (lines, _) = super::build_mission_control_log_lines(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &ProviderRuntimeState::default(),
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &wallet,
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &active_job,
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.text.contains("Active job-req-active-log-fee")
+                && line.text.contains("settlement_sats=2")
+                && line.text.contains("settlement_fee_sats=1")
+                && line.text.contains("wallet_delta_sats=2")
         }));
     }
 

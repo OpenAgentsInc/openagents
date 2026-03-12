@@ -14,6 +14,11 @@ const DEFAULT_MAX_SESSION_FILES: usize = 12;
 
 static SESSION_LOG_WRITER: OnceLock<SessionLogWriter> = OnceLock::new();
 
+#[allow(clippy::print_stderr)]
+fn emit_session_log_fallback(message: &str) {
+    eprintln!("{message}");
+}
+
 #[derive(Clone)]
 struct SessionLogWriter {
     tx: mpsc::Sender<SessionLogCommand>,
@@ -130,7 +135,9 @@ impl SessionLogWriter {
                 );
             });
         if let Err(error) = spawn_result {
-            eprintln!("Autopilot session log writer failed to start: {error}");
+            emit_session_log_fallback(&format!(
+                "Autopilot session log writer failed to start: {error}"
+            ));
         }
 
         Self { tx, session_id }
@@ -248,11 +255,11 @@ fn run_session_log_writer(
             "session_path": session_path.display().to_string(),
         });
         if let Err(error) = write_jsonl_entry(file_handle, &started) {
-            eprintln!(
+            emit_session_log_fallback(&format!(
                 "Autopilot session log entry write failed for {}: {}",
                 session_path.display(),
                 error
-            );
+            ));
             file = None;
         }
     }
@@ -264,11 +271,11 @@ fn run_session_log_writer(
                     continue;
                 };
                 if let Err(error) = write_jsonl_entry(file_handle, &entry) {
-                    eprintln!(
+                    emit_session_log_fallback(&format!(
                         "Autopilot session log entry write failed for {}: {}",
                         session_path.display(),
                         error
-                    );
+                    ));
                     file = None;
                 }
             }
@@ -291,27 +298,27 @@ fn initialize_session_log_file(
     max_session_files: usize,
 ) -> Option<File> {
     if let Err(error) = fs::create_dir_all(base_dir) {
-        eprintln!(
+        emit_session_log_fallback(&format!(
             "Autopilot session log directory initialization failed for {}: {}",
             base_dir.display(),
             error
-        );
+        ));
         return None;
     }
     if let Err(error) = fs::create_dir_all(session_dir) {
-        eprintln!(
+        emit_session_log_fallback(&format!(
             "Autopilot session log directory initialization failed for {}: {}",
             session_dir.display(),
             error
-        );
+        ));
         return None;
     }
     if let Err(error) = prune_old_session_logs(session_dir, max_session_files) {
-        eprintln!(
+        emit_session_log_fallback(&format!(
             "Autopilot session log retention cleanup failed for {}: {}",
             session_dir.display(),
             error
-        );
+        ));
     }
 
     let file = match OpenOptions::new()
@@ -321,20 +328,20 @@ fn initialize_session_log_file(
     {
         Ok(file) => file,
         Err(error) => {
-            eprintln!(
+            emit_session_log_fallback(&format!(
                 "Autopilot session log file open failed for {}: {}",
                 session_path.display(),
                 error
-            );
+            ));
             return None;
         }
     };
     if let Err(error) = refresh_latest_alias(session_path, latest_path) {
-        eprintln!(
+        emit_session_log_fallback(&format!(
             "Autopilot latest session log alias update failed for {}: {}",
             latest_path.display(),
             error
-        );
+        ));
     }
     Some(file)
 }

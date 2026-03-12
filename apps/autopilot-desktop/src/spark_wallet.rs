@@ -677,6 +677,24 @@ pub(crate) fn wallet_payment_total_debit_sats(payment: &PaymentSummary) -> u64 {
     }
 }
 
+pub(crate) fn wallet_payment_net_delta_sats(payment: &PaymentSummary) -> i64 {
+    if payment.direction.eq_ignore_ascii_case("send") {
+        i64::try_from(wallet_payment_total_debit_sats(payment))
+            .map(|value| -value)
+            .unwrap_or(i64::MIN)
+    } else {
+        i64::try_from(payment.amount_sats).unwrap_or(i64::MAX)
+    }
+}
+
+pub(crate) fn format_wallet_delta_sats(delta_sats: i64) -> String {
+    if delta_sats > 0 {
+        format!("+{delta_sats} sats")
+    } else {
+        format!("{delta_sats} sats")
+    }
+}
+
 pub(crate) fn wallet_payment_amount_summary(payment: &PaymentSummary) -> String {
     if payment.direction.eq_ignore_ascii_case("send") {
         format!(
