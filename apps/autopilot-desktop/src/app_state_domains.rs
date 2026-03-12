@@ -372,6 +372,8 @@ pub struct DesktopControlState {
     pub last_command_summary: Option<String>,
     pub last_command_error: Option<String>,
     pub last_command_completed_at_epoch_ms: Option<u64>,
+    pub last_snapshot_revision: u64,
+    pub last_snapshot_signature: Option<String>,
 }
 
 impl Default for DesktopControlState {
@@ -388,6 +390,8 @@ impl Default for DesktopControlState {
             last_command_summary: None,
             last_command_error: None,
             last_command_completed_at_epoch_ms: None,
+            last_snapshot_revision: 0,
+            last_snapshot_signature: None,
         }
     }
 }
