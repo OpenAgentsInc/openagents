@@ -12168,6 +12168,148 @@ mod tests {
     }
 
     #[test]
+    fn unpaid_open_network_seller_lifecycle_stays_truthful_through_timeout() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-unpaid-open-network-timeout",
+            "text.generation",
+            2,
+            75,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let selected_request_id = inbox
+            .decide_selected(true, "accepted for deterministic timeout regression")
+            .expect("accept request");
+        assert_eq!(selected_request_id, "req-unpaid-open-network-timeout");
+        let request = inbox
+            .selected_request()
+            .expect("selected request exists")
+            .clone();
+
+        let projection_path = earn_projection_test_path("unpaid-open-network-timeout");
+        let _ = std::fs::remove_file(projection_path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(projection_path);
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("accepted job"),
+            JobLifecycleStage::Accepted,
+            1_762_000_000,
+            "earn.active_job.accepted",
+        );
+
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running should succeed"),
+            JobLifecycleStage::Running
+        );
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("running job"),
+            JobLifecycleStage::Running,
+            1_762_000_005,
+            "earn.active_job.running",
+        );
+
+        active.execution_turn_completed = true;
+        active.execution_output = Some("BUY MODE OK".to_string());
+        {
+            let job = active.job.as_mut().expect("active job exists");
+            job.sa_tick_result_event_id = Some("result-unpaid-open-network-001".to_string());
+        }
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered should succeed"),
+            JobLifecycleStage::Delivered
+        );
+        active.pending_bolt11 = Some("lnbc20n1unpaidopennetwork".to_string());
+        active.last_action =
+            Some("Awaiting buyer Lightning payment after publishing feedback-unpaid-001".to_string());
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("delivered job"),
+            JobLifecycleStage::Delivered,
+            1_762_000_030,
+            "earn.active_job.delivered",
+        );
+
+        active
+            .mark_failed(
+                "job delivered but unpaid timed out after 195s while awaiting buyer settlement",
+                "Failed active job",
+            )
+            .expect("unpaid timeout should mark failed");
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("failed job"),
+            JobLifecycleStage::Failed,
+            1_762_000_225,
+            "earn.active_job.timeout",
+        );
+
+        let stages = projection
+            .rows
+            .iter()
+            .rev()
+            .map(|row| row.stage)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stages,
+            vec![
+                JobLifecycleStage::Accepted,
+                JobLifecycleStage::Running,
+                JobLifecycleStage::Delivered,
+                JobLifecycleStage::Failed,
+            ]
+        );
+        let sources = projection
+            .rows
+            .iter()
+            .rev()
+            .map(|row| row.source_tag.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sources,
+            vec![
+                "earn.active_job.accepted",
+                "earn.active_job.running",
+                "earn.active_job.delivered",
+                "earn.active_job.timeout",
+            ]
+        );
+        let timeout_row = projection.rows.first().expect("timeout row");
+        assert_eq!(timeout_row.stage, JobLifecycleStage::Failed);
+        assert_eq!(timeout_row.settlement_authority, "projection.non_authoritative");
+        assert!(!timeout_row.settlement_authoritative);
+
+        let snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+            &active,
+            &projection,
+            &SparkPaneState::default(),
+        )
+        .expect("snapshot should build");
+        assert_eq!(
+            snapshot.phase,
+            crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+        );
+        assert_eq!(snapshot.next_expected_event, "buyer settlement timed out");
+        assert_eq!(snapshot.continuity_window_seconds, Some(195));
+
+        let clipboard = crate::pane_renderer::active_job_clipboard_text(
+            &active,
+            &projection,
+            &SparkPaneState::default(),
+        );
+        assert!(clipboard.contains("Stage: delivered-unpaid (buyer never paid)"));
+        assert!(clipboard.contains("Next event: buyer settlement timed out"));
+        assert!(clipboard.contains(
+            "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived"
+        ));
+        assert!(clipboard.contains("[x] delivered"));
+        assert!(clipboard.contains("[ ] paid"));
+    }
+
+    #[test]
     fn mission_control_earn_loop_wallet_confirmed_end_to_end() {
         let mut provider = ProviderRuntimeState::default();
         provider.mode = ProviderMode::Online;
