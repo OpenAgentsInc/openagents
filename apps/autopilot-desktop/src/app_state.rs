@@ -13284,7 +13284,7 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should exist after result");
-        assert_eq!(before_payment.status, NetworkRequestStatus::ResultReceived);
+        assert_eq!(before_payment.status, NetworkRequestStatus::PaymentRequired);
         assert!(before_payment.last_payment_pointer.is_none());
         assert!(
             requests.has_in_flight_request_by_type(
@@ -13386,6 +13386,58 @@ mod tests {
             ),
             "request should remain in-flight while waiting for a valid invoice"
         );
+    }
+
+    #[test]
+    fn network_requests_ignore_missing_invoice_notice_after_valid_invoice_or_pointer() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-notice-ignore-001", 28);
+
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1noticeignoreinvoice",
+                Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+                1_762_700_022,
+            )
+            .expect("valid invoice should prepare");
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_023,
+        );
+
+        let prepared_row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(
+            prepared_row.pending_bolt11.as_deref(),
+            Some("lnbc1noticeignoreinvoice")
+        );
+        assert_eq!(prepared_row.payment_notice, None);
+        assert_eq!(prepared_row.status, NetworkRequestStatus::PaymentRequired);
+
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-notice-ignore-001");
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_024,
+        );
+
+        let pending_row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present after pointer assignment");
+        assert_eq!(
+            pending_row.last_payment_pointer.as_deref(),
+            Some("wallet-notice-ignore-001")
+        );
+        assert_eq!(pending_row.payment_notice, None);
+        assert_eq!(pending_row.status, NetworkRequestStatus::PaymentRequired);
     }
 
     #[test]
