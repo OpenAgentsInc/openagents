@@ -13,6 +13,112 @@ fn optional_u64(value: Option<u64>) -> String {
         .unwrap_or_else(|| "none".to_string())
 }
 
+pub(crate) fn emit_buyer_result_candidate_observed(
+    request_id: &str,
+    provider_pubkey: &str,
+    result_event_id: &str,
+    status: Option<&str>,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.result_candidate_observed",
+        flow_role = "buyer",
+        request_id,
+        provider_pubkey,
+        result_event_id,
+        status = optional_str(status),
+        "buyer.result_candidate_observed"
+    );
+}
+
+pub(crate) fn emit_buyer_invoice_candidate_observed(
+    request_id: &str,
+    provider_pubkey: &str,
+    feedback_event_id: &str,
+    amount_msats: Option<u64>,
+    invoice_amount_sats: Option<u64>,
+    approved_budget_sats: u64,
+    bolt11_present: bool,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.invoice_candidate_observed",
+        flow_role = "buyer",
+        request_id,
+        provider_pubkey,
+        feedback_event_id,
+        amount_msats = optional_u64(amount_msats),
+        invoice_amount_sats = optional_u64(invoice_amount_sats),
+        approved_budget_sats,
+        bolt11_present,
+        "buyer.invoice_candidate_observed"
+    );
+}
+
+pub(crate) fn emit_buyer_invoice_rejected_over_budget(
+    request_id: &str,
+    provider_pubkey: &str,
+    feedback_event_id: &str,
+    invoice_amount_sats: u64,
+    approved_budget_sats: u64,
+    amount_mismatch: bool,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.invoice_rejected_over_budget",
+        flow_role = "buyer",
+        request_id,
+        provider_pubkey,
+        feedback_event_id,
+        invoice_amount_sats,
+        approved_budget_sats,
+        amount_mismatch,
+        "buyer.invoice_rejected_over_budget"
+    );
+}
+
+pub(crate) fn emit_buyer_winner_unresolved(
+    request_id: &str,
+    result_provider_pubkey: Option<&str>,
+    invoice_provider_pubkey: Option<&str>,
+    blocker_code: &str,
+    blocker_summary: Option<&str>,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.winner_unresolved",
+        flow_role = "buyer",
+        request_id,
+        result_provider_pubkey = optional_str(result_provider_pubkey),
+        invoice_provider_pubkey = optional_str(invoice_provider_pubkey),
+        blocker_code,
+        blocker_summary = optional_str(blocker_summary),
+        "buyer.winner_unresolved"
+    );
+}
+
+pub(crate) fn emit_buyer_payment_blocked(
+    request_id: &str,
+    result_provider_pubkey: Option<&str>,
+    invoice_provider_pubkey: Option<&str>,
+    payable_provider_pubkey: Option<&str>,
+    blocker_codes: Option<&str>,
+    blocker_summary: Option<&str>,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.payment_blocked",
+        flow_role = "buyer",
+        request_id,
+        result_provider_pubkey = optional_str(result_provider_pubkey),
+        invoice_provider_pubkey = optional_str(invoice_provider_pubkey),
+        payable_provider_pubkey = optional_str(payable_provider_pubkey),
+        blocker_codes = optional_str(blocker_codes),
+        blocker_summary = optional_str(blocker_summary),
+        "buyer.payment_blocked"
+    );
+}
+
 pub(crate) fn emit_buyer_selected_payable_provider(
     request_id: &str,
     provider_pubkey: &str,
@@ -140,6 +246,40 @@ pub(crate) fn emit_provider_settlement_confirmed(
         amount_sats = optional_u64(amount_sats),
         fees_sats = optional_u64(fees_sats),
         "provider.settlement_confirmed"
+    );
+}
+
+pub(crate) fn emit_provider_delivered_awaiting_settlement(
+    request_id: &str,
+    pending_bolt11_present: bool,
+    payment_required_invoice_requested: bool,
+    payment_required_feedback_in_flight: bool,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "provider.delivered_awaiting_settlement",
+        flow_role = "provider",
+        request_id,
+        pending_bolt11_present,
+        payment_required_invoice_requested,
+        payment_required_feedback_in_flight,
+        "provider.delivered_awaiting_settlement"
+    );
+}
+
+pub(crate) fn emit_provider_delivered_unpaid_timeout(
+    request_id: &str,
+    timeout_seconds: u64,
+    reason: &str,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "provider.delivered_unpaid_timeout",
+        flow_role = "provider",
+        request_id,
+        timeout_seconds,
+        blocker_summary = optional_str(Some(reason)),
+        "provider.delivered_unpaid_timeout"
     );
 }
 

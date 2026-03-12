@@ -11582,8 +11582,16 @@ fn note_active_job_waiting_for_payment_evidence(
     );
     let waiting_runtime_error = format!("execution: {waiting_detail}");
     let legacy_waiting_runtime_error = format!("execution: {legacy_waiting_error}");
-    if active_job.last_action.as_deref() != Some(waiting_detail.as_str()) {
+    let first_waiting_transition =
+        active_job.last_action.as_deref() != Some(waiting_detail.as_str());
+    if first_waiting_transition {
         active_job.append_event("awaiting wallet-authoritative payment evidence");
+        crate::nip90_compute_domain_events::emit_provider_delivered_awaiting_settlement(
+            request_id,
+            active_job.pending_bolt11.is_some(),
+            active_job.payment_required_invoice_requested,
+            active_job.payment_required_feedback_in_flight,
+        );
     }
     active_job.last_action = Some(waiting_detail.clone());
     if matches!(

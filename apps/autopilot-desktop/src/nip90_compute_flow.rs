@@ -1961,7 +1961,7 @@ fn push_unique_blocker_detail(details: &mut Vec<String>, detail: String) {
     }
 }
 
-fn derive_buyer_payment_blockers(
+pub(crate) fn derive_buyer_payment_blockers(
     request: &SubmittedNetworkRequest,
 ) -> (Vec<String>, Option<String>) {
     let mut blocker_codes = Vec::<String>::new();

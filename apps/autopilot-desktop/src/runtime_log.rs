@@ -239,6 +239,9 @@ fn domain_projection(
         "provider_pubkey",
         "previous_provider_pubkey",
         "winner_provider_pubkey",
+        "result_provider_pubkey",
+        "invoice_provider_pubkey",
+        "payable_provider_pubkey",
         "event_id",
         "result_event_id",
         "feedback_event_id",
@@ -247,12 +250,23 @@ fn domain_projection(
         "success_feedback_id",
         "amount_sats",
         "amount_msats",
+        "invoice_amount_sats",
+        "approved_budget_sats",
         "fees_sats",
         "total_debit_sats",
         "accepted_relays",
         "rejected_relays",
         "selection_source",
         "ignore_reason",
+        "blocker_code",
+        "blocker_codes",
+        "blocker_summary",
+        "bolt11_present",
+        "amount_mismatch",
+        "pending_bolt11_present",
+        "payment_required_invoice_requested",
+        "payment_required_feedback_in_flight",
+        "timeout_seconds",
         "status",
         "status_extra",
     ] {
@@ -613,19 +627,33 @@ mod tests {
         let fields = [
             (
                 "domain_event".to_string(),
-                Value::String("buyer.payment_settled".to_string()),
+                Value::String("buyer.payment_blocked".to_string()),
             ),
             ("flow_role".to_string(), Value::String("buyer".to_string())),
             ("request_id".to_string(), Value::String("req-1".to_string())),
             (
-                "provider_pubkey".to_string(),
-                Value::String("provider-1".to_string()),
+                "result_provider_pubkey".to_string(),
+                Value::String("provider-result".to_string()),
             ),
             (
-                "payment_pointer".to_string(),
-                Value::String("pay-1".to_string()),
+                "invoice_provider_pubkey".to_string(),
+                Value::String("provider-invoice".to_string()),
             ),
-            ("fees_sats".to_string(), Value::from(2)),
+            (
+                "payable_provider_pubkey".to_string(),
+                Value::String("none".to_string()),
+            ),
+            ("approved_budget_sats".to_string(), Value::from(2)),
+            ("invoice_amount_sats".to_string(), Value::from(25)),
+            ("bolt11_present".to_string(), Value::Bool(true)),
+            (
+                "blocker_codes".to_string(),
+                Value::String("invoice_over_budget,result_without_invoice".to_string()),
+            ),
+            (
+                "blocker_summary".to_string(),
+                Value::String("invoice exceeds approved budget".to_string()),
+            ),
         ]
         .into_iter()
         .collect::<serde_json::Map<String, Value>>();
@@ -634,17 +662,35 @@ mod tests {
 
         assert_eq!(
             projection.get("event"),
-            Some(&Value::String("buyer.payment_settled".to_string()))
+            Some(&Value::String("buyer.payment_blocked".to_string()))
         );
         assert_eq!(
             projection.get("role"),
             Some(&Value::String("buyer".to_string()))
         );
         assert_eq!(
-            projection.get("payment_pointer"),
-            Some(&Value::String("pay-1".to_string()))
+            projection.get("result_provider_pubkey"),
+            Some(&Value::String("provider-result".to_string()))
         );
-        assert_eq!(projection.get("fees_sats"), Some(&Value::from(2)));
+        assert_eq!(
+            projection.get("invoice_provider_pubkey"),
+            Some(&Value::String("provider-invoice".to_string()))
+        );
+        assert_eq!(
+            projection.get("approved_budget_sats"),
+            Some(&Value::from(2))
+        );
+        assert_eq!(
+            projection.get("invoice_amount_sats"),
+            Some(&Value::from(25))
+        );
+        assert_eq!(projection.get("bolt11_present"), Some(&Value::Bool(true)));
+        assert_eq!(
+            projection.get("blocker_codes"),
+            Some(&Value::String(
+                "invoice_over_budget,result_without_invoice".to_string()
+            ))
+        );
     }
 
     #[test]

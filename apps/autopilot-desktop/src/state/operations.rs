@@ -1235,6 +1235,20 @@ impl NetworkRequestsState {
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
 
+        let feedback_is_payment_required = matches!(
+            status
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("payment-required")
+        );
+        let bolt11_present = bolt11.is_some_and(|value| !value.trim().is_empty());
+        let invoice_amount_analysis = analyze_invoice_amount_msats(amount_msats, bolt11);
+        let invoice_amount_sats = invoice_amount_analysis
+            .effective_amount_msats
+            .map(msats_to_sats_ceil);
+
         let provider = observed_provider_mut(request, provider_pubkey);
         provider.last_feedback_event_id = Some(event_id.to_string());
         provider.last_feedback_status = status.map(ToString::to_string);
@@ -1251,10 +1265,35 @@ impl NetworkRequestsState {
             request.invoice_provider_pubkey = Some(provider_pubkey.to_string());
         }
 
+        if feedback_is_payment_required || bolt11_present || amount_msats.is_some() {
+            nip90_compute_domain_events::emit_buyer_invoice_candidate_observed(
+                request_id,
+                provider_pubkey,
+                event_id,
+                amount_msats,
+                invoice_amount_sats,
+                request.budget_sats,
+                bolt11_present,
+            );
+        }
+        if let Some(invoice_amount_sats) = invoice_amount_sats
+            && invoice_amount_sats > request.budget_sats
+        {
+            nip90_compute_domain_events::emit_buyer_invoice_rejected_over_budget(
+                request_id,
+                provider_pubkey,
+                event_id,
+                invoice_amount_sats,
+                request.budget_sats,
+                invoice_amount_analysis.amount_mismatch,
+            );
+        }
+
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_feedback_event_id = Some(event_id.to_string());
         request.last_feedback_status = status.map(ToString::to_string);
         select_payable_winner(request, Some(provider_pubkey));
+        emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
         let resolution_action = maybe_race_resolution_action_for_feedback(
             request,
@@ -1299,6 +1338,13 @@ impl NetworkRequestsState {
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
 
+        nip90_compute_domain_events::emit_buyer_result_candidate_observed(
+            request_id,
+            provider_pubkey,
+            event_id,
+            status,
+        );
+
         let provider = observed_provider_mut(request, provider_pubkey);
         provider.last_result_event_id = Some(event_id.to_string());
         provider.last_result_status = status.map(ToString::to_string);
@@ -1316,6 +1362,7 @@ impl NetworkRequestsState {
         }
         request.last_result_event_id = Some(event_id.to_string());
         select_payable_winner(request, Some(provider_pubkey));
+        emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
         let resolution_action =
             maybe_race_resolution_action_for_result(request, provider_pubkey, event_id, status);
@@ -1642,6 +1689,7 @@ impl NetworkRequestsState {
             .get_or_insert(now_epoch_seconds);
         request.payment_notice = Some(notice.to_string());
         request.status = compute_request_status(request);
+        emit_buyer_payment_blocked(request);
         self.pane_set_ready(format!(
             "Request {} payment blocked: {}",
             request_id, notice
@@ -1954,6 +2002,45 @@ fn provider_has_error_only_signal(observation: &NetworkRequestProviderObservatio
         && !provider_has_non_error_result(observation)
         && !provider_has_payment_feedback(observation)
         && !provider_has_processing_feedback(observation)
+}
+
+fn emit_buyer_unresolved_winner_if_needed(request: &SubmittedNetworkRequest) {
+    let Some(result_provider_pubkey) = request.result_provider_pubkey.as_deref() else {
+        return;
+    };
+    let Some(invoice_provider_pubkey) = request.invoice_provider_pubkey.as_deref() else {
+        return;
+    };
+    if request.winning_provider_pubkey.is_some() {
+        return;
+    }
+    if normalize_pubkey(result_provider_pubkey) == normalize_pubkey(invoice_provider_pubkey) {
+        return;
+    }
+    nip90_compute_domain_events::emit_buyer_winner_unresolved(
+        request.request_id.as_str(),
+        Some(result_provider_pubkey),
+        Some(invoice_provider_pubkey),
+        "result_invoice_provider_mismatch",
+        Some("result and invoice came from different providers"),
+    );
+}
+
+fn emit_buyer_payment_blocked(request: &SubmittedNetworkRequest) {
+    let (blocker_codes, blocker_summary) =
+        crate::nip90_compute_flow::derive_buyer_payment_blockers(request);
+    let blocker_codes = (!blocker_codes.is_empty()).then(|| blocker_codes.join(","));
+    nip90_compute_domain_events::emit_buyer_payment_blocked(
+        request.request_id.as_str(),
+        request.result_provider_pubkey.as_deref(),
+        request.invoice_provider_pubkey.as_deref(),
+        request.winning_provider_pubkey.as_deref(),
+        blocker_codes.as_deref(),
+        blocker_summary
+            .as_deref()
+            .or(request.payment_notice.as_deref())
+            .or(request.payment_error.as_deref()),
+    );
 }
 
 fn select_payable_winner(
