@@ -7604,6 +7604,7 @@ pub struct ActiveJobRecord {
     pub ttl_seconds: u64,
     pub request_created_at_epoch_seconds: Option<u64>,
     pub request_expires_at_epoch_seconds: Option<u64>,
+    pub accepted_at_epoch_seconds: Option<u64>,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
     pub settlement_bolt11: Option<String>,
@@ -7690,6 +7691,9 @@ impl ActiveJobState {
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
         let job_id = format!("job-{}", request.request_id);
         let demand_risk = request.demand_risk_assessment();
+        let accepted_at_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
         self.job = Some(ActiveJobRecord {
             job_id,
             request_id: request.request_id.clone(),
@@ -7728,6 +7732,7 @@ impl ActiveJobState {
             ttl_seconds: request.ttl_seconds,
             request_created_at_epoch_seconds: request.created_at_epoch_seconds,
             request_expires_at_epoch_seconds: request.expires_at_epoch_seconds,
+            accepted_at_epoch_seconds: Some(accepted_at_epoch_seconds),
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
             settlement_bolt11: None,

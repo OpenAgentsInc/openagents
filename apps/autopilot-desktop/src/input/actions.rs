@@ -13497,6 +13497,7 @@ mod tests {
             ttl_seconds: 75,
             request_created_at_epoch_seconds: Some(1_760_000_000),
             request_expires_at_epoch_seconds: Some(1_760_000_075),
+            accepted_at_epoch_seconds: Some(1_760_000_010),
             stage: crate::app_state::JobLifecycleStage::Delivered,
             invoice_id: None,
             settlement_bolt11: None,

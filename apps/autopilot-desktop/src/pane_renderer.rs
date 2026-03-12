@@ -1,5 +1,5 @@
 use crate::app_state::{
-    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
+    ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
     AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
     BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
@@ -70,6 +70,7 @@ use crate::panes::{
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
+use crate::state::job_inbox::JobInboxRequest;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
@@ -4908,6 +4909,7 @@ fn paint_job_inbox_pane(
         return;
     }
 
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
     for row_index in 0..visible_rows {
         let request = &job_inbox.requests[row_index];
         let row_bounds = job_inbox_row_bounds(content_bounds, row_index);
@@ -4921,7 +4923,7 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} risk:{}/{} scope:{} env:{} {} ttl:{}s {} {} eligibility:{}",
+            "#{} {} {} src:{} risk:{}/{} scope:{} env:{} {} ttl:{}s fresh:{} {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
@@ -4932,6 +4934,7 @@ fn paint_job_inbox_pane(
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             format_sats_amount(request.price_sats),
             request.ttl_seconds,
+            request_freshness_summary(request, now_epoch_seconds),
             request.validation.label(),
             request.decision.label(),
             request.eligibility_label(provider_runtime.mode)
@@ -4975,6 +4978,27 @@ fn paint_job_inbox_pane(
             line_y,
             "Demand source",
             selected.demand_source.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request freshness",
+            request_freshness_summary(selected, now_epoch_seconds).as_str(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request created",
+            &format_epoch_seconds_option(selected.created_at_epoch_seconds),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request expires",
+            &format_epoch_seconds_option(selected.expires_at_epoch_seconds),
         );
         line_y = paint_label_line(
             paint,
@@ -5028,6 +5052,41 @@ fn paint_job_inbox_pane(
             "AC envelope",
             selected.ac_envelope_event_id.as_deref().unwrap_or("none"),
         );
+    }
+}
+
+fn format_epoch_seconds_option(epoch_seconds: Option<u64>) -> String {
+    epoch_seconds
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn request_freshness_summary(request: &JobInboxRequest, now_epoch_seconds: u64) -> String {
+    match (
+        request.created_at_epoch_seconds,
+        request.expires_at_epoch_seconds,
+    ) {
+        (Some(created_at), Some(expires_at)) if now_epoch_seconds >= expires_at => format!(
+            "expired {}s ago (created={} expires={})",
+            now_epoch_seconds.saturating_sub(expires_at),
+            created_at,
+            expires_at
+        ),
+        (Some(created_at), Some(expires_at)) => format!(
+            "fresh // {}s left (created={} expires={})",
+            expires_at.saturating_sub(now_epoch_seconds),
+            created_at,
+            expires_at
+        ),
+        (_, Some(expires_at)) => format!(
+            "expires {}",
+            if now_epoch_seconds >= expires_at {
+                format!("{}s ago", now_epoch_seconds.saturating_sub(expires_at))
+            } else {
+                format!("in {}s", expires_at.saturating_sub(now_epoch_seconds))
+            }
+        ),
+        _ => "unknown".to_string(),
     }
 }
 
@@ -5249,6 +5308,44 @@ fn active_job_result_publish_status(active_job: &ActiveJobState) -> String {
     "not queued".to_string()
 }
 
+fn active_job_request_freshness_summary(job: &ActiveJobRecord, now_epoch_seconds: u64) -> String {
+    match (
+        job.accepted_at_epoch_seconds,
+        job.request_created_at_epoch_seconds,
+        job.request_expires_at_epoch_seconds,
+    ) {
+        (Some(accepted_at), Some(created_at), Some(expires_at)) if accepted_at <= expires_at => {
+            format!(
+                "accepted fresh // {}s remaining at accept (created={} accepted={} expires={})",
+                expires_at.saturating_sub(accepted_at),
+                created_at,
+                accepted_at,
+                expires_at
+            )
+        }
+        (Some(accepted_at), Some(created_at), Some(expires_at)) => format!(
+            "accepted stale // {}s after expiry (created={} accepted={} expires={})",
+            accepted_at.saturating_sub(expires_at),
+            created_at,
+            accepted_at,
+            expires_at
+        ),
+        (_, Some(created_at), Some(expires_at)) if now_epoch_seconds >= expires_at => format!(
+            "expired {}s ago (created={} expires={})",
+            now_epoch_seconds.saturating_sub(expires_at),
+            created_at,
+            expires_at
+        ),
+        (_, Some(created_at), Some(expires_at)) => format!(
+            "fresh // {}s left (created={} expires={})",
+            expires_at.saturating_sub(now_epoch_seconds),
+            created_at,
+            expires_at
+        ),
+        _ => "unknown".to_string(),
+    }
+}
+
 fn build_active_job_scroll_lines(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
@@ -5311,72 +5408,113 @@ fn build_active_job_scroll_lines(
         spark_wallet,
     )
     .expect("active job snapshot should exist when job exists");
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
 
     let pending_result_event_id = active_job
         .pending_result_publish_event_id
         .as_deref()
         .unwrap_or("n/a");
     let stage_display = active_job_stage_display(job.stage, flow_snapshot.phase);
-    let metadata_rows = [
-        ("Job ID", job.job_id.as_str()),
-        ("Requester", job.requester.as_str()),
-        ("Capability", job.capability.as_str()),
-        ("Demand source", job.demand_source.label()),
-        ("Demand risk", job.demand_risk_class.label()),
-        ("Risk policy", job.demand_risk_disposition.label()),
-        ("Stage", stage_display.as_str()),
-        ("Flow authority", flow_snapshot.authority.as_str()),
-        ("Flow phase", flow_snapshot.phase.as_str()),
-        ("Next event", flow_snapshot.next_expected_event.as_str()),
+    let metadata_rows = vec![
+        ("Job ID", job.job_id.clone()),
+        ("Requester", job.requester.clone()),
+        ("Capability", job.capability.clone()),
+        ("Demand source", job.demand_source.label().to_string()),
+        ("Demand risk", job.demand_risk_class.label().to_string()),
+        (
+            "Risk policy",
+            job.demand_risk_disposition.label().to_string(),
+        ),
+        ("Stage", stage_display),
+        (
+            "Flow authority",
+            flow_snapshot.authority.as_str().to_string(),
+        ),
+        ("Flow phase", flow_snapshot.phase.as_str().to_string()),
+        ("Next event", flow_snapshot.next_expected_event.clone()),
+        (
+            "Request freshness",
+            active_job_request_freshness_summary(job, now_epoch_seconds),
+        ),
+        (
+            "Request created",
+            format_epoch_seconds_option(job.request_created_at_epoch_seconds),
+        ),
+        (
+            "Request expires",
+            format_epoch_seconds_option(job.request_expires_at_epoch_seconds),
+        ),
         (
             "Projection authority",
-            flow_snapshot.projection_authority.as_str(),
+            flow_snapshot.projection_authority.as_str().to_string(),
         ),
         (
             "Skill scope",
-            job.skill_scope_id.as_deref().unwrap_or("none"),
+            job.skill_scope_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SKL manifest",
-            job.skl_manifest_a.as_deref().unwrap_or("none"),
+            job.skl_manifest_a
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SA tick request",
-            job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
+            job.sa_tick_request_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SA tick result",
-            job.sa_tick_result_event_id.as_deref().unwrap_or("none"),
+            job.sa_tick_result_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "Trajectory session",
-            job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
+            job.sa_trajectory_session_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC envelope",
-            job.ac_envelope_event_id.as_deref().unwrap_or("none"),
+            job.ac_envelope_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC settlement",
-            job.ac_settlement_event_id.as_deref().unwrap_or("none"),
+            job.ac_settlement_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC default",
-            job.ac_default_event_id.as_deref().unwrap_or("none"),
+            job.ac_default_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
-        ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
-        ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
-        ("Result event", pending_result_event_id),
+        (
+            "Invoice ID",
+            job.invoice_id.clone().unwrap_or_else(|| "n/a".to_string()),
+        ),
+        (
+            "Payment ID",
+            job.payment_id.clone().unwrap_or_else(|| "n/a".to_string()),
+        ),
+        ("Result event", pending_result_event_id.to_string()),
         (
             "Result publish",
-            flow_snapshot.result_publish_status.as_str(),
+            flow_snapshot.result_publish_status.clone(),
         ),
     ];
     for (label, value) in metadata_rows {
         push_active_job_wrapped_line(
             &mut lines,
             &format!("{label}: "),
-            value,
+            value.as_str(),
             chunk_len,
             theme::text::PRIMARY,
         );
@@ -6530,7 +6668,8 @@ mod tests {
         mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
         mission_control_local_model_button_label, mission_control_value_chunk_len,
         mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
+        payment_terminal_status, request_freshness_summary, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -6799,6 +6938,13 @@ mod tests {
     }
 
     #[test]
+    fn request_freshness_summary_reports_fresh_and_expired_states() {
+        let request = fixture_active_job_request("req-active-job-freshness");
+        assert!(request_freshness_summary(&request, 1_760_000_010).contains("fresh // 65s left"));
+        assert!(request_freshness_summary(&request, 1_760_000_080).contains("expired 5s ago"));
+    }
+
+    #[test]
     fn failed_active_job_timeline_does_not_mark_paid_without_payment() {
         let request = fixture_active_job_request("req-active-job-failed");
         let mut active_job = ActiveJobState::default();
@@ -6947,6 +7093,24 @@ mod tests {
 
         assert!(output.contains("Demand risk: speculative-open-network"));
         assert!(output.contains("Risk policy: manual-only"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_request_freshness_truth() {
+        let request = fixture_active_job_request("req-active-job-freshness-copy");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.job.as_mut().unwrap().accepted_at_epoch_seconds = Some(1_760_000_010);
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(output.contains("Request freshness: accepted fresh"));
+        assert!(output.contains("Request created: 1760000000"));
+        assert!(output.contains("Request expires: 1760000075"));
     }
 
     #[test]
