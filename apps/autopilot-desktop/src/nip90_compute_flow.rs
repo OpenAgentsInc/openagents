@@ -77,6 +77,8 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub next_expected_event: String,
     pub published_request_event_id: Option<String>,
     pub selected_provider_pubkey: Option<String>,
+    pub result_provider_pubkey: Option<String>,
+    pub invoice_provider_pubkey: Option<String>,
     pub payable_provider_pubkey: Option<String>,
     pub last_feedback_status: Option<String>,
     pub last_feedback_event_id: Option<String>,
@@ -112,9 +114,19 @@ impl BuyerRequestFlowSnapshot {
         self.selected_provider_pubkey.as_deref()
     }
 
+    pub(crate) fn result_provider_pubkey(&self) -> Option<&str> {
+        self.result_provider_pubkey.as_deref()
+    }
+
+    pub(crate) fn invoice_provider_pubkey(&self) -> Option<&str> {
+        self.invoice_provider_pubkey.as_deref()
+    }
+
     pub(crate) fn provider_pubkey(&self) -> Option<&str> {
         self.payable_provider_pubkey
             .as_deref()
+            .or(self.result_provider_pubkey.as_deref())
+            .or(self.invoice_provider_pubkey.as_deref())
             .or(self.selected_provider_pubkey.as_deref())
     }
 
@@ -138,28 +150,53 @@ impl BuyerRequestFlowSnapshot {
     }
 
     pub(crate) fn provider_summary(&self) -> String {
-        self.provider_pubkey()
-            .map(|provider| format!("provider {}", short_id(provider)))
-            .unwrap_or_else(|| "awaiting provider".to_string())
+        match (
+            self.payable_provider_pubkey.as_deref(),
+            self.result_provider_pubkey(),
+            self.invoice_provider_pubkey(),
+        ) {
+            (Some(payable), _, _) => format!("payable {}", short_id(payable)),
+            (None, Some(result), Some(invoice))
+                if normalize_pubkey(result) != normalize_pubkey(invoice) =>
+            {
+                format!(
+                    "result {} // invoice {}",
+                    short_id(result),
+                    short_id(invoice)
+                )
+            }
+            (None, Some(result), _) => format!("result {}", short_id(result)),
+            (None, None, Some(invoice)) => format!("invoice {}", short_id(invoice)),
+            (None, None, None) => "awaiting provider".to_string(),
+        }
     }
 
     pub(crate) fn winner_selection_summary(&self) -> String {
         match (
-            self.selected_provider_pubkey(),
+            self.result_provider_pubkey(),
+            self.invoice_provider_pubkey(),
             self.payable_provider_pubkey.as_deref(),
         ) {
-            (Some(selected), Some(payable))
-                if normalize_pubkey(selected) != normalize_pubkey(payable) =>
+            (_, _, Some(payable)) => format!("payable {}", short_id(payable)),
+            (Some(result), Some(invoice), None)
+                if normalize_pubkey(result) != normalize_pubkey(invoice) =>
             {
                 format!(
-                    "selected {} // payable {}",
-                    short_id(selected),
-                    short_id(payable)
+                    "result {} // invoice {} // no payable winner",
+                    short_id(result),
+                    short_id(invoice)
                 )
             }
-            (_, Some(payable)) => format!("payable {}", short_id(payable)),
-            (Some(selected), None) => format!("selected {}", short_id(selected)),
-            (None, None) => "awaiting provider".to_string(),
+            (Some(result), Some(_), None) => {
+                format!("result {} // awaiting payable selection", short_id(result))
+            }
+            (Some(result), None, None) => {
+                format!("result {} // awaiting invoice", short_id(result))
+            }
+            (None, Some(invoice), None) => {
+                format!("invoice {} // awaiting result", short_id(invoice))
+            }
+            (None, None, None) => "awaiting provider".to_string(),
         }
     }
 
@@ -389,18 +426,17 @@ impl BuyerRequestFlowSnapshot {
             line.push_str(" pointer=");
             line.push_str(mission_control_log_short_id(pointer).as_str());
         }
-        if let Some(selected) = self.selected_provider_pubkey() {
-            line.push_str(" selected=");
-            line.push_str(mission_control_log_short_id(selected).as_str());
+        if let Some(result_provider) = self.result_provider_pubkey() {
+            line.push_str(" result_provider=");
+            line.push_str(mission_control_log_short_id(result_provider).as_str());
+        }
+        if let Some(invoice_provider) = self.invoice_provider_pubkey() {
+            line.push_str(" invoice_provider=");
+            line.push_str(mission_control_log_short_id(invoice_provider).as_str());
         }
         if let Some(payable) = self.payable_provider_pubkey.as_deref() {
-            if self
-                .selected_provider_pubkey()
-                .is_none_or(|selected| normalize_pubkey(selected) != normalize_pubkey(payable))
-            {
-                line.push_str(" payable=");
-                line.push_str(mission_control_log_short_id(payable).as_str());
-            }
+            line.push_str(" payable_provider=");
+            line.push_str(mission_control_log_short_id(payable).as_str());
         }
         if self.loser_provider_count > 0 {
             line.push_str(" losers=");
@@ -613,11 +649,13 @@ pub(crate) fn build_buyer_request_flow_snapshot(
 ) -> BuyerRequestFlowSnapshot {
     let wallet_payment = buy_mode_wallet_payment(request, spark_wallet);
     let wallet_status = buy_mode_wallet_state_label(request, wallet_payment);
-    let selected_provider_pubkey = request
-        .last_provider_pubkey
-        .clone()
-        .or_else(|| request.winning_provider_pubkey.clone());
+    let result_provider_pubkey = request.result_provider_pubkey.clone();
+    let invoice_provider_pubkey = request.invoice_provider_pubkey.clone();
     let payable_provider_pubkey = request.winning_provider_pubkey.clone();
+    let selected_provider_pubkey = payable_provider_pubkey
+        .clone()
+        .or_else(|| result_provider_pubkey.clone())
+        .or_else(|| invoice_provider_pubkey.clone());
     let (loser_provider_count, loser_reason_summary) =
         loser_provider_summary(request, payable_provider_pubkey.as_deref());
     let invoice_amount_sats = wallet_payment
@@ -627,6 +665,8 @@ pub(crate) fn build_buyer_request_flow_snapshot(
                 request,
                 payable_provider_pubkey
                     .as_deref()
+                    .or(invoice_provider_pubkey.as_deref())
+                    .or(result_provider_pubkey.as_deref())
                     .or(selected_provider_pubkey.as_deref()),
             )
         });
@@ -721,6 +761,8 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         next_expected_event,
         published_request_event_id: request.published_request_event_id.clone(),
         selected_provider_pubkey,
+        result_provider_pubkey,
+        invoice_provider_pubkey,
         payable_provider_pubkey,
         last_feedback_status: request.last_feedback_status.clone(),
         last_feedback_event_id: request.last_feedback_event_id.clone(),
@@ -1102,6 +1144,8 @@ struct BuyModePaymentLedgerEntry {
     phase: Nip90FlowPhase,
     next_expected_event: String,
     selected_provider_pubkey: String,
+    result_provider_pubkey: String,
+    invoice_provider_pubkey: String,
     payable_provider_pubkey: String,
     loser_provider_count: usize,
     loser_reason_summary: Option<String>,
@@ -1243,6 +1287,14 @@ fn buy_mode_request_ledger_entry(
             .selected_provider_pubkey
             .clone()
             .unwrap_or_else(|| "-".to_string()),
+        result_provider_pubkey: request
+            .result_provider_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
+        invoice_provider_pubkey: request
+            .invoice_provider_pubkey
+            .clone()
+            .unwrap_or_else(|| "-".to_string()),
         payable_provider_pubkey: request
             .payable_provider_pubkey
             .clone()
@@ -1344,6 +1396,8 @@ fn buy_mode_wallet_backfill_entry(
             "wallet settlement".to_string()
         },
         selected_provider_pubkey: "-".to_string(),
+        result_provider_pubkey: "-".to_string(),
+        invoice_provider_pubkey: "-".to_string(),
         payable_provider_pubkey: "-".to_string(),
         loser_provider_count: 0,
         loser_reason_summary: None,
@@ -1413,8 +1467,10 @@ fn push_buy_mode_payment_entry_rows(
         rows.push((
             entry.stream.clone(),
             format!(
-                "selected_provider={}  payable_provider={}  losers={}  loser_summary={}",
+                "selected_provider={}  result_provider={}  invoice_provider={}  payable_provider={}  losers={}  loser_summary={}",
                 entry.selected_provider_pubkey,
+                entry.result_provider_pubkey,
+                entry.invoice_provider_pubkey,
                 entry.payable_provider_pubkey,
                 entry.loser_provider_count,
                 entry.loser_reason_summary.as_deref().unwrap_or("-"),
@@ -1728,8 +1784,7 @@ mod tests {
         continuity_window_seconds,
     };
     use crate::app_state::{
-        ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
-        MissionControlPaneState,
+        ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage, MissionControlPaneState,
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::operations::{
@@ -2043,7 +2098,15 @@ mod tests {
 
         assert_eq!(
             snapshot.selected_provider_pubkey.as_deref(),
+            Some(payable_provider.as_str())
+        );
+        assert_eq!(
+            snapshot.result_provider_pubkey.as_deref(),
             Some(losing_provider.as_str())
+        );
+        assert_eq!(
+            snapshot.invoice_provider_pubkey.as_deref(),
+            Some(payable_provider.as_str())
         );
         assert_eq!(
             snapshot.payable_provider_pubkey.as_deref(),

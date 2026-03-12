@@ -1556,11 +1556,7 @@ fn build_mission_control_log_lines(
             line.push_str(" wallet_delta_sats=");
             line.push_str(delta.to_string().as_str());
         }
-        push_entry(
-            mission_control_log_stream_for_stage(job.stage),
-            line,
-            None,
-        );
+        push_entry(mission_control_log_stream_for_stage(job.stage), line, None);
     }
     if let Some(action) = active_job.last_action.as_deref() {
         push_entry(
@@ -9308,6 +9304,8 @@ mod tests {
             resolution_mode: BuyerResolutionMode::Race,
             target_provider_pubkeys: vec![target_peer_pubkey.to_string()],
             last_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            result_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            invoice_provider_pubkey: Some(target_peer_pubkey.to_string()),
             last_feedback_status: None,
             last_feedback_event_id: None,
             last_result_event_id: None,
