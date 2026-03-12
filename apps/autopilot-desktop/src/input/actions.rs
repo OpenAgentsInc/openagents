@@ -9154,7 +9154,7 @@ pub(super) fn run_mission_control_action(
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
             } else {
-                state.mission_control.record_action("Queued Lightning send");
+                state.mission_control.record_action("Queued Lightning withdrawal");
                 state.mission_control.send_invoice.set_value(String::new());
             }
             true
