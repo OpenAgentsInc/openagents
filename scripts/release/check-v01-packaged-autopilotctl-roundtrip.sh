@@ -277,6 +277,46 @@ PY
   return 1
 }
 
+manifest_wallet_balance() {
+  local manifest="$1"
+  local output_path="$2"
+  "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json status >"$output_path"
+  json_field "$output_path" snapshot.wallet.balance_sats
+}
+
+wait_for_manifest_wallet_balance_increase() {
+  local manifest="$1"
+  local previous_sats="$2"
+  local timeout_seconds="$3"
+  local output_path="$4"
+  local deadline=$((SECONDS + timeout_seconds))
+  local next_refresh_at=$SECONDS
+  while (( SECONDS < deadline )); do
+    if (( SECONDS >= next_refresh_at )); then
+      "$AUTOPILOTCTL_BIN" --manifest "$manifest" wallet refresh >/dev/null
+      next_refresh_at=$((SECONDS + 10))
+    fi
+    "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json status >"$output_path"
+    local balance_sats
+    balance_sats="$(json_field "$output_path" snapshot.wallet.balance_sats)"
+    local wallet_error
+    wallet_error="$(python3 - "$output_path" <<'PY'
+import json, pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text()
+text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+payload = json.loads(text)
+value = payload.get("snapshot", {}).get("wallet", {}).get("last_error")
+print("" if value is None else str(value))
+PY
+)"
+    if [[ "$balance_sats" -gt "$previous_sats" && -z "$wallet_error" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 pay_invoice_from_funder() {
   local invoice="$1"
   local output_path="$2"
@@ -391,9 +431,17 @@ assert_selected_target() {
 run_buy_cycle() {
   local buyer_label="$1"
   local buyer_manifest="$2"
-  local seller_latest_log="$3"
-  local seller_session_log="$4"
-  local seller_expect_settlement="$5"
+  local seller_label="$3"
+  local seller_manifest="$4"
+  local seller_latest_log="$5"
+  local seller_session_log="$6"
+  local seller_expect_settlement="$7"
+  local cycle_slug="$8"
+
+  local seller_before_path="${RUN_DIR}/${cycle_slug}-${seller_label}-before-status.json"
+  local seller_after_path="${RUN_DIR}/${cycle_slug}-${seller_label}-after-status.json"
+  local seller_before_sats
+  seller_before_sats="$(manifest_wallet_balance "$seller_manifest" "$seller_before_path")"
 
   log "Starting buy mode on ${buyer_label}"
   "$AUTOPILOTCTL_BIN" --manifest "$buyer_manifest" buy-mode start --approved-budget-sats "$BUDGET_SATS" > /dev/null
@@ -403,6 +451,12 @@ run_buy_cycle() {
   wait_for_jsonl_event "$seller_latest_log" "provider.payment_requested" 120
   wait_for_jsonl_event "$seller_latest_log" "provider.settlement_confirmed" "$seller_expect_settlement"
   wait_for_jsonl_event "$seller_session_log" "provider.settlement_confirmed" "$seller_expect_settlement"
+  wait_for_manifest_wallet_balance_increase \
+    "$seller_manifest" \
+    "$seller_before_sats" \
+    "$seller_expect_settlement" \
+    "$seller_after_path" \
+    || die "${seller_label} wallet balance did not increase after settlement-confirmed for ${cycle_slug} (before=${seller_before_sats})"
 }
 
 cleanup() {
@@ -586,10 +640,10 @@ wait_for_chat_message "$BUNDLE_MANIFEST" "$RUNTIME_TO_BUNDLE_MESSAGE" 60 \
   || die "Bundled app did not observe runtime chat message"
 
 log "Running runtime buyer -> bundled seller payment flow"
-run_buy_cycle "runtime" "$RUNTIME_MANIFEST" "$BUNDLE_LATEST_LOG" "$BUNDLE_SESSION_LOG" 180
+run_buy_cycle "runtime" "$RUNTIME_MANIFEST" "bundle" "$BUNDLE_MANIFEST" "$BUNDLE_LATEST_LOG" "$BUNDLE_SESSION_LOG" 180 "runtime-buys-bundle"
 
 log "Running bundled buyer -> runtime seller payment flow"
-run_buy_cycle "bundle" "$BUNDLE_MANIFEST" "$RUNTIME_LATEST_LOG" "$RUNTIME_SESSION_LOG" 180
+run_buy_cycle "bundle" "$BUNDLE_MANIFEST" "runtime" "$RUNTIME_MANIFEST" "$RUNTIME_LATEST_LOG" "$RUNTIME_SESSION_LOG" 180 "bundle-buys-runtime"
 
 log "Capturing final control snapshots"
 "$AUTOPILOTCTL_BIN" --manifest "$BUNDLE_MANIFEST" --json status >"${RUN_DIR}/bundle-final-status.json"
@@ -609,6 +663,18 @@ bundle_session_log = sys.argv[6]
 runtime_session_log = sys.argv[7]
 bundle_manifest = sys.argv[8]
 runtime_manifest = sys.argv[9]
+run_dir_path = pathlib.Path(run_dir)
+
+def load_balance(path: pathlib.Path):
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    return payload.get("snapshot", {}).get("wallet", {}).get("balance_sats")
+
+runtime_buys_bundle_before = load_balance(run_dir_path / "runtime-buys-bundle-bundle-before-status.json")
+runtime_buys_bundle_after = load_balance(run_dir_path / "runtime-buys-bundle-bundle-after-status.json")
+bundle_buys_runtime_before = load_balance(run_dir_path / "bundle-buys-runtime-runtime-before-status.json")
+bundle_buys_runtime_after = load_balance(run_dir_path / "bundle-buys-runtime-runtime-after-status.json")
 
 summary = {
     "relayUrl": relay_url,
@@ -628,6 +694,20 @@ summary = {
     "chat": {
         "bundleToRuntime": json.loads((run_dir / "bundle-chat-send.json").read_text()).get("response", {}).get("message"),
         "runtimeToBundle": json.loads((run_dir / "runtime-chat-send.json").read_text()).get("response", {}).get("message"),
+    },
+    "paymentCycles": {
+        "runtimeBuysBundle": {
+            "seller": "bundle",
+            "balanceBeforeSats": runtime_buys_bundle_before,
+            "balanceAfterSats": runtime_buys_bundle_after,
+            "balanceDeltaSats": None if runtime_buys_bundle_before is None or runtime_buys_bundle_after is None else runtime_buys_bundle_after - runtime_buys_bundle_before,
+        },
+        "bundleBuysRuntime": {
+            "seller": "runtime",
+            "balanceBeforeSats": bundle_buys_runtime_before,
+            "balanceAfterSats": bundle_buys_runtime_after,
+            "balanceDeltaSats": None if bundle_buys_runtime_before is None or bundle_buys_runtime_after is None else bundle_buys_runtime_after - bundle_buys_runtime_before,
+        },
     },
     "finalStatus": {
         "bundle": json.loads((run_dir / "bundle-final-status.json").read_text()).get("snapshot", {}),
