@@ -6,6 +6,12 @@ use std::time::Instant;
 use crate::app_state::{PaneLoadState, PaneStatusAccess};
 use crate::bitcoin_display::format_sats_amount;
 use crate::nip90_compute_domain_events;
+use crate::nip90_compute_semantics::{
+    BuyerProviderObservation as SharedBuyerProviderObservation, normalize_pubkey,
+    provider_has_non_error_result as shared_provider_has_non_error_result,
+    provider_has_payable_result as shared_provider_has_payable_result,
+    select_payable_winner as shared_select_payable_winner,
+};
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
 use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
@@ -1729,10 +1735,6 @@ fn maybe_race_resolution_action_for_result(
     })
 }
 
-fn normalize_pubkey(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
-}
-
 fn observed_provider_mut<'a>(
     request: &'a mut SubmittedNetworkRequest,
     provider_pubkey: &str,
@@ -1769,29 +1771,26 @@ fn observed_provider_mut<'a>(
         .expect("new observation should be present")
 }
 
-fn provider_has_non_error_result(observation: &NetworkRequestProviderObservation) -> bool {
-    observation.last_result_event_id.is_some()
-        && !matches!(
-            observation
-                .last_result_status
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("error")
-        )
+fn as_shared_provider_observation(
+    observation: &NetworkRequestProviderObservation,
+) -> SharedBuyerProviderObservation<'_> {
+    SharedBuyerProviderObservation {
+        provider_pubkey: observation.provider_pubkey.as_str(),
+        last_feedback_event_id: observation.last_feedback_event_id.as_deref(),
+        last_feedback_status: observation.last_feedback_status.as_deref(),
+        last_feedback_amount_msats: observation.last_feedback_amount_msats,
+        last_feedback_bolt11: observation.last_feedback_bolt11.as_deref(),
+        last_result_event_id: observation.last_result_event_id.as_deref(),
+        last_result_status: observation.last_result_status.as_deref(),
+    }
 }
 
-fn provider_has_valid_invoice(observation: &NetworkRequestProviderObservation) -> bool {
-    observation
-        .last_feedback_bolt11
-        .as_deref()
-        .is_some_and(|bolt11| !bolt11.trim().is_empty())
+fn provider_has_non_error_result(observation: &NetworkRequestProviderObservation) -> bool {
+    shared_provider_has_non_error_result(&as_shared_provider_observation(observation))
 }
 
 fn provider_has_payable_result(observation: &NetworkRequestProviderObservation) -> bool {
-    provider_has_non_error_result(observation) && provider_has_valid_invoice(observation)
+    shared_provider_has_payable_result(&as_shared_provider_observation(observation))
 }
 
 fn provider_has_processing_feedback(observation: &NetworkRequestProviderObservation) -> bool {
@@ -1856,38 +1855,24 @@ fn select_payable_winner(
         return;
     }
 
-    let preferred_provider = preferred_provider_pubkey.map(normalize_pubkey);
     let previous_winner = request.winning_provider_pubkey.clone();
-    let current_winner = previous_winner.as_deref().map(normalize_pubkey);
-
-    let preferred_candidate = preferred_provider.as_deref().and_then(|preferred| {
-        request.provider_observations.iter().find(|observation| {
-            normalize_pubkey(observation.provider_pubkey.as_str()) == *preferred
-                && provider_has_payable_result(observation)
-        })
-    });
-    let current_candidate = current_winner.as_deref().and_then(|winner| {
-        request.provider_observations.iter().find(|observation| {
-            normalize_pubkey(observation.provider_pubkey.as_str()) == *winner
-                && provider_has_payable_result(observation)
-        })
-    });
-    let first_candidate = request
+    let observations: Vec<_> = request
         .provider_observations
         .iter()
-        .find(|observation| provider_has_payable_result(observation));
+        .map(as_shared_provider_observation)
+        .collect();
 
-    let selected = if let Some(observation) = current_candidate {
-        Some(("retained_current_winner", observation))
-    } else if let Some(observation) = preferred_candidate {
-        Some(("preferred_provider_became_payable", observation))
-    } else if let Some(observation) = first_candidate {
-        Some(("first_payable_provider", observation))
-    } else {
-        None
-    };
-
-    if let Some((selection_source, observation)) = selected {
+    if let Some(selection) = shared_select_payable_winner(
+        previous_winner.as_deref(),
+        preferred_provider_pubkey,
+        observations.as_slice(),
+    ) {
+        let Some(observation) = request.provider_observations.iter().find(|observation| {
+            normalize_pubkey(observation.provider_pubkey.as_str())
+                == normalize_pubkey(selection.provider_pubkey.as_str())
+        }) else {
+            return;
+        };
         let selected_provider_pubkey = observation.provider_pubkey.clone();
         let selected_result_event_id = observation.last_result_event_id.clone();
         let selected_feedback_event_id = observation.last_feedback_event_id.clone();
@@ -1907,7 +1892,7 @@ fn select_payable_winner(
                 selected_result_event_id.as_deref(),
                 selected_feedback_event_id.as_deref(),
                 selected_amount_msats,
-                selection_source,
+                selection.selection_source,
             );
         }
         return;
