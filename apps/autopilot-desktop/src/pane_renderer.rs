@@ -4934,6 +4934,7 @@ fn paint_job_inbox_pane(
     let now_epoch_seconds = mission_control_now_epoch_seconds();
     for row_index in 0..visible_rows {
         let request = &job_inbox.requests[row_index];
+        let demand_risk = request.demand_risk_assessment_at(now_epoch_seconds);
         let row_bounds = job_inbox_row_bounds(content_bounds, row_index);
         let selected =
             job_inbox.selected_request_id.as_deref() == Some(request.request_id.as_str());
@@ -4950,8 +4951,8 @@ fn paint_job_inbox_pane(
             request.request_id,
             request.capability,
             request.demand_source.label(),
-            request.demand_risk_assessment().class.label(),
-            request.demand_risk_assessment().disposition.label(),
+            demand_risk.class.label(),
+            demand_risk.disposition.label(),
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             format_sats_amount(request.price_sats),
@@ -4974,6 +4975,7 @@ fn paint_job_inbox_pane(
     }
 
     if let Some(selected) = job_inbox.selected_request() {
+        let selected_demand_risk = selected.demand_risk_assessment_at(now_epoch_seconds);
         let details_y =
             job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
         let x = content_bounds.origin.x + 12.0;
@@ -5027,21 +5029,21 @@ fn paint_job_inbox_pane(
             x,
             line_y,
             "Demand risk",
-            selected.demand_risk_assessment().class.label(),
+            selected_demand_risk.class.label(),
         );
         line_y = paint_label_line(
             paint,
             x,
             line_y,
             "Risk policy",
-            selected.demand_risk_assessment().disposition.label(),
+            selected_demand_risk.disposition.label(),
         );
         line_y = paint_label_line(
             paint,
             x,
             line_y,
             "Risk note",
-            selected.demand_risk_assessment().note.as_str(),
+            selected_demand_risk.note.as_str(),
         );
         line_y = paint_label_line(
             paint,

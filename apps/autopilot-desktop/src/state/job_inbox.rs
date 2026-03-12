@@ -1,6 +1,8 @@
 use crate::app_state::PaneLoadState;
 use crate::state::provider_runtime::ProviderMode;
 
+pub const TARGETED_SAFE_AUTO_MIN_FRESHNESS_SECONDS: u64 = 30;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JobDemandSource {
     OpenNetwork,
@@ -154,6 +156,70 @@ impl JobInboxRequest {
                 note: "untargeted open-network demand stays visible but requires manual review"
                     .to_string(),
             },
+        }
+    }
+
+    pub fn demand_risk_assessment_at(&self, now_epoch_seconds: u64) -> JobDemandRiskAssessment {
+        let baseline = self.demand_risk_assessment();
+        if self.demand_source != JobDemandSource::OpenNetwork || !self.is_targeted() {
+            return baseline;
+        }
+
+        let Some(created_at) = self.created_at_epoch_seconds else {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note:
+                    "targeted open-network demand names this provider but lacks freshness metadata"
+                        .to_string(),
+            };
+        };
+        let Some(expires_at) = self.expires_at_epoch_seconds else {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note:
+                    "targeted open-network demand names this provider but lacks freshness metadata"
+                        .to_string(),
+            };
+        };
+        if expires_at <= created_at {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::RejectByDefault,
+                note: "targeted open-network demand has invalid freshness metadata".to_string(),
+            };
+        }
+        if now_epoch_seconds >= expires_at {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::RejectByDefault,
+                note: format!(
+                    "targeted open-network demand expired {}s ago",
+                    now_epoch_seconds.saturating_sub(expires_at)
+                ),
+            };
+        }
+
+        let freshness_remaining_seconds = expires_at.saturating_sub(now_epoch_seconds);
+        if freshness_remaining_seconds < TARGETED_SAFE_AUTO_MIN_FRESHNESS_SECONDS {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note: format!(
+                    "targeted open-network demand names this provider but only has {}s remaining",
+                    freshness_remaining_seconds
+                ),
+            };
+        }
+
+        JobDemandRiskAssessment {
+            class: JobDemandRiskClass::TargetedOpenNetwork,
+            disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+            note: format!(
+                "targeted open-network demand explicitly names this provider and remains fresh for {}s",
+                freshness_remaining_seconds
+            ),
         }
     }
 
