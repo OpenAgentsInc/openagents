@@ -193,6 +193,13 @@ pub(crate) fn remote_interrupt_codex_turn(
     }
 }
 
+pub(crate) fn desktop_control_run_mission_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: crate::pane_system::MissionControlPaneAction,
+) -> bool {
+    actions::run_mission_control_action(state, action)
+}
+
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
         return;
@@ -566,6 +573,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if crate::provider_admin::pump_runtime(state) {
+        changed = true;
+    }
+    if crate::desktop_control::pump_runtime(state) {
         changed = true;
     }
     if crate::codex_remote::pump_runtime(state) {

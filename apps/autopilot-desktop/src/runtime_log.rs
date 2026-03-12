@@ -454,6 +454,14 @@ fn default_autopilot_log_dir() -> PathBuf {
     resolve_log_dir_from(std::env::var_os(ENV_AUTOPILOT_LOG_DIR), fallback_home)
 }
 
+pub(crate) fn autopilot_log_dir() -> PathBuf {
+    default_autopilot_log_dir()
+}
+
+pub(crate) fn latest_session_log_path() -> PathBuf {
+    autopilot_log_dir().join("latest.jsonl")
+}
+
 fn resolve_log_dir_from(override_dir: Option<OsString>, fallback_home: Option<PathBuf>) -> PathBuf {
     if let Some(override_dir) = override_dir {
         let override_dir = PathBuf::from(override_dir);
