@@ -9,7 +9,10 @@ use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, MissionControlPaneAction,
 };
-use crate::spark_wallet::is_settled_wallet_payment_status;
+use crate::spark_wallet::{
+    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    normalize_lightning_invoice_ref,
+};
 use crate::state::job_inbox::JobExecutionParam;
 use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
 
@@ -11981,15 +11984,61 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
         .iter()
         .map(|row| row.payment_pointer.clone())
         .collect::<std::collections::HashSet<_>>();
-    recent_payments
-        .iter()
+    let expected_invoice = job
+        .settlement_bolt11
+        .as_deref()
+        .and_then(normalize_lightning_invoice_ref);
+    let expected_payment_hash = job
+        .settlement_payment_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .or_else(|| {
+            job.settlement_bolt11
+                .as_deref()
+                .and_then(decode_lightning_invoice_payment_hash)
+        });
+
+    let candidate_payments = recent_payments.iter().filter(|payment| {
+        payment.direction.eq_ignore_ascii_case("receive")
+            && is_settled_wallet_payment_status(payment.status.as_str())
+            && !payment.id.trim().is_empty()
+            && !used_pointers.contains(payment.id.as_str())
+            && !is_synthetic_local_payment_pointer(payment.id.as_str())
+    });
+
+    let exact_identity_match = candidate_payments
+        .clone()
         .filter(|payment| {
-            payment.direction.eq_ignore_ascii_case("receive")
-                && is_settled_wallet_payment_status(payment.status.as_str())
-                && !payment.id.trim().is_empty()
-                && !used_pointers.contains(payment.id.as_str())
-                && !is_synthetic_local_payment_pointer(payment.id.as_str())
-                && (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
+            expected_invoice.as_deref().is_some_and(|expected_invoice| {
+                payment
+                    .invoice
+                    .as_deref()
+                    .and_then(normalize_lightning_invoice_ref)
+                    .is_some_and(|candidate_invoice| candidate_invoice == expected_invoice)
+            }) || expected_payment_hash.as_deref().is_some_and(|expected_hash| {
+                payment
+                    .payment_hash
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_ascii_lowercase)
+                    .is_some_and(|candidate_hash| candidate_hash == expected_hash)
+            })
+        })
+        .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
+        .map(|payment| payment.id.clone());
+    if exact_identity_match.is_some()
+        || expected_invoice.is_some()
+        || expected_payment_hash.is_some()
+    {
+        return exact_identity_match;
+    }
+
+    candidate_payments
+        .filter(|payment| {
+            (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
                 && settlement_invoice_created_at_epoch_seconds
                     .is_none_or(|created_at| payment.timestamp >= created_at.saturating_sub(5))
         })
@@ -13439,6 +13488,8 @@ mod tests {
             ttl_seconds: 75,
             stage: crate::app_state::JobLifecycleStage::Delivered,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: None,
             failure_reason: None,
             events: vec![],
@@ -13472,6 +13523,77 @@ mod tests {
             failure_reason: None,
             execution_provenance: None,
         }
+    }
+
+    #[test]
+    fn resolves_open_network_wallet_pointer_by_exact_invoice_identity_before_amount_heuristic() {
+        let mut job = fixture_open_network_delivered_job(10);
+        job.settlement_bolt11 = Some("lnbc20n1targetinvoice".to_string());
+        let history_rows = vec![fixture_history_row("wallet-used-001")];
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-newer-wrong-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_050,
+                invoice: Some("lnbc20n1differentinvoice".to_string()),
+                ..Default::default()
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-exact-invoice-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_020,
+                invoice: Some("lightning:lnbc20n1targetinvoice".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            Some(1_762_700_010),
+            history_rows.as_slice(),
+            payments.as_slice(),
+        )
+        .expect("expected exact invoice match");
+        assert_eq!(pointer, "wallet-exact-invoice-001");
+    }
+
+    #[test]
+    fn resolves_open_network_wallet_pointer_by_exact_payment_hash_when_invoice_missing() {
+        let mut job = fixture_open_network_delivered_job(10);
+        job.settlement_payment_hash = Some("hash-settlement-001".to_string());
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-wrong-hash-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_050,
+                payment_hash: Some("hash-other-001".to_string()),
+                ..Default::default()
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-hash-match-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_020,
+                payment_hash: Some("HASH-SETTLEMENT-001".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            Some(1_762_700_010),
+            &[],
+            payments.as_slice(),
+        )
+        .expect("expected payment hash match");
+        assert_eq!(pointer, "wallet-hash-match-001");
     }
 
     #[test]

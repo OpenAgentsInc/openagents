@@ -10607,6 +10607,8 @@ mod tests {
             ttl_seconds: 120,
             stage: JobLifecycleStage::Paid,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: Some(payment_pointer.to_string()),
             failure_reason: None,
             events: Vec::new(),

@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
+use lightning_invoice::Bolt11Invoice;
 use nostr::identity_mnemonic_path;
 use openagents_spark::{
     Balance, Network, NetworkStatus, NetworkStatusReport, PaymentSummary, SparkSigner, SparkWallet,
@@ -18,6 +20,28 @@ pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
 // MVP release fallback so Spark boots on first run without requiring shell env injection.
 const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+
+pub(crate) fn normalize_lightning_invoice_ref(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let normalized = trimmed
+        .strip_prefix("lightning://")
+        .or_else(|| trimmed.strip_prefix("LIGHTNING://"))
+        .or_else(|| trimmed.strip_prefix("lightning:"))
+        .or_else(|| trimmed.strip_prefix("LIGHTNING:"))
+        .unwrap_or(trimmed)
+        .trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_ascii_lowercase())
+    }
+}
+
+pub(crate) fn decode_lightning_invoice_payment_hash(bolt11: &str) -> Option<String> {
+    let normalized = normalize_lightning_invoice_ref(bolt11)?;
+    let invoice = Bolt11Invoice::from_str(normalized.as_str()).ok()?;
+    Some(invoice.payment_hash().to_string())
+}
 
 #[derive(Clone, Debug)]
 pub enum SparkWalletCommand {
