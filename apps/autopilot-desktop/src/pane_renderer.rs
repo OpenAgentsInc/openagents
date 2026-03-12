@@ -1738,9 +1738,9 @@ fn mission_control_buy_mode_panel_state(
             .as_ref()
             .map(|snapshot| {
                 let mut summary = format!(
-                    "req {} // {} // {} // {} // phase {} // auth {} // next {} // payment {}",
+                    "req {} // provider {} // {} // {} // phase {} // auth {} // next {} // payment {}",
                     compact_mission_control_id(snapshot.request_id.as_str()),
-                    snapshot.provider_summary(),
+                    snapshot.provider_label(),
                     snapshot.winner_selection_summary(),
                     snapshot.work_summary(),
                     snapshot.phase.as_str(),
