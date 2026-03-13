@@ -569,12 +569,6 @@ pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProd
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
         }),
-        "ollama.embeddings" | "gpt_oss.embeddings" => Some(LaunchComputeProductSpec {
-            product_id: "gpt_oss.embeddings",
-            backend_family: ComputeBackendFamily::GptOss,
-            execution_kind: ComputeExecutionKind::LocalInference,
-            compute_family: ComputeFamily::Embeddings,
-        }),
         "apple_foundation_models.text_generation" => Some(LaunchComputeProductSpec {
             product_id: "apple_foundation_models.text_generation",
             backend_family: ComputeBackendFamily::AppleFoundationModels,
@@ -676,9 +670,9 @@ pub fn validate_launch_compute_product(
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily,
-        ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, GptOssRuntimeCapability,
+        COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeProduct,
+        ComputeProductStatus, ComputeSettlementMode, GptOssRuntimeCapability,
         validate_launch_compute_product,
     };
     use serde_json::json;
@@ -738,33 +732,32 @@ mod tests {
     }
 
     #[test]
-    fn rejects_apple_embeddings_product() {
-        let mut product = launch_product("apple_foundation_models.text_generation");
-        product.product_id = "apple_foundation_models.embeddings".to_string();
+    fn rejects_gpt_oss_embeddings_product() {
+        let mut product = launch_product("gpt_oss.text_generation");
+        product.product_id = "gpt_oss.embeddings".to_string();
         product.capability_envelope = Some(ComputeCapabilityEnvelope {
-            backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
+            backend_family: Some(ComputeBackendFamily::GptOss),
             execution_kind: Some(ComputeExecutionKind::LocalInference),
             compute_family: Some(ComputeFamily::Embeddings),
             model_policy: Some("embeddings".to_string()),
-            model_family: Some("apple.foundation".to_string()),
+            model_family: Some("nomic-embed".to_string()),
             host_capability: Some(ComputeHostCapability {
-                accelerator_vendor: Some("apple".to_string()),
-                accelerator_family: Some("m4_max".to_string()),
-                memory_gb: Some(64),
+                accelerator_vendor: Some("nvidia".to_string()),
+                accelerator_family: Some("h100".to_string()),
+                memory_gb: Some(80),
             }),
-            apple_platform: Some(ApplePlatformCapability {
-                apple_silicon_required: true,
-                apple_intelligence_required: true,
-                apple_intelligence_available: Some(true),
-                minimum_macos_version: Some("15.1".to_string()),
+            apple_platform: None,
+            gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some("nomic-embed".to_string()),
+                quantization: Some("q4_k_m".to_string()),
             }),
-            gpt_oss_runtime: None,
             latency_ms_p50: Some(150),
             throughput_per_minute: Some(600),
             concurrency_limit: Some(1),
         });
         let err = validate_launch_compute_product(&product)
-            .expect_err("apple embeddings should be rejected");
+            .expect_err("gpt_oss embeddings should be rejected");
         assert_eq!(err, "compute_product_launch_product_id_unsupported");
     }
 }

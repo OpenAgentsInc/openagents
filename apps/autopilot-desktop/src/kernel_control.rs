@@ -1126,17 +1126,6 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
     {
         bindings.push(binding);
     }
-    if state.provider_runtime.gpt_oss.is_ready()
-        && state
-            .provider_runtime
-            .product_enabled(ProviderInventoryProductToggleTarget::GptOssEmbeddings.product_id())
-        && let Some(binding) = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::GptOss,
-            "text_embeddings",
-        )
-    {
-        bindings.push(binding);
-    }
     bindings
 }
 
@@ -2168,7 +2157,9 @@ fn observed_capability_envelope_for_delivery(
 fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
     match (binding.backend_family, binding.compute_family) {
         (ComputeBackendFamily::GptOss, ComputeFamily::Inference) => "meter.gpt_oss.inference.v1",
-        (ComputeBackendFamily::GptOss, ComputeFamily::Embeddings) => "meter.gpt_oss.embeddings.v1",
+        (ComputeBackendFamily::GptOss, ComputeFamily::Embeddings) => {
+            "meter.gpt_oss.embeddings.unsupported"
+        }
         (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Inference) => {
             "meter.apple_fm.inference.v1"
         }
@@ -2823,15 +2814,6 @@ fn compute_binding_for_backend_and_capability(
             compute_family: ComputeFamily::Inference,
             model_policy: "gpt_oss.text_generation.launch",
         }),
-        (
-            LocalInferenceBackend::GptOss,
-            "embedding" | "embeddings" | "text_embedding" | "text_embeddings",
-        ) => Some(LaunchComputeBinding {
-            product_id: "gpt_oss.embeddings",
-            backend_family: ComputeBackendFamily::GptOss,
-            compute_family: ComputeFamily::Embeddings,
-            model_policy: "gpt_oss.embeddings.launch",
-        }),
         (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
             Some(LaunchComputeBinding {
                 product_id: "apple_foundation_models.text_generation",
@@ -2849,10 +2831,6 @@ fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBindi
         "gpt_oss.text_generation" => compute_binding_for_backend_and_capability(
             LocalInferenceBackend::GptOss,
             "text_generation",
-        ),
-        "gpt_oss.embeddings" => compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::GptOss,
-            "text_embeddings",
         ),
         "apple_foundation_models.text_generation" => compute_binding_for_backend_and_capability(
             LocalInferenceBackend::AppleFoundationModels,
@@ -2895,18 +2873,6 @@ fn selected_launch_compute_binding_for_request(
                     .then_some(binding)
             })
         }
-        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => state
-            .provider_runtime
-            .gpt_oss
-            .is_ready()
-            .then(|| {
-                compute_binding_for_backend_and_capability(
-                    LocalInferenceBackend::GptOss,
-                    "text_embeddings",
-                )
-            })
-            .flatten()
-            .filter(|binding| state.provider_runtime.product_enabled(binding.product_id)),
         _ => None,
     }
 }
@@ -2925,9 +2891,6 @@ fn compute_linkage_for_request(
             .provider_runtime
             .active_inference_backend()
             .and_then(|backend| compute_binding_for_backend_and_capability(backend, capability))?,
-        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
-            compute_binding_for_backend_and_capability(LocalInferenceBackend::GptOss, capability)?
-        }
         _ => return None,
     };
     let session_started_at_ms = state.provider_runtime.inventory_session_started_at_ms?;
@@ -3330,7 +3293,6 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
     match product_id {
-        "gpt_oss.embeddings" => "forward_physical.embeddings.v1",
         "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
         _ => "forward_physical.inference.v1",
     }
@@ -3463,11 +3425,12 @@ mod tests {
         KernelAuthorityMode, LaunchDeliveryContext, PendingSseEvent, ReceiptProjectionEnvelope,
         build_compute_product_request, build_forward_compute_quotes_from_market,
         build_spot_compute_quotes_from_market, compute_binding_for_backend_and_capability,
-        compute_linkage_for_active_job, consume_sse_buffer, current_epoch_ms,
-        delivery_proof_id_for_request, evaluate_delivery_proof, flush_pending_sse_event,
-        forward_capacity_lot_id_for_binding, is_local_projection_receipt_id,
-        local_projection_receipt_id, online_capacity_lot_id_for_binding,
-        resolve_kernel_authority_mode, submission_evidence_refs,
+        compute_binding_for_product_id, compute_linkage_for_active_job, consume_sse_buffer,
+        current_epoch_ms, delivery_proof_id_for_request, evaluate_delivery_proof,
+        flush_pending_sse_event, forward_capacity_lot_id_for_binding,
+        is_local_projection_receipt_id, local_projection_receipt_id,
+        online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
+        submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
     use crate::app_state::{
@@ -3481,8 +3444,7 @@ mod tests {
         CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementMode, DeliveryProofStatus, DeliveryRejectionReason,
-        GptOssRuntimeCapability,
+        ComputeProductStatus, ComputeSettlementMode, DeliveryProofStatus, GptOssRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::json;
@@ -3802,13 +3764,14 @@ mod tests {
         assert_eq!(inference.product_id, "gpt_oss.text_generation");
         assert_eq!(inference.compute_family, ComputeFamily::Inference);
 
-        let embeddings = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::GptOss,
-            "text.embeddings",
-        )
-        .expect("embedding binding");
-        assert_eq!(embeddings.product_id, "gpt_oss.embeddings");
-        assert_eq!(embeddings.compute_family, ComputeFamily::Embeddings);
+        assert!(
+            compute_binding_for_backend_and_capability(
+                LocalInferenceBackend::GptOss,
+                "text.embeddings",
+            )
+            .is_none()
+        );
+        assert!(compute_binding_for_product_id("gpt_oss.embeddings").is_none());
 
         let apple_inference = compute_binding_for_backend_and_capability(
             LocalInferenceBackend::AppleFoundationModels,
@@ -3922,11 +3885,11 @@ mod tests {
     fn spot_quotes_only_return_matching_launch_family_and_available_supply() {
         let rfq = SpotComputeRfqDraft {
             rfq_id: "rfq-1".to_string(),
-            compute_family: ComputeFamily::Embeddings,
+            compute_family: ComputeFamily::Inference,
             preferred_backend: Some(ComputeBackendFamily::GptOss),
             quantity: 2,
             window_minutes: 15,
-            max_price_sats: 30,
+            max_price_sats: 50,
             capability_constraints: SpotComputeCapabilityConstraints::default(),
         };
         let products = vec![
@@ -3939,8 +3902,8 @@ mod tests {
         ];
         let instruments = vec![CapacityInstrument {
             instrument_id: "instrument.active.1".to_string(),
-            product_id: "gpt_oss.embeddings".to_string(),
-            capacity_lot_id: Some(lots[0].capacity_lot_id.clone()),
+            product_id: "gpt_oss.text_generation".to_string(),
+            capacity_lot_id: Some(lots[1].capacity_lot_id.clone()),
             buyer_id: Some("npub1buyer".to_string()),
             provider_id: Some("npub1provider".to_string()),
             delivery_start_ms: 0,
@@ -3961,10 +3924,10 @@ mod tests {
 
         let quotes = build_spot_compute_quotes_from_market(&rfq, &products, &lots, &instruments);
         assert_eq!(quotes.len(), 1);
-        assert_eq!(quotes[0].product_id, "gpt_oss.embeddings");
+        assert_eq!(quotes[0].product_id, "gpt_oss.text_generation");
         assert_eq!(quotes[0].requested_quantity, 2);
         assert_eq!(quotes[0].available_quantity, 3);
-        assert_eq!(quotes[0].price_sats, 16);
+        assert_eq!(quotes[0].price_sats, 42);
     }
 
     #[test]
@@ -4058,28 +4021,14 @@ mod tests {
     }
 
     #[test]
-    fn delivery_evaluation_rejects_embeddings_without_vector_output() {
-        let mut job = fixture_active_job_with_gpt_oss_provenance();
-        job.capability = "text_embeddings".to_string();
-        job.compute_product_id = Some("gpt_oss.embeddings".to_string());
-        job.requested_model = Some("nomic-embed-text".to_string());
-        if let Some(provenance) = job.execution_provenance.as_mut() {
-            provenance.served_model = "nomic-embed-text".to_string();
-        }
-        let binding = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::GptOss,
-            "text_embeddings",
-        )
-        .expect("embedding binding");
-
-        let evaluation =
-            evaluate_delivery_proof(&job, binding, &fixture_delivery_context("not-json"));
-
-        assert_eq!(evaluation.status, DeliveryProofStatus::Rejected);
-        assert_eq!(
-            evaluation.rejection_reason,
-            Some(DeliveryRejectionReason::NonConformingDelivery)
+    fn gpt_oss_embeddings_launch_bindings_are_retired_locally() {
+        assert!(
+            compute_binding_for_backend_and_capability(
+                LocalInferenceBackend::GptOss,
+                "text_embeddings",
+            )
+            .is_none()
         );
-        assert_eq!(evaluation.accepted_quantity, 0);
+        assert!(compute_binding_for_product_id("gpt_oss.embeddings").is_none());
     }
 }

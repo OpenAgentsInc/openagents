@@ -380,7 +380,7 @@ mod tests {
     fn inventory_controls_gate_launch_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
         assert!(controls.is_product_advertised("gpt_oss.text_generation"));
-        assert!(controls.is_product_advertised("gpt_oss.embeddings"));
+        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
         assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
