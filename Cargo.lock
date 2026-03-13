@@ -6517,6 +6517,7 @@ dependencies = [
 name = "psionic-net"
 version = "0.1.1"
 dependencies = [
+ "base64 0.22.1",
  "ed25519-dalek",
  "hex",
  "psionic-runtime",

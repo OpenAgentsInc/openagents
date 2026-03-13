@@ -821,6 +821,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should reuse the existing signed-introduction shape already emerging in `psionic-cluster`.
 
 8. **Psionic Net: add secure tunnel support for exposing selected local services**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3492`.
    - Build the equivalent of `prime-tunnel` for the services OpenAgents actually needs to expose.
    - Keep it scoped to explicit, policy-gated control-plane and inference endpoints rather than generic ingress magic.
 

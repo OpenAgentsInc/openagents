@@ -14,6 +14,7 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+base64 = "0.22"
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 psionic-runtime = { path = "../psionic-runtime" }

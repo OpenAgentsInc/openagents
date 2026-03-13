@@ -68,6 +68,10 @@ enum Command {
         #[command(subcommand)]
         command: BuyModeCommand,
     },
+    Tunnels {
+        #[command(subcommand)]
+        command: TunnelCommand,
+    },
     Chat {
         #[command(subcommand)]
         command: ChatCommand,
@@ -195,6 +199,11 @@ enum BuyModeCommand {
         #[arg(long, default_value_t = 12)]
         limit: usize,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum TunnelCommand {
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -674,6 +683,16 @@ fn main() -> Result<()> {
                     )?;
                 } else {
                     print_buy_mode_roster_text(&snapshot, limit);
+                }
+            }
+        },
+        Command::Tunnels { command } => match command {
+            TunnelCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.tunnels)?;
+                } else {
+                    print_tunnels_text(&snapshot);
                 }
             }
         },
@@ -1393,6 +1412,13 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.wallet.can_withdraw
     );
     println!(
+        "tunnels: available={} approved_services={} active_services={} open_tunnels={}",
+        snapshot.tunnels.available,
+        snapshot.tunnels.approved_service_count,
+        snapshot.tunnels.active_service_count,
+        snapshot.tunnels.open_tunnel_count
+    );
+    println!(
         "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
@@ -1482,6 +1508,49 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.nip28.configured_channel_id
     );
     print_active_job_text(snapshot.active_job.as_ref());
+}
+
+fn print_tunnels_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "tunnels: available={} approved_services={} active_services={} open_tunnels={}",
+        snapshot.tunnels.available,
+        snapshot.tunnels.approved_service_count,
+        snapshot.tunnels.active_service_count,
+        snapshot.tunnels.open_tunnel_count
+    );
+    for service in &snapshot.tunnels.services {
+        println!(
+            "service={} kind={} protocol={} active={} allowed_peers={} requests={} responses={} bytes_in={} bytes_out={} last_error={}",
+            service.service_id,
+            service.kind,
+            service.protocol,
+            service.active,
+            service.allowed_peer_count,
+            service.request_count,
+            service.response_count,
+            service.bytes_in,
+            service.bytes_out,
+            service.last_error.as_deref().unwrap_or("-")
+        );
+    }
+    for tunnel in &snapshot.tunnels.tunnels {
+        println!(
+            "tunnel={} service={} direction={} peer={} state={} transport={} session_path={} requests={} responses={} bytes_sent={} bytes_received={} close_reason={} last_error={}",
+            tunnel.tunnel_id,
+            tunnel.service_id,
+            tunnel.direction,
+            tunnel.peer_node_id,
+            tunnel.state,
+            tunnel.transport_class,
+            tunnel.session_path_kind,
+            tunnel.request_count,
+            tunnel.response_count,
+            tunnel.bytes_sent,
+            tunnel.bytes_received,
+            tunnel.close_reason.as_deref().unwrap_or("-"),
+            tunnel.last_error.as_deref().unwrap_or("-")
+        );
+    }
 }
 
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {

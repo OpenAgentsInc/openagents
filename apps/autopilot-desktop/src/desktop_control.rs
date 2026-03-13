@@ -62,6 +62,7 @@ pub struct DesktopControlSnapshot {
     pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
+    pub tunnels: DesktopControlTunnelsStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
     pub active_job: Option<DesktopControlActiveJobStatus>,
     pub nip28: DesktopControlNip28Status,
@@ -167,6 +168,47 @@ pub struct DesktopControlWalletStatus {
     pub withdraw_block_reason: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTunnelServiceStatus {
+    pub service_id: String,
+    pub kind: String,
+    pub protocol: String,
+    pub active: bool,
+    pub allowed_peer_count: usize,
+    pub request_count: u64,
+    pub response_count: u64,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTunnelStatus {
+    pub tunnel_id: String,
+    pub direction: String,
+    pub peer_node_id: String,
+    pub service_id: String,
+    pub state: String,
+    pub transport_class: String,
+    pub session_path_kind: String,
+    pub request_count: u64,
+    pub response_count: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub close_reason: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTunnelsStatus {
+    pub available: bool,
+    pub approved_service_count: usize,
+    pub active_service_count: usize,
+    pub open_tunnel_count: usize,
+    pub services: Vec<DesktopControlTunnelServiceStatus>,
+    pub tunnels: Vec<DesktopControlTunnelStatus>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -2384,6 +2426,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_action: state.spark_wallet.last_action.clone(),
             last_error: state.spark_wallet.last_error.clone(),
         },
+        tunnels: DesktopControlTunnelsStatus::default(),
         buy_mode: DesktopControlBuyModeStatus {
             enabled: state.buy_mode_payments.buy_mode_loop_enabled,
             approved_budget_sats: MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
@@ -3199,6 +3242,25 @@ mod tests {
                 withdraw_block_reason: None,
                 last_action: Some("Wallet refreshed".to_string()),
                 last_error: None,
+            },
+            tunnels: DesktopControlTunnelsStatus {
+                available: true,
+                approved_service_count: 1,
+                active_service_count: 0,
+                open_tunnel_count: 0,
+                services: vec![DesktopControlTunnelServiceStatus {
+                    service_id: "desktop-control".to_string(),
+                    kind: "desktop_control_http".to_string(),
+                    protocol: "http_request_response".to_string(),
+                    active: false,
+                    allowed_peer_count: 1,
+                    request_count: 0,
+                    response_count: 0,
+                    bytes_in: 0,
+                    bytes_out: 0,
+                    last_error: None,
+                }],
+                tunnels: Vec::new(),
             },
             buy_mode: DesktopControlBuyModeStatus {
                 enabled: false,

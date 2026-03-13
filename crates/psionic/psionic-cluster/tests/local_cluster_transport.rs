@@ -1,6 +1,7 @@
 use std::{
     net::{SocketAddr, UdpSocket as StdUdpSocket},
     path::Path,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -10,12 +11,16 @@ use psionic_cluster::{
     ClusterNonLanDiscoveryDisposition, ClusterNonLanDiscoveryRefusalReason,
     ClusterOperatorManifest, ClusterRelayEndpoint, ClusterRelayServer, ClusterStreamError,
     ClusterTransportPathKind, ClusterTrustPolicy, ClusterTrustPosture,
-    ClusterTrustRolloutDisposition, ConfiguredClusterPeer, ConfiguredPeerDialPolicy,
-    ConfiguredPeerKeyMatch, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
-    NodeRole,
+    ClusterTrustRolloutDisposition, ClusterTunnelError, ClusterTunnelHttpRequest,
+    ClusterTunnelPolicy, ClusterTunnelServiceKind, ClusterTunnelServicePolicy, ClusterTunnelState,
+    ConfiguredClusterPeer, ConfiguredPeerDialPolicy, ConfiguredPeerKeyMatch,
+    ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode, NodeRole,
 };
 use tempfile::tempdir;
-use tokio::time::{sleep, timeout, Instant};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use tokio::time::{Instant, sleep, timeout};
 
 const CLUSTER_NAMESPACE: &str = "lan-alpha";
 const CLUSTER_ADMISSION_TOKEN: &str = "shared-secret";
@@ -191,6 +196,97 @@ where
 fn auth_public_key_for_test(byte: u8) -> String {
     let signing_key = SigningKey::from_bytes(&[byte; 32]);
     hex::encode(signing_key.verifying_key().to_bytes())
+}
+
+async fn spawn_http_echo_service() -> (
+    SocketAddr,
+    Arc<Mutex<Vec<String>>>,
+    oneshot::Sender<()>,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind(loopback_addr(0)).await;
+    assert!(listener.is_ok(), "HTTP echo service should bind");
+    let listener = listener
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let local_addr = listener.local_addr();
+    assert!(
+        local_addr.is_ok(),
+        "HTTP echo service should expose local address"
+    );
+    let local_addr = local_addr
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let observed_requests = Arc::new(Mutex::new(Vec::new()));
+    let observed_requests_for_task = Arc::clone(&observed_requests);
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+    let task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => break,
+                accepted = listener.accept() => {
+                    let Ok((mut stream, _peer_addr)) = accepted else {
+                        break;
+                    };
+                    let observed_requests = Arc::clone(&observed_requests_for_task);
+                    tokio::spawn(async move {
+                        let mut request_bytes = Vec::new();
+                        let read = stream.read_to_end(&mut request_bytes).await;
+                        if read.is_err() {
+                            return;
+                        }
+                        let request_text = String::from_utf8_lossy(&request_bytes);
+                        let Some(header_end) = request_text.find("\r\n\r\n") else {
+                            return;
+                        };
+                        let header_text = &request_text[..header_end];
+                        let body_text = &request_text[header_end + 4..];
+                        let mut lines = header_text.split("\r\n");
+                        let first_line = lines.next().unwrap_or("");
+                        if let Ok(mut observed) = observed_requests.lock() {
+                            observed.push(first_line.to_string());
+                        }
+                        let mut parts = first_line.split_whitespace();
+                        let method = parts.next().unwrap_or("UNKNOWN");
+                        let path = parts.next().unwrap_or("/");
+                        let response_body =
+                            format!("method={method};path={path};body={body_text}");
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            response_body.len(),
+                            response_body
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.shutdown().await;
+                    });
+                }
+            }
+        }
+    });
+    (local_addr, observed_requests, shutdown_tx, task)
+}
+
+async fn wait_for_tunnel_state(
+    node: &LocalClusterNode,
+    tunnel_id: psionic_cluster::ClusterTunnelId,
+    expected_state: ClusterTunnelState,
+) -> psionic_cluster::ClusterTunnelSnapshot {
+    let wait = timeout(Duration::from_secs(3), async {
+        loop {
+            let tunnels = node.tunnel_snapshots().await;
+            if let Some(tunnel) = tunnels
+                .into_iter()
+                .find(|tunnel| tunnel.tunnel_id == tunnel_id && tunnel.state == expected_state)
+            {
+                return tunnel;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(wait.is_ok(), "tunnel state did not converge");
+    wait.ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -528,12 +624,14 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
     let receiver = LocalClusterNode::spawn(
         base_config(receiver_addr, NodeRole::CoordinatorOnly)
             .with_file_backed_identity(receiver_path.clone())
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                sender_bootstrap.node_id.clone(),
-                sender_addr,
-                sender_bootstrap.auth_public_key.clone(),
-            )
-            .with_max_concurrent_streams(2)]),
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    sender_bootstrap.node_id.clone(),
+                    sender_addr,
+                    sender_bootstrap.auth_public_key.clone(),
+                )
+                .with_max_concurrent_streams(2),
+            ]),
     )
     .await;
     assert!(receiver.is_ok(), "receiver should start");
@@ -544,12 +642,14 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
     let sender = LocalClusterNode::spawn(
         base_config(sender_addr, NodeRole::ExecutorOnly)
             .with_file_backed_identity(sender_path)
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                receiver_bootstrap.node_id.clone(),
-                receiver_addr,
-                receiver_bootstrap.auth_public_key.clone(),
-            )
-            .with_max_concurrent_streams(2)]),
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    receiver_bootstrap.node_id.clone(),
+                    receiver_addr,
+                    receiver_bootstrap.auth_public_key.clone(),
+                )
+                .with_max_concurrent_streams(2),
+            ]),
     )
     .await;
     assert!(sender.is_ok(), "sender should start");
@@ -856,12 +956,14 @@ async fn nat_rendezvous_relays_surface_nat_traversal_paths() {
     let receiver = LocalClusterNode::spawn(
         base_config(receiver_addr, NodeRole::CoordinatorOnly)
             .with_file_backed_identity(receiver_identity_path)
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                sender_bootstrap.node_id.clone(),
-                sender_placeholder_addr,
-                sender_bootstrap.auth_public_key.clone(),
-            )
-            .with_nat_rendezvous_relays(vec![relay_endpoint.clone()])])
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    sender_bootstrap.node_id.clone(),
+                    sender_placeholder_addr,
+                    sender_bootstrap.auth_public_key.clone(),
+                )
+                .with_nat_rendezvous_relays(vec![relay_endpoint.clone()]),
+            ])
             .with_configured_peer_dial_policy(dial_policy),
     )
     .await;
@@ -873,12 +975,14 @@ async fn nat_rendezvous_relays_surface_nat_traversal_paths() {
     let sender = LocalClusterNode::spawn(
         base_config(sender_addr, NodeRole::ExecutorOnly)
             .with_file_backed_identity(sender_identity_path)
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                receiver_bootstrap.node_id.clone(),
-                receiver_placeholder_addr,
-                receiver_bootstrap.auth_public_key.clone(),
-            )
-            .with_nat_rendezvous_relays(vec![relay_endpoint.clone()])])
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    receiver_bootstrap.node_id.clone(),
+                    receiver_placeholder_addr,
+                    receiver_bootstrap.auth_public_key.clone(),
+                )
+                .with_nat_rendezvous_relays(vec![relay_endpoint.clone()]),
+            ])
             .with_configured_peer_dial_policy(dial_policy),
     )
     .await;
@@ -961,12 +1065,14 @@ async fn relay_fallback_surfaces_relayed_transport_path() {
     let receiver = LocalClusterNode::spawn(
         base_config(receiver_addr, NodeRole::CoordinatorOnly)
             .with_file_backed_identity(receiver_identity_path)
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                sender_bootstrap.node_id.clone(),
-                sender_placeholder_addr,
-                sender_bootstrap.auth_public_key.clone(),
-            )
-            .with_relay_fallback_relays(vec![relay_endpoint.clone()])])
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    sender_bootstrap.node_id.clone(),
+                    sender_placeholder_addr,
+                    sender_bootstrap.auth_public_key.clone(),
+                )
+                .with_relay_fallback_relays(vec![relay_endpoint.clone()]),
+            ])
             .with_configured_peer_dial_policy(dial_policy),
     )
     .await;
@@ -978,12 +1084,14 @@ async fn relay_fallback_surfaces_relayed_transport_path() {
     let sender = LocalClusterNode::spawn(
         base_config(sender_addr, NodeRole::ExecutorOnly)
             .with_file_backed_identity(sender_identity_path)
-            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                receiver_bootstrap.node_id.clone(),
-                receiver_placeholder_addr,
-                receiver_bootstrap.auth_public_key.clone(),
-            )
-            .with_relay_fallback_relays(vec![relay_endpoint.clone()])])
+            .with_authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    receiver_bootstrap.node_id.clone(),
+                    receiver_placeholder_addr,
+                    receiver_bootstrap.auth_public_key.clone(),
+                )
+                .with_relay_fallback_relays(vec![relay_endpoint.clone()]),
+            ])
             .with_configured_peer_dial_policy(dial_policy),
     )
     .await;
@@ -1024,6 +1132,309 @@ async fn relay_fallback_surfaces_relayed_transport_path() {
     );
     let relay_shutdown = relay.shutdown().await;
     assert!(relay_shutdown.is_ok(), "relay should shut down cleanly");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bounded_http_tunnels_forward_requests_and_surface_lifecycle() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-tunnel-identity.json");
+    let sender_identity_path = temp.path().join("sender-tunnel-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+    let (service_addr, observed_requests, service_shutdown_tx, service_task) =
+        spawn_http_echo_service().await;
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                sender_bootstrap.node_id.clone(),
+                sender_addr,
+                sender_bootstrap.auth_public_key.clone(),
+            )])
+            .with_tunnel_policy(ClusterTunnelPolicy::new(vec![
+                ClusterTunnelServicePolicy::new_http(
+                    "desktop-control",
+                    ClusterTunnelServiceKind::DesktopControlHttp,
+                    service_addr,
+                )
+                .with_allowed_peer_node_ids(vec![sender_bootstrap.node_id.clone()])
+                .with_max_request_body_bytes(2048)
+                .with_max_response_body_bytes(4096),
+            ])),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                receiver_bootstrap.node_id.clone(),
+                receiver_addr,
+                receiver_bootstrap.auth_public_key.clone(),
+            )]),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let _receiver_peer = wait_for_single_peer(&receiver).await;
+    let _sender_peer = wait_for_single_peer(&sender).await;
+
+    let receiver_services = receiver.tunnel_service_snapshots().await;
+    assert_eq!(receiver_services.len(), 1);
+    assert!(!receiver_services[0].active);
+
+    let activated = receiver.activate_tunnel_service("desktop-control").await;
+    assert!(activated.is_ok(), "approved tunnel service should activate");
+    let activated = activated
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert!(activated.active);
+
+    let lease = sender
+        .open_http_tunnel(&receiver.local_identity().node_id, "desktop-control")
+        .await;
+    assert!(lease.is_ok(), "open tunnel should succeed");
+    let lease = lease
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender_tunnel =
+        wait_for_tunnel_state(&sender, lease.tunnel_id, ClusterTunnelState::Open).await;
+    let receiver_tunnel =
+        wait_for_tunnel_state(&receiver, lease.tunnel_id, ClusterTunnelState::Open).await;
+    assert_eq!(sender_tunnel.service_id, "desktop-control");
+    assert_eq!(receiver_tunnel.service_id, "desktop-control");
+
+    let response = sender
+        .send_tunneled_http_request(
+            &lease,
+            ClusterTunnelHttpRequest::new("POST", "/health?ready=1")
+                .with_header("content-type", "text/plain; charset=utf-8")
+                .with_utf8_body("hello tunnel"),
+        )
+        .await;
+    assert!(response.is_ok(), "HTTP tunnel request should succeed");
+    let response = response
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert_eq!(response.status_code, 200);
+    let response_body = response.body_bytes();
+    assert!(response_body.is_ok(), "response body should decode");
+    let response_body = String::from_utf8(
+        response_body
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success")),
+    );
+    assert!(response_body.is_ok(), "response body should be valid UTF-8");
+    let response_body = response_body
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert!(response_body.contains("method=POST"));
+    assert!(response_body.contains("path=/health?ready=1"));
+    assert!(response_body.contains("body=hello tunnel"));
+
+    let observed_requests = observed_requests.lock();
+    assert!(
+        observed_requests.is_ok(),
+        "observed requests lock should succeed"
+    );
+    let observed_requests = observed_requests
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert!(
+        observed_requests
+            .iter()
+            .any(|line| line.contains("POST /health?ready=1 HTTP/1.1")),
+        "local service should observe the forwarded request line"
+    );
+    drop(observed_requests);
+
+    let sender_tunnel = sender
+        .tunnel_snapshots()
+        .await
+        .into_iter()
+        .find(|tunnel| tunnel.tunnel_id == lease.tunnel_id);
+    assert!(
+        sender_tunnel.is_some(),
+        "sender tunnel snapshot should exist"
+    );
+    let sender_tunnel =
+        sender_tunnel.unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert_eq!(sender_tunnel.transport.requests_sent, 1);
+    assert_eq!(sender_tunnel.transport.responses_received, 1);
+    assert!(sender_tunnel.transport.bytes_sent > 0);
+    assert!(sender_tunnel.transport.bytes_received > 0);
+
+    let receiver_service = receiver
+        .tunnel_service_snapshots()
+        .await
+        .into_iter()
+        .find(|service| service.service_id == "desktop-control");
+    assert!(
+        receiver_service.is_some(),
+        "receiver tunnel service should exist"
+    );
+    let receiver_service =
+        receiver_service.unwrap_or_else(|| unreachable!("assert above ensures success"));
+    assert_eq!(receiver_service.request_count, 1);
+    assert_eq!(receiver_service.response_count, 1);
+    assert!(receiver_service.bytes_in > 0);
+    assert!(receiver_service.bytes_out > 0);
+
+    let close = sender.close_tunnel(&lease).await;
+    assert!(close.is_ok(), "tunnel should close");
+    let _sender_closed =
+        wait_for_tunnel_state(&sender, lease.tunnel_id, ClusterTunnelState::Closed).await;
+    let _receiver_closed =
+        wait_for_tunnel_state(&receiver, lease.tunnel_id, ClusterTunnelState::Closed).await;
+
+    let service_shutdown = service_shutdown_tx.send(());
+    assert!(
+        service_shutdown.is_ok(),
+        "service shutdown signal should send cleanly"
+    );
+    let service_task = service_task.await;
+    assert!(service_task.is_ok(), "service task should stop cleanly");
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn inactive_tunnel_services_refuse_open_requests() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-tunnel-refusal.json");
+    let sender_identity_path = temp.path().join("sender-tunnel-refusal.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+    let (service_addr, _observed_requests, service_shutdown_tx, service_task) =
+        spawn_http_echo_service().await;
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                sender_bootstrap.node_id.clone(),
+                sender_addr,
+                sender_bootstrap.auth_public_key.clone(),
+            )])
+            .with_tunnel_policy(ClusterTunnelPolicy::new(vec![
+                ClusterTunnelServicePolicy::new_http(
+                    "desktop-control",
+                    ClusterTunnelServiceKind::DesktopControlHttp,
+                    service_addr,
+                )
+                .with_allowed_peer_node_ids(vec![sender_bootstrap.node_id.clone()]),
+            ])),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                receiver_bootstrap.node_id.clone(),
+                receiver_addr,
+                receiver_bootstrap.auth_public_key.clone(),
+            )]),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let _receiver_peer = wait_for_single_peer(&receiver).await;
+    let _sender_peer = wait_for_single_peer(&sender).await;
+
+    let lease = sender
+        .open_http_tunnel(&receiver.local_identity().node_id, "desktop-control")
+        .await;
+    assert_eq!(
+        lease,
+        Err(ClusterTunnelError::OpenRefused {
+            service_id: String::from("desktop-control"),
+            reason: psionic_cluster::ClusterTunnelOpenRefusalReason::ServiceInactive,
+        })
+    );
+
+    let wait_for_refused = timeout(Duration::from_secs(3), async {
+        loop {
+            if sender.tunnel_snapshots().await.into_iter().any(|tunnel| {
+                tunnel.service_id == "desktop-control"
+                    && tunnel.state == ClusterTunnelState::Refused
+            }) {
+                return;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(
+        wait_for_refused.is_ok(),
+        "refused tunnel snapshot should be retained"
+    );
+
+    let service_shutdown = service_shutdown_tx.send(());
+    assert!(
+        service_shutdown.is_ok(),
+        "service shutdown signal should send cleanly"
+    );
+    let service_task = service_task.await;
+    assert!(service_task.is_ok(), "service task should stop cleanly");
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
