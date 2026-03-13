@@ -1241,6 +1241,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 bounds: caret_bounds,
                 svg_data: std::sync::Arc::from(caret_svg.as_bytes()),
                 tint: Some(theme::bg::MUTED.with_alpha(_tooltip_alpha)),
+                opacity: 1.0,
             });
 
             // Horizontally centered text — use full tooltip width to avoid clipping

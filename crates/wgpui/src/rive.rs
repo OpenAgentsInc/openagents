@@ -127,7 +127,7 @@ impl RiveController {
             &artboard_handle.to_runtime_handle(),
             &scene_handle,
         )?;
-        let mut controller = Self {
+        Ok(Self {
             bytes,
             artboard_handle,
             scene_handle,
@@ -136,9 +136,7 @@ impl RiveController {
             viewport: Viewport::default(),
             scene,
             last_metrics: RiveMetrics::default(),
-        };
-        controller.update_metrics(VectorBatch::new(Bounds::ZERO));
-        Ok(controller)
+        })
     }
 
     pub fn is_paused(&self) -> bool {
@@ -204,7 +202,7 @@ impl RiveController {
         self.scene.draw(&mut renderer);
         renderer.state_pop();
         let batch = renderer.into_batch();
-        self.update_metrics(batch.clone());
+        self.update_metrics(&batch);
         batch
     }
 
@@ -247,13 +245,21 @@ impl RiveController {
         );
     }
 
-    fn update_metrics(&mut self, batch: VectorBatch) {
+    fn update_metrics(&mut self, batch: &VectorBatch) {
         self.last_metrics = RiveMetrics {
-            scene_name: self.scene.name().to_string(),
-            artboard_size: self.scene.artboard_size(),
+            scene_name: scene_handle_label(&self.scene_handle),
+            artboard_size: batch.bounds.size,
             command_count: batch.commands.len(),
             image_count: batch.images.len(),
         };
+    }
+}
+
+fn scene_handle_label(handle: &RiveHandle) -> String {
+    match handle {
+        RiveHandle::Default => "default".to_string(),
+        RiveHandle::Index(index) => format!("index:{index}"),
+        RiveHandle::Name(name) => name.clone(),
     }
 }
 
@@ -269,9 +275,22 @@ impl RiveSurface {
         bytes: impl Into<Arc<[u8]>>,
         id: Option<ComponentId>,
     ) -> Result<Self, RiveError> {
+        Self::from_bytes_with_handles(bytes, RiveHandle::Default, RiveHandle::Default, id)
+    }
+
+    pub fn from_bytes_with_handles(
+        bytes: impl Into<Arc<[u8]>>,
+        artboard_handle: RiveHandle,
+        scene_handle: RiveHandle,
+        id: Option<ComponentId>,
+    ) -> Result<Self, RiveError> {
         Ok(Self {
             id,
-            controller: RiveController::from_bytes(bytes)?,
+            controller: RiveController::from_bytes_with_handles(
+                bytes,
+                artboard_handle,
+                scene_handle,
+            )?,
             last_paint: None,
         })
     }
@@ -347,13 +366,6 @@ impl SceneInstance {
                 RuntimeLinearAnimation::instantiate(artboard, runtime_handle)
                     .map(Self::LinearAnimation)
             })
-    }
-
-    fn name(&self) -> &str {
-        match self {
-            Self::StateMachine(scene) => scene.name(),
-            Self::LinearAnimation(scene) => scene.name(),
-        }
     }
 
     fn artboard_size(&self) -> Size {
@@ -887,7 +899,8 @@ fn transform_point(point: Point, transform: &[f32; 6]) -> Point {
 
 #[cfg(test)]
 mod tests {
-    use super::{RiveFitMode, invert_transform, view_transform};
+    use super::RiveHandle;
+    use super::{RiveFitMode, invert_transform, scene_handle_label, view_transform};
     use crate::{Bounds, Size};
 
     #[test]
@@ -911,5 +924,15 @@ mod tests {
         assert!((inverse[3] - (1.0 / 3.0)).abs() < 0.0001);
         assert!((inverse[4] + 10.0).abs() < 0.0001);
         assert!((inverse[5] + 4.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn scene_handle_label_formats_supported_handles() {
+        assert_eq!(scene_handle_label(&RiveHandle::Default), "default");
+        assert_eq!(scene_handle_label(&RiveHandle::Index(7)), "index:7");
+        assert_eq!(
+            scene_handle_label(&RiveHandle::Name("hud".to_string())),
+            "hud"
+        );
     }
 }
