@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
@@ -331,6 +332,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             rive_preview_runtime: crate::app_state::RivePreviewRuntimeState::default(),
             presentation: crate::app_state::PresentationPaneState::default(),
             presentation_runtime: crate::app_state::PresentationRuntimeState::default(),
+            frame_debugger: crate::app_state::FrameDebuggerPaneState::default(),
             apple_fm_workbench: crate::app_state::AppleFmWorkbenchPaneState::default(),
             provider_admin_runtime,
             provider_admin_listen_addr,
@@ -734,7 +736,8 @@ fn open_startup_panes(state: &mut RenderState) {
     }
 }
 
-pub fn render_frame(state: &mut RenderState) -> Result<()> {
+pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRenderReport> {
+    let frame_start = Instant::now();
     state.refresh_nip90_payment_facts();
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
@@ -1100,6 +1103,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.rive_preview_runtime,
             &mut state.presentation,
             &mut state.presentation_runtime,
+            &state.frame_debugger,
             &mut state.apple_fm_workbench,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
@@ -1279,14 +1283,16 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         state.text_system.mark_clean();
     }
 
+    let surface_acquire_start = Instant::now();
     let output = match state.surface.get_current_texture() {
         Ok(frame) => frame,
         Err(wgpu::SurfaceError::Lost) => {
             state.surface.configure(&state.device, &state.config);
-            return Ok(());
+            return Ok(crate::app_state::FrameRenderReport::default());
         }
         Err(err) => return Err(anyhow::anyhow!("surface error: {err:?}")),
     };
+    let surface_acquire_ms = surface_acquire_start.elapsed().as_secs_f32() * 1_000.0;
 
     let view = output
         .texture
@@ -1298,17 +1304,35 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             label: Some("Autopilot Render Encoder"),
         });
 
+    let scene_build_ms = frame_start.elapsed().as_secs_f32() * 1_000.0 - surface_acquire_ms;
+
     state.renderer.prepare(
         &state.device,
         &state.queue,
         &scene,
         state.scale_factor.max(0.1),
     );
+    let submit_present_start = Instant::now();
     state.renderer.render(&mut encoder, &view);
     state.queue.submit(std::iter::once(encoder.finish()));
     output.present();
+    let submit_present_ms = submit_present_start.elapsed().as_secs_f32() * 1_000.0;
+    let metrics = state.renderer.render_metrics();
 
-    Ok(())
+    Ok(crate::app_state::FrameRenderReport {
+        scene_build_ms: scene_build_ms.max(0.0),
+        surface_acquire_ms,
+        prepare_cpu_ms: metrics.prepare_cpu_ms as f32,
+        render_cpu_ms: metrics.render_cpu_ms as f32,
+        submit_present_ms,
+        total_cpu_ms: frame_start.elapsed().as_secs_f32() * 1_000.0,
+        draw_calls: metrics.draw_calls,
+        layer_count: metrics.layer_count,
+        vector_batches: metrics.vector_batches,
+        image_instances: metrics.image_instances,
+        svg_instances: metrics.svg_instances,
+        svg_cache_size: state.renderer.svg_cache_size(),
+    })
 }
 
 pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> Size {

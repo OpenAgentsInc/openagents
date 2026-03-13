@@ -1775,6 +1775,7 @@ fn execute_pane_set_input(
         PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
         PaneKind::RivePreview => false,
         PaneKind::Presentation => false,
+        PaneKind::FrameDebugger => false,
         PaneKind::AppleFmWorkbench => apply_apple_fm_workbench_input(state, &field, &value),
         PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
         PaneKind::Settings => apply_settings_input(state, &field, &value),
@@ -1964,6 +1965,60 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                     }),
                 );
             }
+            PaneKind::FrameDebugger => {
+                let last_report = state.frame_debugger.last_report.as_ref();
+                let redraw_pressure = &state.frame_debugger.redraw_pressure;
+                map.insert(
+                    "frame_debugger".to_string(),
+                    json!({
+                        "rolling_fps": state.frame_debugger.rolling_fps,
+                        "rolling_frame_interval_ms": state.frame_debugger.rolling_frame_interval_ms,
+                        "last_frame_interval_ms": state.frame_debugger.last_frame_interval_ms,
+                        "total_frames": state.frame_debugger.total_frames,
+                        "redraw_requests": state.frame_debugger.redraw_requests,
+                        "slow_frames_60hz": state.frame_debugger.slow_frames_60hz,
+                        "slow_frames_30hz": state.frame_debugger.slow_frames_30hz,
+                        "sample_count": state.frame_debugger.samples().len(),
+                        "redraw_pressure": {
+                            "should_redraw": redraw_pressure.should_redraw,
+                            "reason_summary": redraw_pressure.reason_summary(),
+                            "poll_interval_ms": redraw_pressure.poll_interval_ms,
+                            "background_changed": redraw_pressure.background_changed,
+                            "hotbar_flashing": redraw_pressure.hotbar_flashing,
+                            "provider_animating": redraw_pressure.provider_animating,
+                            "chat_pending": redraw_pressure.chat_pending,
+                            "text_input_focused": redraw_pressure.text_input_focused,
+                            "rive_preview": redraw_pressure.rive_preview.state_summary(),
+                            "presentation": redraw_pressure.presentation.state_summary(),
+                        },
+                        "reason_counters": {
+                            "background_changed": state.frame_debugger.redraw_reason_counters.background_changed,
+                            "hotbar_flashing": state.frame_debugger.redraw_reason_counters.hotbar_flashing,
+                            "provider_animating": state.frame_debugger.redraw_reason_counters.provider_animating,
+                            "chat_pending": state.frame_debugger.redraw_reason_counters.chat_pending,
+                            "text_input_focused": state.frame_debugger.redraw_reason_counters.text_input_focused,
+                            "rive_preview": state.frame_debugger.redraw_reason_counters.rive_preview,
+                            "presentation": state.frame_debugger.redraw_reason_counters.presentation,
+                        },
+                        "last_report": last_report.map(|sample| json!({
+                            "frame_interval_ms": sample.frame_interval_ms,
+                            "scene_build_ms": sample.scene_build_ms,
+                            "surface_acquire_ms": sample.surface_acquire_ms,
+                            "prepare_cpu_ms": sample.prepare_cpu_ms,
+                            "render_cpu_ms": sample.render_cpu_ms,
+                            "submit_present_ms": sample.submit_present_ms,
+                            "total_cpu_ms": sample.total_cpu_ms,
+                            "draw_calls": sample.draw_calls,
+                            "layer_count": sample.layer_count,
+                            "vector_batches": sample.vector_batches,
+                            "image_instances": sample.image_instances,
+                            "svg_instances": sample.svg_instances,
+                            "svg_cache_size": sample.svg_cache_size,
+                        })),
+                        "last_error": state.frame_debugger.last_error,
+                    }),
+                );
+            }
             PaneKind::CadDemo => {
                 let visible_variant_ids = state.cad_demo.visible_variant_ids();
                 map.insert(
@@ -2055,6 +2110,7 @@ fn pane_action_to_hit_action(
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
         PaneKind::Presentation => unsupported(),
+        PaneKind::FrameDebugger => unsupported(),
         PaneKind::BuyerRaceMatrix => unsupported(),
         PaneKind::SellerEarningsTimeline => unsupported(),
         PaneKind::SettlementLadder => unsupported(),
@@ -5868,6 +5924,13 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         ],
         PaneKind::RivePreview => &["rive", "rive_preview", "hud_preview"],
         PaneKind::Presentation => &["presentation", "deck", "slides", "present"],
+        PaneKind::FrameDebugger => &[
+            "frame_debugger",
+            "frame_debug",
+            "fps",
+            "perf",
+            "performance",
+        ],
         PaneKind::AppleFmWorkbench => &[
             "apple_fm",
             "apple_fm_workbench",
@@ -5956,6 +6019,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::PsionicViz => "psionic_viz",
         PaneKind::RivePreview => "rive_preview",
         PaneKind::Presentation => "presentation",
+        PaneKind::FrameDebugger => "frame_debugger",
         PaneKind::AppleFmWorkbench => "apple_fm_workbench",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",
@@ -6300,6 +6364,14 @@ mod tests {
             Some(PaneKind::Presentation)
         );
         assert_eq!(
+            resolve_pane_kind_for_runtime("pane.frame_debugger"),
+            Some(PaneKind::FrameDebugger)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("fps"),
+            Some(PaneKind::FrameDebugger)
+        );
+        assert_eq!(
             resolve_pane_kind_for_runtime("foundation_models"),
             Some(PaneKind::AppleFmWorkbench)
         );
@@ -6322,6 +6394,7 @@ mod tests {
     fn pane_key_normalization_is_stable() {
         assert_eq!(pane_kind_key(PaneKind::AutopilotChat), "autopilot_chat");
         assert_eq!(pane_kind_key(PaneKind::Calculator), "calculator");
+        assert_eq!(pane_kind_key(PaneKind::FrameDebugger), "frame_debugger");
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
             "spark_lightning_wallet"

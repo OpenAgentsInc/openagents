@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 53] = [
+const PANE_SPECS: [PaneSpec; 54] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -328,6 +328,21 @@ const PANE_SPECS: [PaneSpec; 53] = [
             id: "pane.presentation",
             label: "Presentation",
             description: "Open a slide-style HUD presentation surface backed by the packaged Rive HUD asset",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::FrameDebugger,
+        title: "Frame Debugger",
+        default_width: 1120.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.frame_debugger",
+            label: "Frame Debugger",
+            description: "Open live FPS, redraw-pressure, and renderer timing diagnostics",
             keybinding: None,
         }),
         hotbar: None,
@@ -1049,6 +1064,18 @@ mod tests {
         assert!(
             !spec.startup,
             "presentation pane should remain opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn frame_debugger_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.frame_debugger")
+            .expect("frame debugger command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::FrameDebugger);
+        assert!(spec.singleton, "frame debugger pane must be singleton");
+        assert!(
+            !spec.startup,
+            "frame debugger pane should remain opt-in instead of opening at startup"
         );
     }
 

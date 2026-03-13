@@ -7,15 +7,16 @@ use crate::app_state::{
     CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
     CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
-    MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, PresentationPaneState,
-    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlPaneState,
-    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
+    JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    LogStreamPaneState, MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs,
+    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
+    PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker,
+    ProviderControlPaneState, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
@@ -60,12 +61,13 @@ use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane, buy_mode as buy_mode_pane,
     buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    earnings_jobs as earnings_jobs_pane, key_ledger as key_ledger_pane,
-    local_inference as local_inference_pane, log_stream as log_stream_pane,
-    presentation as presentation_pane, project_ops as project_ops_pane,
-    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
-    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
-    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
+    earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
+    key_ledger as key_ledger_pane, local_inference as local_inference_pane,
+    log_stream as log_stream_pane, presentation as presentation_pane,
+    project_ops as project_ops_pane, provider_control as provider_control_pane,
+    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, wallet as wallet_pane,
 };
@@ -116,6 +118,7 @@ impl PaneRenderer {
         rive_preview_runtime: &mut RivePreviewRuntimeState,
         presentation: &mut PresentationPaneState,
         presentation_runtime: &mut PresentationRuntimeState,
+        frame_debugger: &FrameDebuggerPaneState,
         apple_fm_workbench: &mut AppleFmWorkbenchPaneState,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
@@ -311,6 +314,9 @@ impl PaneRenderer {
                         presentation_runtime,
                         paint,
                     );
+                }
+                PaneKind::FrameDebugger => {
+                    frame_debugger_pane::paint(content_bounds, frame_debugger, paint);
                 }
                 PaneKind::AppleFmWorkbench => {
                     let capability_surface = local_runtime_capability_surface_for_lane(

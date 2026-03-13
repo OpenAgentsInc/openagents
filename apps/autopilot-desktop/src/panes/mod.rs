@@ -9,6 +9,7 @@ pub mod chat;
 pub mod codex;
 pub mod credit;
 pub mod earnings_jobs;
+pub mod frame_debugger;
 pub mod key_ledger;
 pub mod local_inference;
 pub mod log_stream;
