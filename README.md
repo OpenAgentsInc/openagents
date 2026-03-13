@@ -173,12 +173,22 @@ Before starting the desktop app, test the Apple FM bridge first. From the repo r
 
 ## Run Locally
 
-Requires the Rust toolchain (`cargo`/`rustc`) to be installed.
+Requires the Rust toolchain (`cargo`/`rustc`) and `protoc` (Protocol Buffers compiler) to be installed.
 
+**Install protoc on macOS:**
+```bash
+brew install protobuf
+```
+
+**Install build prerequisites on Debian/Ubuntu:**
+```bash
+sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+```
+
+**Run:**
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
-cargo install --path .
 cargo autopilot
 ```
 
