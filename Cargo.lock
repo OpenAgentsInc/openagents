@@ -6456,6 +6456,7 @@ version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
+ "psionic-net",
  "psionic-runtime",
  "rand 0.9.2",
  "serde",
@@ -6510,6 +6511,22 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-net"
+version = "0.1.1"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "psionic-runtime",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]

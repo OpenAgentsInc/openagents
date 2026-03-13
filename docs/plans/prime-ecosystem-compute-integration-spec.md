@@ -806,6 +806,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 1: Wider-Network Transport
 
 5. **Psionic Net: extract a wider-network transport crate from `psionic-cluster`**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3489`.
    - Split transport/session concerns from ordered-state concerns so internet-grade transport can evolve without entangling the whole cluster crate.
    - The new crate should own peer identity, session establishment, stream classes, and transport observations.
 

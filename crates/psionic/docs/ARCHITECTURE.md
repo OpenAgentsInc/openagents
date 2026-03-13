@@ -12,13 +12,15 @@ Psionic is structured as a layered engine subtree.
    Lowering, scheduling, and plan construction boundaries over IR.
 4. `psionic-runtime`
    Runtime traits for devices, buffers, allocators, and execution.
-5. Backend crates
+5. `psionic-net`
+   Peer identity, transport/session lifecycle, and transport observations.
+6. Backend crates
    Backend-specific runtime implementations only.
-6. `psionic-models`
+7. `psionic-models`
    Model abstractions and metadata over core/runtime primitives.
-7. `psionic-serve`
+8. `psionic-serve`
    Served compute product contracts and execution interfaces.
-8. `psionic-provider`
+9. `psionic-provider`
    Capability envelopes, readiness, receipts, and provider adapter types.
 
 ## Dependency Direction
@@ -28,6 +30,10 @@ Psionic is structured as a layered engine subtree.
 - `psionic-compiler` may depend on `psionic-ir` and `psionic-core`.
 - `psionic-runtime` may depend on `psionic-core`, `psionic-ir`, and
   `psionic-compiler`.
+- `psionic-net` may depend on reusable runtime-facing crates but owns no market
+  authority or app behavior.
+- `psionic-cluster` depends on `psionic-net` for transport/session truth and
+  owns ordered-state, scheduling, and topology planning on top of it.
 - backend crates may depend on runtime/core/IR/compiler as needed.
 - `psionic-models` depends on reusable engine crates only.
 - `psionic-serve` depends on models/runtime/core.
