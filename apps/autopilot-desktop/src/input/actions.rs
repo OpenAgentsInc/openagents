@@ -12481,6 +12481,9 @@ pub(super) fn refresh_earnings_scoreboard(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) {
+    state
+        .job_history
+        .set_reference_epoch_seconds(crate::app_state::current_reference_epoch_seconds());
     state.earnings_scoreboard.refresh_from_sources(
         now,
         &state.provider_runtime,
@@ -12788,6 +12791,9 @@ pub(super) fn refresh_network_aggregate_counters(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) {
+    state
+        .job_history
+        .set_reference_epoch_seconds(crate::app_state::current_reference_epoch_seconds());
     state.network_aggregate_counters.refresh_from_sources(
         now,
         &state.spacetime_presence_snapshot,
