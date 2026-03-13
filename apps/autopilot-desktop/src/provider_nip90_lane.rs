@@ -1599,8 +1599,7 @@ async fn poll_ingress(
                         relay_url.clone(),
                         elapsed_millis_u32(recv_started.elapsed()),
                     ));
-                    if let Some(request) =
-                        event_to_inbox_request(&event, Some(relay_url.as_str()))
+                    if let Some(request) = event_to_inbox_request(&event, Some(relay_url.as_str()))
                     {
                         requests.push(request);
                     } else if let Some(buyer_event) = event_to_buyer_response_event(
@@ -2568,9 +2567,8 @@ mod tests {
             content: "generate summary".to_string(),
             sig: "11".repeat(64),
         };
-        let targeted_elsewhere =
-            event_to_inbox_request(&targeted_elsewhere, None)
-                .expect("event should map to inbox row");
+        let targeted_elsewhere = event_to_inbox_request(&targeted_elsewhere, None)
+            .expect("event should map to inbox row");
         assert!(
             !state.preview_request_should_reach_ui(&targeted_elsewhere),
             "preview should drop targeted requests for other providers before they hit the UI"
@@ -2798,9 +2796,8 @@ mod tests {
             sig: "55".repeat(64),
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
-        let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None, None)
-                .expect("feedback should map");
+        let buyer_event = event_to_buyer_response_event(&event, &tracked, None, None)
+            .expect("feedback should map");
         assert_eq!(
             buyer_event.bolt11.as_deref(),
             Some("lnbc10n1invoicefallback")
@@ -2824,9 +2821,8 @@ mod tests {
             sig: "55".repeat(64),
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
-        let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None, None)
-                .expect("feedback should map");
+        let buyer_event = event_to_buyer_response_event(&event, &tracked, None, None)
+            .expect("feedback should map");
         assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1jsoncontent"));
     }
 
@@ -2851,13 +2847,9 @@ mod tests {
             sig: "66".repeat(64),
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
-        let buyer_event = event_to_buyer_response_event(
-            &event,
-            &tracked,
-            None,
-            Some("wss://relay.result.test/"),
-        )
-        .expect("result should map");
+        let buyer_event =
+            event_to_buyer_response_event(&event, &tracked, None, Some("wss://relay.result.test/"))
+                .expect("result should map");
         assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Result);
         assert_eq!(buyer_event.request_id, "req-001");
         assert_eq!(
@@ -2914,7 +2906,7 @@ mod tests {
                 Some(identity.public_key_hex.as_str()),
                 None,
             )
-                .is_none(),
+            .is_none(),
             "self-authored buyer feedback should not be re-ingested as provider activity"
         );
     }
