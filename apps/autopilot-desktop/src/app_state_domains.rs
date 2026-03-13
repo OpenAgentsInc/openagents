@@ -139,6 +139,7 @@ pub struct FrameRedrawPressureSnapshot {
     pub hotbar_flashing: bool,
     pub provider_animating: bool,
     pub chat_pending: bool,
+    pub debug_probe_active: bool,
     pub text_input_focused: bool,
     pub poll_interval_ms: u32,
     pub rive_preview: RiveCadenceSnapshot,
@@ -159,6 +160,9 @@ impl FrameRedrawPressureSnapshot {
         }
         if self.chat_pending {
             labels.push("chat");
+        }
+        if self.debug_probe_active {
+            labels.push("debugger");
         }
         if self.text_input_focused {
             labels.push("text_input");
@@ -188,6 +192,7 @@ pub struct FrameRedrawReasonCounters {
     pub hotbar_flashing: u64,
     pub provider_animating: u64,
     pub chat_pending: u64,
+    pub debug_probe_active: u64,
     pub text_input_focused: u64,
     pub rive_preview: u64,
     pub presentation: u64,
@@ -296,6 +301,12 @@ impl FrameDebuggerPaneState {
                 self.redraw_reason_counters.chat_pending =
                     self.redraw_reason_counters.chat_pending.saturating_add(1);
             }
+            if snapshot.debug_probe_active {
+                self.redraw_reason_counters.debug_probe_active = self
+                    .redraw_reason_counters
+                    .debug_probe_active
+                    .saturating_add(1);
+            }
             if snapshot.text_input_focused {
                 self.redraw_reason_counters.text_input_focused = self
                     .redraw_reason_counters
@@ -372,7 +383,7 @@ impl FrameDebuggerPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Frame {} recorded // {:.1} fps rolling // {:.2} ms cpu",
+            "Frame {} recorded // {:.1} redraw fps rolling // {:.2} ms cpu",
             self.total_frames,
             self.rolling_fps.unwrap_or_default(),
             sample.total_cpu_ms

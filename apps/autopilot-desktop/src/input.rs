@@ -586,10 +586,15 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
             .any(|pane| pane.kind == PaneKind::Presentation),
         state.presentation_runtime.surface.as_ref(),
     );
+    let debug_probe_active = state
+        .panes
+        .iter()
+        .any(|pane| pane.kind == PaneKind::FrameDebugger);
     let rive_needs_redraw = preview_rive.needs_redraw || presentation_rive.needs_redraw;
     let poll_interval = background_poll_interval(
         state.autopilot_chat.has_pending_messages(),
         rive_needs_redraw,
+        debug_probe_active,
     );
     let redraw_pressure = build_frame_redraw_pressure_snapshot(
         state,
@@ -597,6 +602,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         poll_interval,
         preview_rive,
         presentation_rive,
+        debug_probe_active,
     );
     state
         .frame_debugger
@@ -661,6 +667,7 @@ fn build_frame_redraw_pressure_snapshot(
     poll_interval: std::time::Duration,
     rive_preview: RiveCadenceSnapshot,
     presentation: RiveCadenceSnapshot,
+    debug_probe_active: bool,
 ) -> FrameRedrawPressureSnapshot {
     let hotbar_flashing = state.hotbar.is_flashing();
     let provider_animating = matches!(
@@ -674,6 +681,7 @@ fn build_frame_redraw_pressure_snapshot(
         hotbar_flashing,
         provider_animating,
         chat_pending,
+        debug_probe_active,
         text_input_focused,
         rive_preview.needs_redraw || presentation.needs_redraw,
     );
@@ -683,6 +691,7 @@ fn build_frame_redraw_pressure_snapshot(
         hotbar_flashing,
         provider_animating,
         chat_pending,
+        debug_probe_active,
         text_input_focused,
         poll_interval_ms: poll_interval.as_millis().min(u128::from(u32::MAX)) as u32,
         rive_preview,
@@ -695,6 +704,7 @@ fn should_request_desktop_redraw(
     hotbar_flashing: bool,
     provider_animating: bool,
     chat_pending: bool,
+    debug_probe_active: bool,
     text_input_focused: bool,
     rive_needs_redraw: bool,
 ) -> bool {
@@ -702,12 +712,17 @@ fn should_request_desktop_redraw(
         || hotbar_flashing
         || provider_animating
         || chat_pending
+        || debug_probe_active
         || text_input_focused
         || rive_needs_redraw
 }
 
-fn background_poll_interval(chat_pending: bool, rive_needs_redraw: bool) -> std::time::Duration {
-    if chat_pending || rive_needs_redraw {
+fn background_poll_interval(
+    chat_pending: bool,
+    rive_needs_redraw: bool,
+    debug_probe_active: bool,
+) -> std::time::Duration {
+    if chat_pending || rive_needs_redraw || debug_probe_active {
         std::time::Duration::from_millis(16)
     } else {
         std::time::Duration::from_millis(50)
@@ -3950,15 +3965,19 @@ mod tests {
     #[test]
     fn background_poll_interval_stays_fast_for_rive_activity() {
         assert_eq!(
-            background_poll_interval(false, true),
+            background_poll_interval(false, true, false),
             Duration::from_millis(16)
         );
         assert_eq!(
-            background_poll_interval(true, false),
+            background_poll_interval(true, false, false),
             Duration::from_millis(16)
         );
         assert_eq!(
-            background_poll_interval(false, false),
+            background_poll_interval(false, false, true),
+            Duration::from_millis(16)
+        );
+        assert_eq!(
+            background_poll_interval(false, false, false),
             Duration::from_millis(50)
         );
     }
@@ -3966,10 +3985,13 @@ mod tests {
     #[test]
     fn desktop_redraw_policy_includes_rive_activity() {
         assert!(should_request_desktop_redraw(
-            false, false, false, false, false, true
+            false, false, false, false, false, false, true
+        ));
+        assert!(should_request_desktop_redraw(
+            false, false, false, false, true, false, false
         ));
         assert!(!should_request_desktop_redraw(
-            false, false, false, false, false, false
+            false, false, false, false, false, false, false
         ));
     }
 
