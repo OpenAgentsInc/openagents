@@ -493,11 +493,10 @@ pub fn schedule_layer_sharded_execution(
         .filter_map(|schedule| schedule.cluster_execution.degraded_reason.clone())
         .collect::<Vec<_>>();
     if policy.allow_degraded_links {
-        degraded_reasons.extend(
-            shard_handoffs
-                .iter()
-                .filter_map(|handoff| handoff.detail.clone()),
-        );
+        degraded_reasons.extend(layer_sharded_degraded_link_details(
+            state,
+            &selected_node_ids,
+        ));
     }
     degraded_reasons.sort();
     degraded_reasons.dedup();
@@ -771,6 +770,36 @@ fn build_shard_handoffs(
     Ok(shard_handoffs)
 }
 
+fn layer_sharded_degraded_link_details(
+    state: &ClusterState,
+    shard_node_ids: &[NodeId],
+) -> Vec<String> {
+    let mut details = Vec::new();
+    for node_pair in shard_node_ids.windows(2) {
+        let Some(link) = state.links().get(&ClusterLinkKey::new(
+            node_pair[0].clone(),
+            node_pair[1].clone(),
+        )) else {
+            continue;
+        };
+        if link.status == ClusterLinkStatus::Degraded {
+            details.push(format!(
+                "layer-sharded handoff link `{}` -> `{}` is only in degraded status",
+                node_pair[0].as_str(),
+                node_pair[1].as_str()
+            ));
+        }
+        if link.stability == ClusterStabilityPosture::Flaky {
+            details.push(format!(
+                "layer-sharded handoff link `{}` -> `{}` is only marked flaky",
+                node_pair[0].as_str(),
+                node_pair[1].as_str()
+            ));
+        }
+    }
+    details
+}
+
 fn cluster_transport_for_sharded_path(
     shard_schedules: &[crate::WholeRequestClusterSchedule],
     shard_handoffs: &[ClusterShardHandoff],
@@ -888,8 +917,8 @@ mod tests {
         ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
         ClusterBackendReadinessStatus, ClusterLink, ClusterLinkClass, ClusterLinkStatus,
         ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity,
-        ClusterNodeTelemetry, ClusterSnapshot, ClusterState, ClusterTransportClass, NodeEpoch,
-        NodeRole,
+        ClusterNodeTelemetry, ClusterSnapshot, ClusterStabilityPosture, ClusterState,
+        ClusterTransportClass, NodeEpoch, NodeRole,
     };
 
     use super::{
@@ -1221,6 +1250,60 @@ mod tests {
                 .as_ref()
                 .map(|failure| failure.code),
             Some(crate::WholeRequestSchedulingFailureCode::NoEligibleRemoteNode)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn layer_sharded_scheduler_allows_bounded_degraded_handoff_with_explicit_reason()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.links.insert(
+            crate::ClusterLinkKey::new(
+                crate::NodeId::new("worker-a"),
+                crate::NodeId::new("worker-b"),
+            ),
+            shard_link("worker-a", "worker-b")
+                .with_stability_posture(ClusterStabilityPosture::Flaky)
+                .with_latency_us(200)
+                .with_bandwidth_mbps(35_000),
+        );
+        snapshot
+            .links
+            .get_mut(&crate::ClusterLinkKey::new(
+                crate::NodeId::new("worker-a"),
+                crate::NodeId::new("worker-b"),
+            ))
+            .ok_or_else(|| fixture_error("worker-a/worker-b shard link"))?
+            .status = ClusterLinkStatus::Degraded;
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request =
+            LayerShardedExecutionRequest::new(crate::NodeId::new("scheduler"), "artifact-1", 40, 2)
+                .with_minimum_free_memory_bytes_per_shard(16 * 1024 * 1024 * 1024)
+                .with_handoff_bytes_per_token(8192, 4096);
+        let policy = LayerShardedExecutionPolicy {
+            allow_degraded_links: true,
+            ..LayerShardedExecutionPolicy::cuda_default()
+        };
+
+        let schedule =
+            schedule_layer_sharded_execution(&state, &request, &policy).map_err(|err| {
+                fixture_error(&format!(
+                    "bounded degraded layer-sharded schedule should succeed: {err:?}"
+                ))
+            })?;
+
+        assert_eq!(schedule.shard_node_ids.len(), 2);
+        assert!(
+            schedule
+                .cluster_execution
+                .degraded_reason
+                .as_deref()
+                .is_some_and(|reason| {
+                    reason.contains("layer-sharded handoff link `worker-a` -> `worker-b` is only in degraded status")
+                        && reason.contains("layer-sharded handoff link `worker-a` -> `worker-b` is only marked flaky")
+                })
         );
         Ok(())
     }
