@@ -22,7 +22,9 @@ It can:
 
 - fetch the current Mission Control snapshot
 - stream desktop-control event batches
-- refresh Apple FM and wallet state
+- inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
+- refresh the active local runtime and wallet state
+- refresh, warm, unload, and wait on GPT-OSS directly
 - bring the provider online or offline
 - inspect active-job and buy-mode state
 - select the managed NIP-28 main channel
@@ -43,11 +45,23 @@ Useful `autopilotctl` starting points:
 
 ```bash
 autopilotctl status
+autopilotctl local-runtime status
+autopilotctl local-runtime refresh --wait
+autopilotctl gpt-oss status
+autopilotctl gpt-oss warm --wait
+autopilotctl wait gpt-oss-ready
 autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
 autopilotctl logs --tail 50
+```
+
+Apple-specific bridge flows still exist for the shipped macOS release path:
+
+```bash
+autopilotctl apple-fm refresh --wait
+autopilotctl apple-fm smoke-test
 ```
 
 ## Local smoke run
