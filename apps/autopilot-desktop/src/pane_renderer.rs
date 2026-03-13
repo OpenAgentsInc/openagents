@@ -1,29 +1,30 @@
 use std::sync::Arc;
 
 use crate::app_state::{
+    ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
+    AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
+    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
+    BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
+    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
+    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
+    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
+    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
+    ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
-    mission_control_show_local_model_button, ActiveJobRecord, ActiveJobState, ActivityEventDomain,
-    ActivityFeedFilter, ActivityFeedState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
-    AlertSeverity, AlertsRecoveryState, AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState,
-    AutopilotChatState, BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs,
-    CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
-    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
-    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
-    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
-    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, LocalInferencePaneInputs,
-    LocalInferencePaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
-    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
-    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
-    active_job_abort_button_bounds, active_job_advance_button_bounds,
+    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
@@ -63,7 +64,7 @@ use crate::pane_system::{
     settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
-    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds, PANE_TITLE_HEIGHT,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
@@ -74,7 +75,7 @@ use crate::panes::{
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
-use wgpui::{theme, Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
 
 pub struct PaneRenderer;
 
@@ -7017,9 +7018,9 @@ mod tests {
         mission_control_buy_mode_payment_label, mission_control_go_online_hint,
         mission_control_lightning_receive_state_label, mission_control_local_fm_test_button_label,
         mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
-        mission_control_value_chunk_len, mission_control_value_x_offset,
-        nostr_identity_view_state, pay_invoice_view_state, payment_terminal_status,
-        request_freshness_summary, spark_wallet_view_state, split_text_for_display,
+        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
+        pay_invoice_view_state, payment_terminal_status, request_freshness_summary,
+        spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -7368,15 +7369,21 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(texts
-            .iter()
-            .any(|text| { text.contains("Flow phase: delivered-unpaid") }));
-        assert!(texts
-            .iter()
-            .any(|text| { text.contains("Next event: buyer settlement timed out") }));
-        assert!(texts
-            .iter()
-            .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") }));
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Flow phase: delivered-unpaid") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Next event: buyer settlement timed out") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") })
+        );
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived",
@@ -7405,12 +7412,16 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(texts
-            .iter()
-            .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") }));
-        assert!(texts
-            .iter()
-            .any(|text| { text.contains("Next event: buyer Lightning payment") }));
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") })
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| { text.contains("Next event: buyer Lightning payment") })
+        );
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment",
@@ -7949,9 +7960,11 @@ mod tests {
         assert_eq!(panel.next, "waiting-peer");
         assert_eq!(panel.provider, "none");
         assert_eq!(panel.work, "blocked");
-        assert!(panel
-            .summary
-            .contains("no eligible Autopilot peers are online for compute"));
+        assert!(
+            panel
+                .summary
+                .contains("no eligible Autopilot peers are online for compute")
+        );
         assert!(panel.summary.contains("provider-offline"));
     }
 
@@ -8052,14 +8065,18 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "ACTIVE");
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") }));
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") }));
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") })
+        );
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // RESULT SIGNED")
                 && line.contains("RELAY ATTEMPT 4")
@@ -8088,14 +8105,18 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "AWAITING PAYMENT");
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") }));
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") }));
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") })
+        );
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
         }));
@@ -8131,14 +8152,18 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "UNPAID");
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") }));
-        assert!(panel
-            .lines
-            .iter()
-            .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") }));
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") })
+        );
+        assert!(
+            panel
+                .lines
+                .iter()
+                .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") })
+        );
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // BUYER NEVER SETTLED")
                 && line.contains("RESULT RESULT")
@@ -8186,9 +8211,11 @@ mod tests {
         )
         .expect("buy mode panel should render pending wallet confirmation");
         assert_eq!(pending.payment, "pending");
-        assert!(pending
-            .summary
-            .contains("payment pending Spark confirmation"));
+        assert!(
+            pending
+                .summary
+                .contains("payment pending Spark confirmation")
+        );
 
         let mut wallet = SparkPaneState::default();
         wallet.recent_payments.push(openagents_spark::PaymentSummary {
@@ -8216,9 +8243,11 @@ mod tests {
         )
         .expect("buy mode panel should render failed wallet state");
         assert_eq!(failed.payment, "failed");
-        assert!(failed
-            .summary
-            .contains("lightning send failed before preimage settlement"));
+        assert!(
+            failed
+                .summary
+                .contains("lightning send failed before preimage settlement")
+        );
         assert!(failed.summary.contains("2 sats invoice"));
         assert!(failed.summary.contains("3 sats fee"));
         assert!(failed.summary.contains("5 sats total debit"));
@@ -8289,11 +8318,15 @@ mod tests {
         assert_eq!(panel.work, "settled");
         assert_eq!(panel.payment, "pending");
         assert!(panel.summary.contains("seller settlement confirmed"));
-        assert!(panel
-            .summary
-            .contains("seller settled; awaiting local wallet confirmation"));
-        assert!(panel
-            .summary
-            .contains("phase seller-settled-pending-wallet"));
+        assert!(
+            panel
+                .summary
+                .contains("seller settled; awaiting local wallet confirmation")
+        );
+        assert!(
+            panel
+                .summary
+                .contains("phase seller-settled-pending-wallet")
+        );
     }
 }

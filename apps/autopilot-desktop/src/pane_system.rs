@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use wgpui::components::hud::{PaneFrame, ResizablePane, ResizeEdge};
-use wgpui::{theme, Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
+use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    mission_control_show_local_model_button, ActivityFeedFilter, DesktopPane, PaneDragMode,
-    PaneKind, PanePresentation, RenderState,
+    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
+    mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -6924,7 +6924,7 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_job_abort_button_bounds, active_job_advance_button_bounds,
+        PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
         active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
         activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
         activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
@@ -7022,7 +7022,7 @@ mod tests {
         starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-        trajectory_verify_button_bounds, PaneDescriptor,
+        trajectory_verify_button_bounds,
     };
     use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
@@ -7155,12 +7155,16 @@ mod tests {
 
         assert!(layout.active_jobs_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(layout
-            .load_funds_panel
-            .contains(load_funds.amount_input.origin));
-        assert!(layout
-            .load_funds_panel
-            .contains(load_funds.send_invoice_input.origin));
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.amount_input.origin)
+        );
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.send_invoice_input.origin)
+        );
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
@@ -7176,12 +7180,16 @@ mod tests {
 
         assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(layout
-            .load_funds_panel
-            .contains(load_funds.amount_input.origin));
-        assert!(layout
-            .load_funds_panel
-            .contains(load_funds.send_invoice_input.origin));
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.amount_input.origin)
+        );
+        assert!(
+            layout
+                .load_funds_panel
+                .contains(load_funds.send_invoice_input.origin)
+        );
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
