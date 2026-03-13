@@ -848,6 +848,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This creates the first honest clustered low-latency serving product.
 
 13. **Psionic Cluster: productize layer-sharded serving**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3497`.
    - Widen the current layer-sharded planning path into an end-to-end execution lane with topology digests and delivery evidence.
    - This is the first meaningful step toward larger-than-one-node inference products.
 

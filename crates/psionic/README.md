@@ -53,8 +53,9 @@ This subtree now has a tested CPU product baseline, a first Metal-backed
 for direct/NAT/relay connectivity, durable ordered-state persistence, policy-
 driven wider-network candidate admission, truthful remote whole-request
 scheduling, replica-routed clustered serving with explicit replica evidence,
-and restart-safe catch-up in `psionic-cluster`, plus explicit AMD
-discovery/readiness groundwork. AMD execution support is still future work.
+layer-sharded clustered serving with explicit handoff evidence, and restart-safe
+catch-up in `psionic-cluster`, plus explicit AMD discovery/readiness
+groundwork. AMD execution support is still future work.
 
 ## Docs
 
