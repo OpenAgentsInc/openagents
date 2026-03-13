@@ -24,6 +24,12 @@ Assumption for this plan:
 - willingness to widen Psionic well beyond “local inference engine” when that is
   the right owner
 
+Detailed follow-on:
+
+- the compute-specific implementation spec that expands this audit into a
+  crate-by-crate and issue-by-issue plan now lives at
+  `docs/plans/prime-ecosystem-compute-integration-spec.md`
+
 ## Scope
 
 - `docs/MVP.md`
