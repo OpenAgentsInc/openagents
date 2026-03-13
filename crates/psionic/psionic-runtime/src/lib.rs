@@ -387,10 +387,14 @@ pub enum ClusterCommandAuthorityScopeEvidence {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClusterAdmissionFactKind {
+    /// Admission policy truth constrained the scheduled request path.
+    AdmissionPolicy,
     /// Scheduler membership admitted the node that made the decision.
     SchedulerMembership,
     /// Selected execution-node membership admitted this worker into the plan.
     SelectedMembership,
+    /// Discovery-candidate admission admitted the selected remote worker.
+    SelectedCandidateAdmission,
     /// Artifact residency or staging fact admitted this worker/artifact pair.
     ArtifactResidency,
     /// Leadership truth admitted the current coordinator fence and term.
@@ -6168,11 +6172,7 @@ pub struct ExecutionResult<B> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::panic_in_result_fn
-    )]
+    #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
 
     use std::collections::BTreeMap;
 

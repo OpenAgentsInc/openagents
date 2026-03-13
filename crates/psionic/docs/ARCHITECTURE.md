@@ -36,7 +36,7 @@ Psionic is structured as a layered engine subtree.
   authority or app behavior.
 - `psionic-cluster` depends on `psionic-net` for transport/session truth and
   owns durable ordered-state, admission/revocation policy, compaction/catch-up,
-  scheduling, and topology planning on top of it.
+  remote whole-request scheduling, and topology planning on top of it.
 - backend crates may depend on runtime/core/IR/compiler as needed.
 - `psionic-models` depends on reusable engine crates only.
 - `psionic-serve` depends on models/runtime/core.
