@@ -227,6 +227,10 @@ pub(super) fn apply_ingressed_request(
         .iter()
         .any(|existing| existing.request_id == request.request_id);
 
+    if preview_only && !is_new {
+        return;
+    }
+
     state.job_inbox.upsert_network_request(request.clone());
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
@@ -438,84 +442,71 @@ fn apply_ignored_ingress_request(
     reason: &str,
 ) {
     let preview_only = ingress_is_preview_only(state.provider_nip90_lane.mode);
+    if preview_only {
+        return;
+    }
     let now_epoch_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    if !preview_only {
-        state
-            .earn_kernel_receipts
-            .record_network_preflight_rejection(
-                request,
-                reason,
-                now_epoch_seconds,
-                "nip90.relay.ingress.reject",
-            );
-    }
+    state
+        .earn_kernel_receipts
+        .record_network_preflight_rejection(
+            request,
+            reason,
+            now_epoch_seconds,
+            "nip90.relay.ingress.reject",
+        );
 
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
     state.job_inbox.last_action = Some(format!(
-        "{} NIP-90 request {} ({})",
-        if preview_only {
-            "Ignored preview"
-        } else {
-            "Ignored live"
-        },
+        "Ignored live NIP-90 request {} ({})",
         request.request_id,
         reason
     ));
 
     state.provider_runtime.last_result = Some(format!(
-        "{} request {} ({})",
-        if preview_only {
-            "preview ignored"
-        } else {
-            "relay ingress ignored"
-        },
+        "relay ingress ignored request {} ({})",
         request.request_id,
         reason
     ));
-    if !preview_only {
-        state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
-        state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
-        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
-            state.provider_runtime.last_authoritative_error_class = None;
-        }
+    state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
+    state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+    if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+        state.provider_runtime.last_authoritative_error_class = None;
     }
 
-    if !preview_only {
-        let now_epoch_seconds = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_secs());
-        state.activity_feed.upsert_event(ActivityEventRow {
-            event_id: format!("nip90:req:ignored:{}", request.request_id),
-            domain: ActivityEventDomain::Network,
-            source_tag: "nip90.policy".to_string(),
-            summary: "Ignored live NIP-90 request".to_string(),
-            detail: format!(
-                "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
-                request.request_id,
-                request.requester,
-                if request.target_provider_pubkeys.is_empty() {
-                    "none".to_string()
-                } else {
-                    request.target_provider_pubkeys.join(",")
-                },
-                request.encrypted,
-                reason,
-                request
-                    .parsed_event_shape
-                    .as_deref()
-                    .unwrap_or("shape unavailable"),
-                request
-                    .raw_event_json
-                    .as_deref()
-                    .unwrap_or("raw event json unavailable"),
-            ),
-            occurred_at_epoch_seconds: now_epoch_seconds,
-        });
-        state.activity_feed.load_state = PaneLoadState::Ready;
-    }
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!("nip90:req:ignored:{}", request.request_id),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.policy".to_string(),
+        summary: "Ignored live NIP-90 request".to_string(),
+        detail: format!(
+            "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+            request.request_id,
+            request.requester,
+            if request.target_provider_pubkeys.is_empty() {
+                "none".to_string()
+            } else {
+                request.target_provider_pubkeys.join(",")
+            },
+            request.encrypted,
+            reason,
+            request
+                .parsed_event_shape
+                .as_deref()
+                .unwrap_or("shape unavailable"),
+            request
+                .raw_event_json
+                .as_deref()
+                .unwrap_or("raw event json unavailable"),
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
 
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
