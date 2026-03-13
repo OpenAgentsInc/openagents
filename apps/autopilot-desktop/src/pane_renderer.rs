@@ -2522,23 +2522,12 @@ fn mission_control_local_model_button_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
-                String::from("STARTING APPLE FM")
-            } else if desktop_shell_mode.is_dev() && provider_runtime.apple_fm.is_ready() {
-                String::from("OPEN APPLE FM")
-            } else if provider_runtime.apple_fm.reachable {
-                String::from("REFRESH APPLE FM")
-            } else {
-                String::from("START APPLE FM")
-            }
-        }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            String::from("OPEN GPT-OSS WORKBENCH")
-        }
-        None => String::from("NO LOCAL MODEL"),
-    }
+    crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .local_model_button_label
 }
 
 fn mission_control_local_action_enabled(
@@ -2546,13 +2535,12 @@ fn mission_control_local_action_enabled(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> bool {
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            provider_runtime.apple_fm.bridge_status.as_deref() != Some("starting")
-        }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => true,
-        None => false,
-    }
+    crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .local_model_button_enabled
 }
 
 fn mission_control_local_fm_test_button_visible(
@@ -2612,21 +2600,15 @@ fn mission_control_primary_model_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => provider_runtime
-            .apple_fm
-            .ready_model
-            .as_deref()
-            .or(Some(provider_runtime.apple_fm.system_model.id.as_str()))
-            .map(mission_control_short_model_label)
-            .unwrap_or_else(|| String::from("APPLE FM")),
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => local_inference_runtime
-            .ready_model
-            .as_deref()
-            .map(mission_control_short_model_label)
-            .unwrap_or_else(|| String::from("SEE WORKBENCH")),
-        None => String::from("NO SUPPORTED MODEL"),
-    }
+    mission_control_short_model_label(
+        crate::app_state::mission_control_local_runtime_view_model(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        )
+        .model_label
+        .as_str(),
+    )
 }
 
 fn mission_control_backend_label(
@@ -2634,24 +2616,12 @@ fn mission_control_backend_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            if let Some(status) = provider_runtime.apple_fm.bridge_status.as_deref() {
-                format!("Apple FM bridge ({status})")
-            } else {
-                "Apple FM bridge".to_string()
-            }
-        }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            let backend = if local_inference_runtime.backend_label.trim().is_empty() {
-                "cuda"
-            } else {
-                local_inference_runtime.backend_label.as_str()
-            };
-            format!("Psionic {backend} (workbench)")
-        }
-        None => "No supported local backend".to_string(),
-    }
+    crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .backend_label
 }
 
 fn mission_control_model_load_status(
@@ -2659,31 +2629,12 @@ fn mission_control_model_load_status(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            if provider_runtime.apple_fm.is_ready() {
-                String::from("ready")
-            } else if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
-                String::from("starting")
-            } else if provider_runtime.apple_fm.reachable
-                && provider_runtime.apple_fm.model_available
-            {
-                String::from("bridge ready")
-            } else if provider_runtime.apple_fm.reachable {
-                String::from("model unavailable")
-            } else {
-                String::from("bridge offline")
-            }
-        }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            if local_inference_runtime.is_ready() {
-                String::from("ready")
-            } else {
-                String::from("open workbench")
-            }
-        }
-        None => String::from("unsupported"),
-    }
+    crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .load_label
 }
 
 fn mission_control_go_online_hint(
@@ -2691,41 +2642,12 @@ fn mission_control_go_online_hint(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    if !matches!(
-        provider_runtime.mode,
-        crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
-    ) {
-        return String::new();
-    }
-    match mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            if provider_runtime.apple_fm.is_ready() {
-                String::new()
-            } else if let Some(message) = provider_runtime.apple_fm.availability_error_message() {
-                format!("Mission Control needs Apple Foundation Models: {message}")
-            } else if provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting") {
-                String::from(
-                    "Apple FM bridge is starting. Go Online unlocks when the system model is ready.",
-                )
-            } else if provider_runtime.apple_fm.reachable {
-                String::from("Refresh Apple FM health before you go online.")
-            } else {
-                String::from("Start Apple FM before you go online.")
-            }
-        }
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-            if !local_inference_runtime.is_ready() {
-                String::from(
-                    "Use the separate GPT-OSS workbench to load and validate the NVIDIA local model before you go online.",
-                )
-            } else {
-                String::new()
-            }
-        }
-        None => String::from(
-            "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path.",
-        ),
-    }
+    crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .go_online_hint
 }
 
 fn paint_provider_status_pane(
@@ -7592,14 +7514,16 @@ mod tests {
             ..LocalInferenceExecutionSnapshot::default()
         };
 
-        assert_eq!(
-            mission_control_local_model_button_label(
-                crate::desktop_shell::DesktopShellMode::Production,
-                &provider,
-                &local
-            ),
-            "REFRESH APPLE FM"
+        let button_label = mission_control_local_model_button_label(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
         );
+        if crate::app_state::mission_control_uses_apple_fm() {
+            assert_eq!(button_label, "REFRESH APPLE FM");
+        } else {
+            assert_eq!(button_label, "OPEN GPT-OSS WORKBENCH");
+        }
         assert_eq!(
             mission_control_go_online_hint(
                 crate::desktop_shell::DesktopShellMode::Production,
@@ -7620,22 +7544,41 @@ mod tests {
             ..LocalInferenceExecutionSnapshot::default()
         };
 
-        assert_eq!(
-            mission_control_local_model_button_label(
-                crate::desktop_shell::DesktopShellMode::Production,
-                &provider,
-                &local
-            ),
-            "START APPLE FM"
-        );
-        assert_eq!(
-            mission_control_go_online_hint(
-                crate::desktop_shell::DesktopShellMode::Production,
-                &provider,
-                &local
-            ),
-            "Start Apple FM before you go online."
-        );
+        if crate::app_state::mission_control_uses_apple_fm() {
+            assert_eq!(
+                mission_control_local_model_button_label(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "START APPLE FM"
+            );
+            assert_eq!(
+                mission_control_go_online_hint(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "Start Apple FM before you go online."
+            );
+        } else {
+            assert_eq!(
+                mission_control_local_model_button_label(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "OPEN GPT-OSS WORKBENCH"
+            );
+            assert_eq!(
+                mission_control_go_online_hint(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "GPT-OSS backend is METAL. Go Online currently requires CUDA for the compute lane."
+            );
+        }
     }
 
     #[test]
@@ -7714,14 +7657,25 @@ mod tests {
             ..LocalInferenceExecutionSnapshot::default()
         };
 
-        assert_eq!(
-            mission_control_go_online_hint(
-                crate::desktop_shell::DesktopShellMode::Production,
-                &provider,
-                &local
-            ),
-            "Refresh Apple FM health before you go online."
-        );
+        if crate::app_state::mission_control_uses_apple_fm() {
+            assert_eq!(
+                mission_control_go_online_hint(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "Refresh Apple FM health before you go online."
+            );
+        } else {
+            assert_eq!(
+                mission_control_go_online_hint(
+                    crate::desktop_shell::DesktopShellMode::Production,
+                    &provider,
+                    &local
+                ),
+                "GPT-OSS backend is METAL. Go Online currently requires CUDA for the compute lane."
+            );
+        }
     }
 
     #[test]

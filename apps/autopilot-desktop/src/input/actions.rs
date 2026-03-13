@@ -9237,7 +9237,7 @@ pub(super) fn run_mission_control_action(
                     }
                     handled
                 }
-                Some(crate::app_state::MissionControlLocalRuntimeLane::NvidiaGptOss) => {
+                Some(crate::app_state::MissionControlLocalRuntimeLane::GptOss) => {
                     crate::pane_system::PaneController::create_for_kind(
                         state,
                         crate::app_state::PaneKind::LocalInference,
