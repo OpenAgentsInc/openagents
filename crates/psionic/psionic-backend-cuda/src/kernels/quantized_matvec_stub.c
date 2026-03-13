@@ -170,6 +170,185 @@ int psionic_cuda_moe_down_aggregate_q8_1_f32(
     return 1;
 }
 
+int psionic_cuda_accumulate_selected4(
+    const void *input,
+    const void *selected_weights,
+    int selected_count,
+    int rows,
+    const void *residual,
+    void *output,
+    void *stream
+) {
+    (void)input;
+    (void)selected_weights;
+    (void)selected_count;
+    (void)rows;
+    (void)residual;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_cast_f32_to_f16(
+    const void *input,
+    int element_count,
+    void *output,
+    void *stream
+) {
+    (void)input;
+    (void)element_count;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_gather_f16_row_to_f32(
+    const void *input,
+    int rows,
+    int cols,
+    const void *decode_params,
+    void *output,
+    void *stream
+) {
+    (void)input;
+    (void)rows;
+    (void)cols;
+    (void)decode_params;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_moe_down_project_q8_1_selected4(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const void *selected_ids,
+    int selected_count,
+    const void *activated_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows;
+    (void)columns;
+    (void)selected_ids;
+    (void)selected_count;
+    (void)activated_q8_1;
+    (void)bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_moe_gate_up_swiglu_q8_1_selected4_quantized(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const void *selected_ids,
+    int selected_count,
+    const void *input_q8_1,
+    const void *gate_bias,
+    const void *up_bias,
+    void *output_q8_1,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows_per_expert;
+    (void)columns;
+    (void)gate_rows;
+    (void)up_rows;
+    (void)selected_ids;
+    (void)selected_count;
+    (void)input_q8_1;
+    (void)gate_bias;
+    (void)up_bias;
+    (void)output_q8_1;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_mxfp4_dequantize_row_to_f32(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *decode_params,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)decode_params;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_q8_0_dequantize_row_to_f32(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *decode_params,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)decode_params;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_router_topk_delayed_softmax(
+    const void *logits,
+    int expert_count,
+    int top_k,
+    void *selected_ids,
+    void *selected_weights,
+    void *stream
+) {
+    (void)logits;
+    (void)expert_count;
+    (void)top_k;
+    (void)selected_ids;
+    (void)selected_weights;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_argmax_f32(
+    const void *input,
+    int rows,
+    int cols,
+    void *output,
+    void *stream
+) {
+    (void)input;
+    (void)rows;
+    (void)cols;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
 int psionic_cuda_rms_norm(
     const void *input,
     const void *weight,
