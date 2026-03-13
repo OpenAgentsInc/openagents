@@ -44,6 +44,14 @@ enum Command {
         #[command(subcommand)]
         command: ProviderCommand,
     },
+    LocalRuntime {
+        #[command(subcommand)]
+        command: LocalRuntimeCommand,
+    },
+    GptOss {
+        #[command(subcommand)]
+        command: GptOssCommand,
+    },
     AppleFm {
         #[command(subcommand)]
         command: AppleFmCommand,
@@ -95,6 +103,40 @@ enum ProviderCommand {
         timeout_ms: u64,
     },
     Offline {
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum LocalRuntimeCommand {
+    Status,
+    Refresh {
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GptOssCommand {
+    Status,
+    Refresh {
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+    Warm {
+        #[arg(long)]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+    Unload {
         #[arg(long)]
         wait: bool,
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
@@ -185,6 +227,26 @@ impl ProviderCommand {
     }
 }
 
+impl LocalRuntimeCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status => None,
+            Self::Refresh { .. } => Some(DesktopControlActionRequest::RefreshLocalRuntime),
+        }
+    }
+}
+
+impl GptOssCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status => None,
+            Self::Refresh { .. } => Some(DesktopControlActionRequest::RefreshGptOss),
+            Self::Warm { .. } => Some(DesktopControlActionRequest::WarmGptOss),
+            Self::Unload { .. } => Some(DesktopControlActionRequest::UnloadGptOss),
+        }
+    }
+}
+
 impl AppleFmCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
@@ -250,7 +312,10 @@ enum LogSourceArg {
 enum WaitConditionArg {
     ProviderOnline,
     ProviderOffline,
+    LocalRuntimeReady,
     AppleFmReady,
+    GptOssReady,
+    GptOssUnloaded,
     Nip28Ready,
     Nip28MessagePresent,
     Nip28OutboundIdle,
@@ -286,7 +351,10 @@ struct DesktopControlClient {
 enum WaitCondition {
     ProviderOnline,
     ProviderOffline,
+    LocalRuntimeReady,
     AppleFmReady,
+    GptOssReady,
+    GptOssUnloaded,
     Nip28Ready,
     Nip28MessagePresent,
     Nip28OutboundIdle,
@@ -369,6 +437,78 @@ fn main() -> Result<()> {
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::ProviderOffline, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
+            }
+        },
+        Command::LocalRuntime { command } => match command {
+            LocalRuntimeCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.local_runtime)?;
+                } else {
+                    print_local_runtime_text(&snapshot);
+                }
+            }
+            LocalRuntimeCommand::Refresh { wait, timeout_ms } => {
+                let action = command.action_request().ok_or_else(|| {
+                    anyhow!("local runtime refresh did not produce a control action")
+                })?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::LocalRuntimeReady, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
+            }
+        },
+        Command::GptOss { command } => match command {
+            GptOssCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.gpt_oss)?;
+                } else {
+                    print_gpt_oss_text(&snapshot);
+                }
+            }
+            GptOssCommand::Refresh { wait, timeout_ms } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("gpt-oss refresh did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::GptOssReady, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
+            }
+            GptOssCommand::Warm { wait, timeout_ms } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("gpt-oss warm did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::GptOssReady, timeout_ms)?)
+                } else {
+                    None
+                };
+                print_action(json_output, &response, waited.as_ref())?;
+            }
+            GptOssCommand::Unload { wait, timeout_ms } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("gpt-oss unload did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let waited = if wait {
+                    Some(client.wait_for_condition(WaitCondition::GptOssUnloaded, timeout_ms)?)
                 } else {
                     None
                 };
@@ -793,7 +933,10 @@ impl WaitConditionArg {
         match self {
             Self::ProviderOnline => WaitCondition::ProviderOnline,
             Self::ProviderOffline => WaitCondition::ProviderOffline,
+            Self::LocalRuntimeReady => WaitCondition::LocalRuntimeReady,
             Self::AppleFmReady => WaitCondition::AppleFmReady,
+            Self::GptOssReady => WaitCondition::GptOssReady,
+            Self::GptOssUnloaded => WaitCondition::GptOssUnloaded,
             Self::Nip28Ready => WaitCondition::Nip28Ready,
             Self::Nip28MessagePresent => WaitCondition::Nip28MessagePresent,
             Self::Nip28OutboundIdle => WaitCondition::Nip28OutboundIdle,
@@ -817,7 +960,10 @@ impl WaitConditionArg {
         match self {
             Self::ProviderOnline => "provider-online",
             Self::ProviderOffline => "provider-offline",
+            Self::LocalRuntimeReady => "local-runtime-ready",
             Self::AppleFmReady => "apple-fm-ready",
+            Self::GptOssReady => "gpt-oss-ready",
+            Self::GptOssUnloaded => "gpt-oss-unloaded",
             Self::Nip28Ready => "nip28-ready",
             Self::Nip28MessagePresent => "nip28-message-present",
             Self::Nip28OutboundIdle => "nip28-outbound-idle",
@@ -843,7 +989,10 @@ impl WaitCondition {
         match self {
             Self::ProviderOnline => "provider online",
             Self::ProviderOffline => "provider offline",
+            Self::LocalRuntimeReady => "local runtime ready",
             Self::AppleFmReady => "Apple FM ready",
+            Self::GptOssReady => "GPT-OSS ready",
+            Self::GptOssUnloaded => "GPT-OSS unloaded",
             Self::Nip28Ready => "NIP-28 ready",
             Self::Nip28MessagePresent => "NIP-28 message present",
             Self::Nip28OutboundIdle => "NIP-28 outbound idle",
@@ -867,7 +1016,15 @@ impl WaitCondition {
         match self {
             Self::ProviderOnline => snapshot.provider.online,
             Self::ProviderOffline => !snapshot.provider.online,
+            Self::LocalRuntimeReady => snapshot.local_runtime.runtime_ready,
             Self::AppleFmReady => snapshot.apple_fm.ready,
+            Self::GptOssReady => snapshot.gpt_oss.ready,
+            Self::GptOssUnloaded => {
+                snapshot.gpt_oss.detected
+                    && !snapshot.gpt_oss.ready
+                    && !snapshot.gpt_oss.busy
+                    && !snapshot.gpt_oss.loaded
+            }
             Self::Nip28Ready => {
                 snapshot.nip28.available && snapshot.nip28.selected_channel_id.is_some()
             }
@@ -1066,10 +1223,32 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.provider.blocker_codes.len()
     );
     println!(
+        "local runtime: lane={} policy={} ready={} go_online_ready={} action={} enabled={} model={} backend={} load={}",
+        snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
+        snapshot.local_runtime.policy,
+        snapshot.local_runtime.runtime_ready,
+        snapshot.local_runtime.go_online_ready,
+        snapshot.local_runtime.action,
+        snapshot.local_runtime.action_enabled,
+        snapshot.local_runtime.model_label,
+        snapshot.local_runtime.backend_label,
+        snapshot.local_runtime.load_label
+    );
+    println!(
         "apple fm: ready={} reachable={} model={}",
         snapshot.apple_fm.ready,
         snapshot.apple_fm.reachable,
         snapshot.apple_fm.ready_model.as_deref().unwrap_or("-")
+    );
+    println!(
+        "gpt-oss: detected={} backend={} ready={} busy={} loaded={} artifact_present={} model={}",
+        snapshot.gpt_oss.detected,
+        snapshot.gpt_oss.backend.as_deref().unwrap_or("-"),
+        snapshot.gpt_oss.ready,
+        snapshot.gpt_oss.busy,
+        snapshot.gpt_oss.loaded,
+        snapshot.gpt_oss.artifact_present,
+        snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-")
     );
     println!(
         "wallet: balance={} sats network={} status={} withdraw_ready={}",
@@ -1168,6 +1347,71 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.nip28.configured_channel_id
     );
     print_active_job_text(snapshot.active_job.as_ref());
+}
+
+fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} action={} enabled={} label={}",
+        snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
+        snapshot.local_runtime.policy,
+        snapshot.local_runtime.runtime_ready,
+        snapshot.local_runtime.go_online_ready,
+        snapshot.local_runtime.supports_sell_compute,
+        snapshot.local_runtime.action,
+        snapshot.local_runtime.action_enabled,
+        snapshot.local_runtime.action_label
+    );
+    println!(
+        "model={} backend={} load={} status_stream={}",
+        snapshot.local_runtime.model_label,
+        snapshot.local_runtime.backend_label,
+        snapshot.local_runtime.load_label,
+        snapshot.local_runtime.status_stream
+    );
+    println!("status: {}", snapshot.local_runtime.status_line);
+    if let Some(hint) = snapshot.local_runtime.go_online_hint.as_deref() {
+        println!("go_online_hint: {hint}");
+    }
+    for line in &snapshot.local_runtime.detail_lines {
+        println!("detail: {line}");
+    }
+}
+
+fn print_gpt_oss_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "gpt-oss: detected={} backend={} ready={} busy={} loaded={} sell_compute_supported={} artifact_present={}",
+        snapshot.gpt_oss.detected,
+        snapshot.gpt_oss.backend.as_deref().unwrap_or("-"),
+        snapshot.gpt_oss.ready,
+        snapshot.gpt_oss.busy,
+        snapshot.gpt_oss.loaded,
+        snapshot.gpt_oss.supports_sell_compute,
+        snapshot.gpt_oss.artifact_present
+    );
+    println!(
+        "configured_model={} ready_model={} configured_model_path={}",
+        snapshot.gpt_oss.configured_model.as_deref().unwrap_or("-"),
+        snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-"),
+        snapshot
+            .gpt_oss
+            .configured_model_path
+            .as_deref()
+            .unwrap_or("-")
+    );
+    println!(
+        "loaded_models={}",
+        if snapshot.gpt_oss.loaded_models.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.gpt_oss.loaded_models.join(",")
+        }
+    );
+    if let Some(action) = snapshot.gpt_oss.last_action.as_deref() {
+        println!("last_action: {action}");
+    }
+    if let Some(error) = snapshot.gpt_oss.last_error.as_deref() {
+        println!("last_error: {error}");
+    }
 }
 
 fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
@@ -1438,10 +1682,10 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppleFmCommand, BuyModeCommand, ChatCommand, ProviderCommand, WaitCondition,
-        WaitConditionArg, WalletCommand, buy_mode_has_failed_request, buy_mode_has_paid_request,
-        ensure_buy_mode_budget_ack, request_has_failed, request_has_paid,
-        request_has_payment_required,
+        AppleFmCommand, BuyModeCommand, ChatCommand, GptOssCommand, LocalRuntimeCommand,
+        ProviderCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, ensure_buy_mode_budget_ack,
+        request_has_failed, request_has_paid, request_has_payment_required,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -1543,6 +1787,40 @@ mod tests {
             .action_request(),
             DesktopControlActionRequest::SetProviderMode { online: false }
         );
+        assert_eq!(LocalRuntimeCommand::Status.action_request(), None);
+        assert_eq!(
+            LocalRuntimeCommand::Refresh {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::RefreshLocalRuntime)
+        );
+        assert_eq!(GptOssCommand::Status.action_request(), None);
+        assert_eq!(
+            GptOssCommand::Refresh {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::RefreshGptOss)
+        );
+        assert_eq!(
+            GptOssCommand::Warm {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::WarmGptOss)
+        );
+        assert_eq!(
+            GptOssCommand::Unload {
+                wait: false,
+                timeout_ms: 1_000,
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::UnloadGptOss)
+        );
         assert_eq!(
             AppleFmCommand::Refresh {
                 wait: false,
@@ -1634,6 +1912,10 @@ mod tests {
     #[test]
     fn wait_conditions_cover_nip28_readiness_messages_and_outbound_idle() {
         let mut snapshot = sample_snapshot();
+        snapshot.local_runtime.runtime_ready = true;
+        snapshot.gpt_oss.detected = true;
+        snapshot.gpt_oss.ready = true;
+        snapshot.gpt_oss.loaded = true;
         snapshot.nip28.available = true;
         snapshot.nip28.selected_channel_id = Some("chan-1".to_string());
         snapshot
@@ -1651,9 +1933,33 @@ mod tests {
             });
         snapshot.nip28.publishing_outbound_count = 0;
 
+        assert!(WaitCondition::LocalRuntimeReady.matches(&snapshot));
+        assert!(WaitCondition::GptOssReady.matches(&snapshot));
+        assert!(!WaitCondition::GptOssUnloaded.matches(&snapshot));
         assert!(WaitCondition::Nip28Ready.matches(&snapshot));
         assert!(WaitCondition::Nip28MessagePresent.matches(&snapshot));
         assert!(WaitCondition::Nip28OutboundIdle.matches(&snapshot));
+        assert_eq!(
+            WaitConditionArg::LocalRuntimeReady.into_condition(),
+            WaitCondition::LocalRuntimeReady
+        );
+        assert_eq!(
+            WaitConditionArg::LocalRuntimeReady.as_str(),
+            "local-runtime-ready"
+        );
+        assert_eq!(
+            WaitConditionArg::GptOssReady.into_condition(),
+            WaitCondition::GptOssReady
+        );
+        assert_eq!(WaitConditionArg::GptOssReady.as_str(), "gpt-oss-ready");
+        assert_eq!(
+            WaitConditionArg::GptOssUnloaded.into_condition(),
+            WaitCondition::GptOssUnloaded
+        );
+        assert_eq!(
+            WaitConditionArg::GptOssUnloaded.as_str(),
+            "gpt-oss-unloaded"
+        );
         assert_eq!(
             WaitConditionArg::Nip28Ready.into_condition(),
             WaitCondition::Nip28Ready
@@ -1677,5 +1983,9 @@ mod tests {
             WaitCondition::BuyModeFailed
         );
         assert_eq!(WaitConditionArg::BuyModeFailed.as_str(), "buy-mode-failed");
+
+        snapshot.gpt_oss.ready = false;
+        snapshot.gpt_oss.loaded = false;
+        assert!(WaitCondition::GptOssUnloaded.matches(&snapshot));
     }
 }

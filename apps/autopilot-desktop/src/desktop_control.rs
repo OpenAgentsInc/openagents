@@ -21,12 +21,15 @@ use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
 use crate::app_state::{
     DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-    MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, RenderState, mission_control_buy_mode_interval_label,
+    MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
+    MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
+    mission_control_buy_mode_interval_label, mission_control_local_runtime_view_model,
 };
 use crate::bitcoin_display::format_sats_amount;
+use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::pane_system::MissionControlPaneAction;
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 3;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 4;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -50,6 +53,8 @@ pub struct DesktopControlSnapshot {
     pub session: DesktopControlSessionStatus,
     pub mission_control: DesktopControlMissionControlStatus,
     pub provider: DesktopControlProviderStatus,
+    pub local_runtime: DesktopControlLocalRuntimeStatus,
+    pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
@@ -89,6 +94,44 @@ pub struct DesktopControlProviderStatus {
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     pub relay_urls: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlLocalRuntimeStatus {
+    pub policy: String,
+    pub lane: Option<String>,
+    pub runtime_ready: bool,
+    pub go_online_ready: bool,
+    pub supports_sell_compute: bool,
+    pub show_action_button: bool,
+    pub action: String,
+    pub action_enabled: bool,
+    pub action_label: String,
+    pub model_label: String,
+    pub backend_label: String,
+    pub load_label: String,
+    pub go_online_hint: Option<String>,
+    pub status_stream: String,
+    pub status_line: String,
+    pub detail_lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlGptOssStatus {
+    pub detected: bool,
+    pub backend: Option<String>,
+    pub reachable: bool,
+    pub ready: bool,
+    pub busy: bool,
+    pub supports_sell_compute: bool,
+    pub artifact_present: bool,
+    pub loaded: bool,
+    pub configured_model: Option<String>,
+    pub ready_model: Option<String>,
+    pub configured_model_path: Option<String>,
+    pub loaded_models: Vec<String>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -293,8 +336,12 @@ pub enum DesktopControlActionRequest {
     SetProviderMode {
         online: bool,
     },
+    RefreshLocalRuntime,
     RefreshAppleFm,
     RunAppleFmSmokeTest,
+    RefreshGptOss,
+    WarmGptOss,
+    UnloadGptOss,
     RefreshWallet,
     StartBuyMode,
     StopBuyMode,
@@ -327,8 +374,12 @@ impl DesktopControlActionRequest {
             Self::GetSnapshot => "get-snapshot",
             Self::SetProviderMode { online: true } => "provider-online",
             Self::SetProviderMode { online: false } => "provider-offline",
+            Self::RefreshLocalRuntime => "local-runtime-refresh",
             Self::RefreshAppleFm => "apple-fm-refresh",
             Self::RunAppleFmSmokeTest => "apple-fm-smoke-test",
+            Self::RefreshGptOss => "gpt-oss-refresh",
+            Self::WarmGptOss => "gpt-oss-warm",
+            Self::UnloadGptOss => "gpt-oss-unload",
             Self::RefreshWallet => "wallet-refresh",
             Self::StartBuyMode => "buy-mode-start",
             Self::StopBuyMode => "buy-mode-stop",
@@ -926,8 +977,12 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         DesktopControlActionRequest::SetProviderMode { online } => {
             json!({ "command_label": action.label(), "online": online })
         }
-        DesktopControlActionRequest::RefreshAppleFm
+        DesktopControlActionRequest::RefreshLocalRuntime
+        | DesktopControlActionRequest::RefreshAppleFm
         | DesktopControlActionRequest::RunAppleFmSmokeTest
+        | DesktopControlActionRequest::RefreshGptOss
+        | DesktopControlActionRequest::WarmGptOss
+        | DesktopControlActionRequest::UnloadGptOss
         | DesktopControlActionRequest::RefreshWallet
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
@@ -981,6 +1036,26 @@ fn snapshot_change_events(
             command_label: None,
             success: None,
             payload: serde_json::to_value(&current.provider).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.local_runtime != current.local_runtime) {
+        changed_domains.push("local_runtime");
+        events.push(DesktopControlEventDraft {
+            event_type: "local_runtime.state.changed".to_string(),
+            summary: local_runtime_status_summary(&current.local_runtime),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.local_runtime).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.gpt_oss != current.gpt_oss) {
+        changed_domains.push("gpt_oss");
+        events.push(DesktopControlEventDraft {
+            event_type: "gpt_oss.state.changed".to_string(),
+            summary: gpt_oss_status_summary(&current.gpt_oss),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.gpt_oss).ok(),
         });
     }
     if previous.is_none_or(|snapshot| snapshot.apple_fm != current.apple_fm) {
@@ -1080,6 +1155,30 @@ fn provider_status_summary(status: &DesktopControlProviderStatus) -> String {
     )
 }
 
+fn local_runtime_status_summary(status: &DesktopControlLocalRuntimeStatus) -> String {
+    format!(
+        "local runtime lane={} policy={} ready={} go_online_ready={} action={} enabled={}",
+        status.lane.as_deref().unwrap_or("none"),
+        status.policy,
+        status.runtime_ready,
+        status.go_online_ready,
+        status.action,
+        status.action_enabled
+    )
+}
+
+fn gpt_oss_status_summary(status: &DesktopControlGptOssStatus) -> String {
+    format!(
+        "gpt-oss detected={} backend={} ready={} busy={} loaded={} artifact_present={}",
+        status.detected,
+        status.backend.as_deref().unwrap_or("unknown"),
+        status.ready,
+        status.busy,
+        status.loaded,
+        status.artifact_present
+    )
+}
+
 fn apple_fm_status_summary(status: &DesktopControlAppleFmStatus) -> String {
     if status.ready {
         format!(
@@ -1093,6 +1192,113 @@ fn apple_fm_status_summary(status: &DesktopControlAppleFmStatus) -> String {
             .last_error
             .clone()
             .unwrap_or_else(|| "apple fm unavailable".to_string())
+    }
+}
+
+fn local_runtime_policy_label(policy: MissionControlLocalRuntimePolicy) -> &'static str {
+    match policy {
+        MissionControlLocalRuntimePolicy::None => "none",
+        MissionControlLocalRuntimePolicy::AppleFoundationModels => "apple_foundation_models",
+        MissionControlLocalRuntimePolicy::GptOssCuda => "gpt_oss_cuda",
+        MissionControlLocalRuntimePolicy::GptOssMetal => "gpt_oss_metal",
+        MissionControlLocalRuntimePolicy::GptOssCpu => "gpt_oss_cpu",
+    }
+}
+
+fn local_runtime_lane_label(lane: MissionControlLocalRuntimeLane) -> &'static str {
+    match lane {
+        MissionControlLocalRuntimeLane::AppleFoundationModels => "apple_foundation_models",
+        MissionControlLocalRuntimeLane::GptOss => "gpt_oss",
+    }
+}
+
+fn local_runtime_action_label(action: MissionControlLocalRuntimeAction) -> &'static str {
+    match action {
+        MissionControlLocalRuntimeAction::None => "none",
+        MissionControlLocalRuntimeAction::StartAppleFm => "start_apple_fm",
+        MissionControlLocalRuntimeAction::RefreshAppleFm => "refresh_apple_fm",
+        MissionControlLocalRuntimeAction::OpenAppleFmWorkbench => "open_apple_fm_workbench",
+        MissionControlLocalRuntimeAction::RefreshGptOss => "refresh_gpt_oss",
+        MissionControlLocalRuntimeAction::WarmGptOss => "warm_gpt_oss",
+        MissionControlLocalRuntimeAction::UnloadGptOss => "unload_gpt_oss",
+        MissionControlLocalRuntimeAction::OpenGptOssWorkbench => "open_gpt_oss_workbench",
+    }
+}
+
+fn terminal_stream_label(stream: wgpui::components::sections::TerminalStream) -> &'static str {
+    match stream {
+        wgpui::components::sections::TerminalStream::Stdout => "stdout",
+        wgpui::components::sections::TerminalStream::Stderr => "stderr",
+    }
+}
+
+fn gpt_oss_loaded(
+    snapshot: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    snapshot.ready_model.is_some() || !snapshot.loaded_models.is_empty()
+}
+
+fn desktop_control_local_runtime_status(state: &RenderState) -> DesktopControlLocalRuntimeStatus {
+    let runtime_view = mission_control_local_runtime_view_model(
+        state.desktop_shell_mode,
+        &state.provider_runtime,
+        &state.gpt_oss_execution,
+    );
+    DesktopControlLocalRuntimeStatus {
+        policy: local_runtime_policy_label(runtime_view.policy).to_string(),
+        lane: runtime_view
+            .lane
+            .map(local_runtime_lane_label)
+            .map(str::to_string),
+        runtime_ready: runtime_view.runtime_ready,
+        go_online_ready: runtime_view.go_online_ready,
+        supports_sell_compute: runtime_view.supports_sell_compute,
+        show_action_button: runtime_view.show_local_model_button,
+        action: local_runtime_action_label(runtime_view.primary_action).to_string(),
+        action_enabled: runtime_view.local_model_button_enabled,
+        action_label: runtime_view.local_model_button_label,
+        model_label: runtime_view.model_label,
+        backend_label: runtime_view.backend_label,
+        load_label: runtime_view.load_label,
+        go_online_hint: (!runtime_view.go_online_hint.trim().is_empty())
+            .then_some(runtime_view.go_online_hint),
+        status_stream: terminal_stream_label(runtime_view.status_stream).to_string(),
+        status_line: runtime_view.status_line,
+        detail_lines: runtime_view
+            .detail_lines
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect(),
+    }
+}
+
+fn desktop_control_gpt_oss_status(state: &RenderState) -> DesktopControlGptOssStatus {
+    let backend = state
+        .gpt_oss_execution
+        .backend_label
+        .trim()
+        .to_ascii_lowercase();
+    let backend = (!backend.is_empty()).then_some(backend);
+    DesktopControlGptOssStatus {
+        detected: backend.is_some()
+            || state.gpt_oss_execution.configured_model.is_some()
+            || state.gpt_oss_execution.configured_model_path.is_some()
+            || state.gpt_oss_execution.artifact_present
+            || state.gpt_oss_execution.ready_model.is_some()
+            || !state.gpt_oss_execution.loaded_models.is_empty(),
+        backend: backend.clone(),
+        reachable: state.gpt_oss_execution.reachable,
+        ready: state.gpt_oss_execution.is_ready(),
+        busy: state.gpt_oss_execution.busy,
+        supports_sell_compute: backend.as_deref() == Some("cuda"),
+        artifact_present: state.gpt_oss_execution.artifact_present,
+        loaded: gpt_oss_loaded(&state.gpt_oss_execution),
+        configured_model: state.gpt_oss_execution.configured_model.clone(),
+        ready_model: state.gpt_oss_execution.ready_model.clone(),
+        configured_model_path: state.gpt_oss_execution.configured_model_path.clone(),
+        loaded_models: state.gpt_oss_execution.loaded_models.clone(),
+        last_action: state.gpt_oss_execution.last_action.clone(),
+        last_error: state.gpt_oss_execution.last_error.clone(),
     }
 }
 
@@ -1311,7 +1517,23 @@ fn apply_action_request(
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
+        DesktopControlActionRequest::RefreshLocalRuntime => refresh_local_runtime_action(state),
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
+        DesktopControlActionRequest::RefreshGptOss => queue_gpt_oss_runtime_action(
+            state,
+            LocalInferenceRuntimeCommand::Refresh,
+            "Queued GPT-OSS runtime refresh",
+        ),
+        DesktopControlActionRequest::WarmGptOss => queue_gpt_oss_runtime_action(
+            state,
+            LocalInferenceRuntimeCommand::WarmConfiguredModel,
+            "Queued GPT-OSS model warm",
+        ),
+        DesktopControlActionRequest::UnloadGptOss => queue_gpt_oss_runtime_action(
+            state,
+            LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+            "Queued GPT-OSS model unload",
+        ),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
         DesktopControlActionRequest::SelectNip28MainChannel => {
             select_nip28_main_channel_action(state)
@@ -1602,6 +1824,28 @@ fn apply_provider_mode_action(
     }
 }
 
+fn refresh_local_runtime_action(state: &mut RenderState) -> DesktopControlActionResponse {
+    match mission_control_local_runtime_view_model(
+        state.desktop_shell_mode,
+        &state.provider_runtime,
+        &state.gpt_oss_execution,
+    )
+    .lane
+    {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            refresh_apple_fm_action(state)
+        }
+        Some(MissionControlLocalRuntimeLane::GptOss) => queue_gpt_oss_runtime_action(
+            state,
+            LocalInferenceRuntimeCommand::Refresh,
+            "Queued local runtime refresh",
+        ),
+        None => DesktopControlActionResponse::error(
+            "Local runtime refresh is unavailable because no supported runtime is detected.",
+        ),
+    }
+}
+
 fn refresh_apple_fm_action(state: &mut RenderState) -> DesktopControlActionResponse {
     if !crate::input::ensure_mission_control_apple_fm_refresh(state) {
         return DesktopControlActionResponse::error(
@@ -1613,6 +1857,40 @@ fn refresh_apple_fm_action(state: &mut RenderState) -> DesktopControlActionRespo
 
 fn run_apple_fm_smoke_test_action(state: &mut RenderState) -> DesktopControlActionResponse {
     mission_control_action_response(state, MissionControlPaneAction::RunLocalFmSummaryTest)
+}
+
+fn queue_gpt_oss_runtime_action(
+    state: &mut RenderState,
+    command: LocalInferenceRuntimeCommand,
+    action_label: &str,
+) -> DesktopControlActionResponse {
+    let gpt_oss_status = desktop_control_gpt_oss_status(state);
+    if !gpt_oss_status.detected {
+        return DesktopControlActionResponse::error(
+            "GPT-OSS runtime is unavailable because no GPT-OSS backend is detected.",
+        );
+    }
+    match state.queue_local_inference_runtime_command(command) {
+        Ok(()) => {
+            state.local_inference.load_state = crate::app_state::PaneLoadState::Loading;
+            state.local_inference.last_error = None;
+            state.local_inference.last_action = Some(action_label.to_string());
+            state.provider_runtime.last_result = Some(action_label.to_string());
+            state.mission_control.record_action(action_label);
+            DesktopControlActionResponse::ok(action_label)
+        }
+        Err(error) => {
+            state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
+            state.local_inference.last_error = Some(error.clone());
+            state.local_inference.last_action =
+                Some("GPT-OSS desktop control enqueue failed".to_string());
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.mission_control.last_action =
+                Some("GPT-OSS desktop control action failed".to_string());
+            state.mission_control.last_error = Some(error.clone());
+            DesktopControlActionResponse::error(error)
+        }
+    }
 }
 
 fn mission_control_action_response(
@@ -1737,6 +2015,8 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         .take(6)
         .map(desktop_control_buy_mode_request_status)
         .collect::<Vec<_>>();
+    let local_runtime = desktop_control_local_runtime_status(state);
+    let gpt_oss = desktop_control_gpt_oss_status(state);
 
     let mut snapshot = DesktopControlSnapshot {
         schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
@@ -1781,6 +2061,8 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.provider_runtime.last_error_detail.clone(),
             relay_urls: state.configured_provider_relay_urls(),
         },
+        local_runtime,
+        gpt_oss,
         apple_fm: DesktopControlAppleFmStatus {
             reachable: state.provider_runtime.apple_fm.reachable,
             ready: state.provider_runtime.apple_fm.is_ready(),
@@ -2477,11 +2759,12 @@ mod tests {
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
         DesktopControlBuyModeTargetSelectionStatus, DesktopControlEventBatch,
-        DesktopControlEventDraft, DesktopControlMissionControlStatus, DesktopControlProviderStatus,
-        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
-        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlWalletStatus,
-        apply_response_snapshot_metadata, command_outcome_event, command_received_event,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlEventDraft, DesktopControlGptOssStatus, DesktopControlLocalRuntimeStatus,
+        DesktopControlMissionControlStatus, DesktopControlProviderStatus, DesktopControlRuntime,
+        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlWalletStatus, apply_response_snapshot_metadata,
+        command_outcome_event, command_received_event, snapshot_change_events,
+        snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -2548,6 +2831,44 @@ mod tests {
                 last_action: None,
                 last_error: None,
                 relay_urls: vec!["wss://relay.example".to_string()],
+            },
+            local_runtime: DesktopControlLocalRuntimeStatus {
+                policy: "apple_foundation_models".to_string(),
+                lane: Some("apple_foundation_models".to_string()),
+                runtime_ready: true,
+                go_online_ready: true,
+                supports_sell_compute: true,
+                show_action_button: true,
+                action: "refresh_apple_fm".to_string(),
+                action_enabled: true,
+                action_label: "REFRESH APPLE FM".to_string(),
+                model_label: "apple-foundation-model".to_string(),
+                backend_label: "Apple FM bridge (running)".to_string(),
+                load_label: "ready".to_string(),
+                go_online_hint: None,
+                status_stream: "stdout".to_string(),
+                status_line:
+                    "Apple Foundation Models ready via Swift bridge (apple-foundation-model)."
+                        .to_string(),
+                detail_lines: vec![
+                    "Apple FM: Refreshed Apple FM bridge health; model ready.".to_string(),
+                ],
+            },
+            gpt_oss: DesktopControlGptOssStatus {
+                detected: false,
+                backend: None,
+                reachable: false,
+                ready: false,
+                busy: false,
+                supports_sell_compute: false,
+                artifact_present: false,
+                loaded: false,
+                configured_model: None,
+                ready_model: None,
+                configured_model_path: None,
+                loaded_models: Vec::new(),
+                last_action: None,
+                last_error: None,
             },
             apple_fm: DesktopControlAppleFmStatus {
                 reachable: true,
@@ -2624,6 +2945,57 @@ mod tests {
                 .and_then(|value| value.get("selected_peer_pubkey"))
                 .and_then(Value::as_str),
             Some(selected_peer_pubkey.as_str())
+        );
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_local_runtime_and_gpt_oss_domains() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        current.local_runtime.lane = Some("gpt_oss".to_string());
+        current.local_runtime.policy = "gpt_oss_cuda".to_string();
+        current.local_runtime.runtime_ready = false;
+        current.local_runtime.go_online_ready = false;
+        current.local_runtime.action = "warm_gpt_oss".to_string();
+        current.local_runtime.action_label = "WARM GPT-OSS".to_string();
+        current.local_runtime.status_line =
+            "GPT-OSS runtime reachable but model is unloaded (gpt-oss-20b.gguf).".to_string();
+        current.gpt_oss.detected = true;
+        current.gpt_oss.backend = Some("cuda".to_string());
+        current.gpt_oss.reachable = true;
+        current.gpt_oss.artifact_present = true;
+        current.gpt_oss.configured_model_path = Some("/tmp/models/gpt-oss-20b.gguf".to_string());
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == "local_runtime.state.changed")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == "gpt_oss.state.changed")
+        );
+        let sync = events
+            .iter()
+            .find(|event| event.event_type == "control.snapshot.synced")
+            .expect("snapshot sync event should be emitted");
+        let changed_domains = sync
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("changed_domains"))
+            .and_then(Value::as_array)
+            .expect("changed domains array");
+        assert!(
+            changed_domains
+                .iter()
+                .any(|value| value.as_str() == Some("local_runtime"))
+        );
+        assert!(
+            changed_domains
+                .iter()
+                .any(|value| value.as_str() == Some("gpt_oss"))
         );
     }
 
@@ -3826,6 +4198,22 @@ mod tests {
         assert_eq!(
             DesktopControlActionRequest::RunAppleFmSmokeTest.mission_control_pane_action(),
             Some(MissionControlPaneAction::RunLocalFmSummaryTest)
+        );
+        assert_eq!(
+            DesktopControlActionRequest::RefreshLocalRuntime.mission_control_pane_action(),
+            None
+        );
+        assert_eq!(
+            DesktopControlActionRequest::RefreshGptOss.mission_control_pane_action(),
+            None
+        );
+        assert_eq!(
+            DesktopControlActionRequest::WarmGptOss.mission_control_pane_action(),
+            None
+        );
+        assert_eq!(
+            DesktopControlActionRequest::UnloadGptOss.mission_control_pane_action(),
+            None
         );
         assert_eq!(
             DesktopControlActionRequest::RefreshWallet.mission_control_pane_action(),
