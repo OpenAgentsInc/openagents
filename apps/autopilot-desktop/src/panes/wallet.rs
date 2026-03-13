@@ -169,6 +169,13 @@ pub fn paint_wallet_pane(
             &path.display().to_string(),
         );
     }
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Custody",
+        "Mnemonic and nsec handling live in the Nostr Identity pane.",
+    );
     if let Some(address) = spark_wallet.spark_address.as_deref() {
         y = paint_multiline_phrase(
             paint,

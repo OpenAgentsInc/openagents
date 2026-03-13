@@ -666,20 +666,14 @@ impl ProviderControlPaneState {
 
 pub struct MissionControlPaneState {
     pub log_stream: TerminalPane,
-    pub load_funds_amount_sats: TextInput,
-    pub send_invoice: TextInput,
-    pub withdraw_invoice: TextInput,
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
     pub buy_mode_last_dispatch_at: Option<Instant>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
-    wallet_refresh_icon_clicked_at_epoch_ms: u64,
     log_copy_icon_clicked_at_epoch_ms: u64,
     earnings_scroll_offset_px: f32,
-    wallet_scroll_offset_px: f32,
     actions_scroll_offset_px: f32,
-    load_funds_scroll_offset_px: f32,
     active_jobs_scroll_offset_px: f32,
     buy_mode_last_blocked_signature: Option<String>,
     buy_mode_last_blocked_notice_at: Option<Instant>,
@@ -695,45 +689,14 @@ impl Default for MissionControlPaneState {
                 .title("\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
-            load_funds_amount_sats: TextInput::new()
-                .value("1000")
-                .placeholder("Lightning sats")
-                .font_size(wgpui::theme::font_size::SM - 2.0)
-                .mono(true)
-                .background(wgpui::theme::bg::APP)
-                .border_color(wgpui::Hsla::from_hex(0x5A4730))
-                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
-                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
-                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
-            send_invoice: TextInput::new()
-                .placeholder("Paste Lightning invoice to withdraw")
-                .font_size(wgpui::theme::font_size::SM - 2.0)
-                .mono(true)
-                .background(wgpui::theme::bg::APP)
-                .border_color(wgpui::Hsla::from_hex(0x5A4730))
-                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
-                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
-                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
-            withdraw_invoice: TextInput::new()
-                .placeholder("Paste Lightning invoice to withdraw")
-                .font_size(wgpui::theme::font_size::SM - 2.0)
-                .mono(true)
-                .background(wgpui::theme::bg::APP)
-                .border_color(wgpui::Hsla::from_hex(0x5A4730))
-                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
-                .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
-                .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             buy_mode_loop_enabled: false,
             buy_mode_next_dispatch_at: None,
             buy_mode_last_dispatch_at: None,
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
-            wallet_refresh_icon_clicked_at_epoch_ms: 0,
             log_copy_icon_clicked_at_epoch_ms: 0,
             earnings_scroll_offset_px: 0.0,
-            wallet_scroll_offset_px: 0.0,
             actions_scroll_offset_px: 0.0,
-            load_funds_scroll_offset_px: 0.0,
             active_jobs_scroll_offset_px: 0.0,
             buy_mode_last_blocked_signature: None,
             buy_mode_last_blocked_notice_at: None,
@@ -758,19 +721,8 @@ impl MissionControlPaneState {
         }
     }
 
-    pub fn mark_wallet_refresh_icon_clicked(&mut self) {
-        self.wallet_refresh_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
-    }
-
     pub fn mark_log_copy_icon_clicked(&mut self) {
         self.log_copy_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
-    }
-
-    pub fn wallet_refresh_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
-        Self::icon_click_feedback_intensity(
-            self.wallet_refresh_icon_clicked_at_epoch_ms,
-            now_epoch_ms,
-        )
     }
 
     pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
@@ -787,16 +739,8 @@ impl MissionControlPaneState {
         self.earnings_scroll_offset_px = (self.earnings_scroll_offset_px + dy).max(0.0);
     }
 
-    pub fn scroll_wallet_by(&mut self, dy: f32) {
-        self.wallet_scroll_offset_px = (self.wallet_scroll_offset_px + dy).max(0.0);
-    }
-
     pub fn scroll_actions_by(&mut self, dy: f32) {
         self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn scroll_load_funds_by(&mut self, dy: f32) {
-        self.load_funds_scroll_offset_px = (self.load_funds_scroll_offset_px + dy).max(0.0);
     }
 
     pub fn scroll_active_jobs_by(&mut self, dy: f32) {
@@ -807,16 +751,8 @@ impl MissionControlPaneState {
         Self::clamp_scroll_offset(&mut self.earnings_scroll_offset_px, max_scroll)
     }
 
-    pub fn clamp_wallet_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.wallet_scroll_offset_px, max_scroll)
-    }
-
     pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
         Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
-    }
-
-    pub fn clamp_load_funds_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.load_funds_scroll_offset_px, max_scroll)
     }
 
     pub fn clamp_active_jobs_scroll_offset(&mut self, max_scroll: f32) -> f32 {
@@ -825,10 +761,6 @@ impl MissionControlPaneState {
 
     pub fn actions_scroll_offset(&self) -> f32 {
         self.actions_scroll_offset_px
-    }
-
-    pub fn load_funds_scroll_offset(&self) -> f32 {
-        self.load_funds_scroll_offset_px
     }
 
     fn push_persisted_log_line(&mut self, line: TerminalLine) {

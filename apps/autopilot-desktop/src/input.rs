@@ -205,6 +205,20 @@ pub(crate) fn desktop_control_run_mission_control_action(
     actions::run_mission_control_action(state, action)
 }
 
+pub(crate) fn desktop_control_run_spark_action(
+    state: &mut crate::app_state::RenderState,
+    action: SparkPaneAction,
+) -> bool {
+    actions::run_spark_action(state, action)
+}
+
+pub(crate) fn desktop_control_run_pay_invoice_action(
+    state: &mut crate::app_state::RenderState,
+    action: PayInvoicePaneAction,
+) -> bool {
+    actions::run_pay_invoice_action(state, action)
+}
+
 pub(crate) fn desktop_control_run_local_runtime_workbench_action(
     state: &mut crate::app_state::RenderState,
     action: crate::local_runtime_capabilities::LocalRuntimeWorkbenchAction,
@@ -3206,29 +3220,8 @@ fn handle_mission_control_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    handle_focused_keyboard_submit(
-        state,
-        logical_key,
-        mission_control_inputs_focused,
-        dispatch_mission_control_input_event,
-        |s| {
-            if s.mission_control.load_funds_amount_sats.is_focused() {
-                let _ = run_mission_control_action(
-                    s,
-                    crate::pane_system::MissionControlPaneAction::CreateLightningReceiveTarget,
-                );
-                return true;
-            }
-            if s.mission_control.send_invoice.is_focused() {
-                let _ = run_mission_control_action(
-                    s,
-                    crate::pane_system::MissionControlPaneAction::SendLightningPayment,
-                );
-                return true;
-            }
-            false
-        },
-    )
+    let _ = (state, logical_key);
+    false
 }
 
 fn handle_pay_invoice_keyboard_input(
@@ -3733,7 +3726,7 @@ mod tests {
     fn spark_command_builder_routes_actions() {
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
-            Ok(SparkWalletCommand::Refresh)
+            Ok(SparkWalletCommand::Reload)
         ));
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),
