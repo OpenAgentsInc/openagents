@@ -3478,6 +3478,10 @@ impl KernelState {
         let settlement_class = match spec.compute_family {
             openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
             openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+            openagents_kernel_core::compute::ComputeFamily::SandboxExecution => "sandbox_execution",
+            openagents_kernel_core::compute::ComputeFamily::Evaluation => "evaluation",
+            openagents_kernel_core::compute::ComputeFamily::Training => "training",
+            openagents_kernel_core::compute::ComputeFamily::AdapterHosting => "adapter_hosting",
         };
         let max_quantity = instrument
             .map(|instrument| instrument.quantity)
@@ -7770,6 +7774,14 @@ fn execution_kind_label(
 ) -> &'static str {
     match value {
         openagents_kernel_core::compute::ComputeExecutionKind::LocalInference => "local_inference",
+        openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference => {
+            "clustered_inference"
+        }
+        openagents_kernel_core::compute::ComputeExecutionKind::SandboxExecution => {
+            "sandbox_execution"
+        }
+        openagents_kernel_core::compute::ComputeExecutionKind::EvaluationRun => "evaluation_run",
+        openagents_kernel_core::compute::ComputeExecutionKind::TrainingJob => "training_job",
     }
 }
 
@@ -7777,6 +7789,10 @@ fn compute_family_label(value: openagents_kernel_core::compute::ComputeFamily) -
     match value {
         openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
         openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+        openagents_kernel_core::compute::ComputeFamily::SandboxExecution => "sandbox_execution",
+        openagents_kernel_core::compute::ComputeFamily::Evaluation => "evaluation",
+        openagents_kernel_core::compute::ComputeFamily::Training => "training",
+        openagents_kernel_core::compute::ComputeFamily::AdapterHosting => "adapter_hosting",
     }
 }
 
@@ -8124,6 +8140,13 @@ mod tests {
                     backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
+                    topology_kind: None,
+                    provisioning_kind: None,
+                    proof_posture: None,
+                    validator_requirements: None,
+                    artifact_residency: None,
+                    environment_binding: None,
+                    checkpoint_binding: None,
                     model_policy: Some("ollama.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
@@ -8229,6 +8252,13 @@ mod tests {
                     backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
+                    topology_kind: None,
+                    provisioning_kind: None,
+                    proof_posture: None,
+                    validator_requirements: None,
+                    artifact_residency: None,
+                    environment_binding: None,
+                    checkpoint_binding: None,
                     model_policy: Some("ollama.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
@@ -9245,6 +9275,13 @@ mod tests {
             backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
             execution_kind: Some(ComputeExecutionKind::LocalInference),
             compute_family: Some(ComputeFamily::Inference),
+            topology_kind: None,
+            provisioning_kind: None,
+            proof_posture: None,
+            validator_requirements: None,
+            artifact_residency: None,
+            environment_binding: None,
+            checkpoint_binding: None,
             model_policy: Some("apple_foundation_models.text_generation.launch".to_string()),
             model_family: Some("apple-foundation-model".to_string()),
             host_capability: None,

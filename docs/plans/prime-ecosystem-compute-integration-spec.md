@@ -784,10 +784,12 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 0: Schema And Boundaries
 
 1. **Compute: ratify Prime-ecosystem compute ownership map**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3485`.
    - Write the architectural ADR that locks the owner split for desktop, provider-substrate, Psionic, kernel authority, validators, and environment/eval services.
    - This prevents the inevitable boundary bleed once cluster and sandbox work accelerates.
 
 2. **Compute: widen kernel taxonomy for topology, provisioning, proof, and environment binding**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3486`.
    - Extend `openagents-kernel-core/src/compute.rs` with the missing concepts described in this spec.
    - The deliverable is a kernel object model that can express clustered, sandboxed, and proof-sensitive compute without inventing ad hoc metadata blobs.
 

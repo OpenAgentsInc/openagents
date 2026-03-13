@@ -697,6 +697,10 @@ impl SpotComputeRfqDraft {
         match self.compute_family {
             ComputeFamily::Inference => "inference",
             ComputeFamily::Embeddings => "embeddings",
+            ComputeFamily::SandboxExecution => "sandbox_execution",
+            ComputeFamily::Evaluation => "evaluation",
+            ComputeFamily::Training => "training",
+            ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
 
@@ -739,6 +743,10 @@ impl ForwardComputeRfqDraft {
         match self.compute_family {
             ComputeFamily::Inference => "inference",
             ComputeFamily::Embeddings => "embeddings",
+            ComputeFamily::SandboxExecution => "sandbox_execution",
+            ComputeFamily::Evaluation => "evaluation",
+            ComputeFamily::Training => "training",
+            ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
 
@@ -795,6 +803,10 @@ impl SpotComputeQuoteCandidate {
         match self.compute_family {
             ComputeFamily::Inference => "inference",
             ComputeFamily::Embeddings => "embeddings",
+            ComputeFamily::SandboxExecution => "sandbox_execution",
+            ComputeFamily::Evaluation => "evaluation",
+            ComputeFamily::Training => "training",
+            ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
 }
@@ -833,6 +845,10 @@ impl ForwardComputeQuoteCandidate {
         match self.compute_family {
             ComputeFamily::Inference => "inference",
             ComputeFamily::Embeddings => "embeddings",
+            ComputeFamily::SandboxExecution => "sandbox_execution",
+            ComputeFamily::Evaluation => "evaluation",
+            ComputeFamily::Training => "training",
+            ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
 }
