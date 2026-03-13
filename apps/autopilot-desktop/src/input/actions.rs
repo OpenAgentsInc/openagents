@@ -13144,7 +13144,7 @@ pub(super) fn build_spark_command_for_action(
     send_amount: &str,
 ) -> Result<SparkWalletCommand, String> {
     match action {
-        SparkPaneAction::Refresh => Ok(SparkWalletCommand::Refresh),
+        SparkPaneAction::Refresh => Ok(SparkWalletCommand::Reload),
         SparkPaneAction::GenerateSparkAddress => Ok(SparkWalletCommand::GenerateSparkAddress),
         SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
         SparkPaneAction::CopySparkAddress => {
