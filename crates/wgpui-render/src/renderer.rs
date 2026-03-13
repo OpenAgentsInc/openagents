@@ -1,4 +1,5 @@
 use crate::svg::SvgRenderer;
+use crate::vector::rasterize_vector_batch;
 use bytemuck::{Pod, Zeroable};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -8,7 +9,7 @@ use wgpui_core::scene::{
     GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MESH_EDGE_FLAG_SELECTED,
     MESH_EDGE_FLAG_SILHOUETTE, MeshPrimitive, Scene,
 };
-use wgpui_core::{Hsla, Point, Size};
+use wgpui_core::{Hsla, ImageQuad, ImageSource, Point, Size};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -26,19 +27,23 @@ struct GpuMeshVertex {
     pub color: [f32; 4],
 }
 
-/// Cache key for GPU-uploaded SVG textures.
+/// Cache key for GPU-uploaded scene image textures.
 #[derive(Clone, Eq, PartialEq, Hash)]
-struct SvgTextureKey {
-    /// Hash of SVG data
-    data_hash: u64,
-    /// Physical width
-    width: u32,
-    /// Physical height
-    height: u32,
+enum ImageTextureKey {
+    Svg {
+        data_hash: u64,
+        width: u32,
+        height: u32,
+    },
+    Rgba {
+        data_hash: u64,
+        width: u32,
+        height: u32,
+    },
 }
 
-/// GPU resources for a rasterized SVG.
-struct SvgGpuResources {
+/// GPU resources for a prepared scene image.
+struct ImageGpuResources {
     #[expect(
         dead_code,
         reason = "texture handle retained to preserve bind-group backing lifetime"
@@ -47,10 +52,21 @@ struct SvgGpuResources {
     bind_group: wgpu::BindGroup,
 }
 
-/// Prepared SVG for rendering.
-struct PreparedSvg {
+/// Prepared image instance for rendering.
+struct PreparedImage {
     instance_buffer: wgpu::Buffer,
-    cache_key: SvgTextureKey,
+    cache_key: ImageTextureKey,
+}
+
+/// Prepared vector batch rasterized into an image texture for rendering.
+struct PreparedVectorBatch {
+    #[expect(
+        dead_code,
+        reason = "texture handle retained to preserve bind-group backing lifetime"
+    )]
+    texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    instance_buffer: wgpu::Buffer,
 }
 
 /// Prepared mesh batch for rendering.
@@ -66,6 +82,10 @@ struct PreparedMeshBatch {
 struct PreparedLayer {
     quad_buffer: Option<wgpu::Buffer>,
     quad_count: u32,
+    images: Vec<PreparedImage>,
+    image_count: u32,
+    vector_batches: Vec<PreparedVectorBatch>,
+    vector_count: u32,
     text_buffer: Option<wgpu::Buffer>,
     text_count: u32,
     line_buffer: Option<wgpu::Buffer>,
@@ -80,13 +100,16 @@ pub struct RenderMetrics {
     pub quad_instances: u32,
     pub line_instances: u32,
     pub text_instances: u32,
+    pub image_instances: u32,
     pub svg_instances: u32,
+    pub vector_batches: u32,
     pub mesh_primitives: u32,
     pub mesh_vertices: u32,
     pub mesh_triangles: u32,
     pub mesh_draw_calls: u32,
     pub mesh_skipped: u32,
     pub mesh_edge_overlays: u32,
+    pub vector_draw_calls: u32,
     pub draw_calls: u32,
     pub prepare_cpu_ms: f64,
     pub render_cpu_ms: f64,
@@ -114,10 +137,8 @@ pub struct Renderer {
     text_count: u32,
     // Layer-based rendering
     prepared_layers: Vec<PreparedLayer>,
-    // SVG rendering
     svg_rasterizer: SvgRenderer,
-    svg_texture_cache: HashMap<SvgTextureKey, SvgGpuResources>,
-    prepared_svgs: Vec<PreparedSvg>,
+    image_texture_cache: HashMap<ImageTextureKey, ImageGpuResources>,
     image_sampler: wgpu::Sampler,
     metrics: RefCell<RenderMetrics>,
 }
@@ -545,6 +566,16 @@ impl Renderer {
                             offset: 32,
                             shader_location: 3,
                         },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 48,
+                            shader_location: 4,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 56,
+                            shader_location: 5,
+                        },
                     ],
                 }],
                 compilation_options: Default::default(),
@@ -652,8 +683,7 @@ impl Renderer {
             text_count: 0,
             prepared_layers: Vec::new(),
             svg_rasterizer: SvgRenderer::new(),
-            svg_texture_cache: HashMap::new(),
-            prepared_svgs: Vec::new(),
+            image_texture_cache: HashMap::new(),
             image_sampler,
             metrics: RefCell::new(RenderMetrics::default()),
         }
@@ -708,6 +738,9 @@ impl Renderer {
         let mut quad_instances: u32 = 0;
         let mut text_instances: u32 = 0;
         let mut line_instances: u32 = 0;
+        let mut image_instances: u32 = 0;
+        let mut svg_instances: u32 = 0;
+        let mut vector_batches: u32 = 0;
         let mut mesh_primitives: u32 = 0;
         let mut mesh_vertices: u32 = 0;
         let mut mesh_triangles: u32 = 0;
@@ -724,6 +757,35 @@ impl Renderer {
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
             let lines = scene.curve_lines_for_layer(layer, scale_factor);
             let meshes = scene.mesh_primitives_for_layer(layer);
+            let mut prepared_images = Vec::<PreparedImage>::new();
+            for (_, image, clip) in scene
+                .images
+                .iter()
+                .filter(|(scene_layer, _, _)| *scene_layer == layer)
+            {
+                if let Some(prepared) =
+                    self.prepare_scene_image(device, queue, image, *clip, scale_factor)
+                {
+                    if matches!(image.source, ImageSource::SvgBytes(_)) {
+                        svg_instances = svg_instances.saturating_add(1);
+                    }
+                    image_instances = image_instances.saturating_add(1);
+                    prepared_images.push(prepared);
+                }
+            }
+            let mut prepared_vector_batches = Vec::<PreparedVectorBatch>::new();
+            for (_, batch, clip) in scene
+                .vector_batches
+                .iter()
+                .filter(|(scene_layer, _, _)| *scene_layer == layer)
+            {
+                if let Some(prepared) =
+                    self.prepare_vector_batch(device, queue, batch, *clip, scale_factor)
+                {
+                    vector_batches = vector_batches.saturating_add(1);
+                    prepared_vector_batches.push(prepared);
+                }
+            }
 
             let quad_buffer = if quads.is_empty() {
                 None
@@ -814,6 +876,10 @@ impl Renderer {
             self.prepared_layers.push(PreparedLayer {
                 quad_buffer,
                 quad_count: quads.len() as u32,
+                image_count: prepared_images.len() as u32,
+                images: prepared_images,
+                vector_count: prepared_vector_batches.len() as u32,
+                vector_batches: prepared_vector_batches,
                 text_buffer,
                 text_count: text_quads.len() as u32,
                 line_buffer,
@@ -829,148 +895,21 @@ impl Renderer {
         self.text_instance_buffer = None;
         self.text_count = 0;
 
-        // Prepare SVG quads
-        self.prepared_svgs.clear();
-        for svg_quad in scene.svg_quads() {
-            // Calculate physical size
-            let physical_width = (svg_quad.bounds.size.width * scale_factor).ceil() as u32;
-            let physical_height = (svg_quad.bounds.size.height * scale_factor).ceil() as u32;
-
-            if physical_width == 0 || physical_height == 0 {
-                continue;
-            }
-
-            // Hash the SVG data for cache key
-            let data_hash = {
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                svg_quad.svg_data.hash(&mut hasher);
-                hasher.finish()
-            };
-
-            let cache_key = SvgTextureKey {
-                data_hash,
-                width: physical_width,
-                height: physical_height,
-            };
-
-            // Check if we need to rasterize and upload
-            if !self.svg_texture_cache.contains_key(&cache_key) {
-                // Rasterize the SVG
-                if let Some(rasterized) = self.svg_rasterizer.rasterize(
-                    &svg_quad.svg_data,
-                    svg_quad.bounds.size.width as u32,
-                    svg_quad.bounds.size.height as u32,
-                    scale_factor,
-                ) {
-                    // Create GPU texture
-                    let texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("SVG Texture"),
-                        size: wgpu::Extent3d {
-                            width: rasterized.width,
-                            height: rasterized.height,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
-
-                    // Upload pixel data
-                    queue.write_texture(
-                        wgpu::TexelCopyTextureInfo {
-                            texture: &texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d::ZERO,
-                            aspect: wgpu::TextureAspect::All,
-                        },
-                        &rasterized.pixels,
-                        wgpu::TexelCopyBufferLayout {
-                            offset: 0,
-                            bytes_per_row: Some(rasterized.width * 4),
-                            rows_per_image: Some(rasterized.height),
-                        },
-                        wgpu::Extent3d {
-                            width: rasterized.width,
-                            height: rasterized.height,
-                            depth_or_array_layers: 1,
-                        },
-                    );
-
-                    // Create bind group
-                    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("SVG Bind Group"),
-                        layout: &self.image_bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&texture_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&self.image_sampler),
-                            },
-                        ],
-                    });
-
-                    self.svg_texture_cache.insert(
-                        cache_key.clone(),
-                        SvgGpuResources {
-                            texture,
-                            bind_group,
-                        },
-                    );
-                }
-            }
-
-            // Create instance buffer if texture was uploaded successfully
-            if self.svg_texture_cache.contains_key(&cache_key) {
-                // Create GPU quad data - convert HSLA to RGBA for GPU tinting
-                let tint = svg_quad
-                    .tint
-                    .map_or([1.0, 1.0, 1.0, 1.0], |color| color.to_rgba());
-
-                let gpu_quad = GpuImageQuad {
-                    position: [
-                        svg_quad.bounds.origin.x * scale_factor,
-                        svg_quad.bounds.origin.y * scale_factor,
-                    ],
-                    size: [physical_width as f32, physical_height as f32],
-                    uv: [0.0, 0.0, 1.0, 1.0], // Full texture
-                    tint,
-                };
-
-                let instance_buffer =
-                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("SVG Instance Buffer"),
-                        contents: bytemuck::bytes_of(&gpu_quad),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    });
-
-                self.prepared_svgs.push(PreparedSvg {
-                    instance_buffer,
-                    cache_key,
-                });
-            }
-        }
-
         let mut metrics = self.metrics.borrow_mut();
         metrics.layer_count = self.prepared_layers.len();
         metrics.quad_instances = quad_instances;
         metrics.text_instances = text_instances;
         metrics.line_instances = line_instances;
-        metrics.svg_instances = self.prepared_svgs.len() as u32;
+        metrics.image_instances = image_instances;
+        metrics.svg_instances = svg_instances;
+        metrics.vector_batches = vector_batches;
         metrics.mesh_primitives = mesh_primitives;
         metrics.mesh_vertices = mesh_vertices;
         metrics.mesh_triangles = mesh_triangles;
         metrics.mesh_skipped = mesh_skipped;
         metrics.mesh_edge_overlays = mesh_edge_overlays;
         metrics.mesh_draw_calls = 0;
+        metrics.vector_draw_calls = 0;
         metrics.prepare_cpu_ms = prepare_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
@@ -987,6 +926,7 @@ impl Renderer {
         let render_start = Instant::now();
         let mut draw_calls: u32 = 0;
         let mut mesh_draw_calls: u32 = 0;
+        let mut vector_draw_calls: u32 = 0;
         let mut mesh_skipped: u32 = 0;
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1004,7 +944,7 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        // Render layers in order: quads -> meshes -> edge overlays/lines -> text.
+        // Render layers in order: quads -> images -> vector batches -> meshes -> lines -> text.
         for layer in &self.prepared_layers {
             // Render quads first (background)
             if let Some(buffer) = &layer.quad_buffer {
@@ -1013,6 +953,31 @@ impl Renderer {
                 render_pass.set_vertex_buffer(0, buffer.slice(..));
                 render_pass.draw(0..4, 0..layer.quad_count);
                 draw_calls += 1;
+            }
+
+            if layer.image_count > 0 {
+                render_pass.set_pipeline(&self.image_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                for prepared in &layer.images {
+                    if let Some(resources) = self.image_texture_cache.get(&prepared.cache_key) {
+                        render_pass.set_bind_group(1, &resources.bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, prepared.instance_buffer.slice(..));
+                        render_pass.draw(0..4, 0..1);
+                        draw_calls = draw_calls.saturating_add(1);
+                    }
+                }
+            }
+
+            if layer.vector_count > 0 {
+                render_pass.set_pipeline(&self.image_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                for prepared in &layer.vector_batches {
+                    render_pass.set_bind_group(1, &prepared.bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, prepared.instance_buffer.slice(..));
+                    render_pass.draw(0..4, 0..1);
+                    draw_calls = draw_calls.saturating_add(1);
+                    vector_draw_calls = vector_draw_calls.saturating_add(1);
+                }
             }
 
             // Render prepared mesh batches in-layer.
@@ -1063,45 +1028,288 @@ impl Renderer {
             }
         }
 
-        // Render SVGs (each SVG has its own texture, so we draw them one at a time)
-        if !self.prepared_svgs.is_empty() {
-            render_pass.set_pipeline(&self.image_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-
-            for prepared in &self.prepared_svgs {
-                if let Some(resources) = self.svg_texture_cache.get(&prepared.cache_key) {
-                    render_pass.set_bind_group(1, &resources.bind_group, &[]);
-                    render_pass.set_vertex_buffer(0, prepared.instance_buffer.slice(..));
-                    render_pass.draw(0..4, 0..1);
-                    draw_calls += 1;
-                }
-            }
-        }
-
         drop(render_pass);
 
         let mut metrics = self.metrics.borrow_mut();
         metrics.draw_calls = draw_calls;
         metrics.mesh_draw_calls = mesh_draw_calls;
+        metrics.vector_draw_calls = vector_draw_calls;
         metrics.mesh_skipped = metrics.mesh_skipped.saturating_add(mesh_skipped);
         metrics.render_cpu_ms = render_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
-    /// Clear the SVG texture cache.
+    fn prepare_scene_image(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &ImageQuad,
+        clip: Option<wgpui_core::Bounds>,
+        scale_factor: f32,
+    ) -> Option<PreparedImage> {
+        let cache_key = image_texture_key(image, scale_factor)?;
+        if !self.image_texture_cache.contains_key(&cache_key) {
+            let rasterized = rasterize_scene_image(&mut self.svg_rasterizer, image, scale_factor)?;
+            let resources = upload_rgba_texture(
+                device,
+                queue,
+                &self.image_bind_group_layout,
+                &self.image_sampler,
+                &cache_key,
+                rasterized.width,
+                rasterized.height,
+                &rasterized.pixels,
+            );
+            self.image_texture_cache
+                .insert(cache_key.clone(), resources);
+        }
+        let gpu_quad = GpuImageQuad::from_image(image, clip, scale_factor);
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Layered Image Instance Buffer"),
+            contents: bytemuck::bytes_of(&gpu_quad),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        Some(PreparedImage {
+            instance_buffer,
+            cache_key,
+        })
+    }
+
+    fn prepare_vector_batch(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        batch: &wgpui_core::VectorBatch,
+        clip: Option<wgpui_core::Bounds>,
+        scale_factor: f32,
+    ) -> Option<PreparedVectorBatch> {
+        let rasterized = rasterize_vector_batch(batch, scale_factor)?;
+        let image = ImageQuad::new(
+            batch.bounds,
+            ImageSource::Rgba8(wgpui_core::ImageData::rgba8(
+                rasterized.width,
+                rasterized.height,
+                std::sync::Arc::<[u8]>::from(rasterized.pixels),
+            )?),
+        );
+        let gpu_quad = GpuImageQuad::from_image(&image, clip, scale_factor);
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vector Batch Instance Buffer"),
+            contents: bytemuck::bytes_of(&gpu_quad),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let texture_label = format!(
+            "Vector Batch {}x{} Texture",
+            rasterized.width, rasterized.height
+        );
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(texture_label.as_str()),
+            size: wgpu::Extent3d {
+                width: rasterized.width,
+                height: rasterized.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            image_data_bytes(&image)?,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(rasterized.width * 4),
+                rows_per_image: Some(rasterized.height),
+            },
+            wgpu::Extent3d {
+                width: rasterized.width,
+                height: rasterized.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Vector Batch Bind Group"),
+            layout: &self.image_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.image_sampler),
+                },
+            ],
+        });
+        Some(PreparedVectorBatch {
+            texture,
+            bind_group,
+            instance_buffer,
+        })
+    }
+
+    /// Clear the SVG/image texture cache.
     /// Call this periodically to free unused textures.
     pub fn clear_svg_cache(&mut self) {
-        self.svg_texture_cache.clear();
+        self.image_texture_cache.clear();
         self.svg_rasterizer.clear_cache();
     }
 
-    /// Get the number of cached SVG textures.
+    /// Get the number of cached scene image textures.
     pub fn svg_cache_size(&self) -> usize {
-        self.svg_texture_cache.len()
+        self.image_texture_cache.len()
     }
 
     pub fn render_metrics(&self) -> RenderMetrics {
         self.metrics.borrow().clone()
     }
+}
+
+fn image_texture_key(image: &ImageQuad, scale_factor: f32) -> Option<ImageTextureKey> {
+    match &image.source {
+        ImageSource::SvgBytes(bytes) => {
+            let width = (image.bounds.size.width * scale_factor).ceil() as u32;
+            let height = (image.bounds.size.height * scale_factor).ceil() as u32;
+            if width == 0 || height == 0 {
+                return None;
+            }
+            Some(ImageTextureKey::Svg {
+                data_hash: hash_bytes(bytes),
+                width,
+                height,
+            })
+        }
+        ImageSource::Rgba8(data) => Some(ImageTextureKey::Rgba {
+            data_hash: hash_bytes(&data.rgba8),
+            width: data.width,
+            height: data.height,
+        }),
+    }
+}
+
+fn rasterize_scene_image(
+    svg_rasterizer: &mut SvgRenderer,
+    image: &ImageQuad,
+    scale_factor: f32,
+) -> Option<RasterizedSceneImage> {
+    match &image.source {
+        ImageSource::SvgBytes(bytes) => {
+            let rasterized = svg_rasterizer.rasterize(
+                bytes,
+                image.bounds.size.width as u32,
+                image.bounds.size.height as u32,
+                scale_factor,
+            )?;
+            Some(RasterizedSceneImage {
+                width: rasterized.width,
+                height: rasterized.height,
+                pixels: rasterized.pixels.clone(),
+            })
+        }
+        ImageSource::Rgba8(data) => Some(RasterizedSceneImage {
+            width: data.width,
+            height: data.height,
+            pixels: data.rgba8.to_vec(),
+        }),
+    }
+}
+
+struct RasterizedSceneImage {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+fn upload_rgba_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    image_bind_group_layout: &wgpu::BindGroupLayout,
+    image_sampler: &wgpu::Sampler,
+    cache_key: &ImageTextureKey,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> ImageGpuResources {
+    let label = match cache_key {
+        ImageTextureKey::Svg { .. } => "Scene SVG Texture",
+        ImageTextureKey::Rgba { .. } => "Scene RGBA Texture",
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Scene Image Bind Group"),
+        layout: image_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(image_sampler),
+            },
+        ],
+    });
+    ImageGpuResources {
+        texture,
+        bind_group,
+    }
+}
+
+fn image_data_bytes(image: &ImageQuad) -> Option<&[u8]> {
+    match &image.source {
+        ImageSource::Rgba8(data) => Some(&data.rgba8),
+        ImageSource::SvgBytes(_) => None,
+    }
+}
+
+fn hash_bytes(bytes: &[u8]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn mesh_to_gpu_vertices(mesh: &MeshPrimitive, scale_factor: f32) -> Vec<GpuMeshVertex> {

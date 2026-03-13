@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
+tiny-skia = "0.11"
 wgpu = { workspace = true }
 web-time = "1.1.0"
 wgpui-core = { path = "../wgpui-core" }
