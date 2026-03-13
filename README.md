@@ -218,9 +218,16 @@ same app-owned local-runtime contract for GPT-OSS.
 
 ```bash
 autopilotctl local-runtime status
-autopilotctl local-runtime refresh --wait
+autopilotctl local-runtime refresh
 autopilotctl gpt-oss warm --wait
+autopilotctl wait local-runtime-ready
 autopilotctl wait gpt-oss-ready
+```
+
+Repeatable scripted form:
+
+```bash
+scripts/release/check-gpt-oss-nvidia-mission-control.sh
 ```
 
 `Go Online` currently unlocks sell-compute on the GPT-OSS lane only when the

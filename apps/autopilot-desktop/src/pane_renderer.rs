@@ -6948,14 +6948,15 @@ mod tests {
     use super::{
         active_job_clipboard_text, build_active_job_scroll_lines, create_invoice_view_state,
         earnings_scoreboard_amount_display, mission_control_active_jobs_panel_state,
-        mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
-        mission_control_buy_mode_payment_label, mission_control_go_online_hint,
-        mission_control_lightning_receive_state_label, mission_control_local_action_enabled,
-        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
-        mission_control_local_model_button_label, mission_control_value_chunk_len,
-        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, request_freshness_summary, spark_wallet_view_state,
-        split_text_for_display,
+        mission_control_backend_label, mission_control_body_chunk_len,
+        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
+        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
+        mission_control_local_action_enabled, mission_control_local_fm_test_button_label,
+        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
+        mission_control_model_load_status, mission_control_primary_model_label,
+        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
+        pay_invoice_view_state, payment_terminal_status, request_freshness_summary,
+        spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -7548,6 +7549,67 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_apple_fm_ready_lane_renders_expected_status() {
+        if !crate::app_state::mission_control_uses_apple_fm() {
+            return;
+        }
+
+        let mut provider = ProviderRuntimeState::default();
+        provider.apple_fm.reachable = true;
+        provider.apple_fm.model_available = true;
+        provider.apple_fm.ready_model = Some("apple-fm".to_string());
+        provider.apple_fm.bridge_status = Some("running".to_string());
+
+        let local = LocalInferenceExecutionSnapshot::default();
+
+        assert_eq!(
+            mission_control_local_model_button_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "REFRESH APPLE FM"
+        );
+        assert!(mission_control_local_action_enabled(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+        assert_eq!(
+            mission_control_primary_model_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "APPLE-FM"
+        );
+        assert_eq!(
+            mission_control_backend_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "Apple FM bridge (running)"
+        );
+        assert_eq!(
+            mission_control_model_load_status(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "ready"
+        );
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            ""
+        );
+    }
+
+    #[test]
     fn mission_control_reports_missing_supported_runtime_lane() {
         let provider = ProviderRuntimeState::default();
         let local = LocalInferenceExecutionSnapshot {
@@ -7592,6 +7654,69 @@ mod tests {
                 "GPT-OSS backend is METAL. Go Online currently requires CUDA for the compute lane."
             );
         }
+    }
+
+    #[test]
+    fn mission_control_gpt_oss_ready_lane_renders_expected_status() {
+        if crate::app_state::mission_control_uses_apple_fm() {
+            return;
+        }
+
+        let provider = ProviderRuntimeState::default();
+        let local = LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            artifact_present: true,
+            backend_label: "cuda".to_string(),
+            ..LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            mission_control_local_model_button_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "UNLOAD GPT-OSS"
+        );
+        assert!(mission_control_local_action_enabled(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+        assert_eq!(
+            mission_control_primary_model_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "GPT-OSS-20B"
+        );
+        assert_eq!(
+            mission_control_backend_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "GPT-OSS / CUDA"
+        );
+        assert_eq!(
+            mission_control_model_load_status(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "loaded / artifact present"
+        );
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            ""
+        );
     }
 
     #[test]

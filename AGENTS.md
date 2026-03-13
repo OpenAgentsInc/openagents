@@ -63,9 +63,12 @@ The bridge is the Swift HTTP sidecar in `swift/foundation-bridge/`. It exposes A
 - Architecture boundary hygiene: `scripts/lint/ownership-boundary-check.sh`.
 - Clean-on-touch clippy hygiene: `scripts/lint/touched-clippy-gate.sh` with debt allowlist in `scripts/lint/clippy-debt-allowlist.toml`.
 - Repo-managed Agent Skills validation: `scripts/skills/validate_registry.sh`.
+- GPT-OSS parity regression gate: `scripts/lint/gpt-oss-parity-gate.sh`.
 - Codex chat/skills regression coverage:
   - `cargo test -p autopilot-desktop codex_lane`
   - `cargo test -p autopilot-desktop assemble_chat_turn_input`
   - `cargo test -p codex-client --test skills_and_user_input`
 - Programmatic packaged roundtrip:
   - `scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh`
+- Supported NVIDIA/CUDA Mission Control smoke:
+  - `scripts/release/check-gpt-oss-nvidia-mission-control.sh`

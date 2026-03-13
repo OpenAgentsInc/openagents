@@ -46,7 +46,7 @@ Useful `autopilotctl` starting points:
 ```bash
 autopilotctl status
 autopilotctl local-runtime status
-autopilotctl local-runtime refresh --wait
+autopilotctl local-runtime refresh
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
 autopilotctl wait gpt-oss-ready
@@ -106,9 +106,10 @@ cargo install --path .
 cargo autopilot
 
 autopilotctl local-runtime status
-autopilotctl local-runtime refresh --wait
+autopilotctl local-runtime refresh
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
+autopilotctl wait local-runtime-ready
 autopilotctl wait gpt-oss-ready
 autopilotctl provider online
 ```
@@ -120,9 +121,16 @@ autopilotctl gpt-oss unload --wait
 autopilotctl logs --tail 100
 ```
 
+Repeatable scripted form:
+
+```bash
+scripts/release/check-gpt-oss-nvidia-mission-control.sh
+```
+
 Operational notes:
 
-- `local-runtime refresh` always targets the active Mission Control lane
+- `local-runtime refresh` always targets the active Mission Control lane, but on
+  GPT-OSS it does not load the GGUF by itself
 - `gpt-oss warm` and `gpt-oss unload` act directly on the configured GGUF model
 - `provider online` will still block if the backend is not `cuda`, the GGUF is
   missing, or the configured model is not loaded
