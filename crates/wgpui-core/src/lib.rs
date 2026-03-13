@@ -15,6 +15,7 @@ pub mod curve;
 pub mod geometry;
 pub mod input;
 pub mod scene;
+pub mod vector;
 
 pub use color::Hsla;
 pub use curve::{CurvePrimitive, LineSegment};
@@ -23,5 +24,10 @@ pub use input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedK
 pub use scene::{
     GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, MESH_EDGE_FLAG_SELECTED,
     MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive, MeshPrimitiveError, MeshTopology,
-    MeshVertex, Quad, Scene, SvgQuad, TextRun,
+    MeshVertex, Quad, Scene, TextRun,
+};
+pub use vector::{
+    ImageData, ImageQuad, ImageSource, SvgQuad, VectorBatch, VectorBlendMode, VectorBrush,
+    VectorCommand, VectorFillRule, VectorGradientStop, VectorImage, VectorImageMesh, VectorPaint,
+    VectorPaintStyle, VectorPath, VectorPathElement, VectorStrokeCap, VectorStrokeJoin,
 };

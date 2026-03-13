@@ -1,6 +1,8 @@
 use crate::color::Hsla;
 use crate::curve::CurvePrimitive;
 use crate::geometry::{Bounds, Point, Size};
+pub use crate::vector::SvgQuad;
+use crate::vector::{ImageQuad, VectorBatch};
 use bytemuck::{Pod, Zeroable};
 use std::error::Error;
 use std::fmt;
@@ -13,13 +15,14 @@ pub struct GpuImageQuad {
     pub size: [f32; 2],
     pub uv: [f32; 4],
     pub tint: [f32; 4],
+    pub clip_origin: [f32; 2],
+    pub clip_size: [f32; 2],
 }
 
 impl GpuImageQuad {
-    /// Create a GPU image quad from bounds and optional tint.
-    /// UV is full texture (0,0 to 1,1).
-    pub fn new(position: [f32; 2], size: [f32; 2], tint: Option<Hsla>) -> Self {
-        let tint_color = tint.map_or([1.0, 1.0, 1.0, 1.0], |color| {
+    pub fn from_image(image: &ImageQuad, clip: Option<Bounds>, scale_factor: f32) -> Self {
+        let (clip_origin, clip_size) = clip_to_gpu(clip, scale_factor);
+        let mut tint_color = image.tint.map_or([1.0, 1.0, 1.0, 1.0], |color| {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 color.to_linear_rgba()
@@ -28,13 +31,22 @@ impl GpuImageQuad {
             {
                 color.to_rgba()
             }
-        }); // White = no tint
+        });
+        tint_color[3] *= image.opacity;
 
         Self {
-            position,
-            size,
-            uv: [0.0, 0.0, 1.0, 1.0], // Full texture
+            position: [
+                image.bounds.origin.x * scale_factor,
+                image.bounds.origin.y * scale_factor,
+            ],
+            size: [
+                image.bounds.size.width * scale_factor,
+                image.bounds.size.height * scale_factor,
+            ],
+            uv: image.uv,
             tint: tint_color,
+            clip_origin,
+            clip_size,
         }
     }
 }
@@ -515,40 +527,14 @@ impl GpuTextQuad {
     }
 }
 
-/// An SVG to be rendered as a textured quad.
-#[derive(Clone, Debug)]
-pub struct SvgQuad {
-    /// Bounds to render the SVG within (logical pixels)
-    pub bounds: Bounds,
-    /// Raw SVG bytes
-    pub svg_data: std::sync::Arc<[u8]>,
-    /// Optional tint color (for monochrome icons)
-    pub tint: Option<Hsla>,
-}
-
-impl SvgQuad {
-    /// Create a new SVG quad.
-    pub fn new(bounds: Bounds, svg_data: std::sync::Arc<[u8]>) -> Self {
-        Self {
-            bounds,
-            svg_data,
-            tint: None,
-        }
-    }
-
-    /// Set a tint color for the SVG.
-    pub fn with_tint(mut self, color: Hsla) -> Self {
-        self.tint = Some(color);
-        self
-    }
-}
-
 #[derive(Default)]
 pub struct Scene {
     pub quads: Vec<(u32, Quad, Option<Bounds>)>, // (layer, quad, clip)
     pub text_runs: Vec<(u32, TextRun, Option<Bounds>)>, // (layer, text_run, clip)
     pub curves: Vec<(u32, CurvePrimitive)>,      // (layer, curve)
     pub meshes: Vec<(u32, MeshPrimitive, Option<Bounds>)>, // (layer, mesh, clip)
+    pub images: Vec<(u32, ImageQuad, Option<Bounds>)>, // (layer, image, clip)
+    pub vector_batches: Vec<(u32, VectorBatch, Option<Bounds>)>, // (layer, batch, clip)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
     current_layer: u32,
@@ -564,6 +550,8 @@ impl Scene {
         self.text_runs.clear();
         self.curves.clear();
         self.meshes.clear();
+        self.images.clear();
+        self.vector_batches.clear();
         self.svg_quads.clear();
         self.clip_stack.clear();
         self.current_layer = 0;
@@ -601,14 +589,39 @@ impl Scene {
         }
     }
 
+    pub fn draw_image(&mut self, image: ImageQuad) {
+        if let Some(clip) = self.clip_stack.last() {
+            if image.bounds.intersects(clip) {
+                self.images.push((self.current_layer, image, Some(*clip)));
+            }
+        } else {
+            self.images.push((self.current_layer, image, None));
+        }
+    }
+
     /// Draw an SVG at the specified bounds.
     pub fn draw_svg(&mut self, svg: SvgQuad) {
         if let Some(clip) = self.clip_stack.last() {
             if svg.bounds.intersects(clip) {
+                self.images
+                    .push((self.current_layer, svg.clone().into(), Some(*clip)));
                 self.svg_quads.push(svg);
             }
         } else {
+            self.images
+                .push((self.current_layer, svg.clone().into(), None));
             self.svg_quads.push(svg);
+        }
+    }
+
+    pub fn draw_vector_batch(&mut self, batch: VectorBatch) {
+        if let Some(clip) = self.clip_stack.last() {
+            if batch.bounds.intersects(clip) {
+                self.vector_batches
+                    .push((self.current_layer, batch, Some(*clip)));
+            }
+        } else {
+            self.vector_batches.push((self.current_layer, batch, None));
         }
     }
 
@@ -710,6 +723,14 @@ impl Scene {
         quads
     }
 
+    pub fn gpu_image_quads_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuImageQuad> {
+        self.images
+            .iter()
+            .filter(|(l, _, _)| *l == layer)
+            .map(|(_, image, clip)| GpuImageQuad::from_image(image, *clip, scale_factor))
+            .collect()
+    }
+
     /// Get all unique layers used in this scene, sorted.
     pub fn layers(&self) -> Vec<u32> {
         let mut layers: Vec<u32> = self
@@ -719,6 +740,8 @@ impl Scene {
             .chain(self.text_runs.iter().map(|(l, _, _)| *l))
             .chain(self.curves.iter().map(|(l, _)| *l))
             .chain(self.meshes.iter().map(|(l, _, _)| *l))
+            .chain(self.images.iter().map(|(l, _, _)| *l))
+            .chain(self.vector_batches.iter().map(|(l, _, _)| *l))
             .collect();
         layers.sort_unstable();
         layers.dedup();
@@ -733,8 +756,24 @@ impl Scene {
         self.text_runs.iter().map(|(_, r, _)| r).collect()
     }
 
+    pub fn images_for_layer(&self, layer: u32) -> Vec<&ImageQuad> {
+        self.images
+            .iter()
+            .filter(|(l, _, _)| *l == layer)
+            .map(|(_, image, _)| image)
+            .collect()
+    }
+
     pub fn svg_quads(&self) -> &[SvgQuad] {
         &self.svg_quads
+    }
+
+    pub fn vector_batches_for_layer(&self, layer: u32) -> Vec<&VectorBatch> {
+        self.vector_batches
+            .iter()
+            .filter(|(l, _, _)| *l == layer)
+            .map(|(_, batch, _)| batch)
+            .collect()
     }
 
     pub fn mesh_primitives_for_layer(&self, layer: u32) -> Vec<&MeshPrimitive> {
@@ -769,6 +808,8 @@ fn clip_to_gpu(clip: Option<Bounds>, scale_factor: f32) -> ([f32; 2], [f32; 2]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vector::{ImageData, ImageSource};
+    use std::sync::Arc;
 
     fn sample_mesh() -> MeshPrimitive {
         let vertices = vec![
@@ -799,6 +840,73 @@ mod tests {
         scene.draw_quad(quad);
 
         assert_eq!(scene.quads().len(), 1);
+    }
+
+    #[test]
+    fn test_layered_images_participate_in_scene_layers() {
+        let mut scene = Scene::new();
+        scene.set_layer(4);
+        scene.draw_svg(SvgQuad::new(
+            Bounds::new(16.0, 16.0, 24.0, 24.0),
+            Arc::<[u8]>::from(&b"<svg></svg>"[..]),
+        ));
+
+        scene.set_layer(2);
+        scene.draw_image(ImageQuad::new(
+            Bounds::new(4.0, 4.0, 12.0, 12.0),
+            ImageSource::Rgba8(
+                ImageData::rgba8(1, 1, Arc::<[u8]>::from([255, 255, 255, 255]))
+                    .expect("1x1 RGBA data should validate"),
+            ),
+        ));
+
+        scene.set_layer(1);
+        scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, 8.0, 8.0)));
+
+        assert_eq!(scene.layers(), vec![1, 2, 4]);
+        assert_eq!(scene.images_for_layer(2).len(), 1);
+        assert_eq!(scene.images_for_layer(4).len(), 1);
+    }
+
+    #[test]
+    fn test_scene_draw_image_is_clipped_like_other_drawables() {
+        let mut scene = Scene::new();
+        scene.push_clip(Bounds::new(0.0, 0.0, 20.0, 20.0));
+        scene.draw_image(ImageQuad::new(
+            Bounds::new(4.0, 4.0, 8.0, 8.0),
+            ImageSource::Rgba8(
+                ImageData::rgba8(1, 1, Arc::<[u8]>::from([255, 0, 0, 255]))
+                    .expect("1x1 RGBA data should validate"),
+            ),
+        ));
+        scene.draw_image(ImageQuad::new(
+            Bounds::new(40.0, 40.0, 8.0, 8.0),
+            ImageSource::Rgba8(
+                ImageData::rgba8(1, 1, Arc::<[u8]>::from([0, 0, 255, 255]))
+                    .expect("1x1 RGBA data should validate"),
+            ),
+        ));
+
+        let images = scene.images_for_layer(0);
+        assert_eq!(images.len(), 1);
+
+        let gpu_images = scene.gpu_image_quads_for_layer(0, 2.0);
+        assert_eq!(gpu_images.len(), 1);
+        assert_eq!(gpu_images[0].clip_origin, [0.0, 0.0]);
+        assert_eq!(gpu_images[0].clip_size, [40.0, 40.0]);
+    }
+
+    #[test]
+    fn test_scene_draw_vector_batch_is_layered_and_clipped() {
+        let mut scene = Scene::new();
+        scene.set_layer(7);
+        scene.draw_vector_batch(VectorBatch::new(Bounds::new(8.0, 8.0, 24.0, 24.0)));
+        assert_eq!(scene.layers(), vec![7]);
+        assert_eq!(scene.vector_batches_for_layer(7).len(), 1);
+
+        scene.push_clip(Bounds::new(100.0, 100.0, 8.0, 8.0));
+        scene.draw_vector_batch(VectorBatch::new(Bounds::new(0.0, 0.0, 20.0, 20.0)));
+        assert_eq!(scene.vector_batches_for_layer(7).len(), 1);
     }
 
     #[test]
@@ -972,12 +1080,22 @@ mod tests {
         let mut scene = Scene::new();
         scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, 10.0, 10.0)));
         scene.draw_text(TextRun::new(Point::ZERO, Hsla::white(), 12.0));
+        scene.draw_image(ImageQuad::new(
+            Bounds::new(0.0, 0.0, 8.0, 8.0),
+            ImageSource::Rgba8(
+                ImageData::rgba8(1, 1, Arc::<[u8]>::from([255, 255, 255, 255]))
+                    .expect("1x1 RGBA data should validate"),
+            ),
+        ));
+        scene.draw_vector_batch(VectorBatch::new(Bounds::new(0.0, 0.0, 8.0, 8.0)));
         scene.push_clip(Bounds::new(0.0, 0.0, 50.0, 50.0));
 
         scene.clear();
 
         assert!(scene.quads().is_empty());
         assert!(scene.text_runs().is_empty());
+        assert!(scene.images_for_layer(0).is_empty());
+        assert!(scene.vector_batches_for_layer(0).is_empty());
         assert!(scene.current_clip().is_none());
     }
 }
