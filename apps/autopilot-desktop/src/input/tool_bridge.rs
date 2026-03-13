@@ -1856,7 +1856,7 @@ fn execute_pane_action(state: &mut RenderState, args: &PaneActionArgs) -> ToolBr
     )
 }
 
-fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
+pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
     let open_instances = state
         .panes
         .iter()
@@ -5869,7 +5869,7 @@ fn resolve_pane_kind(state: &RenderState, raw: &str) -> Option<PaneKind> {
     resolve_pane_kind_for_runtime(raw)
 }
 
-fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
+pub(crate) fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
@@ -6002,7 +6002,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
     }
 }
 
-fn pane_kind_key(kind: PaneKind) -> &'static str {
+pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
     match kind {
         PaneKind::Empty => "pane",
         PaneKind::AutopilotChat => "autopilot_chat",

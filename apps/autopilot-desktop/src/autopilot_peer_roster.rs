@@ -214,6 +214,29 @@ pub(crate) fn select_autopilot_buy_mode_target_with_policy(
     now_epoch_seconds: u64,
     last_targeted_peer_pubkey: Option<&str>,
 ) -> AutopilotBuyModeTargetSelection {
+    let rows = build_autopilot_peer_roster(
+        snapshot,
+        local_state,
+        local_pubkey,
+        config,
+        now_epoch_seconds,
+    );
+    select_autopilot_buy_mode_target_from_rows(
+        snapshot,
+        local_pubkey,
+        config,
+        last_targeted_peer_pubkey,
+        rows.as_slice(),
+    )
+}
+
+pub(crate) fn select_autopilot_buy_mode_target_from_rows(
+    snapshot: &ManagedChatProjectionSnapshot,
+    local_pubkey: Option<&str>,
+    config: &DefaultNip28ChannelConfig,
+    last_targeted_peer_pubkey: Option<&str>,
+    rows: &[AutopilotPeerRosterRow],
+) -> AutopilotBuyModeTargetSelection {
     if !config.is_valid() {
         return blocked_buy_mode_target_selection(
             AUTOPILOT_BUY_MODE_TARGET_BLOCK_INVALID_MAIN_CHANNEL_CONFIG,
@@ -236,13 +259,6 @@ pub(crate) fn select_autopilot_buy_mode_target_with_policy(
         );
     }
 
-    let rows = build_autopilot_peer_roster(
-        snapshot,
-        local_state,
-        local_pubkey,
-        config,
-        now_epoch_seconds,
-    );
     let observed_peer_count = rows.len();
     let eligible_rows = rows
         .iter()
@@ -275,7 +291,7 @@ pub(crate) fn select_autopilot_buy_mode_target_with_policy(
         );
     }
 
-    let eligibility_summary = summarize_roster_eligibility_counts(rows.as_slice());
+    let eligibility_summary = summarize_roster_eligibility_counts(rows);
     let blocked_reason = if eligibility_summary.is_empty() {
         "Buy Mode blocked: no eligible Autopilot peers are online for compute".to_string()
     } else {

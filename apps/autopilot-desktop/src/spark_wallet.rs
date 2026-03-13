@@ -459,12 +459,7 @@ impl SparkPaneState {
     }
 
     fn startup_convergence_satisfied(&self) -> bool {
-        self.last_error.is_none()
-            && self.balance.is_some()
-            && self
-                .network_status
-                .as_ref()
-                .is_some_and(|status| status.status == NetworkStatus::Connected)
+        self.last_error.is_none() && self.balance.is_some()
     }
 
     fn should_throttle_refresh(&self) -> bool {
@@ -1399,12 +1394,12 @@ mod tests {
     }
 
     #[test]
-    fn startup_convergence_clears_early_once_wallet_state_is_ready() {
+    fn startup_convergence_clears_early_once_wallet_balance_is_ready() {
         let mut state = SparkPaneState::with_network(Network::Regtest);
 
         state.begin_startup_convergence(100);
         state.network_status = Some(NetworkStatusReport {
-            status: NetworkStatus::Connected,
+            status: NetworkStatus::Disconnected,
             detail: None,
         });
         state.balance = Some(Balance {
@@ -1416,7 +1411,7 @@ mod tests {
         state.complete_startup_convergence_after_refresh();
 
         assert!(!state.startup_convergence_active);
-        assert_eq!(state.network_status_label(), "connected");
+        assert_eq!(state.network_status_label(), "disconnected");
     }
 
     #[test]

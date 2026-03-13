@@ -30,7 +30,8 @@ use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
-use crate::pane_system::{BuyModePaymentsPaneAction, ProviderControlPaneAction};
+use crate::pane_registry::{enabled_pane_specs, pane_spec};
+use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
@@ -345,6 +346,19 @@ pub struct DesktopControlManifest {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum DesktopControlActionRequest {
     GetSnapshot,
+    ListPanes,
+    OpenPane {
+        pane: String,
+    },
+    FocusPane {
+        pane: String,
+    },
+    ClosePane {
+        pane: String,
+    },
+    GetPaneSnapshot {
+        pane: String,
+    },
     SetProviderMode {
         online: bool,
     },
@@ -384,6 +398,11 @@ impl DesktopControlActionRequest {
     fn label(&self) -> &'static str {
         match self {
             Self::GetSnapshot => "get-snapshot",
+            Self::ListPanes => "pane-list",
+            Self::OpenPane { .. } => "pane-open",
+            Self::FocusPane { .. } => "pane-focus",
+            Self::ClosePane { .. } => "pane-close",
+            Self::GetPaneSnapshot { .. } => "pane-snapshot",
             Self::SetProviderMode { online: true } => "provider-online",
             Self::SetProviderMode { online: false } => "provider-offline",
             Self::RefreshLocalRuntime => "local-runtime-refresh",
@@ -810,15 +829,18 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
 }
 
 fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
+    let should_attempt_sync = state
+        .desktop_control_last_sync_at
+        .is_none_or(|last| last.elapsed() >= DESKTOP_CONTROL_SYNC_INTERVAL);
+    if !should_attempt_sync {
+        return false;
+    }
     let snapshot = snapshot_for_state(state);
     let snapshot_revision = snapshot.snapshot_revision;
     let signature = snapshot.state_signature.clone();
     let signature_changed =
         state.desktop_control_last_sync_signature.as_deref() != Some(signature.as_str());
-    let should_sync = signature_changed
-        || state
-            .desktop_control_last_sync_at
-            .is_none_or(|last| last.elapsed() >= DESKTOP_CONTROL_SYNC_INTERVAL);
+    let should_sync = signature_changed || state.desktop_control_last_sync_at.is_none();
     if !should_sync {
         return false;
     }
@@ -924,6 +946,8 @@ fn command_outcome_event(
     let include_response_payload = !matches!(
         action,
         DesktopControlActionRequest::GetSnapshot
+            | DesktopControlActionRequest::ListPanes
+            | DesktopControlActionRequest::GetPaneSnapshot { .. }
             | DesktopControlActionRequest::GetActiveJob
             | DesktopControlActionRequest::GetMissionControlLogTail { .. }
     );
@@ -974,6 +998,14 @@ fn command_outcome_event(
 fn command_payload(action: &DesktopControlActionRequest) -> Value {
     match action {
         DesktopControlActionRequest::GetSnapshot => json!({ "command_label": action.label() }),
+        DesktopControlActionRequest::ListPanes => json!({ "command_label": action.label() }),
+        DesktopControlActionRequest::OpenPane { pane }
+        | DesktopControlActionRequest::FocusPane { pane }
+        | DesktopControlActionRequest::ClosePane { pane }
+        | DesktopControlActionRequest::GetPaneSnapshot { pane } => json!({
+            "command_label": action.label(),
+            "pane": pane,
+        }),
         DesktopControlActionRequest::SetProviderMode { online } => {
             json!({ "command_label": action.label(), "online": online })
         }
@@ -1541,6 +1573,15 @@ fn apply_action_request(
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
+        DesktopControlActionRequest::ListPanes => {
+            pane_list_payload_response(state, "Captured desktop pane catalog")
+        }
+        DesktopControlActionRequest::OpenPane { pane } => pane_open_action(state, pane.as_str()),
+        DesktopControlActionRequest::FocusPane { pane } => pane_focus_action(state, pane.as_str()),
+        DesktopControlActionRequest::ClosePane { pane } => pane_close_action(state, pane.as_str()),
+        DesktopControlActionRequest::GetPaneSnapshot { pane } => {
+            pane_snapshot_payload_response(state, pane.as_str())
+        }
         DesktopControlActionRequest::RefreshLocalRuntime => refresh_local_runtime_action(state),
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
         DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
@@ -2044,6 +2085,148 @@ fn pay_invoice_action_response(
     }
 }
 
+fn pane_resolution_error(pane_ref: &str) -> DesktopControlActionResponse {
+    DesktopControlActionResponse::error(format!(
+        "Could not resolve pane reference '{}'.",
+        pane_ref.trim()
+    ))
+}
+
+fn pane_list_payload_response(
+    state: &RenderState,
+    message: impl Into<String>,
+) -> DesktopControlActionResponse {
+    let registered = enabled_pane_specs()
+        .filter(|spec| spec.kind != crate::app_state::PaneKind::Empty)
+        .map(|spec| {
+            json!({
+                "kind": crate::input::desktop_control_pane_kind_key(spec.kind),
+                "title": spec.title,
+                "command_id": spec.command.map(|command| command.id),
+                "singleton": spec.singleton,
+                "startup": spec.startup,
+            })
+        })
+        .collect::<Vec<_>>();
+    let open = state
+        .panes
+        .iter()
+        .map(|pane| {
+            json!({
+                "pane_id": pane.id,
+                "kind": crate::input::desktop_control_pane_kind_key(pane.kind),
+                "title": pane.title,
+                "z_index": pane.z_index,
+            })
+        })
+        .collect::<Vec<_>>();
+    DesktopControlActionResponse::ok_with_payload(
+        message,
+        json!({
+            "registered": registered,
+            "open": open,
+            "active_pane_id": PaneController::active(state),
+        }),
+    )
+}
+
+fn pane_open_action(state: &mut RenderState, pane_ref: &str) -> DesktopControlActionResponse {
+    let Some(kind) = crate::input::desktop_control_resolve_pane_kind_for_runtime(pane_ref) else {
+        return pane_resolution_error(pane_ref);
+    };
+    let pane_id = PaneController::create_for_kind(state, kind);
+    DesktopControlActionResponse::ok_with_payload(
+        format!(
+            "Opened pane '{}'",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ),
+        json!({
+            "pane_id": pane_id,
+            "kind": crate::input::desktop_control_pane_kind_key(kind),
+            "title": pane_spec(kind).title,
+            "snapshot": crate::input::desktop_control_pane_snapshot_details(state, kind),
+        }),
+    )
+}
+
+fn pane_focus_action(state: &mut RenderState, pane_ref: &str) -> DesktopControlActionResponse {
+    let Some(kind) = crate::input::desktop_control_resolve_pane_kind_for_runtime(pane_ref) else {
+        return pane_resolution_error(pane_ref);
+    };
+    let Some((pane_id, pane_title)) = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| (pane.id, pane.title.clone()))
+    else {
+        return DesktopControlActionResponse::error(format!(
+            "Pane '{}' is not currently open.",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ));
+    };
+    PaneController::bring_to_front(state, pane_id);
+    DesktopControlActionResponse::ok_with_payload(
+        format!(
+            "Focused pane '{}'",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ),
+        json!({
+            "pane_id": pane_id,
+            "kind": crate::input::desktop_control_pane_kind_key(kind),
+            "title": pane_title,
+            "snapshot": crate::input::desktop_control_pane_snapshot_details(state, kind),
+        }),
+    )
+}
+
+fn pane_close_action(state: &mut RenderState, pane_ref: &str) -> DesktopControlActionResponse {
+    let Some(kind) = crate::input::desktop_control_resolve_pane_kind_for_runtime(pane_ref) else {
+        return pane_resolution_error(pane_ref);
+    };
+    let Some((pane_id, pane_title)) = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| (pane.id, pane.title.clone()))
+    else {
+        return DesktopControlActionResponse::error(format!(
+            "Pane '{}' is not currently open.",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ));
+    };
+    PaneController::close(state, pane_id);
+    DesktopControlActionResponse::ok_with_payload(
+        format!(
+            "Closed pane '{}'",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ),
+        json!({
+            "pane_id": pane_id,
+            "kind": crate::input::desktop_control_pane_kind_key(kind),
+            "title": pane_title,
+            "snapshot": crate::input::desktop_control_pane_snapshot_details(state, kind),
+        }),
+    )
+}
+
+fn pane_snapshot_payload_response(
+    state: &RenderState,
+    pane_ref: &str,
+) -> DesktopControlActionResponse {
+    let Some(kind) = crate::input::desktop_control_resolve_pane_kind_for_runtime(pane_ref) else {
+        return pane_resolution_error(pane_ref);
+    };
+    DesktopControlActionResponse::ok_with_payload(
+        format!(
+            "Captured pane snapshot for '{}'",
+            crate::input::desktop_control_pane_kind_key(kind)
+        ),
+        crate::input::desktop_control_pane_snapshot_details(state, kind),
+    )
+}
+
 fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse {
     if !state.mission_control_buy_mode_enabled() {
         return DesktopControlActionResponse::error("Buy Mode is disabled for this session");
@@ -2363,30 +2546,26 @@ fn desktop_control_nip28_status(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let recent_messages = {
-        let mut tail = chat.active_managed_chat_messages();
-        if tail.len() > 16 {
-            tail.drain(0..tail.len().saturating_sub(16));
-        }
-        tail.into_iter()
-            .map(|message| DesktopControlNip28MessageStatus {
-                event_id: message.event_id.clone(),
-                author_pubkey: message.author_pubkey.clone(),
-                content: message.content.clone(),
-                created_at: message.created_at,
-                reply_to_event_id: message.reply_to_event_id.clone(),
-                delivery_state: match message.delivery_state {
-                    crate::app_state::ManagedChatDeliveryState::Confirmed => "confirmed",
-                    crate::app_state::ManagedChatDeliveryState::Publishing => "publishing",
-                    crate::app_state::ManagedChatDeliveryState::Acked => "acked",
-                    crate::app_state::ManagedChatDeliveryState::Failed => "failed",
-                }
-                .to_string(),
-                delivery_error: message.delivery_error.clone(),
-                attempt_count: message.attempt_count,
-            })
-            .collect::<Vec<_>>()
-    };
+    let recent_messages = chat
+        .active_managed_chat_message_tail(16)
+        .into_iter()
+        .map(|message| DesktopControlNip28MessageStatus {
+            event_id: message.event_id.clone(),
+            author_pubkey: message.author_pubkey.clone(),
+            content: message.content.clone(),
+            created_at: message.created_at,
+            reply_to_event_id: message.reply_to_event_id.clone(),
+            delivery_state: match message.delivery_state {
+                crate::app_state::ManagedChatDeliveryState::Confirmed => "confirmed",
+                crate::app_state::ManagedChatDeliveryState::Publishing => "publishing",
+                crate::app_state::ManagedChatDeliveryState::Acked => "acked",
+                crate::app_state::ManagedChatDeliveryState::Failed => "failed",
+            }
+            .to_string(),
+            delivery_error: message.delivery_error.clone(),
+            attempt_count: message.attempt_count,
+        })
+        .collect::<Vec<_>>();
     let publishing_outbound_count = chat
         .managed_chat_projection
         .outbound_messages
