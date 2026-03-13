@@ -502,7 +502,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 state.provider_runtime.mode,
                 ProviderMode::Connecting | ProviderMode::Online
             );
-            let rive_needs_redraw = open_rive_preview_needs_redraw(state);
+            let rive_needs_redraw = open_rive_surface_needs_redraw(state);
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
@@ -571,7 +571,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         state.provider_runtime.mode,
         ProviderMode::Connecting | ProviderMode::Online
     );
-    let rive_needs_redraw = open_rive_preview_needs_redraw(state);
+    let rive_needs_redraw = open_rive_surface_needs_redraw(state);
     let should_redraw = should_request_desktop_redraw(
         changed,
         state.hotbar.is_flashing(),
@@ -595,7 +595,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     ));
 }
 
-fn open_rive_preview_needs_redraw(state: &crate::app_state::RenderState) -> bool {
+fn open_rive_surface_needs_redraw(state: &crate::app_state::RenderState) -> bool {
     rive_preview_cadence_active(
         state
             .panes
@@ -603,6 +603,16 @@ fn open_rive_preview_needs_redraw(state: &crate::app_state::RenderState) -> bool
             .any(|pane| pane.kind == PaneKind::RivePreview),
         state
             .rive_preview_runtime
+            .surface
+            .as_ref()
+            .is_some_and(|surface| surface.needs_redraw()),
+    ) || rive_preview_cadence_active(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::Presentation),
+        state
+            .presentation_runtime
             .surface
             .as_ref()
             .is_some_and(|surface| surface.needs_redraw()),

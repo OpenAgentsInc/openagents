@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use wgpui::components::hud::{PaneFrame, ResizablePane, ResizeEdge};
+use wgpui::components::hud::{PaneFrame, PaneHeaderAction, ResizablePane, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
@@ -1013,6 +1013,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
+        PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
@@ -1088,6 +1089,11 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
         title: title.clone(),
         kind: descriptor.kind,
         bounds,
+        windowed_bounds: if presentation.uses_window_chrome() {
+            bounds
+        } else {
+            Bounds::new(x, y, initial_size.width, initial_size.height)
+        },
         z_index: state.next_z_index,
         frame: PaneFrame::new()
             .title(title)
@@ -1220,6 +1226,7 @@ pub fn handle_pane_mouse_down(state: &mut RenderState, point: Point, button: Mou
 
 pub fn handle_pane_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool {
     let mut handled = false;
+    let mut header_action_target: Option<(u64, PaneHeaderAction)> = None;
     let mut close_target: Option<u64> = None;
 
     for pane_idx in pane_indices_by_z_desc(state) {
@@ -1235,10 +1242,20 @@ pub fn handle_pane_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool
             handled = true;
         }
 
+        if let Some(action) = state.panes[pane_idx].frame.take_header_action_clicked() {
+            header_action_target = Some((state.panes[pane_idx].id, action));
+            break;
+        }
+
         if state.panes[pane_idx].frame.take_close_clicked() {
             close_target = Some(state.panes[pane_idx].id);
             break;
         }
+    }
+
+    if let Some((pane_id, PaneHeaderAction::Fullscreen)) = header_action_target {
+        toggle_pane_fullscreen(state, pane_id);
+        handled = true;
     }
 
     if let Some(pane_id) = close_target {
@@ -1302,6 +1319,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     start_bounds.size.height,
                 );
                 pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width, min_size);
+                pane.windowed_bounds = pane.bounds;
                 return true;
             }
         }
@@ -1321,6 +1339,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     .min_size(min_size.width, min_size.height)
                     .resize_bounds(edge, start_bounds, start_mouse, current_mouse);
                 pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width, min_size);
+                pane.windowed_bounds = pane.bounds;
                 state.pane_size_memory.remember(pane.kind, pane.bounds.size);
                 return true;
             }
@@ -1331,12 +1350,10 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
 }
 
 pub fn close_pane(state: &mut RenderState, pane_id: u64) {
-    if state
-        .panes
-        .iter()
-        .find(|pane| pane.id == pane_id)
-        .is_some_and(|pane| !pane.presentation.uses_window_chrome())
+    if let Some(pane) = state.panes.iter().find(|pane| pane.id == pane_id)
+        && !pane.presentation.uses_window_chrome()
     {
+        set_pane_presentation(state, pane_id, PanePresentation::Windowed);
         return;
     }
     state.panes.retain(|pane| pane.id != pane_id);
@@ -1419,11 +1436,17 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             return cursor_icon_for_resize_edge(edge);
         }
 
+        let pane = &state.panes[pane_idx];
+        if pane.frame.close_bounds().contains(point)
+            || pane.frame.header_action_bounds().contains(point)
+        {
+            return CursorIcon::Pointer;
+        }
+
         if pane_title_bounds(bounds).contains(point) {
             return CursorIcon::Move;
         }
 
-        let pane = &state.panes[pane_idx];
         let content_bounds = pane_content_bounds(bounds);
 
         match pane.kind {
@@ -1541,6 +1564,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
             | PaneKind::RivePreview
+            | PaneKind::Presentation
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -5859,7 +5883,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::PsionicViz => None,
+        PaneKind::PsionicViz | PaneKind::Presentation => None,
         PaneKind::RivePreview => {
             if rive_preview_reload_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::RivePreview(
@@ -6396,7 +6420,63 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
         } else {
             fullscreen_pane_bounds(logical, sidebar_width)
         };
+        if pane.presentation.uses_window_chrome() {
+            pane.windowed_bounds = pane.bounds;
+        }
     }
+}
+
+pub fn toggle_pane_fullscreen(state: &mut RenderState, pane_id: u64) {
+    let next_presentation = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == pane_id)
+        .map(|pane| {
+            if pane.presentation.uses_window_chrome() {
+                PanePresentation::Fullscreen
+            } else {
+                PanePresentation::Windowed
+            }
+        });
+    let Some(next_presentation) = next_presentation else {
+        return;
+    };
+    set_pane_presentation(state, pane_id, next_presentation);
+}
+
+pub fn set_pane_presentation(
+    state: &mut RenderState,
+    pane_id: u64,
+    presentation: PanePresentation,
+) {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let sidebar_width = sidebar_reserved_width(state);
+    let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) else {
+        return;
+    };
+    if pane.presentation == presentation {
+        return;
+    }
+
+    if pane.presentation.uses_window_chrome() {
+        pane.windowed_bounds = pane.bounds;
+    }
+
+    pane.presentation = presentation;
+    pane.bounds = if presentation.uses_window_chrome() {
+        clamp_bounds_to_window(
+            pane.windowed_bounds,
+            logical,
+            sidebar_width,
+            pane_minimum_size(pane.kind),
+        )
+    } else {
+        fullscreen_pane_bounds(logical, sidebar_width)
+    };
+    if presentation.uses_window_chrome() {
+        pane.windowed_bounds = pane.bounds;
+    }
+    bring_pane_to_front(state, pane_id);
 }
 
 #[cfg(test)]
