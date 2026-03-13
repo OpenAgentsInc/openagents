@@ -109,6 +109,7 @@ pub enum PaneKind {
     JobHistory,
     LogStream,
     BuyModePayments,
+    BuyerRaceMatrix,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,
