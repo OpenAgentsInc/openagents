@@ -13,6 +13,7 @@ use crate::local_runtime_capabilities::{
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, LogStreamPaneAction, ProviderControlPaneAction,
+    SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9317,6 +9318,27 @@ pub(super) fn run_buy_mode_payments_action(
     }
 }
 
+pub(super) fn run_spark_replay_action(
+    state: &mut crate::app_state::RenderState,
+    action: SparkReplayPaneAction,
+) -> bool {
+    let step_count = crate::panes::spark_replay::replay_step_count(&state.nip90_payment_facts);
+    match action {
+        SparkReplayPaneAction::PrevStep => {
+            state.spark_replay.select_previous_step();
+            true
+        }
+        SparkReplayPaneAction::ToggleAuto => {
+            state.spark_replay.toggle_auto_follow(step_count);
+            true
+        }
+        SparkReplayPaneAction::NextStep => {
+            state.spark_replay.select_next_step(step_count);
+            true
+        }
+    }
+}
+
 fn spawn_editor_command(
     program: &str,
     args: &[&str],
@@ -11957,13 +11979,11 @@ fn fail_hosted_starter_active_job_for_lease_loss(
         .nostr_identity
         .as_ref()
         .map(|identity| identity.public_key_hex.as_str());
-    state
-        .job_history
-        .record_from_active_job(
-            &job,
-            crate::app_state::JobHistoryStatus::Failed,
-            local_provider_pubkey,
-        );
+    state.job_history.record_from_active_job(
+        &job,
+        crate::app_state::JobHistoryStatus::Failed,
+        local_provider_pubkey,
+    );
     state.earn_job_lifecycle_projection.record_active_job_stage(
         &job,
         crate::app_state::JobLifecycleStage::Failed,

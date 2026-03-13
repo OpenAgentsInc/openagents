@@ -114,6 +114,7 @@ pub enum PaneKind {
     SettlementLadder,
     KeyLedger,
     SettlementAtlas,
+    SparkReplay,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,
@@ -817,6 +818,68 @@ impl BuyModePaneState {
 }
 
 pub type BuyModePaymentsPaneState = BuyModePaneState;
+
+pub struct SparkReplayPaneState {
+    pub cursor_step: usize,
+    pub auto_follow: bool,
+    pub last_request_id: Option<String>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl Default for SparkReplayPaneState {
+    fn default() -> Self {
+        Self {
+            cursor_step: 0,
+            auto_follow: true,
+            last_request_id: None,
+            last_action: Some("Spark Replay ready".to_string()),
+            last_error: None,
+        }
+    }
+}
+
+impl SparkReplayPaneState {
+    pub fn sync_focus(&mut self, request_id: &str, step_count: usize) {
+        let max_step = step_count.saturating_sub(1);
+        if self.last_request_id.as_deref() != Some(request_id) {
+            self.last_request_id = Some(request_id.to_string());
+            self.cursor_step = max_step;
+        } else if self.auto_follow {
+            self.cursor_step = max_step;
+        } else {
+            self.cursor_step = self.cursor_step.min(max_step);
+        }
+    }
+
+    pub fn select_previous_step(&mut self) {
+        self.auto_follow = false;
+        self.cursor_step = self.cursor_step.saturating_sub(1);
+        self.last_action = Some(format!("Scrubbed replay to step {}", self.cursor_step + 1));
+        self.last_error = None;
+    }
+
+    pub fn select_next_step(&mut self, step_count: usize) {
+        self.auto_follow = false;
+        let max_step = step_count.saturating_sub(1);
+        self.cursor_step = self.cursor_step.saturating_add(1).min(max_step);
+        self.last_action = Some(format!("Scrubbed replay to step {}", self.cursor_step + 1));
+        self.last_error = None;
+    }
+
+    pub fn toggle_auto_follow(&mut self, step_count: usize) {
+        self.auto_follow = !self.auto_follow;
+        if self.auto_follow {
+            self.cursor_step = step_count.saturating_sub(1);
+        }
+        self.last_action = Some(if self.auto_follow {
+            "Spark Replay auto-follow enabled".to_string()
+        } else {
+            "Spark Replay auto-follow paused".to_string()
+        });
+        self.last_error = None;
+    }
+}
 
 pub struct LogStreamPaneState {
     pub terminal: TerminalPane,
@@ -9685,6 +9748,7 @@ pub struct RenderState {
     pub mission_control: MissionControlPaneState,
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
+    pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,

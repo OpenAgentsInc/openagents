@@ -2816,6 +2816,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
         PaneHitAction::LogStream(action) => run_log_stream_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
+        PaneHitAction::SparkReplay(action) => run_spark_replay_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
         PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),

@@ -347,6 +347,13 @@ pub enum BuyModePaymentsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SparkReplayPaneAction {
+    PrevStep,
+    ToggleAuto,
+    NextStep,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionsPaneAction {
     AddRelay,
     RemoveSelected,
@@ -865,6 +872,7 @@ pub enum PaneHitAction {
     ProviderControl(ProviderControlPaneAction),
     LogStream(LogStreamPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
+    SparkReplay(SparkReplayPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
     CodexConfig(CodexConfigPaneAction),
@@ -1014,6 +1022,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
         PaneKind::KeyLedger => pane_size_for_content(1160.0, 620.0),
         PaneKind::SettlementAtlas => pane_size_for_content(1180.0, 660.0),
+        PaneKind::SparkReplay => pane_size_for_content(1180.0, 660.0),
         PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
         PaneKind::TrajectoryAudit
         | PaneKind::CastControl
@@ -1530,6 +1539,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::SettlementLadder
             | PaneKind::KeyLedger
             | PaneKind::SettlementAtlas
+            | PaneKind::SparkReplay
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
             | PaneKind::ActiveJob
@@ -2081,6 +2091,25 @@ pub fn log_stream_terminal_bounds(content_bounds: Bounds) -> Bounds {
 pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
     let toggle = buy_mode_payments_toggle_button_bounds(content_bounds);
     Bounds::new(toggle.origin.x - 116.0, toggle.origin.y, 108.0, 22.0)
+}
+
+pub fn spark_replay_prev_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 8.0,
+        76.0,
+        22.0,
+    )
+}
+
+pub fn spark_replay_auto_button_bounds(content_bounds: Bounds) -> Bounds {
+    let prev = spark_replay_prev_button_bounds(content_bounds);
+    Bounds::new(prev.max_x() + 8.0, prev.origin.y, 112.0, 22.0)
+}
+
+pub fn spark_replay_next_button_bounds(content_bounds: Bounds) -> Bounds {
+    let auto = spark_replay_auto_button_bounds(content_bounds);
+    Bounds::new(auto.max_x() + 8.0, auto.origin.y, 76.0, 22.0)
 }
 
 pub fn buy_mode_payments_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -5736,6 +5765,19 @@ fn pane_hit_action_for_pane(
         PaneKind::SettlementLadder => None,
         PaneKind::KeyLedger => None,
         PaneKind::SettlementAtlas => None,
+        PaneKind::SparkReplay => {
+            if spark_replay_prev_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::SparkReplay(SparkReplayPaneAction::PrevStep))
+            } else if spark_replay_auto_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::SparkReplay(
+                    SparkReplayPaneAction::ToggleAuto,
+                ))
+            } else if spark_replay_next_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::SparkReplay(SparkReplayPaneAction::NextStep))
+            } else {
+                None
+            }
+        }
         PaneKind::BuyModePayments => {
             if buy_mode_payments_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(

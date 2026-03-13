@@ -2010,6 +2010,18 @@ fn pane_action_to_hit_action(
         PaneKind::SettlementLadder => unsupported(),
         PaneKind::KeyLedger => unsupported(),
         PaneKind::SettlementAtlas => unsupported(),
+        PaneKind::SparkReplay => match action {
+            "prev" | "prev_step" => Ok(PaneHitAction::SparkReplay(
+                crate::pane_system::SparkReplayPaneAction::PrevStep,
+            )),
+            "next" | "next_step" => Ok(PaneHitAction::SparkReplay(
+                crate::pane_system::SparkReplayPaneAction::NextStep,
+            )),
+            "toggle_auto" | "auto" => Ok(PaneHitAction::SparkReplay(
+                crate::pane_system::SparkReplayPaneAction::ToggleAuto,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::LogStream => match action {
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
@@ -5832,6 +5844,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "payment_atlas",
             "buyer_provider_graph",
         ],
+        PaneKind::SparkReplay => &["spark_replay", "payment_replay", "replay", "request_replay"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -5877,6 +5890,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::SettlementLadder => "settlement_ladder",
         PaneKind::KeyLedger => "key_ledger",
         PaneKind::SettlementAtlas => "settlement_atlas",
+        PaneKind::SparkReplay => "spark_replay",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",

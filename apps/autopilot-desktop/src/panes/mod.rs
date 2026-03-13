@@ -20,4 +20,5 @@ pub mod seller_earnings_timeline;
 pub mod settlement_atlas;
 pub mod settlement_ladder;
 pub mod skill;
+pub mod spark_replay;
 pub mod wallet;
