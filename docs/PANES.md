@@ -136,6 +136,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Centers the current request and paints one vertical lane per provider pubkey with separate `SEL`, `RES`, `INV`, and `PAY` role chips when those roles split.
   - Uses current buyer flow state plus persisted provider-observation history to show result arrival, invoice arrival, payable-winner selection, relay provenance count, and loser reasons grounded in actual evidence.
   - Action: read-only live race visibility.
+- `Seller Earnings Timeline`
+  - Visualization-first seller pane for provider payouts over time.
+  - Keeps wallet-confirmed Spark receives on the main horizontal rail and pushes settlement-observed / inferred rows into a visibly degraded secondary section.
+  - Shows payout size, payer pubkey, settlement authority, and confirmation latency without making the operator read raw wallet/history rows.
+  - Action: read-only payout visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -255,6 +260,7 @@ Current pane badge mapping:
 - `Sync Health`: `source: spacetime.sync.lifecycle`
 - `Network Requests`: `source: runtime`
 - `Buy Mode`: `source: buy`
+- `Seller Earnings Timeline`: `source: stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`
