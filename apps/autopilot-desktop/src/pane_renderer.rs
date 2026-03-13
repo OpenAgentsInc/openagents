@@ -336,6 +336,7 @@ impl PaneRenderer {
                 PaneKind::EarningsScoreboard => {
                     paint_earnings_scoreboard_pane(
                         content_bounds,
+                        pane_is_active,
                         desktop_shell_mode,
                         earnings_scoreboard,
                         provider_runtime,
@@ -1755,6 +1756,7 @@ fn paint_provider_status_pane(
 
 fn paint_earnings_scoreboard_pane(
     content_bounds: Bounds,
+    pane_is_active: bool,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     earnings_scoreboard: &EarningsScoreboardState,
     provider_runtime: &ProviderRuntimeState,
@@ -1768,6 +1770,7 @@ fn paint_earnings_scoreboard_pane(
 ) {
     earnings_jobs_pane::paint_earnings_jobs_pane(
         content_bounds,
+        pane_is_active,
         desktop_shell_mode,
         earnings_scoreboard,
         provider_runtime,

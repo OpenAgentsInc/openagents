@@ -829,6 +829,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+    if state.sync_nip90_payment_facts_background_tick(now) {
+        changed = true;
+    }
     refresh_network_aggregate_counters(state, now);
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);

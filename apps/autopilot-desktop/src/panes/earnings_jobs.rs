@@ -201,6 +201,7 @@ pub(crate) fn active_jobs_panel_state(
 
 pub fn paint_earnings_jobs_pane(
     content_bounds: Bounds,
+    pane_is_active: bool,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     earnings_scoreboard: &EarningsScoreboardState,
     provider_runtime: &ProviderRuntimeState,
@@ -212,6 +213,20 @@ pub fn paint_earnings_jobs_pane(
     spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
+    if !pane_is_active {
+        paint_inactive_preview(
+            content_bounds,
+            earnings_scoreboard,
+            provider_runtime,
+            job_inbox,
+            active_job,
+            job_history,
+            spark_wallet,
+            paint,
+        );
+        return;
+    }
+
     paint_source_badge(content_bounds, "runtime+wallet+receipts", paint);
 
     paint_action_button(
@@ -301,6 +316,90 @@ pub fn paint_earnings_jobs_pane(
         paint,
     );
     paint_history_section(history_bounds, job_history, paint);
+}
+
+fn paint_inactive_preview(
+    bounds: Bounds,
+    earnings_scoreboard: &EarningsScoreboardState,
+    provider_runtime: &ProviderRuntimeState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+    job_history: &JobHistoryState,
+    spark_wallet: &SparkPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(bounds, "runtime+wallet+receipts", paint);
+
+    let summary_bottom = paint_state_summary(
+        paint,
+        bounds.origin.x + SECTION_PADDING,
+        bounds.origin.y + 12.0,
+        earnings_scoreboard.load_state,
+        &format!("State: {}", earnings_scoreboard.load_state.label()),
+        earnings_scoreboard.last_action.as_deref(),
+        earnings_scoreboard.last_error.as_deref(),
+    );
+    let x = bounds.origin.x + SECTION_PADDING;
+    let mut y = summary_bottom + 12.0;
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "TODAY {}   MONTH {}   ALL {}",
+            format_sats_amount(earnings_scoreboard.sats_today),
+            format_sats_amount(earnings_scoreboard.sats_this_month),
+            format_sats_amount(earnings_scoreboard.lifetime_sats),
+        ),
+        Point::new(x, y),
+        12.0,
+        theme::status::SUCCESS,
+    ));
+    y += 22.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "PROVIDER {}   INBOX {}   HISTORY {}",
+            provider_runtime.mode.label().to_ascii_uppercase(),
+            job_inbox.requests.len(),
+            job_history.rows.len(),
+        ),
+        Point::new(x, y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    y += 18.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "ACTIVE {}",
+            active_job
+                .job
+                .as_ref()
+                .map(|job| format!("{} {}", job.job_id, job.stage.label()))
+                .unwrap_or_else(|| "none".to_string())
+                .to_ascii_uppercase()
+        ),
+        Point::new(x, y),
+        10.0,
+        theme::accent::PRIMARY,
+    ));
+    y += 18.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "WALLET {}",
+            spark_wallet
+                .total_balance_sats()
+                .map(format_sats_amount)
+                .unwrap_or_else(|| "loading".to_string())
+                .to_ascii_uppercase()
+        ),
+        Point::new(x, y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Activate pane for full metrics, inbox preview, and receipt history.",
+        Point::new(x, bounds.max_y() - 22.0),
+        10.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_section_panel(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {

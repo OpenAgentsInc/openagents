@@ -9892,7 +9892,7 @@ impl RenderState {
         self.allocate_runtime_command_seq()
     }
 
-    pub fn refresh_nip90_payment_facts(&mut self) {
+    pub fn refresh_nip90_payment_facts(&mut self) -> bool {
         let local_nostr_pubkey_hex = self
             .nostr_identity
             .as_ref()
@@ -9902,7 +9902,21 @@ impl RenderState {
             &self.job_history,
             &self.spark_wallet,
             local_nostr_pubkey_hex.as_deref(),
-        );
+        )
+    }
+
+    pub fn sync_nip90_payment_facts_background_tick(&mut self, now: std::time::Instant) -> bool {
+        let local_nostr_pubkey_hex = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.clone());
+        self.nip90_payment_facts.sync_from_background_tick(
+            &self.network_requests,
+            &self.job_history,
+            &self.spark_wallet,
+            local_nostr_pubkey_hex.as_deref(),
+            now,
+        )
     }
 
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
