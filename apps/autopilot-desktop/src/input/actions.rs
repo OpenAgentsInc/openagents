@@ -9183,12 +9183,18 @@ pub(super) fn run_mission_control_action(
             true
         }
         MissionControlPaneAction::OpenLocalModelWorkbench => {
-            match crate::app_state::mission_control_local_runtime_lane(
+            let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
                 state.desktop_shell_mode,
+                &state.provider_runtime,
                 &state.gpt_oss_execution,
-            ) {
-                Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-                    if state.dev_mode_enabled() && state.provider_runtime.apple_fm.is_ready() {
+            );
+            match runtime_view.primary_action {
+                crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench => {
+                    if runtime_view.primary_action
+                        == crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                    {
                         crate::pane_system::PaneController::create_for_kind(
                             state,
                             crate::app_state::PaneKind::AppleFmWorkbench,
@@ -9202,7 +9208,9 @@ pub(super) fn run_mission_control_action(
 
                     let bridge_starting = state.provider_runtime.apple_fm.bridge_status.as_deref()
                         == Some("starting");
-                    let handled = if state.provider_runtime.apple_fm.reachable {
+                    let handled = if runtime_view.primary_action
+                        == crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
+                    {
                         run_apple_fm_workbench_action(
                             state,
                             AppleFmWorkbenchPaneAction::RefreshBridge,
@@ -9223,7 +9231,9 @@ pub(super) fn run_mission_control_action(
                         state.mission_control.last_error = None;
                     } else if state.apple_fm_workbench.last_error.is_none() {
                         state.mission_control.record_action(
-                            if state.provider_runtime.apple_fm.reachable {
+                            if runtime_view.primary_action
+                                == crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
+                            {
                                 "Queued Apple FM bridge refresh"
                             } else {
                                 "Queued Apple FM bridge start"
@@ -9237,25 +9247,47 @@ pub(super) fn run_mission_control_action(
                     }
                     handled
                 }
-                Some(crate::app_state::MissionControlLocalRuntimeLane::GptOss) => {
+                crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
+                    queue_mission_control_gpt_oss_action(
+                        state,
+                        LocalInferenceRuntimeCommand::Refresh,
+                        "Queued GPT-OSS runtime refresh",
+                    )
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
+                    queue_mission_control_gpt_oss_action(
+                        state,
+                        LocalInferenceRuntimeCommand::WarmConfiguredModel,
+                        "Queued GPT-OSS model warm",
+                    )
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                    queue_mission_control_gpt_oss_action(
+                        state,
+                        LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+                        "Queued GPT-OSS model unload",
+                    )
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
                     crate::pane_system::PaneController::create_for_kind(
                         state,
                         crate::app_state::PaneKind::LocalInference,
                     );
-
                     state
                         .mission_control
                         .record_action("Opened GPT-OSS workbench");
                     state.mission_control.last_error = None;
                     true
                 }
-                None => {
+                crate::app_state::MissionControlLocalRuntimeAction::None => {
                     state.mission_control.last_action =
                         Some("No supported local runtime".to_string());
-                    state.mission_control.last_error = Some(
-                        "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path."
-                            .to_string(),
-                    );
+                    state.mission_control.last_error = Some(if runtime_view.lane.is_some() {
+                        "Mission Control local runtime action is currently unavailable.".to_string()
+                    } else {
+                        "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
+                            .to_string()
+                    });
                     true
                 }
             }
@@ -9626,6 +9658,21 @@ fn queue_local_inference_pane_command(
         }
     }
     true
+}
+
+fn queue_mission_control_gpt_oss_action(
+    state: &mut crate::app_state::RenderState,
+    command: LocalInferenceRuntimeCommand,
+    action_label: &str,
+) -> bool {
+    let handled = queue_local_inference_pane_command(state, command, action_label);
+    if state.local_inference.last_error.is_none() {
+        state.mission_control.record_action(action_label);
+    } else {
+        state.mission_control.last_action = Some("GPT-OSS mission control action failed".into());
+        state.mission_control.last_error = state.local_inference.last_error.clone();
+    }
+    handled
 }
 
 fn queue_apple_fm_pane_command(
