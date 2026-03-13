@@ -16,6 +16,7 @@ use crate::nip90_compute_semantics::{
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
 use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
@@ -498,6 +499,46 @@ pub struct NetworkRequestProviderObservation {
     pub last_result_status: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkRequestProviderObservationHistoryKind {
+    FeedbackObserved,
+    ResultObserved,
+    PayableWinnerSelected,
+    PayableWinnerCleared,
+}
+
+impl NetworkRequestProviderObservationHistoryKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::FeedbackObserved => "feedback_observed",
+            Self::ResultObserved => "result_observed",
+            Self::PayableWinnerSelected => "payable_winner_selected",
+            Self::PayableWinnerCleared => "payable_winner_cleared",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NetworkRequestProviderObservationHistoryEvent {
+    pub history_id: String,
+    pub observed_order: u32,
+    pub observed_at_epoch_ms: u64,
+    pub kind: NetworkRequestProviderObservationHistoryKind,
+    pub provider_pubkey: Option<String>,
+    #[serde(default)]
+    pub relay_urls: Vec<String>,
+    pub observed_event_id: Option<String>,
+    pub status: Option<String>,
+    pub status_extra: Option<String>,
+    pub amount_msats: Option<u64>,
+    pub bolt11_present: bool,
+    pub previous_provider_pubkey: Option<String>,
+    pub winner_result_event_id: Option<String>,
+    pub winner_feedback_event_id: Option<String>,
+    pub selection_source: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AutoPaymentBudgetRefusal {
     pub provider_pubkey: String,
@@ -565,6 +606,7 @@ pub struct SubmittedNetworkRequest {
     pub resolution_feedbacks: Vec<NetworkRequestResolutionFeedback>,
     pub observed_buyer_event_ids: Vec<String>,
     pub provider_observations: Vec<NetworkRequestProviderObservation>,
+    pub provider_observation_history: Vec<NetworkRequestProviderObservationHistoryEvent>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1024,6 +1066,7 @@ impl NetworkRequestsState {
                 resolution_feedbacks: Vec::new(),
                 observed_buyer_event_ids: Vec::new(),
                 provider_observations: Vec::new(),
+                provider_observation_history: Vec::new(),
             },
         );
         self.pane_set_ready(format!(
@@ -1327,6 +1370,7 @@ impl NetworkRequestsState {
         else {
             return None;
         };
+        let observed_at_epoch_ms = now_epoch_millis();
         if request.status.is_terminal() {
             return None;
         }
@@ -1345,13 +1389,23 @@ impl NetworkRequestsState {
             .iter()
             .any(|observed| observed == event_id)
         {
-            if let Some(provider) = request.provider_observations.iter_mut().find(|observation| {
-                normalize_pubkey(observation.provider_pubkey.as_str())
-                    == normalize_pubkey(provider_pubkey)
-            }) && provider.last_feedback_event_id.as_deref() == Some(event_id)
+            if let Some(provider) = request
+                .provider_observations
+                .iter_mut()
+                .find(|observation| {
+                    normalize_pubkey(observation.provider_pubkey.as_str())
+                        == normalize_pubkey(provider_pubkey)
+                })
+                && provider.last_feedback_event_id.as_deref() == Some(event_id)
             {
                 merge_relay_url(&mut provider.last_feedback_relay_urls, relay_url);
             }
+            merge_provider_observation_history_relay_url(
+                request,
+                NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+                event_id,
+                relay_url,
+            );
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
@@ -1375,7 +1429,8 @@ impl NetworkRequestsState {
 
         let provider = observed_provider_mut(request, provider_pubkey);
         provider.last_feedback_event_id = Some(event_id.to_string());
-        provider.last_feedback_relay_urls = normalize_optional_relay(relay_url).into_iter().collect();
+        provider.last_feedback_relay_urls =
+            normalize_optional_relay(relay_url).into_iter().collect();
         provider.last_feedback_status = status.map(ToString::to_string);
         provider.last_feedback_status_extra = status_extra.map(ToString::to_string);
         if let Some(amount_msats) = amount_msats {
@@ -1389,6 +1444,32 @@ impl NetworkRequestsState {
             provider.last_feedback_bolt11 = Some(bolt11);
             request.invoice_provider_pubkey = Some(provider_pubkey.to_string());
         }
+        record_provider_observation_history_event(
+            request,
+            NetworkRequestProviderObservationHistoryEvent {
+                history_id: provider_observation_history_id(
+                    NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+                    Some(event_id),
+                    Some(provider_pubkey),
+                    None,
+                    None,
+                ),
+                observed_order: 0,
+                observed_at_epoch_ms,
+                kind: NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+                provider_pubkey: Some(provider_pubkey.to_string()),
+                relay_urls: normalize_optional_relay(relay_url).into_iter().collect(),
+                observed_event_id: Some(event_id.to_string()),
+                status: status.map(ToString::to_string),
+                status_extra: status_extra.map(ToString::to_string),
+                amount_msats,
+                bolt11_present,
+                previous_provider_pubkey: None,
+                winner_result_event_id: None,
+                winner_feedback_event_id: None,
+                selection_source: None,
+            },
+        );
 
         if feedback_is_payment_required || bolt11_present || amount_msats.is_some() {
             nip90_compute_domain_events::emit_buyer_invoice_candidate_observed(
@@ -1417,7 +1498,7 @@ impl NetworkRequestsState {
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         request.last_feedback_event_id = Some(event_id.to_string());
         request.last_feedback_status = status.map(ToString::to_string);
-        select_payable_winner(request, Some(provider_pubkey));
+        select_payable_winner(request, Some(provider_pubkey), Some(observed_at_epoch_ms));
         emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
         if buyer_request_seller_settled_pending_local_wallet(request) {
@@ -1523,6 +1604,7 @@ impl NetworkRequestsState {
         else {
             return None;
         };
+        let observed_at_epoch_ms = now_epoch_millis();
         if request.status.is_terminal() {
             return None;
         }
@@ -1541,13 +1623,23 @@ impl NetworkRequestsState {
             .iter()
             .any(|observed| observed == event_id)
         {
-            if let Some(provider) = request.provider_observations.iter_mut().find(|observation| {
-                normalize_pubkey(observation.provider_pubkey.as_str())
-                    == normalize_pubkey(provider_pubkey)
-            }) && provider.last_result_event_id.as_deref() == Some(event_id)
+            if let Some(provider) = request
+                .provider_observations
+                .iter_mut()
+                .find(|observation| {
+                    normalize_pubkey(observation.provider_pubkey.as_str())
+                        == normalize_pubkey(provider_pubkey)
+                })
+                && provider.last_result_event_id.as_deref() == Some(event_id)
             {
                 merge_relay_url(&mut provider.last_result_relay_urls, relay_url);
             }
+            merge_provider_observation_history_relay_url(
+                request,
+                NetworkRequestProviderObservationHistoryKind::ResultObserved,
+                event_id,
+                relay_url,
+            );
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
@@ -1563,6 +1655,32 @@ impl NetworkRequestsState {
         provider.last_result_event_id = Some(event_id.to_string());
         provider.last_result_relay_urls = normalize_optional_relay(relay_url).into_iter().collect();
         provider.last_result_status = status.map(ToString::to_string);
+        record_provider_observation_history_event(
+            request,
+            NetworkRequestProviderObservationHistoryEvent {
+                history_id: provider_observation_history_id(
+                    NetworkRequestProviderObservationHistoryKind::ResultObserved,
+                    Some(event_id),
+                    Some(provider_pubkey),
+                    None,
+                    None,
+                ),
+                observed_order: 0,
+                observed_at_epoch_ms,
+                kind: NetworkRequestProviderObservationHistoryKind::ResultObserved,
+                provider_pubkey: Some(provider_pubkey.to_string()),
+                relay_urls: normalize_optional_relay(relay_url).into_iter().collect(),
+                observed_event_id: Some(event_id.to_string()),
+                status: status.map(ToString::to_string),
+                status_extra: None,
+                amount_msats: None,
+                bolt11_present: false,
+                previous_provider_pubkey: None,
+                winner_result_event_id: None,
+                winner_feedback_event_id: None,
+                selection_source: None,
+            },
+        );
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
         if !matches!(
@@ -1576,7 +1694,7 @@ impl NetworkRequestsState {
             request.result_provider_pubkey = Some(provider_pubkey.to_string());
         }
         request.last_result_event_id = Some(event_id.to_string());
-        select_payable_winner(request, Some(provider_pubkey));
+        select_payable_winner(request, Some(provider_pubkey), Some(observed_at_epoch_ms));
         emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
         let resolution_action =
@@ -1668,7 +1786,7 @@ impl NetworkRequestsState {
             if request.status.is_terminal() {
                 return None;
             }
-            select_payable_winner(request, Some(provider_pubkey));
+            select_payable_winner(request, Some(provider_pubkey), None);
 
             let observation = request.provider_observations.iter().find(|observation| {
                 normalize_pubkey(observation.provider_pubkey.as_str())
@@ -2170,6 +2288,66 @@ fn observed_provider_mut<'a>(
         .expect("new observation should be present")
 }
 
+fn record_provider_observation_history_event(
+    request: &mut SubmittedNetworkRequest,
+    mut event: NetworkRequestProviderObservationHistoryEvent,
+) {
+    if event.observed_order == 0 {
+        event.observed_order = request
+            .provider_observation_history
+            .last()
+            .map(|existing| existing.observed_order.saturating_add(1))
+            .unwrap_or(1);
+    }
+    event.relay_urls = normalize_relay_urls(event.relay_urls.as_slice());
+    request.provider_observation_history.push(event);
+}
+
+fn merge_provider_observation_history_relay_url(
+    request: &mut SubmittedNetworkRequest,
+    kind: NetworkRequestProviderObservationHistoryKind,
+    event_id: &str,
+    relay_url: Option<&str>,
+) {
+    let Some(history_event) =
+        request
+            .provider_observation_history
+            .iter_mut()
+            .find(|history_event| {
+                history_event.kind == kind
+                    && history_event.observed_event_id.as_deref() == Some(event_id)
+            })
+    else {
+        return;
+    };
+    merge_relay_url(&mut history_event.relay_urls, relay_url);
+}
+
+fn provider_observation_history_id(
+    kind: NetworkRequestProviderObservationHistoryKind,
+    event_id: Option<&str>,
+    provider_pubkey: Option<&str>,
+    previous_provider_pubkey: Option<&str>,
+    selection_source: Option<&str>,
+) -> String {
+    match kind {
+        NetworkRequestProviderObservationHistoryKind::FeedbackObserved
+        | NetworkRequestProviderObservationHistoryKind::ResultObserved => format!(
+            "{}:{}",
+            kind.label(),
+            event_id.unwrap_or("missing-event-id"),
+        ),
+        NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+        | NetworkRequestProviderObservationHistoryKind::PayableWinnerCleared => format!(
+            "{}:{}:{}:{}",
+            kind.label(),
+            provider_pubkey.unwrap_or("none"),
+            previous_provider_pubkey.unwrap_or("none"),
+            selection_source.unwrap_or("unknown"),
+        ),
+    }
+}
+
 fn request_targets_provider(request: &SubmittedNetworkRequest, provider_pubkey: &str) -> bool {
     if request.target_provider_pubkeys.is_empty() {
         return true;
@@ -2304,6 +2482,12 @@ fn now_epoch_seconds() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
+fn now_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
+
 fn emit_buyer_unresolved_winner_if_needed(request: &SubmittedNetworkRequest) {
     let Some(result_provider_pubkey) = request.result_provider_pubkey.as_deref() else {
         return;
@@ -2378,6 +2562,7 @@ pub(crate) fn buyer_request_seller_settled_pending_local_wallet(
 fn select_payable_winner(
     request: &mut SubmittedNetworkRequest,
     preferred_provider_pubkey: Option<&str>,
+    observed_at_epoch_ms: Option<u64>,
 ) {
     if request.last_payment_pointer.is_some() {
         return;
@@ -2415,6 +2600,34 @@ fn select_payable_winner(
         request.resolution_reason_code =
             Some(BuyerResolutionReason::FirstValidResult.code().to_string());
         if provider_changed {
+            if let Some(observed_at_epoch_ms) = observed_at_epoch_ms {
+                record_provider_observation_history_event(
+                    request,
+                    NetworkRequestProviderObservationHistoryEvent {
+                        history_id: provider_observation_history_id(
+                            NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected,
+                            None,
+                            Some(selected_provider_pubkey.as_str()),
+                            previous_winner.as_deref(),
+                            Some(selection.selection_source),
+                        ),
+                        observed_order: 0,
+                        observed_at_epoch_ms,
+                        kind: NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected,
+                        provider_pubkey: Some(selected_provider_pubkey.clone()),
+                        relay_urls: Vec::new(),
+                        observed_event_id: None,
+                        status: None,
+                        status_extra: None,
+                        amount_msats: selected_amount_msats,
+                        bolt11_present: selected_feedback_event_id.is_some(),
+                        previous_provider_pubkey: previous_winner.clone(),
+                        winner_result_event_id: selected_result_event_id.clone(),
+                        winner_feedback_event_id: selected_feedback_event_id.clone(),
+                        selection_source: Some(selection.selection_source.to_string()),
+                    },
+                );
+            }
             nip90_compute_domain_events::emit_buyer_selected_payable_provider(
                 request.request_id.as_str(),
                 selected_provider_pubkey.as_str(),
@@ -2428,6 +2641,36 @@ fn select_payable_winner(
         return;
     }
 
+    if request.winning_provider_pubkey.is_some()
+        && let Some(observed_at_epoch_ms) = observed_at_epoch_ms
+    {
+        record_provider_observation_history_event(
+            request,
+            NetworkRequestProviderObservationHistoryEvent {
+                history_id: provider_observation_history_id(
+                    NetworkRequestProviderObservationHistoryKind::PayableWinnerCleared,
+                    None,
+                    None,
+                    request.winning_provider_pubkey.as_deref(),
+                    Some("no_budget_approved_provider"),
+                ),
+                observed_order: 0,
+                observed_at_epoch_ms,
+                kind: NetworkRequestProviderObservationHistoryKind::PayableWinnerCleared,
+                provider_pubkey: None,
+                relay_urls: Vec::new(),
+                observed_event_id: None,
+                status: None,
+                status_extra: None,
+                amount_msats: None,
+                bolt11_present: false,
+                previous_provider_pubkey: request.winning_provider_pubkey.clone(),
+                winner_result_event_id: request.winning_result_event_id.clone(),
+                winner_feedback_event_id: request.last_feedback_event_id.clone(),
+                selection_source: Some("no_budget_approved_provider".to_string()),
+            },
+        );
+    }
     request.winning_provider_pubkey = None;
     request.winning_result_event_id = None;
     request.resolution_reason_code = None;

@@ -14,7 +14,8 @@ use crate::spark_wallet::{
     wallet_payment_net_delta_sats, wallet_payment_total_debit_sats,
 };
 use crate::state::operations::{
-    BuyerResolutionReason, NetworkRequestStatus, NetworkRequestsState, SubmittedNetworkRequest,
+    BuyerResolutionReason, NetworkRequestProviderObservationHistoryEvent, NetworkRequestStatus,
+    NetworkRequestsState, SubmittedNetworkRequest,
     buyer_request_seller_settled_pending_local_wallet, buyer_request_seller_settlement_feedback,
 };
 
@@ -86,6 +87,7 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub request_publish_selected_relays: Vec<String>,
     pub request_publish_accepted_relays: Vec<String>,
     pub request_publish_rejected_relays: Vec<String>,
+    pub provider_observation_history: Vec<NetworkRequestProviderObservationHistoryEvent>,
     pub selected_provider_pubkey: Option<String>,
     pub result_provider_pubkey: Option<String>,
     pub result_relay_urls: Vec<String>,
@@ -882,6 +884,7 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         request_publish_selected_relays: request.request_publish_selected_relays.clone(),
         request_publish_accepted_relays: request.request_publish_accepted_relays.clone(),
         request_publish_rejected_relays: request.request_publish_rejected_relays.clone(),
+        provider_observation_history: request.provider_observation_history.clone(),
         selected_provider_pubkey,
         result_provider_pubkey,
         result_relay_urls,

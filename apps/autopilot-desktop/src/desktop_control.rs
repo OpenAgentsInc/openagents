@@ -4072,6 +4072,7 @@ mod tests {
                 request_publish_selected_relays: Vec::new(),
                 request_publish_accepted_relays: Vec::new(),
                 request_publish_rejected_relays: Vec::new(),
+                provider_observation_history: Vec::new(),
                 selected_provider_pubkey: Some(selected.clone()),
                 result_provider_pubkey: Some(result.clone()),
                 result_relay_urls: Vec::new(),
