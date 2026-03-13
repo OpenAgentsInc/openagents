@@ -16,5 +16,6 @@ pub mod provider_control;
 pub mod psionic_viz;
 pub mod relay_connections;
 pub mod seller_earnings_timeline;
+pub mod settlement_ladder;
 pub mod skill;
 pub mod wallet;

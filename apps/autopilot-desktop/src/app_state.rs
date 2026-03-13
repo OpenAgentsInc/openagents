@@ -111,6 +111,7 @@ pub enum PaneKind {
     BuyModePayments,
     BuyerRaceMatrix,
     SellerEarningsTimeline,
+    SettlementLadder,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,

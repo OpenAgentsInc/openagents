@@ -1011,6 +1011,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
         PaneKind::SellerEarningsTimeline => pane_size_for_content(1120.0, 620.0),
+        PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
         PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
         PaneKind::TrajectoryAudit
         | PaneKind::CastControl
@@ -1524,6 +1525,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::BuyModePayments
             | PaneKind::BuyerRaceMatrix
             | PaneKind::SellerEarningsTimeline
+            | PaneKind::SettlementLadder
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
             | PaneKind::ActiveJob
@@ -5727,6 +5729,7 @@ fn pane_hit_action_for_pane(
         PaneKind::PsionicViz => None,
         PaneKind::BuyerRaceMatrix => None,
         PaneKind::SellerEarningsTimeline => None,
+        PaneKind::SettlementLadder => None,
         PaneKind::BuyModePayments => {
             if buy_mode_payments_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(
