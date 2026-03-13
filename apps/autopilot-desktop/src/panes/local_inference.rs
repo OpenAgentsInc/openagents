@@ -2,6 +2,9 @@ use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, theme};
 
 use crate::app_state::{LocalInferencePaneInputs, LocalInferencePaneState, PaneKind, RenderState};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
+use crate::local_runtime_capabilities::{
+    LocalRuntimeCapabilitySurface, local_runtime_capability_summary,
+};
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
     paint_state_summary,
@@ -17,6 +20,7 @@ use crate::pane_system::{
 pub fn paint(
     content_bounds: Bounds,
     pane_state: &LocalInferencePaneState,
+    capability_surface: &LocalRuntimeCapabilitySurface,
     runtime: &LocalInferenceExecutionSnapshot,
     inputs: &mut LocalInferencePaneInputs,
     paint: &mut PaintContext,
@@ -41,13 +45,14 @@ pub fn paint(
 
     let title_x = run_bounds.max_x() + 16.0;
     paint.scene.draw_text(paint.text.layout(
-        "GPT-OSS workbench",
+        capability_surface.workbench_label,
         Point::new(title_x, content_bounds.origin.y + 16.0),
         16.0,
         theme::text::PRIMARY,
     ));
+    let capability_summary = local_runtime_capability_summary(capability_surface);
     paint.scene.draw_text(paint.text.layout(
-        "Local runtime status, warm/unload controls, and prompt playground.",
+        capability_summary.as_str(),
         Point::new(title_x, content_bounds.origin.y + 34.0),
         11.0,
         theme::text::MUTED,

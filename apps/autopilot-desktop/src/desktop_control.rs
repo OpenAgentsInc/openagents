@@ -27,9 +27,12 @@ use crate::app_state::{
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
+use crate::local_runtime_capabilities::{
+    LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
+};
 use crate::pane_system::MissionControlPaneAction;
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 4;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -103,6 +106,12 @@ pub struct DesktopControlLocalRuntimeStatus {
     pub runtime_ready: bool,
     pub go_online_ready: bool,
     pub supports_sell_compute: bool,
+    pub workbench_label: String,
+    pub supports_run_text: bool,
+    pub supports_streaming: bool,
+    pub supports_structured: bool,
+    pub supports_model_management: bool,
+    pub supports_sessions: bool,
     pub show_action_button: bool,
     pub action: String,
     pub action_enabled: bool,
@@ -1157,11 +1166,16 @@ fn provider_status_summary(status: &DesktopControlProviderStatus) -> String {
 
 fn local_runtime_status_summary(status: &DesktopControlLocalRuntimeStatus) -> String {
     format!(
-        "local runtime lane={} policy={} ready={} go_online_ready={} action={} enabled={}",
+        "local runtime lane={} policy={} ready={} go_online_ready={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={}",
         status.lane.as_deref().unwrap_or("none"),
         status.policy,
         status.runtime_ready,
         status.go_online_ready,
+        status.supports_run_text,
+        status.supports_streaming,
+        status.supports_structured,
+        status.supports_model_management,
+        status.supports_sessions,
         status.action,
         status.action_enabled
     )
@@ -1244,6 +1258,11 @@ fn desktop_control_local_runtime_status(state: &RenderState) -> DesktopControlLo
         &state.provider_runtime,
         &state.gpt_oss_execution,
     );
+    let capability_surface = active_local_runtime_capability_surface(
+        state.desktop_shell_mode,
+        &state.provider_runtime,
+        &state.gpt_oss_execution,
+    );
     DesktopControlLocalRuntimeStatus {
         policy: local_runtime_policy_label(runtime_view.policy).to_string(),
         lane: runtime_view
@@ -1253,6 +1272,12 @@ fn desktop_control_local_runtime_status(state: &RenderState) -> DesktopControlLo
         runtime_ready: runtime_view.runtime_ready,
         go_online_ready: runtime_view.go_online_ready,
         supports_sell_compute: runtime_view.supports_sell_compute,
+        workbench_label: capability_surface.workbench_label.to_string(),
+        supports_run_text: capability_surface.supports_run_text,
+        supports_streaming: capability_surface.supports_streaming,
+        supports_structured: capability_surface.supports_structured,
+        supports_model_management: capability_surface.supports_model_management,
+        supports_sessions: capability_surface.supports_sessions,
         show_action_button: runtime_view.show_local_model_button,
         action: local_runtime_action_label(runtime_view.primary_action).to_string(),
         action_enabled: runtime_view.local_model_button_enabled,
@@ -1825,25 +1850,21 @@ fn apply_provider_mode_action(
 }
 
 fn refresh_local_runtime_action(state: &mut RenderState) -> DesktopControlActionResponse {
-    match mission_control_local_runtime_view_model(
+    let capability_surface = active_local_runtime_capability_surface(
         state.desktop_shell_mode,
         &state.provider_runtime,
         &state.gpt_oss_execution,
-    )
-    .lane
-    {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            refresh_apple_fm_action(state)
-        }
-        Some(MissionControlLocalRuntimeLane::GptOss) => queue_gpt_oss_runtime_action(
-            state,
-            LocalInferenceRuntimeCommand::Refresh,
-            "Queued local runtime refresh",
-        ),
-        None => DesktopControlActionResponse::error(
+    );
+    let Some(action) = capability_surface.refresh_action else {
+        return DesktopControlActionResponse::error(
             "Local runtime refresh is unavailable because no supported runtime is detected.",
-        ),
-    }
+        );
+    };
+    run_desktop_control_local_runtime_workbench_action(
+        state,
+        action,
+        "Queued local runtime refresh",
+    )
 }
 
 fn refresh_apple_fm_action(state: &mut RenderState) -> DesktopControlActionResponse {
@@ -1859,6 +1880,66 @@ fn run_apple_fm_smoke_test_action(state: &mut RenderState) -> DesktopControlActi
     mission_control_action_response(state, MissionControlPaneAction::RunLocalFmSummaryTest)
 }
 
+fn desktop_control_local_runtime_error(
+    state: &RenderState,
+    action: LocalRuntimeWorkbenchAction,
+) -> Option<String> {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(_) => state.apple_fm_workbench.last_error.clone(),
+        LocalRuntimeWorkbenchAction::GptOss(_) => state.local_inference.last_error.clone(),
+    }
+}
+
+fn desktop_control_local_runtime_failure_label(
+    action: LocalRuntimeWorkbenchAction,
+) -> &'static str {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(_) => "Apple FM desktop control action failed",
+        LocalRuntimeWorkbenchAction::GptOss(_) => "GPT-OSS desktop control action failed",
+    }
+}
+
+fn desktop_control_gpt_oss_workbench_action(
+    command: LocalInferenceRuntimeCommand,
+) -> Option<LocalRuntimeWorkbenchAction> {
+    match command {
+        LocalInferenceRuntimeCommand::Refresh => Some(LocalRuntimeWorkbenchAction::GptOss(
+            crate::pane_system::LocalInferencePaneAction::RefreshRuntime,
+        )),
+        LocalInferenceRuntimeCommand::WarmConfiguredModel => {
+            Some(LocalRuntimeWorkbenchAction::GptOss(
+                crate::pane_system::LocalInferencePaneAction::WarmModel,
+            ))
+        }
+        LocalInferenceRuntimeCommand::UnloadConfiguredModel => {
+            Some(LocalRuntimeWorkbenchAction::GptOss(
+                crate::pane_system::LocalInferencePaneAction::UnloadModel,
+            ))
+        }
+        LocalInferenceRuntimeCommand::Generate(_) => None,
+    }
+}
+
+fn run_desktop_control_local_runtime_workbench_action(
+    state: &mut RenderState,
+    action: LocalRuntimeWorkbenchAction,
+    success_label: &str,
+) -> DesktopControlActionResponse {
+    if !crate::input::desktop_control_run_local_runtime_workbench_action(state, action) {
+        return DesktopControlActionResponse::error(
+            "Local runtime desktop control action was not handled.",
+        );
+    }
+    if let Some(error) = desktop_control_local_runtime_error(state, action) {
+        state.mission_control.last_action =
+            Some(desktop_control_local_runtime_failure_label(action).to_string());
+        state.mission_control.last_error = Some(error.clone());
+        return DesktopControlActionResponse::error(error);
+    }
+    state.mission_control.record_action(success_label);
+    DesktopControlActionResponse::ok(success_label)
+}
+
 fn queue_gpt_oss_runtime_action(
     state: &mut RenderState,
     command: LocalInferenceRuntimeCommand,
@@ -1870,27 +1951,10 @@ fn queue_gpt_oss_runtime_action(
             "GPT-OSS runtime is unavailable because no GPT-OSS backend is detected.",
         );
     }
-    match state.queue_local_inference_runtime_command(command) {
-        Ok(()) => {
-            state.local_inference.load_state = crate::app_state::PaneLoadState::Loading;
-            state.local_inference.last_error = None;
-            state.local_inference.last_action = Some(action_label.to_string());
-            state.provider_runtime.last_result = Some(action_label.to_string());
-            state.mission_control.record_action(action_label);
-            DesktopControlActionResponse::ok(action_label)
-        }
-        Err(error) => {
-            state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
-            state.local_inference.last_error = Some(error.clone());
-            state.local_inference.last_action =
-                Some("GPT-OSS desktop control enqueue failed".to_string());
-            state.provider_runtime.last_error_detail = Some(error.clone());
-            state.mission_control.last_action =
-                Some("GPT-OSS desktop control action failed".to_string());
-            state.mission_control.last_error = Some(error.clone());
-            DesktopControlActionResponse::error(error)
-        }
-    }
+    let Some(action) = desktop_control_gpt_oss_workbench_action(command) else {
+        return DesktopControlActionResponse::error("Unsupported GPT-OSS desktop control action");
+    };
+    run_desktop_control_local_runtime_workbench_action(state, action, action_label)
 }
 
 fn mission_control_action_response(
@@ -2838,6 +2902,12 @@ mod tests {
                 runtime_ready: true,
                 go_online_ready: true,
                 supports_sell_compute: true,
+                workbench_label: "Apple FM workbench".to_string(),
+                supports_run_text: true,
+                supports_streaming: true,
+                supports_structured: true,
+                supports_model_management: false,
+                supports_sessions: true,
                 show_action_button: true,
                 action: "refresh_apple_fm".to_string(),
                 action_enabled: true,
