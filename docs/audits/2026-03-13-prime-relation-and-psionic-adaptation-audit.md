@@ -47,6 +47,25 @@
 - `~/code/prime/packages/prime-tunnel/README.md`
 - `~/code/prime/packages/prime-tunnel/src/prime_tunnel/tunnel.py`
 - `~/code/prime/packages/prime-tunnel/src/prime_tunnel/core/client.py`
+- `~/code/pi/README.md`
+- `~/code/pi/protocol/README.md`
+- `~/code/pi/protocol/Cargo.toml`
+- `~/code/pi/prime-iroh/README.md`
+- `~/code/pi/prime-iroh/Cargo.toml`
+- `~/code/pi/pccl/README.md`
+- `~/code/pi/prime-diloco/README.md`
+- `~/code/pi/prime-rl/README.md`
+- `~/code/pi/verifiers/README.md`
+- `~/code/pi/prime-vllm/README.md`
+- `~/code/pi/prime-pipeline/README.md`
+- `~/code/pi/toploc/README.md`
+- `~/code/pi/toploc-validator/README.md`
+- `~/code/pi/gpu-challenge/README.md`
+- `~/code/pi/threadpark/README.md`
+- `~/code/pi/threadpool/README.md`
+- `~/code/pi/pi-quant/README.md`
+- `~/code/pi/datasetstream/README.md`
+- `~/code/pi/smart-contracts/README.md`
 
 ## Executive Summary
 
@@ -73,6 +92,15 @@ The practical conclusion is:
    artifact handling, and MCP/operator control surfaces,
 4. if we ever integrate Prime directly, do it as an explicit optional app-layer
    integration, not as hidden runtime dependency or provider-truth shortcut.
+
+After reading the broader `~/code/pi` mirror, there is a second conclusion that
+matters even more than the `prime` SDK itself:
+
+- the PI org has a real native protocol/comms/proof stack,
+- some of those repos are much closer to our future Psionic cluster and
+  evidence ambitions than `prime` is,
+- if the goal is to build much of that stack in Rust, we should treat PI as a
+  multi-repo reference corpus, not as a package to integrate.
 
 ## What Prime Actually Is
 
@@ -143,6 +171,49 @@ The important Psionic themes that keep showing up in source and docs are:
 
 So Prime and Psionic are not substitutes. Prime is external hosted compute
 operations. Psionic is our execution kernel and evidence layer.
+
+## What Changes After Reading `~/code/pi`
+
+The broader Prime Intellect mirror changes the framing materially.
+
+Looking only at `prime` suggests:
+
+- hosted cloud operator tooling
+- remote sandboxes
+- remote inference
+- MCP wrapper
+
+Looking at the full PI org reveals a much larger vertical stack:
+
+- hosted operator tooling: `prime`
+- decentralized protocol/control plane: `protocol`
+- native P2P transport wrapper: `prime-iroh`
+- fault-tolerant collectives: `pccl`
+- decentralized training/recovery: `prime-diloco`
+- async RL training + environments: `prime-rl`, `verifiers`
+- distributed inference experiments: `prime-vllm`, `prime-pipeline`
+- verification/proof systems: `toploc`, `toploc-validator`, `gpu-challenge`
+- low-level native systems libs: `threadpark`, `threadpool`, `pi-quant`
+
+That means the right updated reading is:
+
+- `prime` is still mostly operator/control-plane UX research for us,
+- but the broader PI stack includes several reference tracks that are directly
+  relevant to future OpenAgents Rust work,
+- especially cluster transport/orchestration, proof/evidence systems, and
+  environment/eval substrate design.
+
+It also matters that the PI stack is not uniformly Python. Some of the most
+relevant repos are already native:
+
+- `protocol` is a Rust workspace with `discovery`, `worker`, `validator`,
+  `shared`, `orchestrator`, and `p2p` crates.
+- `prime-iroh` is a Rust library with Python bindings.
+- `pccl` is a C++/C/Python collective communications stack.
+
+So for part of this stack, the task is not “port Python to Rust.” It is
+“design a clean OpenAgents-native Rust equivalent, using PI’s existing native
+and mixed-language systems as reference only.”
 
 ## Prime In Relation To OpenAgents
 
@@ -408,6 +479,224 @@ This matters most if we later add:
 - remote sandbox attach/inspect flows
 - hosted Autopilot helper services
 
+## What The Broader PI Stack Is Worth Rebuilding In Rust
+
+Given the explicit goal is to build much of their stack in Rust rather than use
+their code directly, the broader PI repos should be treated as reference/oracle
+repos only. The useful question is not “should we integrate this?” but “which
+parts are worth rebuilding in our own stack, and where do they belong?”
+
+### 1. `protocol` + `prime-iroh` + `pccl`: highest-value cluster/control-plane references
+
+This is the most important PI cluster for OpenAgents.
+
+Why it matters:
+
+- `protocol` already expresses a decentralized compute stack in Rust with
+  discovery, worker, validator, orchestrator, and p2p crates.
+- `prime-iroh` shows one way to factor internet-grade reliable P2P transport
+  into a native core with higher-level bindings.
+- `pccl` is a serious fault-tolerant collective communications system with
+  shared-state sync, dynamic join/leave, and bandwidth-aware topology work.
+
+This is the closest PI material to our future needs in:
+
+- `psionic-cluster`
+- `psionic-runtime`
+- `psionic-provider`
+
+What to rebuild, not reuse:
+
+- cluster admission and identity model
+- peer discovery and topology dissemination
+- explicit execution-lane and placement policy
+- fault-tolerant collectives and state sync
+- bandwidth-aware topology planning
+- internet-facing versus trusted-LAN posture distinctions
+
+What not to copy literally:
+
+- PI’s exact validator/orchestrator/economic assumptions
+- any coupling to their hosted platform or EVM contracts
+- Python wrapper shape around native transport
+
+The correct OpenAgents move is to keep building our own Rust-native cluster and
+evidence layer, while using these repos as reference checks for semantics and
+failure handling.
+
+### 2. `prime-vllm` + `prime-pipeline`: reference for distributed inference coordination, not runtime truth
+
+These repos are useful because they show how PI thinks about:
+
+- model sharding
+- rank/world-size configuration
+- pipelined inference over public networks
+- benchmark decomposition into startup/prefill/decode
+- explicit comms hooks across stages
+
+They are not good direct foundations for OpenAgents because they remain wrapped
+around Python inference stacks such as vLLM and GPT-Fast-derived code.
+
+Recommended reading of their value:
+
+- very useful as coordination and benchmarking references
+- not acceptable as execution truth for Psionic
+- worth mining for sharding UX, benchmark taxonomy, and stage-boundary design
+
+Best ownership fit if rebuilt:
+
+- `psionic-cluster`
+- `psionic-runtime`
+- maybe future cluster benchmark tooling
+
+### 3. `prime-diloco`: strong reference for elastic distributed training and live recovery
+
+`prime-diloco` is less relevant to the current MVP than cluster inference, but
+its design ideas are still strong:
+
+- elastic device mesh
+- heartbeat-driven membership changes
+- live checkpoint recovery from peers
+- asynchronous checkpoint staging and upload
+- low-communication sync strategy
+
+This does not belong in the current Autopilot MVP path. It matters later if
+OpenAgents wants:
+
+- large-scale distributed training
+- elastic multi-node job control
+- resumable long-running compute markets for training-class work
+
+The right takeaway is:
+
+- not a near-term product fit,
+- but a high-value semantic reference for future Rust-native elastic training or
+  long-running cluster job orchestration.
+
+### 4. `verifiers` + `prime-rl`: strong reference for an environment/eval substrate
+
+This is the most compelling PI application-layer reference after the cluster
+stack.
+
+What `verifiers` gets right conceptually:
+
+- environment = dataset + harness + rubric
+- self-contained task modules
+- explicit local and hosted evaluation flow
+- integration between task definitions, training, and evals
+
+What `prime-rl` adds:
+
+- a clean separation between orchestrator, trainer, inference, and eval roles
+- async/off-policy training semantics
+- modular configs and example-driven workflow
+
+For OpenAgents, the opportunity is not “build PRIME-RL in Rust now.” The better
+reading is:
+
+- build a Rust-native or mixed Rust/app-layer environment and benchmark
+  substrate over time,
+- keep the concept of explicit environment definitions, harnesses, and rubrics,
+- connect that to buyer-side jobs, local agent benchmark flows, and future
+  skill/plugin testing.
+
+Best fit if rebuilt:
+
+- likely new crates or app/tooling layers, not `psionic-runtime`
+- maybe future `openagents-envs` / `openagents-evals` style surfaces
+
+This is strategically relevant, but below cluster/proof work for the current
+MVP.
+
+### 5. `toploc` + `toploc-validator` + `gpu-challenge`: high-strategic-value proof and validation references
+
+This PI cluster aligns unusually well with OpenAgents’ emphasis on truthful
+execution and receipts.
+
+Why it matters:
+
+- `toploc` is about compact activation-derived proof material for verifiable
+  inference.
+- `toploc-validator` turns that into an operational validation service.
+- `gpu-challenge` shows a different verification shape for outsourced GPU work
+  using Freivalds-style checking plus Merkle commitments.
+
+For OpenAgents this is more important than it might seem, because we already
+care about:
+
+- truthful provider receipts
+- delivery proofs
+- validation references
+- future market trust hardening
+
+These repos suggest a real future track:
+
+- OpenAgents-native proof/evidence services in Rust
+- explicit verification lanes for higher-trust remote or clustered execution
+- evidence formats that go beyond “job said it finished”
+
+This should remain a future bounded track, not something we promise in MVP, but
+it is one of the strongest PI areas to study.
+
+### 6. `threadpark` + `threadpool` + `pi-quant` + `datasetstream`: useful low-level implementation references
+
+These repos matter because they show PI building native infrastructure instead
+of only stitching Python tools together.
+
+Useful takeaways:
+
+- `threadpark`: portable park/unpark semantics
+- `threadpool`: low-overhead native scheduling primitives
+- `pi-quant`: SIMD-aware multithreaded quant/dequant kernels
+- `datasetstream`: thin data-plane shape for token streaming
+
+For OpenAgents these are not first-order product surfaces, but they are useful
+when we need:
+
+- fast host-side helper kernels
+- queueing/execution runtime utilities
+- CPU quant/dequant and staging paths
+- high-throughput local or cluster data feeds
+
+The right approach is still Rust-first. These repos are evidence that the
+underlying problems are worth solving natively, not a reason to add C/C++/FFI
+sprawl by default.
+
+## What The Broader PI Stack Still Does Not Fit
+
+### 1. `smart-contracts` is not a near-term fit for our economic model
+
+PI’s protocol contracts are EVM-first and staking/slashing oriented. Our MVP is
+desktop-first, Nostr/Nexus, and Bitcoin/Lightning anchored.
+
+So even if the contract system is interesting, it should not drive near-term
+OpenAgents architecture.
+
+Relevant as:
+
+- market/economy research
+- incentive-mechanism reference
+
+Not relevant as:
+
+- direct foundation for MVP payout or provider identity
+
+### 2. The training-heavy PI stack is strategically relevant but not MVP-central
+
+Repos like:
+
+- `prime-rl`
+- `prime-diloco`
+- `OpenRLHF`
+- `torchtune`
+- `DeepSpeed`
+
+are important if the goal becomes large-scale training or post-training
+infrastructure. They are not the core of “Autopilot prints Bitcoin” today.
+
+The risk is roadmap drift: building a research/training platform instead of a
+truthful local provider product.
+
 ## What We Should Not Adapt
 
 ### 1. Do not make Prime a hidden Psionic backend
@@ -457,6 +746,12 @@ Concrete boundary:
 
 - reusable execution facts belong in `psionic-runtime` / `psionic-provider`
 - optional hosted-provider integration belongs in app/tooling layers
+
+The same logic applies to broader PI-inspired work:
+
+- cluster/runtime/evidence semantics belong in reusable execution crates
+- environment/eval workflows belong in app or dedicated non-engine crates
+- market-specific orchestration must not be smuggled into generic runtime code
 
 ### 5. Do not confuse Prime’s centralized team/account model with our market model
 
@@ -529,6 +824,93 @@ This could eventually support Prime or other external providers behind one
 OpenAgents-owned abstraction, but it should not happen before the local seller
 loop is already solid.
 
+## If We Intend To Rebuild Much Of PI’s Stack In Rust
+
+If the real ambition is a broader Rust-native OpenAgents stack inspired by PI,
+the priority order should be different from the narrower `prime`-integration
+story above.
+
+### 1. Cluster/control-plane track first
+
+Reference repos:
+
+- `protocol`
+- `prime-iroh`
+- `pccl`
+
+Target home:
+
+- `psionic-cluster`
+- `psionic-runtime`
+- `psionic-provider`
+
+Reason:
+
+- this is the closest match to our reusable execution substrate
+- it strengthens clustered execution, topology truth, and future market
+  hardening
+
+### 2. Proof/evidence track second
+
+Reference repos:
+
+- `toploc`
+- `toploc-validator`
+- `gpu-challenge`
+
+Target home:
+
+- likely new proof/evidence crates plus provider/runtime integration
+
+Reason:
+
+- it compounds the value of truthful receipts and verifiable execution
+- it gives us a differentiated trust path instead of commodity inference hosting
+
+### 3. Environment/eval substrate third
+
+Reference repos:
+
+- `verifiers`
+- `prime-rl`
+
+Target home:
+
+- app/tooling layers or new dedicated crates
+
+Reason:
+
+- useful for buyer jobs, benchmarks, skills, and agent task evaluation
+- strategically valuable, but not as foundational as cluster/proof work
+
+### 4. Distributed inference semantics fourth
+
+Reference repos:
+
+- `prime-vllm`
+- `prime-pipeline`
+
+Target home:
+
+- `psionic-cluster`
+- cluster benchmarks and planning docs
+
+Reason:
+
+- valuable once our own clustered runtime surface is ready
+- still downstream of the transport/topology substrate
+
+### 5. Elastic training later
+
+Reference repos:
+
+- `prime-diloco`
+
+Reason:
+
+- important if OpenAgents later broadens into training markets
+- not the right next move for the current desktop/provider MVP
+
 ## Suggested Concrete Follow-Up Work
 
 ### 1. Write a focused `psionic.sandbox_execution` contract audit
@@ -564,10 +946,27 @@ Goal:
 - support Prime as one possible provider instead of hard-wiring Prime into the
   core stack.
 
+### 5. Write a PI-stack Rust rebuild roadmap
+
+Goal:
+
+- separate PI-inspired rebuild work into
+  - cluster/control plane
+  - proof/evidence
+  - environment/eval
+  - distributed inference
+  - training
+- assign each stream to the correct crate/app layer
+- keep MVP work from getting swallowed by long-horizon infrastructure ambition
+
 ## Bottom Line
 
 Prime is useful to us, but mostly as an external control-plane reference and a
 source of contract ideas, not as a runtime foundation.
+
+The broader PI org is more important than `prime` alone. It contains real
+native protocol, communications, verification, and training infrastructure that
+is worth studying as reference material for OpenAgents-owned Rust systems.
 
 The correct takeaway is:
 
@@ -576,9 +975,15 @@ The correct takeaway is:
 - OpenAgents should borrow Prime’s operator-surface and sandbox-contract ideas
   where they improve clarity.
 - OpenAgents should not outsource or blur its local execution truth to Prime.
+- PI’s broader native stack is worth treating as reference material for future
+  Rust-native OpenAgents cluster, proof, and environment/eval subsystems.
+- We should build our own versions, not wire their code into our core path.
 
 If we adapt anything soon, the best bets are:
 
 - a thin MCP/operator wrapper over our existing control plane,
 - a sharper future `psionic.sandbox_execution` contract,
 - stronger evidence artifact/productization for conformance and benchmarks.
+- If we go broader than that, the next real PI-inspired Rust tracks are
+  `protocol`/`prime-iroh`/`pccl` first, then `toploc`/`gpu-challenge`, then
+  `verifiers`-style environment and eval substrate work.
