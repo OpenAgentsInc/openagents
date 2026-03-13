@@ -366,6 +366,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history: crate::app_state::JobHistoryState::default(),
             earn_job_lifecycle_projection:
                 crate::app_state::EarnJobLifecycleProjectionState::default(),
+            nip90_payment_facts:
+                crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState::default(),
             earn_kernel_receipts:
                 crate::state::earn_kernel_receipts::EarnKernelReceiptState::default(),
             economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState::default(),
@@ -421,6 +423,7 @@ fn rehydrate_startup_earnings_history(state: &mut RenderState) {
         reference_epoch_seconds,
         source_error,
     );
+    state.refresh_nip90_payment_facts();
 }
 
 pub(crate) fn sync_project_ops_runtime_contract_state(state: &mut RenderState) {
@@ -727,6 +730,7 @@ fn open_startup_panes(state: &mut RenderState) {
 }
 
 pub fn render_frame(state: &mut RenderState) -> Result<()> {
+    state.refresh_nip90_payment_facts();
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let height = logical.height;
