@@ -8916,7 +8916,7 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
 ) -> bool {
     match crate::app_state::mission_control_local_runtime_lane(
         state.desktop_shell_mode,
-        &state.ollama_execution,
+        &state.gpt_oss_execution,
     ) {
         Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
             let bridge_starting =
@@ -9185,7 +9185,7 @@ pub(super) fn run_mission_control_action(
         MissionControlPaneAction::OpenLocalModelWorkbench => {
             match crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,
-                &state.ollama_execution,
+                &state.gpt_oss_execution,
             ) {
                 Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                     if state.dev_mode_enabled() && state.provider_runtime.apple_fm.is_ready() {
@@ -9471,7 +9471,7 @@ fn open_path_in_default_app(path: &std::path::Path) -> Result<(), String> {
 fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::RenderState) -> bool {
     if crate::app_state::mission_control_local_runtime_lane(
         state.desktop_shell_mode,
-        &state.ollama_execution,
+        &state.gpt_oss_execution,
     ) != Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
     {
         state
@@ -9901,13 +9901,15 @@ fn build_spot_compute_rfq_from_inputs(
             .replace(['.', '-'], "_")
             .as_str()
         {
-            "psionic" | "local_inference" | "ollama" => Some(ComputeBackendFamily::Ollama),
+            "gpt_oss" | "gptoss" | "psionic" | "local_inference" | "ollama" => {
+                Some(ComputeBackendFamily::GptOss)
+            }
             "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
                 Some(ComputeBackendFamily::AppleFoundationModels)
             }
             other => {
                 return Err(format!(
-                    "Preferred backend must be psionic, apple_foundation_models, or empty, got {other}"
+                    "Preferred backend must be gpt_oss, apple_foundation_models, or empty, got {other}"
                 ));
             }
         },

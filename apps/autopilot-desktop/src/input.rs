@@ -2860,7 +2860,7 @@ pub(crate) fn apply_provider_mode_target(
         );
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
-        if state.ollama_execution.is_ready() {
+        if state.gpt_oss_execution.is_ready() {
             let _ = state.queue_local_inference_runtime_command(
                 LocalInferenceRuntimeCommand::WarmConfiguredModel,
             );
@@ -3029,13 +3029,13 @@ pub(crate) fn apply_provider_mode_target(
 fn provider_blocker_detail(
     blocker: crate::app_state::ProviderBlocker,
     spark_wallet_error: Option<&str>,
-    ollama_error: Option<&str>,
+    gpt_oss_error: Option<&str>,
     apple_fm_error: Option<&str>,
 ) -> String {
     let lane_error = match blocker {
         crate::app_state::ProviderBlocker::WalletError => spark_wallet_error,
-        crate::app_state::ProviderBlocker::OllamaUnavailable
-        | crate::app_state::ProviderBlocker::OllamaModelUnavailable => ollama_error,
+        crate::app_state::ProviderBlocker::GptOssUnavailable
+        | crate::app_state::ProviderBlocker::GptOssModelUnavailable => gpt_oss_error,
         crate::app_state::ProviderBlocker::AppleFoundationModelsUnavailable
         | crate::app_state::ProviderBlocker::AppleFoundationModelsModelUnavailable => {
             apple_fm_error
@@ -3050,10 +3050,10 @@ fn provider_blocker_detail(
         })
         .map(ToString::to_string)
         .unwrap_or_else(|| match blocker {
-            crate::app_state::ProviderBlocker::OllamaUnavailable => {
+            crate::app_state::ProviderBlocker::GptOssUnavailable => {
                 "Local inference backend is unavailable".to_string()
             }
-            crate::app_state::ProviderBlocker::OllamaModelUnavailable => {
+            crate::app_state::ProviderBlocker::GptOssModelUnavailable => {
                 "No local inference model is ready".to_string()
             }
             _ => blocker.detail().to_string(),
@@ -3063,7 +3063,7 @@ fn provider_blocker_detail(
 fn format_provider_blockers_for_display(
     blockers: &[crate::app_state::ProviderBlocker],
     spark_wallet_error: Option<&str>,
-    ollama_error: Option<&str>,
+    gpt_oss_error: Option<&str>,
     apple_fm_error: Option<&str>,
 ) -> Option<String> {
     if blockers.is_empty() {
@@ -3080,7 +3080,7 @@ fn format_provider_blockers_for_display(
                     provider_blocker_detail(
                         *blocker,
                         spark_wallet_error,
-                        ollama_error,
+                        gpt_oss_error,
                         apple_fm_error,
                     )
                 )
@@ -3099,7 +3099,7 @@ fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Op
     format_provider_blockers_for_display(
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
-        state.provider_runtime.ollama.last_error.as_deref(),
+        state.provider_runtime.gpt_oss.last_error.as_deref(),
         apple_fm_error.as_deref(),
     )
     .map(|details| format!("Mission Control preflight blockers: {details}"))
@@ -3117,7 +3117,7 @@ fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Opt
     format_provider_blockers_for_display(
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
-        state.provider_runtime.ollama.last_error.as_deref(),
+        state.provider_runtime.gpt_oss.last_error.as_deref(),
         apple_fm_error.as_deref(),
     )
     .map(|details| format!("Cannot go online yet: {details}"))
@@ -3654,7 +3654,7 @@ mod tests {
     fn provider_blocker_detail_prefers_runtime_error_context() {
         assert_eq!(
             provider_blocker_detail(
-                ProviderBlocker::OllamaUnavailable,
+                ProviderBlocker::GptOssUnavailable,
                 Some("wallet down"),
                 Some("No active job backend is available"),
                 None,
@@ -3690,7 +3690,7 @@ mod tests {
         let details = format_provider_blockers_for_display(
             &[
                 ProviderBlocker::WalletError,
-                ProviderBlocker::OllamaUnavailable,
+                ProviderBlocker::GptOssUnavailable,
             ],
             Some("Spark wallet lane failed"),
             Some("No active job backend is available"),
@@ -3700,7 +3700,7 @@ mod tests {
 
         assert_eq!(
             details,
-            "WALLET_ERROR (Spark wallet lane failed); OLLAMA_UNAVAILABLE (No active job backend is available)"
+            "WALLET_ERROR (Spark wallet lane failed); GPT_OSS_UNAVAILABLE (No active job backend is available)"
         );
         assert!(format_provider_blockers_for_display(&[], None, None, None).is_none());
     }

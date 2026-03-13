@@ -1890,9 +1890,9 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                         "last_request_id": state.local_inference.last_request_id,
                         "last_model": state.local_inference.last_model,
                         "output_chars": state.local_inference.output_chars,
-                        "runtime_reachable": state.ollama_execution.reachable,
-                        "configured_model": state.ollama_execution.configured_model,
-                        "ready_model": state.ollama_execution.ready_model,
+                        "runtime_reachable": state.gpt_oss_execution.reachable,
+                        "configured_model": state.gpt_oss_execution.configured_model,
+                        "ready_model": state.gpt_oss_execution.ready_model,
                         "last_error": state.local_inference.last_error,
                     }),
                 );

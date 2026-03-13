@@ -654,7 +654,7 @@ impl SpotComputeRfqDraft {
 
     pub const fn preferred_backend_label(&self) -> &'static str {
         match self.preferred_backend {
-            Some(ComputeBackendFamily::Ollama) => "ollama",
+            Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
             None => "any",
         }
@@ -696,7 +696,7 @@ impl ForwardComputeRfqDraft {
 
     pub const fn preferred_backend_label(&self) -> &'static str {
         match self.preferred_backend {
-            Some(ComputeBackendFamily::Ollama) => "ollama",
+            Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
             None => "any",
         }
@@ -738,7 +738,7 @@ pub struct SpotComputeQuoteCandidate {
 impl SpotComputeQuoteCandidate {
     pub const fn backend_label(&self) -> &'static str {
         match self.backend_family {
-            ComputeBackendFamily::Ollama => "ollama",
+            ComputeBackendFamily::GptOss => "gpt_oss",
             ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
         }
     }
@@ -776,7 +776,7 @@ pub struct ForwardComputeQuoteCandidate {
 impl ForwardComputeQuoteCandidate {
     pub const fn backend_label(&self) -> &'static str {
         match self.backend_family {
-            ComputeBackendFamily::Ollama => "ollama",
+            ComputeBackendFamily::GptOss => "gpt_oss",
             ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
         }
     }
@@ -3517,7 +3517,7 @@ mod tests {
         SpotComputeRfqDraft {
             rfq_id: "rfq-spot-1".to_string(),
             compute_family: ComputeFamily::Inference,
-            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            preferred_backend: Some(ComputeBackendFamily::GptOss),
             quantity: 1,
             window_minutes: 15,
             max_price_sats: 34,
@@ -3529,16 +3529,16 @@ mod tests {
         SpotComputeQuoteCandidate {
             quote_id: quote_id.to_string(),
             rfq_id: "rfq-spot-1".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: format!("lot-{quote_id}"),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::Ollama,
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
             available_quantity,
             requested_quantity: 1,
             price_sats: 21,
             delivery_window_label: "15m".to_string(),
-            capability_summary: "backend=ollama family=inference".to_string(),
+            capability_summary: "backend=gpt_oss family=inference".to_string(),
             source_badge: "desktop.go_online".to_string(),
             terms_label: "spot session / local best effort".to_string(),
         }
@@ -3548,7 +3548,7 @@ mod tests {
         ForwardComputeRfqDraft {
             rfq_id: "rfq-forward-1".to_string(),
             compute_family: ComputeFamily::Inference,
-            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            preferred_backend: Some(ComputeBackendFamily::GptOss),
             quantity: 1,
             delivery_start_minutes: 180,
             window_minutes: 60,
@@ -3564,10 +3564,10 @@ mod tests {
         ForwardComputeQuoteCandidate {
             quote_id: quote_id.to_string(),
             rfq_id: "rfq-forward-1".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: format!("forward-lot-{quote_id}"),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::Ollama,
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
             available_quantity,
             requested_quantity: 1,
@@ -3575,7 +3575,7 @@ mod tests {
             delivery_start_ms: 1_762_000_180_000,
             delivery_end_ms: 1_762_000_240_000,
             delivery_window_label: "start+180m for 60m".to_string(),
-            capability_summary: "backend=ollama family=inference".to_string(),
+            capability_summary: "backend=gpt_oss family=inference".to_string(),
             source_badge: "desktop.forward_inventory".to_string(),
             terms_label: "forward physical / committed local window".to_string(),
             collateral_summary: "bond=performance_bond".to_string(),
@@ -3610,10 +3610,10 @@ mod tests {
             rfq_id: "rfq-spot-1".to_string(),
             quote_id: "quote-a".to_string(),
             instrument_id: "instrument-1".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: "lot-quote-a".to_string(),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::Ollama,
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
             quantity: 1,
             price_sats: 21,
@@ -3658,10 +3658,10 @@ mod tests {
             rfq_id: "rfq-forward-1".to_string(),
             quote_id: "forward-a".to_string(),
             instrument_id: "instrument-forward-1".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: "forward-lot-forward-a".to_string(),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::Ollama,
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
             quantity: 1,
             price_sats: 55,

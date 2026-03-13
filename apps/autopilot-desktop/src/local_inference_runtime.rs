@@ -155,7 +155,7 @@ pub trait LocalInferenceRuntime {
 }
 
 pub fn default_local_inference_runtime() -> Result<Box<dyn LocalInferenceRuntime>, String> {
-    PsionicGptOssRuntimeAdapter::new_auto()
+    GptOssRuntimeAdapter::new_auto()
         .map(|adapter| Box::new(adapter) as Box<dyn LocalInferenceRuntime>)
 }
 
@@ -535,12 +535,12 @@ impl GptOssRuntimeService {
     }
 }
 
-pub struct PsionicGptOssRuntimeAdapter {
+pub struct GptOssRuntimeAdapter {
     command_tx: Sender<LocalInferenceRuntimeCommand>,
     update_rx: Receiver<LocalInferenceRuntimeUpdate>,
 }
 
-impl PsionicGptOssRuntimeAdapter {
+impl GptOssRuntimeAdapter {
     pub fn new_auto() -> Result<Self, String> {
         Self::spawn(
             configured_gpt_oss_model_path(),
@@ -552,9 +552,9 @@ impl PsionicGptOssRuntimeAdapter {
         let (command_tx, command_rx) = mpsc::channel::<LocalInferenceRuntimeCommand>();
         let (update_tx, update_rx) = mpsc::channel::<LocalInferenceRuntimeUpdate>();
         std::thread::Builder::new()
-            .name(String::from("autopilot-psionic-gpt-oss"))
+            .name(String::from("autopilot-gpt-oss"))
             .spawn(move || {
-                let mut worker = PsionicGptOssRuntimeWorker::new(model_path, backend, update_tx);
+                let mut worker = GptOssRuntimeWorker::new(model_path, backend, update_tx);
                 worker.push_snapshot();
                 while let Ok(command) = command_rx.recv() {
                     worker.handle_command(command);
@@ -568,7 +568,7 @@ impl PsionicGptOssRuntimeAdapter {
     }
 }
 
-impl LocalInferenceRuntime for PsionicGptOssRuntimeAdapter {
+impl LocalInferenceRuntime for GptOssRuntimeAdapter {
     fn enqueue(&mut self, command: LocalInferenceRuntimeCommand) -> Result<(), String> {
         self.command_tx
             .send(command)
@@ -584,7 +584,7 @@ impl LocalInferenceRuntime for PsionicGptOssRuntimeAdapter {
     }
 }
 
-struct PsionicGptOssRuntimeWorker {
+struct GptOssRuntimeWorker {
     configured_backend: GptOssRuntimeBackend,
     configured_model_label: String,
     model_path: PathBuf,
@@ -593,7 +593,7 @@ struct PsionicGptOssRuntimeWorker {
     update_tx: Sender<LocalInferenceRuntimeUpdate>,
 }
 
-impl PsionicGptOssRuntimeWorker {
+impl GptOssRuntimeWorker {
     fn new(
         model_path: PathBuf,
         configured_backend: GptOssRuntimeBackend,
@@ -603,7 +603,7 @@ impl PsionicGptOssRuntimeWorker {
         let artifact_present = model_path.is_file();
         let backend_label = configured_backend.default_runtime_label();
         let mut snapshot = LocalInferenceRuntimeSnapshot {
-            base_url: format!("in-process://psionic-gpt-oss/{backend_label}"),
+            base_url: format!("in-process://gpt_oss/{backend_label}"),
             reachable: true,
             busy: false,
             configured_model: Some(configured_model_label.clone()),
@@ -640,7 +640,7 @@ impl PsionicGptOssRuntimeWorker {
     fn handle_command(&mut self, command: LocalInferenceRuntimeCommand) {
         match command {
             LocalInferenceRuntimeCommand::Refresh => {
-                self.refresh_snapshot(String::from("Psionic GPT-OSS runtime refreshed"))
+                self.refresh_snapshot(String::from("GPT-OSS runtime refreshed"))
             }
             LocalInferenceRuntimeCommand::WarmConfiguredModel => self.handle_load_or_warm(),
             LocalInferenceRuntimeCommand::UnloadConfiguredModel => self.handle_unload(),
@@ -749,7 +749,7 @@ impl PsionicGptOssRuntimeWorker {
             .as_ref()
             .map(GptOssRuntimeService::backend_label)
             .unwrap_or("unknown");
-        self.refresh_snapshot(format!("GPT-OSS 20B loaded on Psionic {backend_label}"));
+        self.refresh_snapshot(format!("GPT-OSS 20B loaded on {backend_label}"));
     }
 
     fn handle_unload(&mut self) {
@@ -796,7 +796,7 @@ impl PsionicGptOssRuntimeWorker {
         let error = error.into();
         self.snapshot.last_request_id = Some(request_id.clone());
         self.snapshot.last_error = Some(error.clone());
-        self.snapshot.last_action = Some(String::from("Psionic GPT-OSS generation failed"));
+        self.snapshot.last_action = Some(String::from("GPT-OSS generation failed"));
         self.snapshot.busy = false;
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
@@ -834,7 +834,7 @@ impl PsionicGptOssRuntimeWorker {
             self.push_failure(
                 job.request_id,
                 format!(
-                    "Psionic GPT-OSS runtime only has '{}' loaded, but '{}' was requested",
+                    "GPT-OSS runtime only has '{}' loaded, but '{}' was requested",
                     loaded_model_id, requested_model
                 ),
             );
@@ -844,10 +844,8 @@ impl PsionicGptOssRuntimeWorker {
         let model = loaded_model_id;
         self.snapshot.last_request_id = Some(job.request_id.clone());
         self.snapshot.last_error = None;
-        self.snapshot.last_action = Some(format!(
-            "Psionic GPT-OSS generation queued for {}",
-            job.request_id
-        ));
+        self.snapshot.last_action =
+            Some(format!("GPT-OSS generation queued for {}", job.request_id));
         self.snapshot.busy = true;
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
@@ -884,7 +882,7 @@ impl PsionicGptOssRuntimeWorker {
             Err(error) => {
                 self.push_failure(
                     job.request_id,
-                    format!("Psionic GPT-OSS generation failed: {error}"),
+                    format!("GPT-OSS generation failed: {error}"),
                 );
                 return;
             }
@@ -899,7 +897,7 @@ impl PsionicGptOssRuntimeWorker {
         let normalized_options_digest = sha256_prefixed_text(normalized_options_json.as_str());
         let normalized_prompt_digest = sha256_prefixed_text(normalized_prompt.as_str());
         let provenance = LocalInferenceExecutionProvenance {
-            backend: format!("psionic-{}", service.backend_label()),
+            backend: String::from("gpt_oss"),
             requested_model: job.requested_model.clone(),
             served_model: response.model_id.clone(),
             normalized_prompt_digest,
@@ -934,14 +932,12 @@ impl PsionicGptOssRuntimeWorker {
         };
         self.snapshot.last_metrics = Some(metrics.clone());
         self.snapshot.last_action = Some(format!(
-            "Psionic GPT-OSS generation completed for {}",
+            "GPT-OSS generation completed for {}",
             job.request_id
         ));
         self.snapshot.last_error = None;
         self.snapshot.busy = false;
-        self.refresh_snapshot(String::from(
-            "Psionic GPT-OSS runtime refreshed after generation",
-        ));
+        self.refresh_snapshot(String::from("GPT-OSS runtime refreshed after generation"));
         let _ = self.update_tx.send(LocalInferenceRuntimeUpdate::Completed(
             LocalInferenceExecutionCompleted {
                 request_id: job.request_id,
@@ -1260,9 +1256,7 @@ mod tests {
         let snapshot = wait_for_snapshot(runtime.as_mut(), |_| true, 20, Duration::from_millis(10))
             .expect("snapshot");
         assert!(
-            snapshot
-                .base_url
-                .starts_with("in-process://psionic-gpt-oss/"),
+            snapshot.base_url.starts_with("in-process://gpt_oss/"),
             "unexpected base_url: {}",
             snapshot.base_url
         );

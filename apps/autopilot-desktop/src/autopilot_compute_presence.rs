@@ -294,11 +294,11 @@ fn current_ready_model(provider_runtime: &ProviderRuntimeState) -> Option<String
         Some(LocalInferenceBackend::AppleFoundationModels) => {
             provider_runtime.apple_fm.ready_model.clone()
         }
-        Some(LocalInferenceBackend::Ollama) => provider_runtime
-            .ollama
+        Some(LocalInferenceBackend::GptOss) => provider_runtime
+            .gpt_oss
             .ready_model
             .clone()
-            .or_else(|| provider_runtime.ollama.configured_model.clone()),
+            .or_else(|| provider_runtime.gpt_oss.configured_model.clone()),
         _ => None,
     }
 }

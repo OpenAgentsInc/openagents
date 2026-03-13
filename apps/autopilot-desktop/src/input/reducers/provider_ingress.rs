@@ -65,8 +65,8 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
         .provider_runtime
         .apple_fm
         .availability_error_message()
-        .or_else(|| state.provider_runtime.ollama.last_error.clone())
-        .or_else(|| state.ollama_execution.last_error.clone());
+        .or_else(|| state.provider_runtime.gpt_oss.last_error.clone())
+        .or_else(|| state.gpt_oss_execution.last_error.clone());
     let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
         current_mode: state.provider_runtime.mode,
         ingress_mode: map_ingress_mode(state.provider_nip90_lane.mode),
@@ -126,7 +126,7 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
                     .apple_fm
                     .last_action
                     .clone()
-                    .or_else(|| state.provider_runtime.ollama.last_action.clone());
+                    .or_else(|| state.provider_runtime.gpt_oss.last_action.clone());
                 state.provider_runtime.mode_changed_at = now;
             }
         }
@@ -146,7 +146,7 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
                         .apple_fm
                         .last_action
                         .clone()
-                        .or_else(|| state.provider_runtime.ollama.last_action.clone())
+                        .or_else(|| state.provider_runtime.gpt_oss.last_action.clone())
                 });
             state.provider_runtime.mode_changed_at = now;
         }
@@ -169,8 +169,8 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
                     LocalInferenceBackend::AppleFoundationModels => {
                         state.provider_runtime.apple_fm.last_action.clone()
                     }
-                    LocalInferenceBackend::Ollama => {
-                        state.provider_runtime.ollama.last_action.clone()
+                    LocalInferenceBackend::GptOss => {
+                        state.provider_runtime.gpt_oss.last_action.clone()
                     }
                 });
             state.provider_runtime.mode_changed_at = now;

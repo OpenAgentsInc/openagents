@@ -20,7 +20,7 @@ use openagents_kernel_core::compute::{
     CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
     ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
     ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
+    DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
     launch_compute_product_spec,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -103,8 +103,8 @@ struct LaunchDeliveryContext {
     execution_output: Option<String>,
     provider_thread_id: Option<String>,
     provider_turn_id: Option<String>,
-    ollama_ready_model: Option<String>,
-    ollama_metrics: Option<LocalInferenceExecutionMetrics>,
+    gpt_oss_ready_model: Option<String>,
+    gpt_oss_metrics: Option<LocalInferenceExecutionMetrics>,
     apple_ready_model: Option<String>,
     apple_metrics: Option<LocalInferenceExecutionMetrics>,
     apple_model_available: bool,
@@ -1115,23 +1115,23 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
     {
         bindings.push(binding);
     }
-    if state.provider_runtime.ollama.is_ready()
+    if state.provider_runtime.gpt_oss.is_ready()
         && state
             .provider_runtime
-            .product_enabled(ProviderInventoryProductToggleTarget::OllamaInference.product_id())
+            .product_enabled(ProviderInventoryProductToggleTarget::GptOssInference.product_id())
         && let Some(binding) = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_generation",
         )
     {
         bindings.push(binding);
     }
-    if state.provider_runtime.ollama.is_ready()
+    if state.provider_runtime.gpt_oss.is_ready()
         && state
             .provider_runtime
-            .product_enabled(ProviderInventoryProductToggleTarget::OllamaEmbeddings.product_id())
+            .product_enabled(ProviderInventoryProductToggleTarget::GptOssEmbeddings.product_id())
         && let Some(binding) = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_embeddings",
         )
     {
@@ -1533,15 +1533,15 @@ async fn sleep_until_retry(shutdown_rx: &mut watch::Receiver<bool>) -> bool {
 }
 
 fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateComputeProductRequest {
-    let (apple_platform, ollama_runtime, backend_family) = match binding.backend_family {
-        ComputeBackendFamily::Ollama => (
+    let (apple_platform, gpt_oss_runtime, backend_family) = match binding.backend_family {
+        ComputeBackendFamily::GptOss => (
             None,
-            Some(OllamaRuntimeCapability {
+            Some(GptOssRuntimeCapability {
                 runtime_ready: None,
                 model_name: None,
                 quantization: None,
             }),
-            "ollama",
+            "gpt_oss",
         ),
         ComputeBackendFamily::AppleFoundationModels => (
             Some(ApplePlatformCapability {
@@ -1597,7 +1597,7 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
                 model_family: None,
                 host_capability: None,
                 apple_platform,
-                ollama_runtime,
+                gpt_oss_runtime,
                 latency_ms_p50: None,
                 throughput_per_minute: None,
                 concurrency_limit: Some(1),
@@ -1933,8 +1933,8 @@ fn delivery_context_for_state(state: &RenderState) -> LaunchDeliveryContext {
         execution_output: state.active_job.execution_output.clone(),
         provider_thread_id: state.active_job.execution_thread_id.clone(),
         provider_turn_id: state.active_job.execution_turn_id.clone(),
-        ollama_ready_model: state.provider_runtime.ollama.ready_model.clone(),
-        ollama_metrics: state.provider_runtime.ollama.last_metrics.clone(),
+        gpt_oss_ready_model: state.provider_runtime.gpt_oss.ready_model.clone(),
+        gpt_oss_metrics: state.provider_runtime.gpt_oss.last_metrics.clone(),
         apple_ready_model: state.provider_runtime.apple_fm.ready_model.clone(),
         apple_metrics: state.provider_runtime.apple_fm.last_metrics.clone(),
         apple_model_available: state.provider_runtime.apple_fm.model_available,
@@ -2119,7 +2119,7 @@ fn promised_capability_envelope_for_delivery(
         model_family: model_identity.clone(),
         host_capability: None,
         apple_platform: apple_platform_for_binding(binding, context),
-        ollama_runtime: ollama_runtime_for_binding(binding, model_identity),
+        gpt_oss_runtime: gpt_oss_runtime_for_binding(binding, model_identity),
         latency_ms_p50: latency_from_metrics(context_metrics_for_binding(binding, context)),
         throughput_per_minute,
         concurrency_limit: Some(1),
@@ -2149,10 +2149,10 @@ fn observed_capability_envelope_for_delivery(
                 apple_intelligence_available: Some(context.apple_model_available),
                 minimum_macos_version: Some("26.0".to_string()),
             }),
-            ComputeBackendFamily::Ollama => None,
+            ComputeBackendFamily::GptOss => None,
         },
-        ollama_runtime: match observed_backend_family {
-            ComputeBackendFamily::Ollama => Some(OllamaRuntimeCapability {
+        gpt_oss_runtime: match observed_backend_family {
+            ComputeBackendFamily::GptOss => Some(GptOssRuntimeCapability {
                 runtime_ready: Some(true),
                 model_name: Some(provenance.served_model.clone()),
                 quantization: None,
@@ -2167,8 +2167,8 @@ fn observed_capability_envelope_for_delivery(
 
 fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
     match (binding.backend_family, binding.compute_family) {
-        (ComputeBackendFamily::Ollama, ComputeFamily::Inference) => "meter.ollama.inference.v1",
-        (ComputeBackendFamily::Ollama, ComputeFamily::Embeddings) => "meter.ollama.embeddings.v1",
+        (ComputeBackendFamily::GptOss, ComputeFamily::Inference) => "meter.gpt_oss.inference.v1",
+        (ComputeBackendFamily::GptOss, ComputeFamily::Embeddings) => "meter.gpt_oss.embeddings.v1",
         (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Inference) => {
             "meter.apple_fm.inference.v1"
         }
@@ -2266,7 +2266,7 @@ fn embedding_quantity_from_output(execution_output: Option<&str>) -> u64 {
 
 fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily> {
     match value.trim() {
-        "ollama" => Some(ComputeBackendFamily::Ollama),
+        "gpt_oss" | "psionic" | "ollama" => Some(ComputeBackendFamily::GptOss),
         "apple_foundation_models" => Some(ComputeBackendFamily::AppleFoundationModels),
         _ => None,
     }
@@ -2277,7 +2277,7 @@ fn context_metrics_for_binding(
     context: &LaunchDeliveryContext,
 ) -> Option<&LocalInferenceExecutionMetrics> {
     match binding.backend_family {
-        ComputeBackendFamily::Ollama => context.ollama_metrics.as_ref(),
+        ComputeBackendFamily::GptOss => context.gpt_oss_metrics.as_ref(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_metrics.as_ref(),
     }
 }
@@ -2287,7 +2287,7 @@ fn ready_model_from_delivery_context(
     context: &LaunchDeliveryContext,
 ) -> Option<String> {
     match binding.backend_family {
-        ComputeBackendFamily::Ollama => context.ollama_ready_model.clone(),
+        ComputeBackendFamily::GptOss => context.gpt_oss_ready_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_ready_model.clone(),
     }
 }
@@ -2307,14 +2307,14 @@ fn apple_platform_for_binding(
     })
 }
 
-fn ollama_runtime_for_binding(
+fn gpt_oss_runtime_for_binding(
     binding: LaunchComputeBinding,
     model_name: Option<String>,
-) -> Option<OllamaRuntimeCapability> {
-    if binding.backend_family != ComputeBackendFamily::Ollama {
+) -> Option<GptOssRuntimeCapability> {
+    if binding.backend_family != ComputeBackendFamily::GptOss {
         return None;
     }
-    Some(OllamaRuntimeCapability {
+    Some(GptOssRuntimeCapability {
         runtime_ready: Some(true),
         model_name,
         quantization: None,
@@ -2817,20 +2817,20 @@ fn compute_binding_for_backend_and_capability(
         .to_ascii_lowercase()
         .replace(['.', '-'], "_");
     match (backend, normalized.as_str()) {
-        (LocalInferenceBackend::Ollama, "text_generation") => Some(LaunchComputeBinding {
-            product_id: "ollama.text_generation",
-            backend_family: ComputeBackendFamily::Ollama,
+        (LocalInferenceBackend::GptOss, "text_generation") => Some(LaunchComputeBinding {
+            product_id: "gpt_oss.text_generation",
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
-            model_policy: "ollama.text_generation.launch",
+            model_policy: "gpt_oss.text_generation.launch",
         }),
         (
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "embedding" | "embeddings" | "text_embedding" | "text_embeddings",
         ) => Some(LaunchComputeBinding {
-            product_id: "ollama.embeddings",
-            backend_family: ComputeBackendFamily::Ollama,
+            product_id: "gpt_oss.embeddings",
+            backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Embeddings,
-            model_policy: "ollama.embeddings.launch",
+            model_policy: "gpt_oss.embeddings.launch",
         }),
         (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
             Some(LaunchComputeBinding {
@@ -2846,12 +2846,12 @@ fn compute_binding_for_backend_and_capability(
 
 fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBinding> {
     match product_id.trim() {
-        "ollama.text_generation" => compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+        "gpt_oss.text_generation" => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::GptOss,
             "text_generation",
         ),
-        "ollama.embeddings" => compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+        "gpt_oss.embeddings" => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::GptOss,
             "text_embeddings",
         ),
         "apple_foundation_models.text_generation" => compute_binding_for_backend_and_capability(
@@ -2875,14 +2875,14 @@ fn selected_launch_compute_binding_for_request(
         "text_generation" => {
             let candidate_backends = [
                 LocalInferenceBackend::AppleFoundationModels,
-                LocalInferenceBackend::Ollama,
+                LocalInferenceBackend::GptOss,
             ];
             candidate_backends.into_iter().find_map(|backend| {
                 let backend_ready = match backend {
                     LocalInferenceBackend::AppleFoundationModels => {
                         state.provider_runtime.apple_fm.is_ready()
                     }
-                    LocalInferenceBackend::Ollama => state.provider_runtime.ollama.is_ready(),
+                    LocalInferenceBackend::GptOss => state.provider_runtime.gpt_oss.is_ready(),
                 };
                 if !backend_ready {
                     return None;
@@ -2897,11 +2897,11 @@ fn selected_launch_compute_binding_for_request(
         }
         "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => state
             .provider_runtime
-            .ollama
+            .gpt_oss
             .is_ready()
             .then(|| {
                 compute_binding_for_backend_and_capability(
-                    LocalInferenceBackend::Ollama,
+                    LocalInferenceBackend::GptOss,
                     "text_embeddings",
                 )
             })
@@ -2926,7 +2926,7 @@ fn compute_linkage_for_request(
             .active_inference_backend()
             .and_then(|backend| compute_binding_for_backend_and_capability(backend, capability))?,
         "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
-            compute_binding_for_backend_and_capability(LocalInferenceBackend::Ollama, capability)?
+            compute_binding_for_backend_and_capability(LocalInferenceBackend::GptOss, capability)?
         }
         _ => return None,
     };
@@ -2969,11 +2969,11 @@ fn provider_inventory_evidence_refs(state: &RenderState) -> Vec<EvidenceRef> {
         format!("oa://autopilot/providers/{provider_id}"),
         provider_id.as_str(),
     )];
-    if let Some(model_name) = state.provider_runtime.ollama.ready_model.as_deref() {
+    if let Some(model_name) = state.provider_runtime.gpt_oss.ready_model.as_deref() {
         evidence.push(evidence_ref(
             "attestation:model_version",
             format!(
-                "oa://autopilot/provider/ollama/models/{}",
+                "oa://autopilot/provider/gpt_oss/models/{}",
                 canonical_kernel_id_component(model_name)
             ),
             model_name,
@@ -2989,11 +2989,11 @@ fn provider_inventory_evidence_refs(state: &RenderState) -> Vec<EvidenceRef> {
             model_name,
         ));
     }
-    let base_url = state.ollama_execution.base_url.trim();
+    let base_url = state.gpt_oss_execution.base_url.trim();
     if !base_url.is_empty() {
         evidence.push(evidence_ref(
             "execution_backend_ref",
-            "oa://autopilot/provider/ollama/backend",
+            "oa://autopilot/provider/gpt_oss/backend",
             base_url,
         ));
     }
@@ -3330,7 +3330,7 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
     match product_id {
-        "ollama.embeddings" => "forward_physical.embeddings.v1",
+        "gpt_oss.embeddings" => "forward_physical.embeddings.v1",
         "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
         _ => "forward_physical.inference.v1",
     }
@@ -3338,7 +3338,7 @@ fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
 
 fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -> Option<String> {
     match binding.backend_family {
-        ComputeBackendFamily::Ollama => state.provider_runtime.ollama.ready_model.clone(),
+        ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.ready_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
@@ -3350,7 +3350,7 @@ fn configured_model_for_binding(
     binding: LaunchComputeBinding,
 ) -> Option<String> {
     match binding.backend_family {
-        ComputeBackendFamily::Ollama => state.provider_runtime.ollama.configured_model.clone(),
+        ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.configured_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
@@ -3482,7 +3482,7 @@ mod tests {
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeProduct,
         ComputeProductStatus, ComputeSettlementMode, DeliveryProofStatus, DeliveryRejectionReason,
-        OllamaRuntimeCapability,
+        GptOssRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::json;
@@ -3506,10 +3506,10 @@ mod tests {
         .expect("fixture receipt")
     }
 
-    fn fixture_active_job_with_ollama_provenance() -> ActiveJobRecord {
+    fn fixture_active_job_with_gpt_oss_provenance() -> ActiveJobRecord {
         ActiveJobRecord {
-            job_id: "job-ollama-001".to_string(),
-            request_id: "req-ollama-001".to_string(),
+            job_id: "job-gpt_oss-001".to_string(),
+            request_id: "req-gpt_oss-001".to_string(),
             requester: "npub1buyer".to_string(),
             demand_source: JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
@@ -3525,7 +3525,7 @@ mod tests {
             requested_model: Some("llama3.2:latest".to_string()),
             execution_provenance: Some(
                 crate::local_inference_runtime::LocalInferenceExecutionProvenance {
-                    backend: "ollama".to_string(),
+                    backend: "gpt_oss".to_string(),
                     requested_model: Some("llama3.2:latest".to_string()),
                     served_model: "llama3.2:latest".to_string(),
                     normalized_prompt_digest: "sha256:prompt".to_string(),
@@ -3542,18 +3542,18 @@ mod tests {
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
-            sa_tick_request_event_id: Some("req-ollama-001".to_string()),
-            sa_tick_result_event_id: Some("result-ollama-001".to_string()),
-            sa_trajectory_session_id: Some("traj:req-ollama-001".to_string()),
+            sa_tick_request_event_id: Some("req-gpt_oss-001".to_string()),
+            sa_tick_result_event_id: Some("result-gpt_oss-001".to_string()),
+            sa_trajectory_session_id: Some("traj:req-gpt_oss-001".to_string()),
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
-            compute_product_id: Some("ollama.text_generation".to_string()),
+            compute_product_id: Some("gpt_oss.text_generation".to_string()),
             capacity_lot_id: Some(
-                "lot.online.npub1buyer.ollama.text_generation.1762000000000".to_string(),
+                "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000".to_string(),
             ),
-            capacity_instrument_id: Some("instrument.req-ollama-001".to_string()),
-            delivery_proof_id: Some("delivery.req-ollama-001".to_string()),
+            capacity_instrument_id: Some("instrument.req-gpt_oss-001".to_string()),
+            delivery_proof_id: Some("delivery.req-gpt_oss-001".to_string()),
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,
             delivery_metered_quantity: None,
@@ -3580,8 +3580,8 @@ mod tests {
             execution_output: Some(output.to_string()),
             provider_thread_id: Some("thread-1".to_string()),
             provider_turn_id: Some("turn-1".to_string()),
-            ollama_ready_model: Some("llama3.2:latest".to_string()),
-            ollama_metrics: Some(
+            gpt_oss_ready_model: Some("llama3.2:latest".to_string()),
+            gpt_oss_metrics: Some(
                 crate::local_inference_runtime::LocalInferenceExecutionMetrics {
                     total_duration_ns: Some(1_000_000_000),
                     load_duration_ns: Some(10_000_000),
@@ -3618,14 +3618,14 @@ mod tests {
                 openagents_kernel_core::compute::COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string(),
             ),
             capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(compute_family),
                 model_policy: Some(product_id.to_string()),
                 model_family: Some("nomic-embed-text".to_string()),
                 host_capability: None,
                 apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
                     runtime_ready: Some(true),
                     model_name: Some("nomic-embed-text".to_string()),
                     quantization: Some("q4_k_m".to_string()),
@@ -3770,17 +3770,17 @@ mod tests {
     }
 
     #[test]
-    fn submission_evidence_refs_include_ollama_provenance() {
-        let job = fixture_active_job_with_ollama_provenance();
-        let evidence = submission_evidence_refs(&job, Some("hello from ollama"));
+    fn submission_evidence_refs_include_gpt_oss_provenance() {
+        let job = fixture_active_job_with_gpt_oss_provenance();
+        let evidence = submission_evidence_refs(&job, Some("hello from gpt_oss"));
 
         assert!(evidence.iter().any(|row| {
             row.kind == "execution_backend_ref"
-                && row.uri == "oa://autopilot/jobs/job-ollama-001/execution/backend"
+                && row.uri == "oa://autopilot/jobs/job-gpt_oss-001/execution/backend"
         }));
         assert!(evidence.iter().any(|row| {
             row.kind == "attestation:model_version"
-                && row.uri == "oa://autopilot/jobs/job-ollama-001/execution/model/llama3.2_latest"
+                && row.uri == "oa://autopilot/jobs/job-gpt_oss-001/execution/model/llama3.2_latest"
         }));
         assert!(
             evidence.iter().any(|row| {
@@ -3795,19 +3795,19 @@ mod tests {
     #[test]
     fn compute_binding_maps_launch_capabilities_to_launch_products() {
         let inference = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_generation",
         )
         .expect("inference binding");
-        assert_eq!(inference.product_id, "ollama.text_generation");
+        assert_eq!(inference.product_id, "gpt_oss.text_generation");
         assert_eq!(inference.compute_family, ComputeFamily::Inference);
 
         let embeddings = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text.embeddings",
         )
         .expect("embedding binding");
-        assert_eq!(embeddings.product_id, "ollama.embeddings");
+        assert_eq!(embeddings.product_id, "gpt_oss.embeddings");
         assert_eq!(embeddings.compute_family, ComputeFamily::Embeddings);
 
         let apple_inference = compute_binding_for_backend_and_capability(
@@ -3822,7 +3822,7 @@ mod tests {
         assert_eq!(apple_inference.compute_family, ComputeFamily::Inference);
 
         assert!(
-            compute_binding_for_backend_and_capability(LocalInferenceBackend::Ollama, "gpu.h100")
+            compute_binding_for_backend_and_capability(LocalInferenceBackend::GptOss, "gpu.h100")
                 .is_none()
         );
     }
@@ -3831,16 +3831,16 @@ mod tests {
     fn launch_compute_product_requests_are_provider_independent() {
         let request = build_compute_product_request(
             compute_binding_for_backend_and_capability(
-                LocalInferenceBackend::Ollama,
+                LocalInferenceBackend::GptOss,
                 "text_generation",
             )
             .expect("inference binding"),
         );
         assert_eq!(
             request.idempotency_key,
-            "desktop.compute_product:ollama.text_generation"
+            "desktop.compute_product:gpt_oss.text_generation"
         );
-        assert_eq!(request.product.product_id, "ollama.text_generation");
+        assert_eq!(request.product.product_id, "gpt_oss.text_generation");
         assert_eq!(
             request.product.created_at_ms,
             super::LAUNCH_PRODUCT_CREATED_AT_MS
@@ -3880,12 +3880,12 @@ mod tests {
     fn online_inventory_lot_ids_are_provider_and_session_scoped() {
         let lot_id = online_capacity_lot_id_for_binding(
             "npub1buyer",
-            "ollama.text_generation",
+            "gpt_oss.text_generation",
             1_762_000_000_000,
         );
         assert_eq!(
             lot_id,
-            "lot.online.npub1buyer.ollama.text_generation.1762000000000"
+            "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000"
         );
     }
 
@@ -3893,28 +3893,28 @@ mod tests {
     fn forward_inventory_lot_ids_are_provider_and_session_scoped() {
         let lot_id = forward_capacity_lot_id_for_binding(
             "npub1buyer",
-            "ollama.text_generation",
+            "gpt_oss.text_generation",
             1_762_000_000_000,
         );
         assert_eq!(
             lot_id,
-            "lot.forward.npub1buyer.ollama.text_generation.1762000000000"
+            "lot.forward.npub1buyer.gpt_oss.text_generation.1762000000000"
         );
     }
 
     #[test]
     fn compute_linkage_uses_active_job_inventory_and_request_instrument_ids() {
-        let linkage = compute_linkage_for_active_job(&fixture_active_job_with_ollama_provenance())
+        let linkage = compute_linkage_for_active_job(&fixture_active_job_with_gpt_oss_provenance())
             .expect("linkage");
-        assert_eq!(linkage.product_id, "ollama.text_generation");
+        assert_eq!(linkage.product_id, "gpt_oss.text_generation");
         assert_eq!(
             linkage.capacity_lot_id,
-            "lot.online.npub1buyer.ollama.text_generation.1762000000000"
+            "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000"
         );
-        assert_eq!(linkage.capacity_instrument_id, "instrument.req-ollama-001");
+        assert_eq!(linkage.capacity_instrument_id, "instrument.req-gpt_oss-001");
         assert_eq!(
             linkage.delivery_proof_id,
-            delivery_proof_id_for_request("req-ollama-001")
+            delivery_proof_id_for_request("req-gpt_oss-001")
         );
     }
 
@@ -3923,23 +3923,23 @@ mod tests {
         let rfq = SpotComputeRfqDraft {
             rfq_id: "rfq-1".to_string(),
             compute_family: ComputeFamily::Embeddings,
-            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            preferred_backend: Some(ComputeBackendFamily::GptOss),
             quantity: 2,
             window_minutes: 15,
             max_price_sats: 30,
             capability_constraints: SpotComputeCapabilityConstraints::default(),
         };
         let products = vec![
-            fixture_compute_product("ollama.embeddings", ComputeFamily::Embeddings),
-            fixture_compute_product("ollama.text_generation", ComputeFamily::Inference),
+            fixture_compute_product("gpt_oss.embeddings", ComputeFamily::Embeddings),
+            fixture_compute_product("gpt_oss.text_generation", ComputeFamily::Inference),
         ];
         let lots = vec![
-            fixture_capacity_lot("ollama.embeddings", 4, 8),
-            fixture_capacity_lot("ollama.text_generation", 4, 21),
+            fixture_capacity_lot("gpt_oss.embeddings", 4, 8),
+            fixture_capacity_lot("gpt_oss.text_generation", 4, 21),
         ];
         let instruments = vec![CapacityInstrument {
             instrument_id: "instrument.active.1".to_string(),
-            product_id: "ollama.embeddings".to_string(),
+            product_id: "gpt_oss.embeddings".to_string(),
             capacity_lot_id: Some(lots[0].capacity_lot_id.clone()),
             buyer_id: Some("npub1buyer".to_string()),
             provider_id: Some("npub1provider".to_string()),
@@ -3961,7 +3961,7 @@ mod tests {
 
         let quotes = build_spot_compute_quotes_from_market(&rfq, &products, &lots, &instruments);
         assert_eq!(quotes.len(), 1);
-        assert_eq!(quotes[0].product_id, "ollama.embeddings");
+        assert_eq!(quotes[0].product_id, "gpt_oss.embeddings");
         assert_eq!(quotes[0].requested_quantity, 2);
         assert_eq!(quotes[0].available_quantity, 3);
         assert_eq!(quotes[0].price_sats, 16);
@@ -3972,7 +3972,7 @@ mod tests {
         let rfq = ForwardComputeRfqDraft {
             rfq_id: "rfq-forward-1".to_string(),
             compute_family: ComputeFamily::Inference,
-            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            preferred_backend: Some(ComputeBackendFamily::GptOss),
             quantity: 1,
             delivery_start_minutes: 180,
             window_minutes: 60,
@@ -3980,12 +3980,12 @@ mod tests {
             capability_constraints: SpotComputeCapabilityConstraints::default(),
         };
         let products = vec![fixture_compute_product(
-            "ollama.text_generation",
+            "gpt_oss.text_generation",
             ComputeFamily::Inference,
         )];
-        let mut forward_lot = fixture_capacity_lot("ollama.text_generation", 4, 21);
+        let mut forward_lot = fixture_capacity_lot("gpt_oss.text_generation", 4, 21);
         let now_ms = current_epoch_ms();
-        forward_lot.capacity_lot_id = "lot.forward.provider.ollama.text_generation".to_string();
+        forward_lot.capacity_lot_id = "lot.forward.provider.gpt_oss.text_generation".to_string();
         forward_lot.delivery_start_ms = now_ms + 180 * 60_000;
         forward_lot.delivery_end_ms = forward_lot.delivery_start_ms + 60 * 60_000;
         forward_lot.metadata = json!({
@@ -3997,23 +3997,23 @@ mod tests {
 
         let quotes = build_forward_compute_quotes_from_market(&rfq, &products, &lots, &instruments);
         assert_eq!(quotes.len(), 1);
-        assert_eq!(quotes[0].product_id, "ollama.text_generation");
+        assert_eq!(quotes[0].product_id, "gpt_oss.text_generation");
         assert_eq!(quotes[0].requested_quantity, 1);
         assert_eq!(quotes[0].source_badge, "desktop.forward_inventory");
     }
 
     #[test]
-    fn delivery_evaluation_accepts_ollama_inference_with_metering_rule() {
-        let job = fixture_active_job_with_ollama_provenance();
+    fn delivery_evaluation_accepts_gpt_oss_inference_with_metering_rule() {
+        let job = fixture_active_job_with_gpt_oss_provenance();
         let binding = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_generation",
         )
         .expect("inference binding");
 
         let evaluation = evaluate_delivery_proof(&job, binding, &fixture_delivery_context("hello"));
 
-        assert_eq!(evaluation.metering_rule_id, "meter.ollama.inference.v1");
+        assert_eq!(evaluation.metering_rule_id, "meter.gpt_oss.inference.v1");
         assert_eq!(evaluation.status, DeliveryProofStatus::Accepted);
         assert_eq!(evaluation.metered_quantity, 1);
         assert_eq!(evaluation.accepted_quantity, 1);
@@ -4023,7 +4023,7 @@ mod tests {
                 .observed_capability_envelope
                 .as_ref()
                 .and_then(|envelope| envelope.backend_family),
-            Some(ComputeBackendFamily::Ollama)
+            Some(ComputeBackendFamily::GptOss)
         );
         assert_eq!(
             evaluation
@@ -4036,13 +4036,13 @@ mod tests {
 
     #[test]
     fn delivery_evaluation_marks_model_drift_as_variance() {
-        let mut job = fixture_active_job_with_ollama_provenance();
+        let mut job = fixture_active_job_with_gpt_oss_provenance();
         job.requested_model = Some("llama3.2:latest".to_string());
         if let Some(provenance) = job.execution_provenance.as_mut() {
             provenance.served_model = "llama3.1:latest".to_string();
         }
         let binding = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_generation",
         )
         .expect("inference binding");
@@ -4059,15 +4059,15 @@ mod tests {
 
     #[test]
     fn delivery_evaluation_rejects_embeddings_without_vector_output() {
-        let mut job = fixture_active_job_with_ollama_provenance();
+        let mut job = fixture_active_job_with_gpt_oss_provenance();
         job.capability = "text_embeddings".to_string();
-        job.compute_product_id = Some("ollama.embeddings".to_string());
+        job.compute_product_id = Some("gpt_oss.embeddings".to_string());
         job.requested_model = Some("nomic-embed-text".to_string());
         if let Some(provenance) = job.execution_provenance.as_mut() {
             provenance.served_model = "nomic-embed-text".to_string();
         }
         let binding = compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::Ollama,
+            LocalInferenceBackend::GptOss,
             "text_embeddings",
         )
         .expect("embedding binding");

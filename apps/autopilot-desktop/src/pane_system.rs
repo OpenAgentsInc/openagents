@@ -5390,7 +5390,7 @@ fn pane_hit_action_for_pane(
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
-                &state.ollama_execution,
+                &state.gpt_oss_execution,
             ) && mission_control_local_model_button_bounds(content_bounds).contains(point)
             {
                 Some(PaneHitAction::MissionControl(
@@ -5398,7 +5398,7 @@ fn pane_hit_action_for_pane(
                 ))
             } else if crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,
-                &state.ollama_execution,
+                &state.gpt_oss_execution,
             ) == Some(
                 crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels,
             ) && mission_control_local_fm_test_button_bounds(content_bounds)

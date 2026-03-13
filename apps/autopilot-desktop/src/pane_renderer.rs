@@ -2926,9 +2926,9 @@ fn paint_provider_status_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Local inference",
-        if provider_runtime.ollama.is_ready() {
+        if provider_runtime.gpt_oss.is_ready() {
             "ready"
-        } else if provider_runtime.ollama.reachable {
+        } else if provider_runtime.gpt_oss.reachable {
             "degraded"
         } else {
             "offline"
@@ -2953,7 +2953,7 @@ fn paint_provider_status_pane(
         y,
         "Configured local model",
         provider_runtime
-            .ollama
+            .gpt_oss
             .configured_model
             .as_deref()
             .unwrap_or("none"),
@@ -2969,11 +2969,11 @@ fn paint_provider_status_pane(
                 crate::state::provider_runtime::LocalInferenceBackend::AppleFoundationModels => {
                     provider_runtime.apple_fm.ready_model.as_deref()
                 }
-                crate::state::provider_runtime::LocalInferenceBackend::Ollama => provider_runtime
-                    .ollama
+                crate::state::provider_runtime::LocalInferenceBackend::GptOss => provider_runtime
+                    .gpt_oss
                     .ready_model
                     .as_deref()
-                    .or(provider_runtime.ollama.configured_model.as_deref()),
+                    .or(provider_runtime.gpt_oss.configured_model.as_deref()),
             })
             .unwrap_or("none"),
     );
@@ -3063,8 +3063,8 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
-    let ollama_status = if provider_blockers.contains(&ProviderBlocker::OllamaUnavailable)
-        || provider_blockers.contains(&ProviderBlocker::OllamaModelUnavailable)
+    let gpt_oss_status = if provider_blockers.contains(&ProviderBlocker::GptOssUnavailable)
+        || provider_blockers.contains(&ProviderBlocker::GptOssModelUnavailable)
     {
         "degraded"
     } else {
@@ -3093,7 +3093,7 @@ fn paint_provider_status_pane(
     ));
     dep_y += 14.0;
     paint.scene.draw_text(paint.text.layout_mono(
-        &format!("local_inference: {ollama_status}"),
+        &format!("local_inference: {gpt_oss_status}"),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
         10.0,
         theme::text::PRIMARY,
@@ -3124,10 +3124,10 @@ fn paint_provider_status_pane(
     paint.scene.draw_text(paint.text.layout_mono(
         &format!(
             "installed: {}",
-            if provider_runtime.ollama.available_models.is_empty() {
+            if provider_runtime.gpt_oss.available_models.is_empty() {
                 "none".to_string()
             } else {
-                provider_runtime.ollama.available_models.join(", ")
+                provider_runtime.gpt_oss.available_models.join(", ")
             }
         ),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
@@ -3138,10 +3138,10 @@ fn paint_provider_status_pane(
     paint.scene.draw_text(paint.text.layout_mono(
         &format!(
             "loaded: {}",
-            if provider_runtime.ollama.loaded_models.is_empty() {
+            if provider_runtime.gpt_oss.loaded_models.is_empty() {
                 "none".to_string()
             } else {
-                provider_runtime.ollama.loaded_models.join(", ")
+                provider_runtime.gpt_oss.loaded_models.join(", ")
             }
         ),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
@@ -3149,7 +3149,7 @@ fn paint_provider_status_pane(
         theme::text::PRIMARY,
     ));
     dep_y += 14.0;
-    if let Some(metrics) = provider_runtime.ollama.last_metrics.as_ref() {
+    if let Some(metrics) = provider_runtime.gpt_oss.last_metrics.as_ref() {
         let total_ms = metrics
             .total_duration_ns
             .map(|ns| ns / 1_000_000)
@@ -3165,7 +3165,7 @@ fn paint_provider_status_pane(
     }
 
     if let Some(error) = provider_runtime
-        .ollama
+        .gpt_oss
         .last_error
         .as_deref()
         .or(provider_runtime.last_error_detail.as_deref())
@@ -6933,19 +6933,19 @@ fn mission_control_blocker_detail(
             .filter(|entry| !entry.is_empty())
             .map(ToString::to_string)
             .unwrap_or_else(|| blocker.detail().to_string()),
-        ProviderBlocker::OllamaUnavailable | ProviderBlocker::OllamaModelUnavailable => {
+        ProviderBlocker::GptOssUnavailable | ProviderBlocker::GptOssModelUnavailable => {
             provider_runtime
-                .ollama
+                .gpt_oss
                 .last_error
                 .as_deref()
                 .map(str::trim)
                 .filter(|entry| !entry.is_empty())
                 .map(ToString::to_string)
                 .unwrap_or_else(|| match blocker {
-                    ProviderBlocker::OllamaUnavailable => {
+                    ProviderBlocker::GptOssUnavailable => {
                         "Local inference backend is unavailable".to_string()
                     }
-                    ProviderBlocker::OllamaModelUnavailable => {
+                    ProviderBlocker::GptOssModelUnavailable => {
                         "No local inference model is ready".to_string()
                     }
                     _ => blocker.detail().to_string(),

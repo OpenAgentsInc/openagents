@@ -28,7 +28,7 @@ use crate::state::job_inbox::{
     local_provider_keys, normalize_provider_keys,
 };
 use crate::state::provider_runtime::{
-    LocalInferenceBackend, ProviderAppleFmRuntimeState, ProviderOllamaRuntimeState,
+    LocalInferenceBackend, ProviderAppleFmRuntimeState, ProviderGptOssRuntimeState,
 };
 use nostr::nip90::{
     JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION, create_job_feedback_event,
@@ -238,17 +238,17 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
 
     if stage == JobLifecycleStage::Accepted {
         match provider_execution_backend_for_active_job(state) {
-            Some(ProviderExecutionBackend::Ollama) => {
+            Some(ProviderExecutionBackend::GptOss) => {
                 if state.active_job.execution_backend_request_id.is_some() {
                     return false;
                 }
-                match queue_provider_ollama_execution_start(state) {
+                match queue_provider_gpt_oss_execution_start(state) {
                     Ok(()) => return true,
                     Err(error) => {
                         fail_active_job_execution(
                             state,
                             format!("failed to start local inference execution: {error}"),
-                            "active_job.ollama_execution_start_failed",
+                            "active_job.gpt_oss_execution_start_failed",
                             true,
                         );
                         return true;
@@ -637,8 +637,8 @@ pub(super) fn apply_active_job_local_inference_runtime_update(
 ) -> bool {
     match update {
         LocalInferenceRuntimeUpdate::Snapshot(snapshot) => {
-            state.ollama_execution = (*snapshot).into();
-            sync_provider_runtime_ollama_state(state);
+            state.gpt_oss_execution = (*snapshot).into();
+            sync_provider_runtime_gpt_oss_state(state);
             if state
                 .provider_runtime
                 .inventory_session_started_at_ms
@@ -659,12 +659,14 @@ pub(super) fn apply_active_job_local_inference_runtime_update(
             true
         }
         LocalInferenceRuntimeUpdate::Started(started) => {
-            apply_ollama_execution_started(state, started)
+            apply_gpt_oss_execution_started(state, started)
         }
         LocalInferenceRuntimeUpdate::Completed(completed) => {
-            apply_ollama_execution_completed(state, completed)
+            apply_gpt_oss_execution_completed(state, completed)
         }
-        LocalInferenceRuntimeUpdate::Failed(failed) => apply_ollama_execution_failed(state, failed),
+        LocalInferenceRuntimeUpdate::Failed(failed) => {
+            apply_gpt_oss_execution_failed(state, failed)
+        }
     }
 }
 
@@ -704,19 +706,20 @@ pub(super) fn apply_active_job_apple_fm_update(
     }
 }
 
-fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
-    state.provider_runtime.ollama.reachable = state.ollama_execution.reachable;
-    state.provider_runtime.ollama.configured_model =
-        state.ollama_execution.configured_model.clone();
-    state.provider_runtime.ollama.ready_model = state.ollama_execution.ready_model.clone();
-    state.provider_runtime.ollama.available_models =
-        state.ollama_execution.available_models.clone();
-    state.provider_runtime.ollama.loaded_models = state.ollama_execution.loaded_models.clone();
-    state.provider_runtime.ollama.last_error = state.ollama_execution.last_error.clone();
-    state.provider_runtime.ollama.last_action = state.ollama_execution.last_action.clone();
-    state.provider_runtime.ollama.last_request_id = state.ollama_execution.last_request_id.clone();
-    state.provider_runtime.ollama.last_metrics = state.ollama_execution.last_metrics.clone();
-    state.provider_runtime.ollama.refreshed_at = state.ollama_execution.refreshed_at;
+fn sync_provider_runtime_gpt_oss_state(state: &mut RenderState) {
+    state.provider_runtime.gpt_oss.reachable = state.gpt_oss_execution.reachable;
+    state.provider_runtime.gpt_oss.configured_model =
+        state.gpt_oss_execution.configured_model.clone();
+    state.provider_runtime.gpt_oss.ready_model = state.gpt_oss_execution.ready_model.clone();
+    state.provider_runtime.gpt_oss.available_models =
+        state.gpt_oss_execution.available_models.clone();
+    state.provider_runtime.gpt_oss.loaded_models = state.gpt_oss_execution.loaded_models.clone();
+    state.provider_runtime.gpt_oss.last_error = state.gpt_oss_execution.last_error.clone();
+    state.provider_runtime.gpt_oss.last_action = state.gpt_oss_execution.last_action.clone();
+    state.provider_runtime.gpt_oss.last_request_id =
+        state.gpt_oss_execution.last_request_id.clone();
+    state.provider_runtime.gpt_oss.last_metrics = state.gpt_oss_execution.last_metrics.clone();
+    state.provider_runtime.gpt_oss.refreshed_at = state.gpt_oss_execution.refreshed_at;
 }
 
 fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
@@ -746,14 +749,14 @@ fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
 fn sync_provider_nip90_compute_capability(state: &mut RenderState) {
     if !crate::app_state::mission_control_sell_compute_supported(
         state.desktop_shell_mode,
-        &state.ollama_execution,
+        &state.gpt_oss_execution,
     ) {
         return;
     }
     if matches!(
         crate::app_state::mission_control_local_runtime_lane(
             state.desktop_shell_mode,
-            &state.ollama_execution
+            &state.gpt_oss_execution
         ),
         Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
     ) && !state
@@ -929,26 +932,26 @@ fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90Co
         Some(LocalInferenceBackend::AppleFoundationModels) => {
             provider_compute_capability_from_apple_fm(state)
         }
-        Some(LocalInferenceBackend::Ollama) => provider_compute_capability_from_ollama(state),
-        None if state.provider_runtime.ollama.reachable
-            || state.provider_runtime.ollama.last_error.is_some()
-            || state.provider_runtime.ollama.configured_model.is_some() =>
+        Some(LocalInferenceBackend::GptOss) => provider_compute_capability_from_gpt_oss(state),
+        None if state.provider_runtime.gpt_oss.reachable
+            || state.provider_runtime.gpt_oss.last_error.is_some()
+            || state.provider_runtime.gpt_oss.configured_model.is_some() =>
         {
-            provider_compute_capability_from_ollama(state)
+            provider_compute_capability_from_gpt_oss(state)
         }
         None => provider_compute_capability_from_apple_fm(state),
     }
 }
 
-fn provider_compute_capability_from_ollama(state: &RenderState) -> ProviderNip90ComputeCapability {
+fn provider_compute_capability_from_gpt_oss(state: &RenderState) -> ProviderNip90ComputeCapability {
     ProviderNip90ComputeCapability {
-        backend: "psionic".to_string(),
-        reachable: state.ollama_execution.reachable,
-        configured_model: state.ollama_execution.configured_model.clone(),
-        ready_model: state.ollama_execution.ready_model.clone(),
-        available_models: state.ollama_execution.available_models.clone(),
-        loaded_models: state.ollama_execution.loaded_models.clone(),
-        last_error: state.ollama_execution.last_error.clone(),
+        backend: "gpt_oss".to_string(),
+        reachable: state.gpt_oss_execution.reachable,
+        configured_model: state.gpt_oss_execution.configured_model.clone(),
+        ready_model: state.gpt_oss_execution.ready_model.clone(),
+        available_models: state.gpt_oss_execution.available_models.clone(),
+        loaded_models: state.gpt_oss_execution.loaded_models.clone(),
+        last_error: state.gpt_oss_execution.last_error.clone(),
     }
 }
 
@@ -1369,13 +1372,13 @@ fn set_active_job_action_error(state: &mut RenderState, error: impl Into<String>
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProviderExecutionBackend {
     Codex,
-    Ollama,
+    GptOss,
     AppleFoundationModels,
 }
 
 fn provider_execution_backend_for_kind(request_kind: u16) -> ProviderExecutionBackend {
     if request_kind == KIND_JOB_TEXT_GENERATION {
-        ProviderExecutionBackend::Ollama
+        ProviderExecutionBackend::GptOss
     } else {
         ProviderExecutionBackend::Codex
     }
@@ -1387,7 +1390,7 @@ fn provider_execution_backend_for_active_job(
     let request_kind = state.active_job.job.as_ref()?.request_kind;
     if request_kind == KIND_JOB_TEXT_GENERATION {
         return match state.provider_runtime.active_inference_backend()? {
-            LocalInferenceBackend::Ollama => Some(ProviderExecutionBackend::Ollama),
+            LocalInferenceBackend::GptOss => Some(ProviderExecutionBackend::GptOss),
             LocalInferenceBackend::AppleFoundationModels => {
                 Some(ProviderExecutionBackend::AppleFoundationModels)
             }
@@ -1426,7 +1429,7 @@ fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), 
     Ok(())
 }
 
-fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), String> {
+fn queue_provider_gpt_oss_execution_start(state: &mut RenderState) -> Result<(), String> {
     let Some(job) = state.active_job.job.as_ref() else {
         return Err("Cannot start local inference execution without an active job".to_string());
     };
@@ -1589,7 +1592,7 @@ fn active_job_matches_execution_turn(state: &RenderState, thread_id: &str, turn_
         && state.active_job.execution_turn_id.as_deref() == Some(turn_id)
 }
 
-fn active_job_matches_ollama_request(state: &RenderState, request_id: &str) -> bool {
+fn active_job_matches_gpt_oss_request(state: &RenderState, request_id: &str) -> bool {
     state.active_job.job.as_ref().is_some_and(|job| {
         job.request_id == request_id
             && state.active_job.execution_backend_request_id.as_deref() == Some(request_id)
@@ -1597,7 +1600,7 @@ fn active_job_matches_ollama_request(state: &RenderState, request_id: &str) -> b
 }
 
 fn active_job_matches_apple_request(state: &RenderState, request_id: &str) -> bool {
-    active_job_matches_ollama_request(state, request_id)
+    active_job_matches_gpt_oss_request(state, request_id)
 }
 
 pub(super) fn active_job_matches_publish_outcome(
@@ -1648,11 +1651,11 @@ fn store_execution_output(state: &mut RenderState, output: &str) {
     }
 }
 
-fn apply_ollama_execution_started(
+fn apply_gpt_oss_execution_started(
     state: &mut RenderState,
     started: LocalInferenceExecutionStarted,
 ) -> bool {
-    if !active_job_matches_ollama_request(state, started.request_id.as_str()) {
+    if !active_job_matches_gpt_oss_request(state, started.request_id.as_str()) {
         return false;
     }
     state.provider_runtime.last_result = Some(format!(
@@ -1664,23 +1667,23 @@ fn apply_ollama_execution_started(
         started.model
     ));
     if let Err(error) =
-        transition_active_job_to_running(state, "active_job.ollama_execution_started")
+        transition_active_job_to_running(state, "active_job.gpt_oss_execution_started")
     {
         fail_active_job_execution(
             state,
             format!("failed to transition active local inference job to running: {error}"),
-            "active_job.ollama_running_transition_failed",
+            "active_job.gpt_oss_running_transition_failed",
             true,
         );
     }
     true
 }
 
-fn apply_ollama_execution_completed(
+fn apply_gpt_oss_execution_completed(
     state: &mut RenderState,
     completed: LocalInferenceExecutionCompleted,
 ) -> bool {
-    if !active_job_matches_ollama_request(state, completed.request_id.as_str()) {
+    if !active_job_matches_gpt_oss_request(state, completed.request_id.as_str()) {
         return false;
     }
     state.active_job.execution_backend_request_id = None;
@@ -1703,18 +1706,18 @@ fn apply_ollama_execution_completed(
     true
 }
 
-fn apply_ollama_execution_failed(
+fn apply_gpt_oss_execution_failed(
     state: &mut RenderState,
     failed: LocalInferenceExecutionFailed,
 ) -> bool {
-    if !active_job_matches_ollama_request(state, failed.request_id.as_str()) {
+    if !active_job_matches_gpt_oss_request(state, failed.request_id.as_str()) {
         return false;
     }
     state.active_job.execution_backend_request_id = None;
     fail_active_job_execution(
         state,
         format!("local inference execution failed: {}", failed.error),
-        "active_job.ollama_execution_failed",
+        "active_job.gpt_oss_execution_failed",
         true,
     );
     true
@@ -2658,9 +2661,9 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
     }
     if request.request_kind == KIND_JOB_TEXT_GENERATION {
         match state.provider_runtime.active_inference_backend() {
-            Some(LocalInferenceBackend::Ollama) => {
+            Some(LocalInferenceBackend::GptOss) => {
                 if let Some(reason) =
-                    ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
+                    gpt_oss_request_accept_block_reason(&state.provider_runtime.gpt_oss, request)
                 {
                     return Some(reason);
                 }
@@ -2758,8 +2761,8 @@ fn sync_provider_runtime_queue_depth(state: &mut RenderState) {
     state.provider_runtime.queue_depth = state.active_job.inflight_job_count();
 }
 
-fn ollama_request_accept_block_reason(
-    ollama: &ProviderOllamaRuntimeState,
+fn gpt_oss_request_accept_block_reason(
+    gpt_oss: &ProviderGptOssRuntimeState,
     request: &JobInboxRequest,
 ) -> Option<String> {
     if request.request_kind != KIND_JOB_TEXT_GENERATION {
@@ -2784,39 +2787,39 @@ fn ollama_request_accept_block_reason(
             output_mime
         ));
     }
-    if !ollama.reachable {
+    if !gpt_oss.reachable {
         return Some(
-            ollama
+            gpt_oss
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "Local inference backend is unavailable".to_string()),
         );
     }
     if let Some(requested_model) = request.requested_model.as_deref() {
-        if !ollama
+        if !gpt_oss
             .available_models
             .iter()
             .any(|candidate| candidate == requested_model)
         {
             return Some(format!(
-                "Requested local model '{}' is not installed locally",
+                "Requested GPT-OSS model '{}' is not installed locally",
                 requested_model
             ));
         }
-        if let Some(serving_model) = ollama
+        if let Some(serving_model) = gpt_oss
             .ready_model
             .as_deref()
-            .or(ollama.configured_model.as_deref())
+            .or(gpt_oss.configured_model.as_deref())
             && requested_model != serving_model
         {
             return Some(format!(
-                "Requested local model '{}' is blocked by local policy; provider currently serves '{}'",
+                "Requested GPT-OSS model '{}' is blocked by local policy; provider currently serves '{}'",
                 requested_model, serving_model
             ));
         }
-    } else if !ollama.is_ready() {
+    } else if !gpt_oss.is_ready() {
         return Some(
-            ollama
+            gpt_oss
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "No local inference model is ready".to_string()),
@@ -2987,9 +2990,9 @@ mod tests {
         active_job_settlement_timeout_seconds, active_job_timeout_reason,
         apple_fm_request_accept_block_reason, apply_payment_required_feedback_publish_outcome,
         build_nip90_feedback_event, clear_active_job_phase_deadline,
-        extend_active_job_phase_deadline_at_least, manual_review_demand_assessment_for,
-        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
-        ollama_request_accept_block_reason, open_network_expiry_block_reason_for,
+        extend_active_job_phase_deadline_at_least, gpt_oss_request_accept_block_reason,
+        manual_review_demand_assessment_for, next_auto_accept_request_id_for,
+        next_invalid_request_rejection_for, open_network_expiry_block_reason_for,
         provider_demand_risk_assessment_for, provider_execution_backend_for_kind,
         result_publish_retry_due, set_active_job_phase_deadline_at, turn_completed_failed,
         visible_result_content_for_job_kind,
@@ -3002,7 +3005,7 @@ mod tests {
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::provider_nip90_lane::{ProviderNip90PublishOutcome, ProviderNip90PublishRole};
     use crate::state::provider_runtime::{
-        ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState, ProviderRuntimeState,
+        ProviderAppleFmRuntimeState, ProviderGptOssRuntimeState, ProviderMode, ProviderRuntimeState,
     };
     use nostr::{NostrIdentity, nip90::KIND_JOB_TEXT_GENERATION};
     use std::path::PathBuf;
@@ -3040,15 +3043,15 @@ mod tests {
         }
     }
 
-    fn fixture_ollama_runtime() -> ProviderOllamaRuntimeState {
-        ProviderOllamaRuntimeState {
+    fn fixture_gpt_oss_runtime() -> ProviderGptOssRuntimeState {
+        ProviderGptOssRuntimeState {
             reachable: true,
             configured_model: Some("llama3.2:latest".to_string()),
             ready_model: Some("llama3.2:latest".to_string()),
             available_models: vec!["llama3.2:latest".to_string(), "mistral:latest".to_string()],
             loaded_models: vec!["llama3.2:latest".to_string()],
             last_error: None,
-            last_action: Some("Ollama ready".to_string()),
+            last_action: Some("GPT-OSS ready".to_string()),
             last_request_id: None,
             last_metrics: None,
             refreshed_at: None,
@@ -3533,10 +3536,10 @@ mod tests {
     }
 
     #[test]
-    fn text_generation_jobs_route_to_ollama_backend() {
+    fn text_generation_jobs_route_to_gpt_oss_backend() {
         assert_eq!(
             provider_execution_backend_for_kind(KIND_JOB_TEXT_GENERATION),
-            ProviderExecutionBackend::Ollama
+            ProviderExecutionBackend::GptOss
         );
         assert_eq!(
             provider_execution_backend_for_kind(5999),
@@ -3545,19 +3548,19 @@ mod tests {
     }
 
     #[test]
-    fn ollama_snapshot_needs_ready_model_before_serving() {
+    fn gpt_oss_snapshot_needs_ready_model_before_serving() {
         let snapshot = LocalInferenceExecutionSnapshot {
             reachable: true,
             ready_model: None,
-            last_error: Some("No local Ollama text-generation models are installed".to_string()),
+            last_error: Some("No local GPT-OSS text-generation models are installed".to_string()),
             ..LocalInferenceExecutionSnapshot::default()
         };
         assert!(!snapshot.is_ready());
     }
 
     #[test]
-    fn ollama_rejects_requested_model_missing_locally() {
-        let ollama = fixture_ollama_runtime();
+    fn gpt_oss_rejects_requested_model_missing_locally() {
+        let gpt_oss = fixture_gpt_oss_runtime();
         let mut request = fixture_request(
             "req-model-missing",
             JobInboxValidation::Valid,
@@ -3566,14 +3569,14 @@ mod tests {
         request.requested_model = Some("phi4:latest".to_string());
 
         assert_eq!(
-            ollama_request_accept_block_reason(&ollama, &request),
-            Some("Requested Ollama model 'phi4:latest' is not installed locally".to_string())
+            gpt_oss_request_accept_block_reason(&gpt_oss, &request),
+            Some("Requested GPT-OSS model 'phi4:latest' is not installed locally".to_string())
         );
     }
 
     #[test]
-    fn ollama_rejects_requested_model_blocked_by_local_policy() {
-        let ollama = fixture_ollama_runtime();
+    fn gpt_oss_rejects_requested_model_blocked_by_local_policy() {
+        let gpt_oss = fixture_gpt_oss_runtime();
         let mut request = fixture_request(
             "req-model-blocked",
             JobInboxValidation::Valid,
@@ -3582,17 +3585,17 @@ mod tests {
         request.requested_model = Some("mistral:latest".to_string());
 
         assert_eq!(
-            ollama_request_accept_block_reason(&ollama, &request),
+            gpt_oss_request_accept_block_reason(&gpt_oss, &request),
             Some(
-                "Requested Ollama model 'mistral:latest' is blocked by local policy; provider currently serves 'llama3.2:latest'"
+                "Requested GPT-OSS model 'mistral:latest' is blocked by local policy; provider currently serves 'llama3.2:latest'"
                     .to_string()
             )
         );
     }
 
     #[test]
-    fn ollama_rejects_unsupported_output_mime() {
-        let ollama = fixture_ollama_runtime();
+    fn gpt_oss_rejects_unsupported_output_mime() {
+        let gpt_oss = fixture_gpt_oss_runtime();
         let mut request = fixture_request(
             "req-output",
             JobInboxValidation::Valid,
@@ -3601,7 +3604,7 @@ mod tests {
         request.requested_output_mime = Some("application/json".to_string());
 
         assert_eq!(
-            ollama_request_accept_block_reason(&ollama, &request),
+            gpt_oss_request_accept_block_reason(&gpt_oss, &request),
             Some(
                 "Unsupported output MIME 'application/json'; provider currently serves text/plain or text/markdown"
                     .to_string()

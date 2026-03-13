@@ -609,7 +609,7 @@ impl ProviderPersistenceStore {
                 row.map_err(|error| format!("Failed to decode backend health row: {error}"))?;
             let health = decode_json::<ProviderBackendHealth>(&value_json)?;
             match backend_kind.as_str() {
-                "ollama" => availability.ollama = health,
+                "gpt_oss" => availability.gpt_oss = health,
                 "apple_foundation_models" => availability.apple_foundation_models = health,
                 _ => {}
             }
@@ -1126,8 +1126,8 @@ fn replace_backend_rows(
         .map_err(|error| format!("Failed to clear provider backend health rows: {error}"))?;
     insert_backend_row(
         tx,
-        ProviderBackendKind::Ollama,
-        &availability.ollama,
+        ProviderBackendKind::GptOss,
+        &availability.gpt_oss,
         captured_at_ms,
     )?;
     insert_backend_row(
@@ -1335,7 +1335,7 @@ fn load_json_rows<T: DeserializeOwned>(
 
 fn backend_storage_key(backend_kind: ProviderBackendKind) -> &'static str {
     match backend_kind {
-        ProviderBackendKind::Ollama => "ollama",
+        ProviderBackendKind::GptOss => "gpt_oss",
         ProviderBackendKind::AppleFoundationModels => "apple_foundation_models",
     }
 }
@@ -1447,11 +1447,11 @@ mod tests {
                 inventory_session_started_at_ms: Some(1_762_300_000_000),
                 last_completed_job_at_epoch_ms: Some(1_762_300_030_000),
                 last_authoritative_event_id: Some("evt-1".to_string()),
-                execution_backend_label: "local Ollama runtime".to_string(),
+                execution_backend_label: "local GPT-OSS runtime".to_string(),
                 provider_blocker_codes: Vec::new(),
             },
             availability: ProviderAvailability {
-                ollama: ProviderBackendHealth {
+                gpt_oss: ProviderBackendHealth {
                     reachable: true,
                     ready: true,
                     configured_model: Some("llama3.2:latest".to_string()),
@@ -1508,12 +1508,12 @@ mod tests {
                 },
             },
             inventory_rows: vec![ProviderInventoryRow {
-                target: ProviderComputeProduct::OllamaInference,
+                target: ProviderComputeProduct::GptOssInference,
                 enabled: true,
                 backend_ready: true,
                 eligible: true,
                 capability_summary:
-                    "backend=ollama execution=local_inference family=inference".to_string(),
+                    "backend=gpt_oss execution=local_inference family=inference".to_string(),
                 source_badge: "local".to_string(),
                 capacity_lot_id: Some("lot-1".to_string()),
                 total_quantity: 1,
@@ -1534,9 +1534,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "succeeded".to_string(),
                 demand_source: "open_network".to_string(),
-                product_id: Some("ollama.text_generation".to_string()),
+                product_id: Some("gpt_oss.text_generation".to_string()),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("ollama".to_string()),
+                backend_family: Some("gpt_oss".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1553,7 +1553,7 @@ mod tests {
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("ollama".to_string()),
+                backend_family: Some("gpt_oss".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1625,7 +1625,7 @@ mod tests {
                 .receipts
                 .first()
                 .and_then(|receipt| receipt.backend_family.as_deref()),
-            Some("ollama")
+            Some("gpt_oss")
         );
         assert_eq!(
             snapshot

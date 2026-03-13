@@ -437,7 +437,7 @@ impl Default for NetworkRequestsPaneInputs {
                 .value("inference")
                 .placeholder("Compute family"),
             preferred_backend: TextInput::new()
-                .value("psionic")
+                .value("gpt_oss")
                 .placeholder("Preferred backend (optional)"),
             capability_constraints: TextInput::new()
                 .placeholder("Capability envelope constraints (JSON or key=value list)"),
@@ -9326,7 +9326,7 @@ pub struct RenderState {
     pub nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
-    pub ollama_execution: LocalInferenceExecutionSnapshot,
+    pub gpt_oss_execution: LocalInferenceExecutionSnapshot,
     pub local_inference_runtime: Box<dyn LocalInferenceRuntime>,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
@@ -9551,7 +9551,7 @@ impl RenderState {
         mission_control_local_runtime_is_ready(
             self.desktop_shell_mode,
             &self.provider_runtime,
-            &self.ollama_execution,
+            &self.gpt_oss_execution,
         )
     }
 
@@ -9625,11 +9625,11 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        if !mission_control_sell_compute_supported(self.desktop_shell_mode, &self.ollama_execution)
+        if !mission_control_sell_compute_supported(self.desktop_shell_mode, &self.gpt_oss_execution)
         {
             return blockers;
         }
-        match mission_control_local_runtime_lane(self.desktop_shell_mode, &self.ollama_execution) {
+        match mission_control_local_runtime_lane(self.desktop_shell_mode, &self.gpt_oss_execution) {
             Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
                 if !self.provider_runtime.apple_fm.reachable {
                     blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
@@ -9638,10 +9638,10 @@ impl RenderState {
                 }
             }
             Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
-                if !self.provider_runtime.ollama.reachable {
-                    blockers.push(ProviderBlocker::OllamaUnavailable);
-                } else if !self.provider_runtime.ollama.is_ready() {
-                    blockers.push(ProviderBlocker::OllamaModelUnavailable);
+                if !self.provider_runtime.gpt_oss.reachable {
+                    blockers.push(ProviderBlocker::GptOssUnavailable);
+                } else if !self.provider_runtime.gpt_oss.is_ready() {
+                    blockers.push(ProviderBlocker::GptOssModelUnavailable);
                 }
             }
             None => {}
@@ -16278,7 +16278,6 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-
         if super::mission_control_uses_apple_fm() {
             assert!(
                 lines
@@ -16287,7 +16286,8 @@ mod tests {
             );
         } else {
             assert!(lines.iter().any(|line| {
-                line.text == "Provider offline. Platform not supported for selling compute."
+                line.text
+                    .contains("Provider offline. Platform not supported for selling compute.")
             }));
             assert!(
                 !lines

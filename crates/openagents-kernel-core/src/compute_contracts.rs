@@ -16,7 +16,7 @@ use crate::compute::{
     ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily,
     ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
     ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
+    DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
     StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
@@ -466,7 +466,7 @@ fn compute_product_status_from_proto(value: i32) -> ComputeProductStatus {
 
 fn compute_backend_family_to_proto(value: ComputeBackendFamily) -> i32 {
     match value {
-        ComputeBackendFamily::Ollama => proto_compute::ComputeBackendFamily::Ollama as i32,
+        ComputeBackendFamily::GptOss => proto_compute::ComputeBackendFamily::GptOss as i32,
         ComputeBackendFamily::AppleFoundationModels => {
             proto_compute::ComputeBackendFamily::AppleFoundationModels as i32
         }
@@ -477,7 +477,7 @@ fn compute_backend_family_from_proto(value: i32) -> Result<ComputeBackendFamily>
     match proto_compute::ComputeBackendFamily::try_from(value)
         .unwrap_or(proto_compute::ComputeBackendFamily::Unspecified)
     {
-        proto_compute::ComputeBackendFamily::Ollama => Ok(ComputeBackendFamily::Ollama),
+        proto_compute::ComputeBackendFamily::GptOss => Ok(ComputeBackendFamily::GptOss),
         proto_compute::ComputeBackendFamily::AppleFoundationModels => {
             Ok(ComputeBackendFamily::AppleFoundationModels)
         }
@@ -1086,8 +1086,8 @@ pub fn compute_capability_envelope_to_proto(
                 minimum_macos_version: platform.minimum_macos_version.clone(),
             }
         }),
-        ollama_runtime: envelope.ollama_runtime.as_ref().map(|runtime| {
-            proto_compute::OllamaRuntimeCapability {
+        gpt_oss_runtime: envelope.gpt_oss_runtime.as_ref().map(|runtime| {
+            proto_compute::GptOssRuntimeCapability {
                 runtime_ready: runtime.runtime_ready,
                 model_name: runtime.model_name.clone(),
                 quantization: runtime.quantization.clone(),
@@ -1133,10 +1133,10 @@ pub fn compute_capability_envelope_from_proto(
                 apple_intelligence_available: platform.apple_intelligence_available,
                 minimum_macos_version: platform.minimum_macos_version.clone(),
             }),
-        ollama_runtime: envelope
-            .ollama_runtime
+        gpt_oss_runtime: envelope
+            .gpt_oss_runtime
             .as_ref()
-            .map(|runtime| OllamaRuntimeCapability {
+            .map(|runtime| GptOssRuntimeCapability {
                 runtime_ready: runtime.runtime_ready,
                 model_name: runtime.model_name.clone(),
                 quantization: runtime.quantization.clone(),
@@ -2496,7 +2496,7 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
         ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        OllamaRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
@@ -2506,7 +2506,7 @@ mod tests {
 
     fn compute_product_fixture() -> ComputeProduct {
         ComputeProduct {
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             resource_class: "compute".to_string(),
             capacity_unit: "request".to_string(),
             window_spec: "session".to_string(),
@@ -2522,14 +2522,14 @@ mod tests {
             created_at_ms: 1_700_000_000_000,
             taxonomy_version: Some("compute.launch.v1".to_string()),
             capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
                 model_policy: Some("text_generation".to_string()),
                 model_family: Some("llama3.3".to_string()),
                 host_capability: None,
                 apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
                     runtime_ready: Some(true),
                     model_name: Some("llama3.3".to_string()),
                     quantization: Some("q4_k_m".to_string()),
@@ -2545,7 +2545,7 @@ mod tests {
     fn capacity_lot_fixture() -> CapacityLot {
         CapacityLot {
             capacity_lot_id: "lot.compute.alpha".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             provider_id: "provider.alpha".to_string(),
             delivery_start_ms: 1_700_000_000_000,
             delivery_end_ms: 1_700_000_060_000,
@@ -2563,7 +2563,7 @@ mod tests {
     fn capacity_instrument_fixture() -> CapacityInstrument {
         CapacityInstrument {
             instrument_id: "instrument.compute.alpha".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: Some("lot.compute.alpha".to_string()),
             buyer_id: Some("buyer.alpha".to_string()),
             provider_id: Some("provider.alpha".to_string()),
@@ -2588,7 +2588,7 @@ mod tests {
         DeliveryProof {
             delivery_proof_id: "delivery.compute.alpha".to_string(),
             capacity_lot_id: "lot.compute.alpha".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             instrument_id: Some("instrument.compute.alpha".to_string()),
             contract_id: Some("contract.alpha".to_string()),
             created_at_ms: 1_700_000_002_000,
@@ -2602,14 +2602,14 @@ mod tests {
             status: DeliveryProofStatus::Accepted,
             rejection_reason: None,
             promised_capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
-                model_policy: Some("ollama.text_generation.launch".to_string()),
+                model_policy: Some("gpt_oss.text_generation.launch".to_string()),
                 model_family: Some("llama3.2".to_string()),
                 host_capability: None,
                 apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
                     runtime_ready: Some(true),
                     model_name: Some("llama3.2".to_string()),
                     quantization: Some("q4_k_m".to_string()),
@@ -2619,14 +2619,14 @@ mod tests {
                 concurrency_limit: Some(1),
             }),
             observed_capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
-                model_policy: Some("ollama.text_generation.launch".to_string()),
+                model_policy: Some("gpt_oss.text_generation.launch".to_string()),
                 model_family: Some("llama3.2".to_string()),
                 host_capability: None,
                 apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
                     runtime_ready: Some(true),
                     model_name: Some("llama3.2".to_string()),
                     quantization: Some("q4_k_m".to_string()),
@@ -2635,14 +2635,14 @@ mod tests {
                 throughput_per_minute: Some(1_100),
                 concurrency_limit: Some(1),
             }),
-            metadata: json!({"backend": "ollama"}),
+            metadata: json!({"backend": "gpt_oss"}),
         }
     }
 
     fn compute_index_fixture() -> ComputeIndex {
         ComputeIndex {
             index_id: "index.compute.alpha".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             observation_window_start_ms: 1_700_000_000_000,
             observation_window_end_ms: 1_700_000_060_000,
             published_at_ms: 1_700_000_061_000,
@@ -2660,7 +2660,7 @@ mod tests {
     fn structured_capacity_instrument_fixture() -> StructuredCapacityInstrument {
         StructuredCapacityInstrument {
             structured_instrument_id: "structured.compute.alpha".to_string(),
-            product_id: "ollama.text_generation".to_string(),
+            product_id: "gpt_oss.text_generation".to_string(),
             buyer_id: Some("buyer.alpha".to_string()),
             provider_id: Some("provider.alpha".to_string()),
             kind: StructuredCapacityInstrumentKind::Swap,

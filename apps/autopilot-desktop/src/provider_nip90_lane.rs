@@ -2348,9 +2348,9 @@ mod tests {
         }
     }
 
-    fn fixture_ollama_capability() -> ProviderNip90ComputeCapability {
+    fn fixture_gpt_oss_capability() -> ProviderNip90ComputeCapability {
         ProviderNip90ComputeCapability {
-            backend: "ollama".to_string(),
+            backend: "gpt_oss".to_string(),
             reachable: true,
             configured_model: Some("llama3.2:latest".to_string()),
             ready_model: Some("llama3.2:latest".to_string()),
@@ -2731,7 +2731,7 @@ mod tests {
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
         worker
             .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
-                capability: fixture_ollama_capability(),
+                capability: fixture_gpt_oss_capability(),
             })
             .expect("queue ready capability");
 
@@ -2860,7 +2860,7 @@ mod tests {
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
         worker
             .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
-                capability: fixture_ollama_capability(),
+                capability: fixture_gpt_oss_capability(),
             })
             .expect("queue ready capability");
         worker
@@ -2959,7 +2959,7 @@ mod tests {
 
         worker
             .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
-                capability: fixture_ollama_capability(),
+                capability: fixture_gpt_oss_capability(),
             })
             .expect("queue ready capability");
         worker
@@ -3461,9 +3461,9 @@ mod tests {
             .expect("queue identity command");
         worker
             .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
-                capability: fixture_ollama_capability(),
+                capability: fixture_gpt_oss_capability(),
             })
-            .expect("queue ollama capability command");
+            .expect("queue gpt_oss capability command");
         worker
             .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
             .expect("queue online command");
@@ -3510,7 +3510,7 @@ mod tests {
         let metadata: serde_json::Value =
             serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
         assert_eq!(metadata["name"], "Autopilot");
-        assert_eq!(metadata["backend"], "ollama");
+        assert_eq!(metadata["backend"], "gpt_oss");
         assert_eq!(metadata["status"], "healthy");
         assert_eq!(metadata["serving_model"], "llama3.2:latest");
 
@@ -3578,7 +3578,7 @@ mod tests {
     }
 
     #[test]
-    fn worker_publishes_disabled_handler_when_ollama_unhealthy() {
+    fn worker_publishes_disabled_handler_when_gpt_oss_unhealthy() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -3650,7 +3650,7 @@ mod tests {
         let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
         worker
             .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
-                capability: fixture_ollama_capability(),
+                capability: fixture_gpt_oss_capability(),
             })
             .expect("queue ready capability");
         worker
