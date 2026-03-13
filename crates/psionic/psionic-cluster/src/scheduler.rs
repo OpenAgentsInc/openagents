@@ -2088,6 +2088,66 @@ mod tests {
     }
 
     #[test]
+    fn whole_request_scheduler_refuses_disallowed_artifact_staging_explicitly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1")
+                    .with_provenance_digest("prov-digest")
+                    .with_governance_digest("gov-digest"),
+                ClusterArtifactResidencyStatus::CopyRequired,
+            )
+            .with_transfer_method(crate::ClusterArtifactTransferMethod::PeerCopy)
+            .with_detail("copy required before execution"),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-b"),
+                ClusterArtifactReference::new("decoder", "artifact-1")
+                    .with_provenance_digest("prov-digest")
+                    .with_governance_digest("gov-digest"),
+                ClusterArtifactResidencyStatus::PullRequired,
+            )
+            .with_transfer_method(crate::ClusterArtifactTransferMethod::OciPull)
+            .with_detail("pull required before execution"),
+        );
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
+            .with_served_artifact_digest("artifact-1")
+            .with_staging_policy(false, false);
+
+        let failure = schedule_remote_whole_request(&state, &request)
+            .expect_err("disallowed artifact staging should refuse scheduling");
+
+        assert_eq!(
+            failure.code,
+            WholeRequestSchedulingFailureCode::NoEligibleRemoteNode
+        );
+        assert!(failure.artifact_residency_digest.is_some());
+        assert!(failure.refusals.iter().any(|refusal| {
+            refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-a"))
+                && refusal.code == WholeRequestSchedulingRefusalCode::ArtifactStagingNotAllowed
+                && refusal
+                    .detail
+                    .contains("requires disallowed artifact staging")
+        }));
+        assert!(failure.refusals.iter().any(|refusal| {
+            refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-b"))
+                && refusal.code == WholeRequestSchedulingRefusalCode::ArtifactStagingNotAllowed
+                && refusal
+                    .detail
+                    .contains("requires disallowed artifact staging")
+        }));
+        Ok(())
+    }
+
+    #[test]
     fn whole_request_scheduler_refuses_revoked_remote_candidate_even_if_membership_is_ready()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();

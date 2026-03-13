@@ -858,6 +858,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is where clustered inference begins to converge with later training-class transport needs.
 
 15. **Psionic Cluster: add artifact staging and residency planning**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3499`.
    - Model where model bytes, adapters, checkpoints, and datasets live before a request is admitted.
    - This should produce machine-checkable residency facts that later land in delivery proofs.
 
