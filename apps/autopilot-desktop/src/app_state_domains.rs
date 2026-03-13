@@ -35,6 +35,7 @@ pub struct RivePreviewPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub asset_id: String,
     pub asset_name: String,
     pub artboard_name: Option<String>,
     pub state_machine_name: Option<String>,
@@ -50,13 +51,15 @@ pub struct RivePreviewPaneState {
 
 impl Default for RivePreviewPaneState {
     fn default() -> Self {
+        let asset = crate::rive_assets::default_packaged_rive_asset();
         Self {
             load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Waiting to load packaged HUD asset".to_string()),
-            asset_name: "simple-fui-hud.riv".to_string(),
-            artboard_name: Some("default".to_string()),
-            state_machine_name: Some("default".to_string()),
+            last_action: Some("Waiting to load packaged Rive asset".to_string()),
+            asset_id: asset.id.to_string(),
+            asset_name: asset.file_name.to_string(),
+            artboard_name: Some(asset.default_artboard.to_string()),
+            state_machine_name: Some(asset.default_scene.to_string()),
             autoplay: true,
             playing: true,
             fit_mode: RiveFitMode::Contain,

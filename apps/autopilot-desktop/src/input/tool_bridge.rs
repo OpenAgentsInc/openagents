@@ -1921,7 +1921,12 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                 map.insert(
                     "rive_preview".to_string(),
                     json!({
+                        "asset_id": state.rive_preview.asset_id,
                         "asset_name": state.rive_preview.asset_name,
+                        "available_assets": crate::rive_assets::packaged_rive_assets()
+                            .iter()
+                            .map(|asset| asset.id)
+                            .collect::<Vec<_>>(),
                         "playing": state.rive_preview.playing,
                         "fit_mode": format!("{:?}", state.rive_preview.fit_mode),
                         "draw_call_count": state.rive_preview.draw_call_count,
@@ -2263,6 +2268,12 @@ fn pane_action_to_hit_action(
             )),
             "restart" | "restart_scene" => Ok(PaneHitAction::RivePreview(
                 crate::pane_system::RivePreviewPaneAction::RestartScene,
+            )),
+            "previous_asset" | "asset_prev" | "prev_asset" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::PreviousAsset,
+            )),
+            "next_asset" | "asset_next" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::NextAsset,
             )),
             "contain" | "fit_contain" => Ok(PaneHitAction::RivePreview(
                 crate::pane_system::RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Contain),
@@ -6337,6 +6348,11 @@ mod tests {
             PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::SetFitMode(
                 wgpui::RiveFitMode::Cover
             ))
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::RivePreview, "next_asset", None)
+                .expect("rive preview next asset"),
+            PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::NextAsset)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::SparkWallet, "refresh", None)

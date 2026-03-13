@@ -384,6 +384,8 @@ pub enum RivePreviewPaneAction {
     ReloadAsset,
     TogglePlayback,
     RestartScene,
+    PreviousAsset,
+    NextAsset,
     SetFitMode(wgpui::RiveFitMode),
 }
 
@@ -2479,6 +2481,26 @@ pub fn rive_preview_restart_button_bounds(content_bounds: Bounds) -> Bounds {
         play.origin.y,
         96.0,
         play.size.height,
+    )
+}
+
+pub fn rive_preview_previous_asset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let restart = rive_preview_restart_button_bounds(content_bounds);
+    Bounds::new(
+        restart.max_x() + JOB_INBOX_BUTTON_GAP,
+        restart.origin.y,
+        124.0,
+        restart.size.height,
+    )
+}
+
+pub fn rive_preview_next_asset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous = rive_preview_previous_asset_button_bounds(content_bounds);
+    Bounds::new(
+        previous.max_x() + JOB_INBOX_BUTTON_GAP,
+        previous.origin.y,
+        124.0,
+        previous.size.height,
     )
 }
 
@@ -5851,6 +5873,12 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::RivePreview(
                     RivePreviewPaneAction::RestartScene,
                 ))
+            } else if rive_preview_previous_asset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::PreviousAsset,
+                ))
+            } else if rive_preview_next_asset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::RivePreview(RivePreviewPaneAction::NextAsset))
             } else if rive_preview_fit_button_bounds(content_bounds, 0).contains(point) {
                 Some(PaneHitAction::RivePreview(
                     RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Contain),

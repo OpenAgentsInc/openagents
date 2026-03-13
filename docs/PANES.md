@@ -68,6 +68,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows a derived lattice, layer sweep, phase ribbons, and throughput/cache rings built from prompt/eval/load timings plus prompt/output token counts.
   - Explicitly labels the field as derived telemetry rather than raw tensor taps so the UI stays truthful about what the runtime exposes today.
   - Action: read-only visualization surface.
+- `Rive Preview`
+  - Workbench pane for the packaged Rive asset registry using the shared native `RiveSurface` path.
+  - Controls: reload, previous asset, next asset, play/pause, restart, and fit mode.
+  - Shows asset identity, render-path diagnostics, redraw/settled state, pointer capture, and first-frame metrics so new packaged assets can be verified without adding per-asset pane code.
+  - Action: swap packaged assets and inspect runtime diagnostics.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
@@ -242,6 +247,15 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Available regardless of provider online/offline state; withdraw does not require leaving earn mode first.
   - Explicit pane state machine: `loading`, `ready`, `error`.
   - Action: pay invoice (`Enter` submit and button submit are equivalent).
+
+## Packaged Rive Assets
+
+- Runtime `.riv` assets live under `apps/autopilot-desktop/resources/rive/`.
+- The app-owned manifest and deterministic lookup path live in `apps/autopilot-desktop/src/rive_assets.rs`.
+- Each manifest entry owns the packaged asset id, runtime path, description, and default artboard/scene handles; the renderer/runtime path stays shared in `wgpui`.
+- `Rive Preview` cycles through the manifest with `Prev asset` and `Next asset`; `rive_hud_viewer` accepts `--asset <id>` and `--list-assets`.
+- The current registry includes the primary HUD asset plus a second deterministic fixture file so multi-asset bring-up is proven before a distinct second production asset lands.
+- To add another asset: copy the `.riv` file into `apps/autopilot-desktop/resources/rive/`, add one manifest entry in `apps/autopilot-desktop/src/rive_assets.rs`, and verify it through `Rive Preview` or `cargo run -p autopilot-desktop --bin rive_hud_viewer -- --asset <id>`.
 
 ## Source Badges
 

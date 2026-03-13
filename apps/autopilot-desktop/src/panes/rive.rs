@@ -12,10 +12,11 @@ use crate::pane_renderer::{
 };
 use crate::pane_system::{
     pane_content_bounds, rive_preview_canvas_bounds, rive_preview_fit_button_bounds,
-    rive_preview_metrics_bounds, rive_preview_play_button_bounds,
+    rive_preview_metrics_bounds, rive_preview_next_asset_button_bounds,
+    rive_preview_play_button_bounds, rive_preview_previous_asset_button_bounds,
     rive_preview_reload_button_bounds, rive_preview_restart_button_bounds,
 };
-use crate::rive_assets::simple_fui_hud_asset;
+use crate::rive_assets::{PackagedRiveAsset, default_packaged_rive_asset, packaged_rive_asset};
 
 pub fn paint(
     content_bounds: Bounds,
@@ -28,6 +29,9 @@ pub fn paint(
     let reload_bounds = rive_preview_reload_button_bounds(content_bounds);
     let play_bounds = rive_preview_play_button_bounds(content_bounds);
     let restart_bounds = rive_preview_restart_button_bounds(content_bounds);
+    let previous_asset_bounds = rive_preview_previous_asset_button_bounds(content_bounds);
+    let next_asset_bounds = rive_preview_next_asset_button_bounds(content_bounds);
+    let selected_asset = selected_packaged_asset(pane_state);
     paint_action_button(reload_bounds, "Reload asset", paint);
     paint_action_button(
         play_bounds,
@@ -35,6 +39,8 @@ pub fn paint(
         paint,
     );
     paint_action_button(restart_bounds, "Restart", paint);
+    paint_action_button(previous_asset_bounds, "Prev asset", paint);
+    paint_action_button(next_asset_bounds, "Next asset", paint);
 
     paint_fit_button(
         rive_preview_fit_button_bounds(content_bounds, 0),
@@ -58,16 +64,19 @@ pub fn paint(
     paint.scene.draw_text(paint.text.layout(
         "Rive Preview",
         Point::new(
-            restart_bounds.max_x() + 18.0,
+            next_asset_bounds.max_x() + 18.0,
             content_bounds.origin.y + 16.0,
         ),
         16.0,
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Workbench pane for the packaged simple FUI HUD asset using the shared native RiveSurface.",
+        &format!(
+            "{} // {} // {}",
+            selected_asset.id, selected_asset.file_name, selected_asset.description
+        ),
         Point::new(
-            restart_bounds.max_x() + 18.0,
+            next_asset_bounds.max_x() + 18.0,
             content_bounds.origin.y + 34.0,
         ),
         11.0,
@@ -78,11 +87,11 @@ pub fn paint(
     sync_runtime_state(pane_state, runtime);
 
     let summary = if pane_state.load_state == crate::app_state::PaneLoadState::Error {
-        "Packaged HUD asset failed to load".to_string()
+        "Packaged Rive asset failed to load".to_string()
     } else if pane_state.playing {
-        "Packaged HUD asset is rendering".to_string()
+        "Packaged Rive asset is rendering".to_string()
     } else {
-        "Packaged HUD asset is paused".to_string()
+        "Packaged Rive asset is paused".to_string()
     };
     let _ = paint_state_summary(
         paint,
@@ -181,7 +190,7 @@ fn ensure_runtime_loaded(
         return;
     }
 
-    let asset = simple_fui_hud_asset();
+    let asset = selected_packaged_asset(pane_state);
     let artboard_handle = handle_from_state(pane_state.artboard_name.as_deref());
     let scene_handle = handle_from_state(pane_state.state_machine_name.as_deref());
     match RiveSurface::from_bytes_with_handles(asset.bytes, artboard_handle, scene_handle, None) {
@@ -190,19 +199,20 @@ fn ensure_runtime_loaded(
                 surface.controller_mut().pause();
             }
             surface.controller_mut().set_fit_mode(pane_state.fit_mode);
+            pane_state.asset_id = asset.id.to_string();
             pane_state.asset_name = asset.file_name.to_string();
             pane_state.load_state = crate::app_state::PaneLoadState::Ready;
             pane_state.last_error = None;
             pane_state.last_action = Some(format!(
-                "Loaded packaged HUD asset from {}",
-                asset.runtime_path
+                "Loaded packaged Rive asset {} from {}",
+                asset.id, asset.runtime_path
             ));
             runtime.surface = Some(surface);
         }
         Err(error) => {
             pane_state.load_state = crate::app_state::PaneLoadState::Error;
             pane_state.last_error = Some(error.to_string());
-            pane_state.last_action = Some("Packaged HUD asset load failed".to_string());
+            pane_state.last_action = Some("Packaged Rive asset load failed".to_string());
             runtime.surface = None;
         }
     }
@@ -298,6 +308,7 @@ fn paint_metrics_panel(
     paint: &mut PaintContext,
 ) {
     let lines = [
+        format!("asset id      {}", pane_state.asset_id),
         format!("asset         {}", pane_state.asset_name),
         format!(
             "artboard      {}",
@@ -407,10 +418,15 @@ fn renderer_diagnostic(metrics: &wgpui::RiveMetrics) -> Option<String> {
     }
 }
 
+fn selected_packaged_asset(pane_state: &RivePreviewPaneState) -> PackagedRiveAsset {
+    packaged_rive_asset(pane_state.asset_id.as_str()).unwrap_or_else(default_packaged_rive_asset)
+}
+
 #[cfg(test)]
 mod tests {
     use super::paint;
     use crate::app_state::{PaneLoadState, RivePreviewPaneState, RivePreviewRuntimeState};
+    use crate::rive_assets::SIMPLE_FUI_HUD_FIXTURE_B_ASSET_ID;
     use wgpui::{Bounds, PaintContext, Scene, TextSystem};
 
     #[test]
@@ -438,5 +454,29 @@ mod tests {
             "pane paint should produce drawable content",
         );
         assert!(pane_state.frame_build_ms.is_some());
+    }
+
+    #[test]
+    fn packaged_rive_preview_can_load_the_second_fixture_asset() {
+        let mut pane_state = RivePreviewPaneState {
+            asset_id: SIMPLE_FUI_HUD_FIXTURE_B_ASSET_ID.to_string(),
+            ..RivePreviewPaneState::default()
+        };
+        let mut runtime = RivePreviewRuntimeState::default();
+        let mut scene = Scene::new();
+        let mut text_system = TextSystem::new(1.0);
+        let mut paint_context = PaintContext::new(&mut scene, &mut text_system, 1.0);
+
+        paint(
+            Bounds::new(0.0, 0.0, 1080.0, 700.0),
+            &mut pane_state,
+            &mut runtime,
+            &mut paint_context,
+        );
+
+        assert!(runtime.surface.is_some());
+        assert_eq!(pane_state.load_state, PaneLoadState::Ready);
+        assert_eq!(pane_state.asset_id, SIMPLE_FUI_HUD_FIXTURE_B_ASSET_ID);
+        assert!(pane_state.asset_name.ends_with("fixture-b.riv"));
     }
 }

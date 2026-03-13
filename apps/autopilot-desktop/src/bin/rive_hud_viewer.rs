@@ -7,7 +7,9 @@
 )]
 
 use anyhow::{Context, Result, anyhow};
-use autopilot_desktop::rive_assets::{PackagedRiveAsset, simple_fui_hud_asset};
+use autopilot_desktop::rive_assets::{
+    PackagedRiveAsset, default_packaged_rive_asset, packaged_rive_asset, packaged_rive_assets,
+};
 use clap::{Parser, ValueEnum};
 use std::sync::Arc;
 use wgpui::components::hud::{DotShape, DotsGrid, Scanlines};
@@ -43,19 +45,27 @@ impl From<FitArg> for RiveFitMode {
 #[command(
     author,
     version,
-    about = "Standalone native WGPUI viewer for the packaged simple FUI HUD asset"
+    about = "Standalone native WGPUI viewer for the packaged Rive asset registry"
 )]
 struct ViewerArgs {
+    #[arg(long, default_value = "simple_fui_hud")]
+    asset: String,
     #[arg(long, default_value = "default")]
     artboard: String,
     #[arg(long, default_value = "default")]
     scene: String,
     #[arg(long, value_enum, default_value_t = FitArg::Contain)]
     fit: FitArg,
+    #[arg(long, default_value_t = false)]
+    list_assets: bool,
 }
 
 fn main() -> Result<()> {
     let args = ViewerArgs::parse();
+    if args.list_assets {
+        print_packaged_assets();
+        return Ok(());
+    }
     let event_loop = EventLoop::new().context("failed to create viewer event loop")?;
     let mut app = App::new(args);
     event_loop
@@ -98,7 +108,12 @@ struct ViewerState {
 
 impl ViewerState {
     fn new(args: &ViewerArgs) -> Result<Self> {
-        let asset = simple_fui_hud_asset();
+        let asset = packaged_rive_asset(args.asset.as_str()).with_context(|| {
+            format!(
+                "unknown packaged Rive asset id '{}' (use --list-assets)",
+                args.asset
+            )
+        })?;
         let artboard_handle = parse_handle(args.artboard.as_str())?;
         let scene_handle = parse_handle(args.scene.as_str())?;
         let mut surface = RiveSurface::from_bytes_with_handles(
@@ -198,7 +213,7 @@ impl ViewerState {
             theme::text::PRIMARY,
         ));
         paint.scene.draw_text(paint.text.layout(
-            "Packaged runtime asset, no pane system, same RiveSurface path used by desktop integration.",
+            "Packaged asset registry, no pane system, same RiveSurface path used by desktop integration.",
             Point::new(24.0, 40.0),
             11.0,
             theme::text::MUTED,
@@ -283,8 +298,10 @@ impl ViewerState {
 
         let metrics = self.surface.controller().metrics().clone();
         let lines = [
+            format!("asset id     {}", self.asset.id),
             format!("asset        {}", self.asset.file_name),
             format!("runtime      {}", self.asset.runtime_path),
+            format!("summary      {}", self.asset.description),
             format!("artboard     {}", handle_label(&self.artboard_handle)),
             format!("scene        {}", handle_label(&self.scene_handle)),
             format!(
@@ -342,6 +359,7 @@ impl ViewerState {
             "1      contain fit",
             "2      cover fit",
             "3      fill fit",
+            "--asset <id>  choose packaged asset",
             "esc    quit viewer",
             "mouse  forwards pointer events",
         ];
@@ -372,6 +390,24 @@ impl ViewerState {
             metrics.image_count
         );
         self.last_logged_metrics = Some(metrics);
+    }
+}
+
+fn print_packaged_assets() {
+    println!(
+        "Default packaged asset: {}",
+        default_packaged_rive_asset().id
+    );
+    for asset in packaged_rive_assets() {
+        println!(
+            "{}  {}  {}  artboard={} scene={}  {}",
+            asset.id,
+            asset.file_name,
+            asset.runtime_path,
+            asset.default_artboard,
+            asset.default_scene,
+            asset.description
+        );
     }
 }
 
