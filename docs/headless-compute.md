@@ -30,6 +30,9 @@ It can:
 - refresh, warm, unload, and wait on GPT-OSS directly
 - bring the provider online or offline
 - inspect active-job and buy-mode state
+- inspect the current tunnel-status surface (`tunnels`) that will eventually
+  reflect Psionic-backed service exposure when the desktop app starts owning
+  those flows directly
 - select the managed NIP-28 main channel
 - list NIP-28 groups, channels, and recent messages
 - send or retry NIP-28 chat messages
@@ -66,6 +69,7 @@ autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
+autopilotctl tunnels status
 autopilotctl logs --tail 50
 autopilotctl pane list
 autopilotctl pane status provider_control

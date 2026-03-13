@@ -11,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use psionic_runtime::{ClusterEvidenceBundleVerificationError, SignedClusterEvidenceBundle};
 use rand::random;
@@ -18,10 +20,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
     net::UdpSocket,
-    sync::{oneshot, Mutex},
+    sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
 
 pub use operator_manifest::*;
@@ -40,6 +44,7 @@ const DEFAULT_REPLAY_WINDOW_SIZE: u64 = 64;
 const SIGNING_KEY_BYTES: usize = 32;
 const VERIFYING_KEY_BYTES: usize = 32;
 const SIGNATURE_BYTES: usize = 64;
+const DEFAULT_TUNNEL_HTTP_BODY_BYTES: usize = 4 * 1024;
 
 /// Errors returned by the local cluster transport.
 #[derive(Debug, Error)]
@@ -738,6 +743,511 @@ impl ClusterTransportObservation {
             bytes_received: 0,
         }
     }
+}
+
+/// Bounded service categories that Psionic Net may expose through one tunnel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelServiceKind {
+    /// App- or operator-facing control HTTP endpoints.
+    DesktopControlHttp,
+    /// Inference or model-serving HTTP endpoints.
+    InferenceHttp,
+    /// Validator or proof-service HTTP endpoints.
+    ValidatorHttp,
+    /// Artifact or bundle-serving HTTP endpoints.
+    ArtifactHttp,
+}
+
+/// Wire protocol supported by one bounded tunnel service.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelProtocol {
+    /// Request/response HTTP forwarded to one local TCP listener.
+    HttpRequestResponse,
+}
+
+/// Explicit transport class for one tunnel-backed service path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelTransportClass {
+    /// HTTP request/response tunnel carried over one authenticated peer session.
+    ServiceTunnelHttp,
+}
+
+/// One service that may be exposed through the bounded tunnel surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelServicePolicy {
+    /// Stable operator-facing service identifier.
+    pub service_id: String,
+    /// Approved service category.
+    pub kind: ClusterTunnelServiceKind,
+    /// Supported protocol for the service.
+    pub protocol: ClusterTunnelProtocol,
+    /// Local TCP listener that actually serves the endpoint.
+    pub local_addr: SocketAddr,
+    /// Explicit peers allowed to open tunnels to this service. Empty means any connected peer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_peer_node_ids: Vec<NodeId>,
+    /// Maximum allowed request body bytes forwarded through the tunnel.
+    #[serde(default = "default_tunnel_http_body_bytes")]
+    pub max_request_body_bytes: usize,
+    /// Maximum allowed response body bytes forwarded through the tunnel.
+    #[serde(default = "default_tunnel_http_body_bytes")]
+    pub max_response_body_bytes: usize,
+}
+
+impl ClusterTunnelServicePolicy {
+    /// Creates one HTTP request/response tunnel service policy.
+    #[must_use]
+    pub fn new_http(
+        service_id: impl Into<String>,
+        kind: ClusterTunnelServiceKind,
+        local_addr: SocketAddr,
+    ) -> Self {
+        Self {
+            service_id: service_id.into(),
+            kind,
+            protocol: ClusterTunnelProtocol::HttpRequestResponse,
+            local_addr,
+            allowed_peer_node_ids: Vec::new(),
+            max_request_body_bytes: default_tunnel_http_body_bytes(),
+            max_response_body_bytes: default_tunnel_http_body_bytes(),
+        }
+    }
+
+    /// Restricts this service to one explicit set of peers.
+    #[must_use]
+    pub fn with_allowed_peer_node_ids(mut self, mut allowed_peer_node_ids: Vec<NodeId>) -> Self {
+        allowed_peer_node_ids.sort_unstable();
+        allowed_peer_node_ids.dedup();
+        self.allowed_peer_node_ids = allowed_peer_node_ids;
+        self
+    }
+
+    /// Overrides the request body size limit for this service.
+    #[must_use]
+    pub fn with_max_request_body_bytes(mut self, max_request_body_bytes: usize) -> Self {
+        self.max_request_body_bytes = max_request_body_bytes.max(1);
+        self
+    }
+
+    /// Overrides the response body size limit for this service.
+    #[must_use]
+    pub fn with_max_response_body_bytes(mut self, max_response_body_bytes: usize) -> Self {
+        self.max_response_body_bytes = max_response_body_bytes.max(1);
+        self
+    }
+
+    fn allows_peer(&self, peer_node_id: &NodeId) -> bool {
+        self.allowed_peer_node_ids.is_empty() || self.allowed_peer_node_ids.contains(peer_node_id)
+    }
+
+    fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_tunnel_service_policy|");
+        hasher.update(self.service_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.kind {
+            ClusterTunnelServiceKind::DesktopControlHttp => b"desktop_control_http".as_slice(),
+            ClusterTunnelServiceKind::InferenceHttp => b"inference_http".as_slice(),
+            ClusterTunnelServiceKind::ValidatorHttp => b"validator_http".as_slice(),
+            ClusterTunnelServiceKind::ArtifactHttp => b"artifact_http".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.protocol {
+            ClusterTunnelProtocol::HttpRequestResponse => b"http_request_response".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(self.local_addr.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.max_request_body_bytes.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.max_response_body_bytes.to_string().as_bytes());
+        for peer_node_id in &self.allowed_peer_node_ids {
+            hasher.update(b"|peer|");
+            hasher.update(peer_node_id.as_str().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
+const fn default_tunnel_http_body_bytes() -> usize {
+    DEFAULT_TUNNEL_HTTP_BODY_BYTES
+}
+
+/// Operator-managed policy for service tunnels owned by one node.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelPolicy {
+    /// Services that may be explicitly exposed through this node.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approved_services: Vec<ClusterTunnelServicePolicy>,
+}
+
+impl ClusterTunnelPolicy {
+    /// Creates one bounded tunnel policy.
+    #[must_use]
+    pub fn new(mut approved_services: Vec<ClusterTunnelServicePolicy>) -> Self {
+        approved_services.sort_by(|left, right| left.service_id.cmp(&right.service_id));
+        approved_services.dedup_by(|left, right| left.service_id == right.service_id);
+        Self { approved_services }
+    }
+
+    /// Returns a stable digest for the current tunnel policy.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_tunnel_policy|");
+        for service in &self.approved_services {
+            hasher.update(service.stable_digest().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// Direction of one active or historical tunnel record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelDirection {
+    /// This node opened the tunnel to a remote peer.
+    Outbound,
+    /// This node accepted the tunnel from a remote peer.
+    Inbound,
+}
+
+/// Lifecycle state for one tunnel record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelState {
+    /// Tunnel open was sent but not yet acknowledged.
+    Pending,
+    /// Tunnel is currently open and usable.
+    Open,
+    /// Tunnel was refused during open.
+    Refused,
+    /// Tunnel failed while operating.
+    Failed,
+    /// Tunnel closed cleanly.
+    Closed,
+}
+
+/// Stable refusal reason when a peer rejects one tunnel open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelOpenRefusalReason {
+    /// The requested service ID is not approved by policy.
+    ServiceUnknown,
+    /// The service exists in policy but is not currently active.
+    ServiceInactive,
+    /// The service exists but does not allow the requesting peer.
+    PeerNotAllowed,
+    /// The underlying peer session has no remaining tunnel capacity.
+    StreamCapacityExceeded,
+    /// The requested tunnel protocol is not supported.
+    ProtocolUnsupported,
+}
+
+/// Stable close reason for one tunnel lifecycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTunnelCloseReason {
+    /// Closed explicitly by the local operator or caller.
+    OperatorClosed,
+    /// Closed explicitly by the remote peer.
+    PeerClosed,
+    /// Closed because the service was deactivated locally.
+    ServiceDeactivated,
+    /// Closed because the underlying peer session was unavailable.
+    TransportUnavailable,
+    /// Closed because request handling failed.
+    RequestFailed,
+}
+
+/// Stable tunnel identifier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterTunnelId(u64);
+
+impl ClusterTunnelId {
+    fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// Stable request identifier inside one tunnel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterTunnelRequestId(u64);
+
+impl ClusterTunnelRequestId {
+    fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// One HTTP header forwarded through a bounded service tunnel.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterTunnelHttpHeader {
+    /// Header name.
+    pub name: String,
+    /// Header value.
+    pub value: String,
+}
+
+impl ClusterTunnelHttpHeader {
+    /// Creates one forwarded HTTP header.
+    #[must_use]
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
+/// Structured HTTP request that may be forwarded through one tunnel.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelHttpRequest {
+    /// HTTP method.
+    pub method: String,
+    /// Absolute path and query.
+    pub path: String,
+    /// Headers forwarded to the local service.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<ClusterTunnelHttpHeader>,
+    /// Base64-encoded request body.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_base64: String,
+}
+
+impl ClusterTunnelHttpRequest {
+    /// Creates one empty HTTP request.
+    #[must_use]
+    pub fn new(method: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            method: method.into(),
+            path: path.into(),
+            headers: Vec::new(),
+            body_base64: String::new(),
+        }
+    }
+
+    /// Appends one HTTP header.
+    #[must_use]
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push(ClusterTunnelHttpHeader::new(name, value));
+        self
+    }
+
+    /// Attaches one UTF-8 body.
+    #[must_use]
+    pub fn with_utf8_body(mut self, body: impl AsRef<str>) -> Self {
+        self.body_base64 = BASE64_STANDARD.encode(body.as_ref().as_bytes());
+        self
+    }
+
+    /// Attaches one raw body.
+    #[must_use]
+    pub fn with_body_bytes(mut self, body: impl AsRef<[u8]>) -> Self {
+        self.body_base64 = BASE64_STANDARD.encode(body.as_ref());
+        self
+    }
+
+    /// Decodes the request body bytes.
+    pub fn body_bytes(&self) -> Result<Vec<u8>, ClusterTunnelError> {
+        if self.body_base64.is_empty() {
+            return Ok(Vec::new());
+        }
+        BASE64_STANDARD
+            .decode(self.body_base64.as_bytes())
+            .map_err(|error| ClusterTunnelError::BodyEncoding(error.to_string()))
+    }
+}
+
+/// Structured HTTP response returned through one tunnel.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelHttpResponse {
+    /// HTTP status code.
+    pub status_code: u16,
+    /// HTTP reason phrase.
+    pub reason_phrase: String,
+    /// Headers returned by the local service.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<ClusterTunnelHttpHeader>,
+    /// Base64-encoded response body.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_base64: String,
+}
+
+impl ClusterTunnelHttpResponse {
+    /// Creates one HTTP response.
+    #[must_use]
+    pub fn new(status_code: u16, reason_phrase: impl Into<String>) -> Self {
+        Self {
+            status_code,
+            reason_phrase: reason_phrase.into(),
+            headers: Vec::new(),
+            body_base64: String::new(),
+        }
+    }
+
+    /// Appends one response header.
+    #[must_use]
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push(ClusterTunnelHttpHeader::new(name, value));
+        self
+    }
+
+    /// Attaches one UTF-8 response body.
+    #[must_use]
+    pub fn with_utf8_body(mut self, body: impl AsRef<str>) -> Self {
+        self.body_base64 = BASE64_STANDARD.encode(body.as_ref().as_bytes());
+        self
+    }
+
+    /// Attaches one raw response body.
+    #[must_use]
+    pub fn with_body_bytes(mut self, body: impl AsRef<[u8]>) -> Self {
+        self.body_base64 = BASE64_STANDARD.encode(body.as_ref());
+        self
+    }
+
+    /// Decodes the response body bytes.
+    pub fn body_bytes(&self) -> Result<Vec<u8>, ClusterTunnelError> {
+        if self.body_base64.is_empty() {
+            return Ok(Vec::new());
+        }
+        BASE64_STANDARD
+            .decode(self.body_base64.as_bytes())
+            .map_err(|error| ClusterTunnelError::BodyEncoding(error.to_string()))
+    }
+
+    fn bad_gateway(detail: impl Into<String>) -> Self {
+        Self::new(502, "Bad Gateway")
+            .with_header("content-type", "text/plain; charset=utf-8")
+            .with_header("x-openagents-tunnel-error", "local_service_failed")
+            .with_utf8_body(detail.into())
+    }
+}
+
+/// Audit-friendly status for one approved service on the local node.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelServiceSnapshot {
+    /// Stable service identifier.
+    pub service_id: String,
+    /// Approved service category.
+    pub kind: ClusterTunnelServiceKind,
+    /// Protocol forwarded for this service.
+    pub protocol: ClusterTunnelProtocol,
+    /// Local TCP address serving the endpoint.
+    pub local_addr: SocketAddr,
+    /// Whether the operator currently exposes the service.
+    pub active: bool,
+    /// Peers explicitly allowed to open the service.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_peer_node_ids: Vec<NodeId>,
+    /// Maximum request body bytes.
+    pub max_request_body_bytes: usize,
+    /// Maximum response body bytes.
+    pub max_response_body_bytes: usize,
+    /// Request count observed for the service.
+    pub request_count: u64,
+    /// Response count observed for the service.
+    pub response_count: u64,
+    /// Bytes accepted into the service.
+    pub bytes_in: u64,
+    /// Bytes returned from the service.
+    pub bytes_out: u64,
+    /// Latest activity timestamp when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity_ms: Option<u64>,
+    /// Last operator-facing error when one was observed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// Transport observations for one tunnel-backed service path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelTransportObservation {
+    /// Tunnel transport class.
+    pub transport_class: ClusterTunnelTransportClass,
+    /// Underlying authenticated peer-session path.
+    pub session_path: ClusterTransportPath,
+    /// Requests sent over the tunnel.
+    pub requests_sent: u64,
+    /// Requests received over the tunnel.
+    pub requests_received: u64,
+    /// Responses sent over the tunnel.
+    pub responses_sent: u64,
+    /// Responses received over the tunnel.
+    pub responses_received: u64,
+    /// Tunnel bytes sent.
+    pub bytes_sent: u64,
+    /// Tunnel bytes received.
+    pub bytes_received: u64,
+}
+
+impl ClusterTunnelTransportObservation {
+    fn new(session_path: ClusterTransportPath) -> Self {
+        Self {
+            transport_class: ClusterTunnelTransportClass::ServiceTunnelHttp,
+            session_path,
+            requests_sent: 0,
+            requests_received: 0,
+            responses_sent: 0,
+            responses_received: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+        }
+    }
+}
+
+/// One active or historical tunnel lease known to the local node.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelSnapshot {
+    /// Stable tunnel identifier.
+    pub tunnel_id: ClusterTunnelId,
+    /// Whether the tunnel was opened locally or accepted from a peer.
+    pub direction: ClusterTunnelDirection,
+    /// Remote peer bound to the tunnel.
+    pub peer_node_id: NodeId,
+    /// Service identifier exposed through the tunnel.
+    pub service_id: String,
+    /// Service category.
+    pub service_kind: ClusterTunnelServiceKind,
+    /// Forwarded protocol.
+    pub protocol: ClusterTunnelProtocol,
+    /// Current lifecycle state.
+    pub state: ClusterTunnelState,
+    /// Underlying transport observation for the tunnel.
+    pub transport: ClusterTunnelTransportObservation,
+    /// Logical stream reserved for the tunnel, when one is held.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_stream_id: Option<ClusterLogicalStreamId>,
+    /// Timestamp when the tunnel was created locally.
+    pub opened_at_ms: u64,
+    /// Most recent activity timestamp, when one is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity_ms: Option<u64>,
+    /// Close reason when the tunnel is no longer open.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub close_reason: Option<ClusterTunnelCloseReason>,
+    /// Most recent operator-facing error when one was observed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// Public lease returned when one outbound tunnel is open.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTunnelLease {
+    /// Stable tunnel identifier.
+    pub tunnel_id: ClusterTunnelId,
+    /// Remote peer serving the exposed endpoint.
+    pub peer_node_id: NodeId,
+    /// Service identifier served by the remote peer.
+    pub service_id: String,
+    /// Remote service category.
+    pub service_kind: ClusterTunnelServiceKind,
+    /// Forwarded protocol.
+    pub protocol: ClusterTunnelProtocol,
 }
 
 /// One explicitly configured peer for the authenticated cluster posture.
@@ -1601,6 +2111,8 @@ pub struct LocalClusterConfig {
     pub node_attestation: Option<NodeAttestationEvidence>,
     /// Optional operator-managed policy for future wider-network introductions.
     pub introduction_policy: Option<ClusterIntroductionPolicy>,
+    /// Operator-managed policy for bounded local service tunnels.
+    pub tunnel_policy: ClusterTunnelPolicy,
     /// Machine-checkable trust policy for this node's transport.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -1623,6 +2135,7 @@ impl LocalClusterConfig {
             network_state_persistence: ClusterNetworkStatePersistence::Ephemeral,
             node_attestation: None,
             introduction_policy: None,
+            tunnel_policy: ClusterTunnelPolicy::default(),
             trust_policy: ClusterTrustPolicy::trusted_lan(),
         }
     }
@@ -1662,6 +2175,13 @@ impl LocalClusterConfig {
         introduction_policy: ClusterIntroductionPolicy,
     ) -> Self {
         self.introduction_policy = Some(introduction_policy);
+        self
+    }
+
+    /// Attaches an operator-managed policy for bounded service tunnels.
+    #[must_use]
+    pub fn with_tunnel_policy(mut self, tunnel_policy: ClusterTunnelPolicy) -> Self {
+        self.tunnel_policy = tunnel_policy;
         self
     }
 
@@ -1896,6 +2416,8 @@ pub enum ClusterLogicalStreamKind {
     Control,
     /// Serving or request/response payload stream.
     Serving,
+    /// Policy-gated service tunnel stream.
+    Tunnel,
     /// Collective or synchronization stream.
     Collective,
     /// Artifact or checkpoint transfer stream.
@@ -1933,9 +2455,7 @@ pub enum ClusterStreamError {
         peer_node_id: NodeId,
     },
     /// The session has no remaining logical-stream capacity.
-    #[error(
-        "peer {peer_node_id:?} reached its logical-stream capacity ({max_concurrent_streams})"
-    )]
+    #[error("peer {peer_node_id:?} reached its logical-stream capacity ({max_concurrent_streams})")]
     CapacityExceeded {
         /// Peer that hit the limit.
         peer_node_id: NodeId,
@@ -1950,6 +2470,80 @@ pub enum ClusterStreamError {
         /// Stream that could not be found.
         stream_id: ClusterLogicalStreamId,
     },
+}
+
+/// Failure surfaced by the bounded service-tunnel substrate.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterTunnelError {
+    /// The requested peer is not currently connected.
+    #[error("peer {peer_node_id:?} is not connected")]
+    PeerNotConnected {
+        /// Peer that was addressed.
+        peer_node_id: NodeId,
+    },
+    /// The requested service is not approved by policy.
+    #[error("tunnel service `{service_id}` is not approved")]
+    ServiceUnknown {
+        /// Service identifier that was requested.
+        service_id: String,
+    },
+    /// The requested service is approved but not currently active.
+    #[error("tunnel service `{service_id}` is not active")]
+    ServiceNotActive {
+        /// Service identifier that was requested.
+        service_id: String,
+    },
+    /// The requested service refused the supplied peer.
+    #[error("tunnel service `{service_id}` does not allow peer {peer_node_id:?}")]
+    PeerNotAllowed {
+        /// Service identifier that refused the peer.
+        service_id: String,
+        /// Peer that was refused.
+        peer_node_id: NodeId,
+    },
+    /// The tunnel could not reserve a logical stream.
+    #[error(transparent)]
+    Stream(#[from] ClusterStreamError),
+    /// One referenced tunnel record is not tracked locally.
+    #[error("tunnel {tunnel_id:?} is not tracked")]
+    TunnelUnknown {
+        /// Tunnel that was requested.
+        tunnel_id: ClusterTunnelId,
+    },
+    /// One referenced tunnel is not open.
+    #[error("tunnel {tunnel_id:?} is not open")]
+    TunnelNotOpen {
+        /// Tunnel that was requested.
+        tunnel_id: ClusterTunnelId,
+    },
+    /// The tunnel open was refused by the remote peer.
+    #[error("tunnel open for service `{service_id}` was refused: {reason:?}")]
+    OpenRefused {
+        /// Requested service identifier.
+        service_id: String,
+        /// Stable refusal reason.
+        reason: ClusterTunnelOpenRefusalReason,
+    },
+    /// The HTTP payload exceeded the configured limit.
+    #[error("HTTP payload size {actual_bytes} exceeds allowed maximum {maximum_bytes}")]
+    PayloadTooLarge {
+        /// Allowed size.
+        maximum_bytes: usize,
+        /// Actual observed size.
+        actual_bytes: usize,
+    },
+    /// The HTTP body could not be decoded from base64.
+    #[error("failed to decode tunnel HTTP body: {0}")]
+    BodyEncoding(String),
+    /// The local service I/O failed.
+    #[error("local tunnel service I/O failed: {0}")]
+    LocalServiceIo(String),
+    /// The local service returned a malformed HTTP payload.
+    #[error("local tunnel service protocol error: {0}")]
+    LocalServiceProtocol(String),
+    /// The transport background task is no longer available.
+    #[error("cluster transport background task is offline")]
+    TransportOffline,
 }
 
 /// Durable candidate disposition tracked by Psionic Net.
@@ -2132,7 +2726,9 @@ pub struct LocalClusterNode {
     local_identity: ClusterNodeIdentity,
     trust_policy: ClusterTrustPolicy,
     introduction_policy: Option<ClusterIntroductionPolicy>,
+    tunnel_policy: ClusterTunnelPolicy,
     state: Arc<Mutex<SharedState>>,
+    transport_command_tx: mpsc::UnboundedSender<TransportCommand>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<Result<(), String>>>,
 }
@@ -2155,17 +2751,21 @@ impl LocalClusterNode {
                 .map_err(ClusterError::Bind)?,
         );
         let local_addr = socket.local_addr().map_err(ClusterError::LocalAddr)?;
+        let tunnel_policy = transport_config.tunnel_policy.clone();
         let state = Arc::new(Mutex::new(SharedState::new(
             transport_config.seed_peers.clone(),
             &transport_config.trust_policy,
+            &transport_config.tunnel_policy,
             durable_network_state,
             transport_config.network_state_persistence.clone(),
         )));
+        let (transport_command_tx, transport_command_rx) = mpsc::unbounded_channel();
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let task = tokio::spawn(run_transport(
             socket,
             state.clone(),
             transport_config,
+            transport_command_rx,
             shutdown_rx,
         ));
         Ok(Self {
@@ -2173,7 +2773,9 @@ impl LocalClusterNode {
             local_identity,
             trust_policy,
             introduction_policy,
+            tunnel_policy,
             state,
+            transport_command_tx,
             shutdown_tx: Some(shutdown_tx),
             task: Some(task),
         })
@@ -2201,6 +2803,12 @@ impl LocalClusterNode {
     #[must_use]
     pub fn introduction_policy(&self) -> Option<&ClusterIntroductionPolicy> {
         self.introduction_policy.as_ref()
+    }
+
+    /// Returns the current bounded tunnel policy for this node.
+    #[must_use]
+    pub fn tunnel_policy(&self) -> &ClusterTunnelPolicy {
+        &self.tunnel_policy
     }
 
     /// Returns the current discovery posture for this node.
@@ -2337,6 +2945,108 @@ impl LocalClusterNode {
         self.state.lock().await.active_logical_streams()
     }
 
+    /// Returns operator-facing snapshots for approved tunnel services.
+    pub async fn tunnel_service_snapshots(&self) -> Vec<ClusterTunnelServiceSnapshot> {
+        self.state.lock().await.tunnel_service_snapshots()
+    }
+
+    /// Returns operator-facing snapshots for active or historical tunnels.
+    pub async fn tunnel_snapshots(&self) -> Vec<ClusterTunnelSnapshot> {
+        self.state.lock().await.tunnel_snapshots()
+    }
+
+    /// Activates one approved service so peers may open a bounded tunnel to it.
+    pub async fn activate_tunnel_service(
+        &self,
+        service_id: &str,
+    ) -> Result<ClusterTunnelServiceSnapshot, ClusterTunnelError> {
+        self.state.lock().await.activate_tunnel_service(service_id)
+    }
+
+    /// Deactivates one approved service and closes any related active tunnels.
+    pub async fn deactivate_tunnel_service(
+        &self,
+        service_id: &str,
+    ) -> Result<ClusterTunnelServiceSnapshot, ClusterTunnelError> {
+        let closures = self
+            .state
+            .lock()
+            .await
+            .deactivate_tunnel_service(service_id)?;
+        for closure in closures {
+            let _ = self
+                .transport_command_tx
+                .send(TransportCommand::SendTunnelClose {
+                    peer_node_id: closure.peer_node_id,
+                    tunnel_id: closure.tunnel_id,
+                    reason: ClusterTunnelCloseReason::ServiceDeactivated,
+                    detail: Some(String::from("service_deactivated")),
+                });
+        }
+        self.state
+            .lock()
+            .await
+            .tunnel_service_snapshot(service_id)
+            .ok_or_else(|| ClusterTunnelError::ServiceUnknown {
+                service_id: service_id.to_owned(),
+            })
+    }
+
+    /// Opens one outbound HTTP tunnel to a selected service on one connected peer.
+    pub async fn open_http_tunnel(
+        &self,
+        peer_node_id: &NodeId,
+        service_id: impl Into<String>,
+    ) -> Result<ClusterTunnelLease, ClusterTunnelError> {
+        let (response_tx, response_rx) = oneshot::channel();
+        self.transport_command_tx
+            .send(TransportCommand::OpenTunnel {
+                peer_node_id: peer_node_id.clone(),
+                service_id: service_id.into(),
+                response_tx,
+            })
+            .map_err(|_| ClusterTunnelError::TransportOffline)?;
+        response_rx
+            .await
+            .map_err(|_| ClusterTunnelError::TransportOffline)?
+    }
+
+    /// Forwards one HTTP request over an open tunnel and waits for the response.
+    pub async fn send_tunneled_http_request(
+        &self,
+        lease: &ClusterTunnelLease,
+        request: ClusterTunnelHttpRequest,
+    ) -> Result<ClusterTunnelHttpResponse, ClusterTunnelError> {
+        let (response_tx, response_rx) = oneshot::channel();
+        self.transport_command_tx
+            .send(TransportCommand::SendTunnelHttpRequest {
+                tunnel_id: lease.tunnel_id,
+                request,
+                response_tx,
+            })
+            .map_err(|_| ClusterTunnelError::TransportOffline)?;
+        response_rx
+            .await
+            .map_err(|_| ClusterTunnelError::TransportOffline)?
+    }
+
+    /// Closes one open tunnel and releases its logical stream.
+    pub async fn close_tunnel(&self, lease: &ClusterTunnelLease) -> Result<(), ClusterTunnelError> {
+        self.state.lock().await.close_tunnel_and_prepare_dispatch(
+            lease.tunnel_id,
+            ClusterTunnelCloseReason::OperatorClosed,
+            Some(String::from("local_close")),
+        )?;
+        self.transport_command_tx
+            .send(TransportCommand::SendTunnelClose {
+                peer_node_id: lease.peer_node_id.clone(),
+                tunnel_id: lease.tunnel_id,
+                reason: ClusterTunnelCloseReason::OperatorClosed,
+                detail: Some(String::from("local_close")),
+            })
+            .map_err(|_| ClusterTunnelError::TransportOffline)
+    }
+
     /// Reserves one logical stream on an established peer session.
     pub async fn open_logical_stream(
         &self,
@@ -2446,6 +3156,7 @@ struct TransportConfig {
     local_signing_key: SigningKey,
     network_state_persistence: ClusterNetworkStatePersistence,
     introduction_policy: Option<ClusterIntroductionPolicy>,
+    tunnel_policy: ClusterTunnelPolicy,
     trust_policy: ClusterTrustPolicy,
 }
 
@@ -2460,6 +3171,7 @@ impl TransportConfig {
             local_signing_key: local_identity.signing_key,
             network_state_persistence: config.network_state_persistence,
             introduction_policy: config.introduction_policy,
+            tunnel_policy: config.tunnel_policy,
             trust_policy: config.trust_policy,
         }
     }
@@ -2469,6 +3181,25 @@ impl TransportConfig {
 enum RelayRegistrationMode {
     NatTraversal,
     RelayForward,
+}
+
+enum TransportCommand {
+    OpenTunnel {
+        peer_node_id: NodeId,
+        service_id: String,
+        response_tx: oneshot::Sender<Result<ClusterTunnelLease, ClusterTunnelError>>,
+    },
+    SendTunnelHttpRequest {
+        tunnel_id: ClusterTunnelId,
+        request: ClusterTunnelHttpRequest,
+        response_tx: oneshot::Sender<Result<ClusterTunnelHttpResponse, ClusterTunnelError>>,
+    },
+    SendTunnelClose {
+        peer_node_id: NodeId,
+        tunnel_id: ClusterTunnelId,
+        reason: ClusterTunnelCloseReason,
+        detail: Option<String>,
+    },
 }
 
 #[derive(Clone)]
@@ -2500,7 +3231,70 @@ struct NatIntroductionRecord {
     relay: ClusterRelayEndpoint,
 }
 
-#[derive(Default)]
+#[derive(Clone)]
+struct TunnelServiceRuntime {
+    policy: ClusterTunnelServicePolicy,
+    active: bool,
+    request_count: u64,
+    response_count: u64,
+    bytes_in: u64,
+    bytes_out: u64,
+    last_activity_ms: Option<u64>,
+    last_error: Option<String>,
+}
+
+impl TunnelServiceRuntime {
+    fn new(policy: ClusterTunnelServicePolicy) -> Self {
+        Self {
+            policy,
+            active: false,
+            request_count: 0,
+            response_count: 0,
+            bytes_in: 0,
+            bytes_out: 0,
+            last_activity_ms: None,
+            last_error: None,
+        }
+    }
+
+    fn snapshot(&self) -> ClusterTunnelServiceSnapshot {
+        ClusterTunnelServiceSnapshot {
+            service_id: self.policy.service_id.clone(),
+            kind: self.policy.kind,
+            protocol: self.policy.protocol,
+            local_addr: self.policy.local_addr,
+            active: self.active,
+            allowed_peer_node_ids: self.policy.allowed_peer_node_ids.clone(),
+            max_request_body_bytes: self.policy.max_request_body_bytes,
+            max_response_body_bytes: self.policy.max_response_body_bytes,
+            request_count: self.request_count,
+            response_count: self.response_count,
+            bytes_in: self.bytes_in,
+            bytes_out: self.bytes_out,
+            last_activity_ms: self.last_activity_ms,
+            last_error: self.last_error.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TunnelRuntimeRecord {
+    snapshot: ClusterTunnelSnapshot,
+    logical_stream: Option<ClusterLogicalStreamLease>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ClusterTunnelRequestKey {
+    tunnel_id: ClusterTunnelId,
+    request_id: ClusterTunnelRequestId,
+}
+
+#[derive(Clone)]
+struct PendingTunnelClosureDispatch {
+    peer_node_id: NodeId,
+    tunnel_id: ClusterTunnelId,
+}
+
 struct SharedState {
     peers: BTreeMap<NodeId, PeerSnapshot>,
     configured_peers: BTreeMap<NodeId, ConfiguredClusterPeer>,
@@ -2515,15 +3309,26 @@ struct SharedState {
     nat_introductions: BTreeMap<NodeId, NatIntroductionRecord>,
     active_logical_streams:
         BTreeMap<NodeId, BTreeMap<ClusterLogicalStreamId, ClusterLogicalStreamKind>>,
+    tunnel_services: BTreeMap<String, TunnelServiceRuntime>,
+    tunnels: BTreeMap<ClusterTunnelId, TunnelRuntimeRecord>,
+    pending_tunnel_opens:
+        BTreeMap<ClusterTunnelId, oneshot::Sender<Result<ClusterTunnelLease, ClusterTunnelError>>>,
+    pending_tunnel_requests: BTreeMap<
+        ClusterTunnelRequestKey,
+        oneshot::Sender<Result<ClusterTunnelHttpResponse, ClusterTunnelError>>,
+    >,
     next_ping_sequence: u64,
     next_authenticated_message_counter: u64,
     next_logical_stream_id: u64,
+    next_tunnel_id: u64,
+    next_tunnel_request_id: u64,
 }
 
 impl SharedState {
     fn new(
         seed_peers: BTreeSet<SocketAddr>,
         trust_policy: &ClusterTrustPolicy,
+        tunnel_policy: &ClusterTunnelPolicy,
         durable_network_state: PersistedClusterNetworkState,
         network_state_persistence: ClusterNetworkStatePersistence,
     ) -> Self {
@@ -2542,6 +3347,12 @@ impl SharedState {
                 )
             })
             .collect();
+        let tunnel_services = tunnel_policy
+            .approved_services
+            .iter()
+            .cloned()
+            .map(|policy| (policy.service_id.clone(), TunnelServiceRuntime::new(policy)))
+            .collect();
         Self {
             peers: BTreeMap::new(),
             configured_peers,
@@ -2555,9 +3366,15 @@ impl SharedState {
             pending_hello_probes: BTreeMap::new(),
             nat_introductions: BTreeMap::new(),
             active_logical_streams: BTreeMap::new(),
+            tunnel_services,
+            tunnels: BTreeMap::new(),
+            pending_tunnel_opens: BTreeMap::new(),
+            pending_tunnel_requests: BTreeMap::new(),
             next_ping_sequence: 0,
             next_authenticated_message_counter: 1,
             next_logical_stream_id: 1,
+            next_tunnel_id: 1,
+            next_tunnel_request_id: 1,
         }
     }
 
@@ -2606,6 +3423,424 @@ impl SharedState {
                     })
             })
             .collect()
+    }
+
+    fn tunnel_service_snapshot(&self, service_id: &str) -> Option<ClusterTunnelServiceSnapshot> {
+        self.tunnel_services
+            .get(service_id)
+            .map(TunnelServiceRuntime::snapshot)
+    }
+
+    fn tunnel_service_snapshots(&self) -> Vec<ClusterTunnelServiceSnapshot> {
+        self.tunnel_services
+            .values()
+            .map(TunnelServiceRuntime::snapshot)
+            .collect()
+    }
+
+    fn tunnel_snapshots(&self) -> Vec<ClusterTunnelSnapshot> {
+        self.tunnels
+            .values()
+            .map(|record| record.snapshot.clone())
+            .collect()
+    }
+
+    fn activate_tunnel_service(
+        &mut self,
+        service_id: &str,
+    ) -> Result<ClusterTunnelServiceSnapshot, ClusterTunnelError> {
+        let Some(service) = self.tunnel_services.get_mut(service_id) else {
+            return Err(ClusterTunnelError::ServiceUnknown {
+                service_id: service_id.to_owned(),
+            });
+        };
+        service.active = true;
+        service.last_error = None;
+        Ok(service.snapshot())
+    }
+
+    fn deactivate_tunnel_service(
+        &mut self,
+        service_id: &str,
+    ) -> Result<Vec<PendingTunnelClosureDispatch>, ClusterTunnelError> {
+        let Some(service) = self.tunnel_services.get_mut(service_id) else {
+            return Err(ClusterTunnelError::ServiceUnknown {
+                service_id: service_id.to_owned(),
+            });
+        };
+        service.active = false;
+        let affected = self
+            .tunnels
+            .values()
+            .filter(|record| {
+                record.snapshot.service_id == service_id
+                    && matches!(
+                        record.snapshot.state,
+                        ClusterTunnelState::Pending | ClusterTunnelState::Open
+                    )
+            })
+            .map(|record| PendingTunnelClosureDispatch {
+                peer_node_id: record.snapshot.peer_node_id.clone(),
+                tunnel_id: record.snapshot.tunnel_id,
+            })
+            .collect::<Vec<_>>();
+        for closure in &affected {
+            self.close_tunnel_record(
+                closure.tunnel_id,
+                ClusterTunnelState::Closed,
+                Some(ClusterTunnelCloseReason::ServiceDeactivated),
+                Some(String::from("service_deactivated")),
+            );
+        }
+        Ok(affected)
+    }
+
+    fn peer_transport_path(&self, peer_node_id: &NodeId) -> Option<ClusterTransportPath> {
+        self.peers
+            .get(peer_node_id)
+            .map(|peer| peer.transport.path.clone())
+    }
+
+    fn next_tunnel_id(&mut self) -> ClusterTunnelId {
+        let tunnel_id = ClusterTunnelId::new(self.next_tunnel_id);
+        self.next_tunnel_id = self.next_tunnel_id.saturating_add(1);
+        tunnel_id
+    }
+
+    fn next_tunnel_request_id(&mut self) -> ClusterTunnelRequestId {
+        let request_id = ClusterTunnelRequestId::new(self.next_tunnel_request_id);
+        self.next_tunnel_request_id = self.next_tunnel_request_id.saturating_add(1);
+        request_id
+    }
+
+    fn prepare_outbound_tunnel_open(
+        &mut self,
+        peer_node_id: &NodeId,
+        service_id: &str,
+        response_tx: oneshot::Sender<Result<ClusterTunnelLease, ClusterTunnelError>>,
+    ) -> Result<(ClusterTunnelId, ClusterTransportPath), ClusterTunnelError> {
+        let Some(session_path) = self.peer_transport_path(peer_node_id) else {
+            return Err(ClusterTunnelError::PeerNotConnected {
+                peer_node_id: peer_node_id.clone(),
+            });
+        };
+        let logical_stream =
+            self.open_logical_stream(peer_node_id, ClusterLogicalStreamKind::Tunnel)?;
+        let tunnel_id = self.next_tunnel_id();
+        self.pending_tunnel_opens.insert(tunnel_id, response_tx);
+        self.tunnels.insert(
+            tunnel_id,
+            TunnelRuntimeRecord {
+                snapshot: ClusterTunnelSnapshot {
+                    tunnel_id,
+                    direction: ClusterTunnelDirection::Outbound,
+                    peer_node_id: peer_node_id.clone(),
+                    service_id: service_id.to_owned(),
+                    service_kind: ClusterTunnelServiceKind::DesktopControlHttp,
+                    protocol: ClusterTunnelProtocol::HttpRequestResponse,
+                    state: ClusterTunnelState::Pending,
+                    transport: ClusterTunnelTransportObservation::new(session_path.clone()),
+                    logical_stream_id: Some(logical_stream.stream_id),
+                    opened_at_ms: current_time_ms(),
+                    last_activity_ms: None,
+                    close_reason: None,
+                    last_error: None,
+                },
+                logical_stream: Some(logical_stream),
+            },
+        );
+        Ok((tunnel_id, session_path))
+    }
+
+    fn accept_inbound_tunnel_open(
+        &mut self,
+        peer_node_id: &NodeId,
+        tunnel_id: ClusterTunnelId,
+        service_id: &str,
+        session_path: &ClusterTransportPath,
+    ) -> Result<(ClusterTunnelServiceKind, ClusterTunnelProtocol), ClusterTunnelOpenRefusalReason>
+    {
+        let Some(service) = self.tunnel_services.get(service_id).cloned() else {
+            return Err(ClusterTunnelOpenRefusalReason::ServiceUnknown);
+        };
+        if !service.active {
+            return Err(ClusterTunnelOpenRefusalReason::ServiceInactive);
+        }
+        if !service.policy.allows_peer(peer_node_id) {
+            return Err(ClusterTunnelOpenRefusalReason::PeerNotAllowed);
+        }
+        let logical_stream = self
+            .open_logical_stream(peer_node_id, ClusterLogicalStreamKind::Tunnel)
+            .map_err(|_| ClusterTunnelOpenRefusalReason::StreamCapacityExceeded)?;
+        self.tunnels.insert(
+            tunnel_id,
+            TunnelRuntimeRecord {
+                snapshot: ClusterTunnelSnapshot {
+                    tunnel_id,
+                    direction: ClusterTunnelDirection::Inbound,
+                    peer_node_id: peer_node_id.clone(),
+                    service_id: service.policy.service_id.clone(),
+                    service_kind: service.policy.kind,
+                    protocol: service.policy.protocol,
+                    state: ClusterTunnelState::Open,
+                    transport: ClusterTunnelTransportObservation::new(session_path.clone()),
+                    logical_stream_id: Some(logical_stream.stream_id),
+                    opened_at_ms: current_time_ms(),
+                    last_activity_ms: Some(current_time_ms()),
+                    close_reason: None,
+                    last_error: None,
+                },
+                logical_stream: Some(logical_stream),
+            },
+        );
+        Ok((service.policy.kind, service.policy.protocol))
+    }
+
+    fn mark_outbound_tunnel_open(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        service_kind: ClusterTunnelServiceKind,
+        protocol: ClusterTunnelProtocol,
+    ) {
+        let lease = self.tunnels.get_mut(&tunnel_id).map(|record| {
+            record.snapshot.state = ClusterTunnelState::Open;
+            record.snapshot.service_kind = service_kind;
+            record.snapshot.protocol = protocol;
+            record.snapshot.last_activity_ms = Some(current_time_ms());
+            ClusterTunnelLease {
+                tunnel_id,
+                peer_node_id: record.snapshot.peer_node_id.clone(),
+                service_id: record.snapshot.service_id.clone(),
+                service_kind,
+                protocol,
+            }
+        });
+        if let Some(sender) = self.pending_tunnel_opens.remove(&tunnel_id) {
+            let _ = sender.send(lease.ok_or(ClusterTunnelError::TunnelUnknown { tunnel_id }));
+        }
+    }
+
+    fn refuse_outbound_tunnel_open(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        reason: ClusterTunnelOpenRefusalReason,
+        detail: Option<String>,
+    ) {
+        let service_id = self
+            .tunnels
+            .get(&tunnel_id)
+            .map(|record| record.snapshot.service_id.clone())
+            .unwrap_or_default();
+        self.close_tunnel_record(tunnel_id, ClusterTunnelState::Refused, None, detail);
+        if let Some(sender) = self.pending_tunnel_opens.remove(&tunnel_id) {
+            let _ = sender.send(Err(ClusterTunnelError::OpenRefused { service_id, reason }));
+        }
+    }
+
+    fn prepare_outbound_tunnel_request(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        response_tx: oneshot::Sender<Result<ClusterTunnelHttpResponse, ClusterTunnelError>>,
+        request_body_bytes: usize,
+    ) -> Result<(ClusterTunnelRequestId, NodeId, ClusterTransportPath), ClusterTunnelError> {
+        let request_id = self.next_tunnel_request_id();
+        let Some(record) = self.tunnels.get_mut(&tunnel_id) else {
+            return Err(ClusterTunnelError::TunnelUnknown { tunnel_id });
+        };
+        if record.snapshot.state != ClusterTunnelState::Open {
+            return Err(ClusterTunnelError::TunnelNotOpen { tunnel_id });
+        }
+        record.snapshot.last_activity_ms = Some(current_time_ms());
+        record.snapshot.transport.requests_sent =
+            record.snapshot.transport.requests_sent.saturating_add(1);
+        record.snapshot.transport.bytes_sent = record
+            .snapshot
+            .transport
+            .bytes_sent
+            .saturating_add(request_body_bytes as u64);
+        let peer_node_id = record.snapshot.peer_node_id.clone();
+        let session_path = record.snapshot.transport.session_path.clone();
+        self.pending_tunnel_requests.insert(
+            ClusterTunnelRequestKey {
+                tunnel_id,
+                request_id,
+            },
+            response_tx,
+        );
+        Ok((request_id, peer_node_id, session_path))
+    }
+
+    fn record_inbound_tunnel_request(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        request_body_bytes: usize,
+    ) -> Result<(), ClusterTunnelError> {
+        let service_id = {
+            let Some(record) = self.tunnels.get_mut(&tunnel_id) else {
+                return Err(ClusterTunnelError::TunnelUnknown { tunnel_id });
+            };
+            if record.snapshot.state != ClusterTunnelState::Open {
+                return Err(ClusterTunnelError::TunnelNotOpen { tunnel_id });
+            }
+            record.snapshot.last_activity_ms = Some(current_time_ms());
+            record.snapshot.transport.requests_received = record
+                .snapshot
+                .transport
+                .requests_received
+                .saturating_add(1);
+            record.snapshot.transport.bytes_received = record
+                .snapshot
+                .transport
+                .bytes_received
+                .saturating_add(request_body_bytes as u64);
+            record.snapshot.service_id.clone()
+        };
+        if let Some(service) = self.tunnel_services.get_mut(&service_id) {
+            service.request_count = service.request_count.saturating_add(1);
+            service.bytes_in = service.bytes_in.saturating_add(request_body_bytes as u64);
+            service.last_activity_ms = Some(current_time_ms());
+        }
+        Ok(())
+    }
+
+    fn complete_inbound_tunnel_response(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        response_body_bytes: usize,
+    ) {
+        let service_id = self.tunnels.get_mut(&tunnel_id).map(|record| {
+            record.snapshot.last_activity_ms = Some(current_time_ms());
+            record.snapshot.transport.responses_sent =
+                record.snapshot.transport.responses_sent.saturating_add(1);
+            record.snapshot.transport.bytes_sent = record
+                .snapshot
+                .transport
+                .bytes_sent
+                .saturating_add(response_body_bytes as u64);
+            record.snapshot.service_id.clone()
+        });
+        if let Some(service_id) = service_id {
+            if let Some(service) = self.tunnel_services.get_mut(&service_id) {
+                service.response_count = service.response_count.saturating_add(1);
+                service.bytes_out = service.bytes_out.saturating_add(response_body_bytes as u64);
+                service.last_activity_ms = Some(current_time_ms());
+            }
+        }
+    }
+
+    fn complete_outbound_tunnel_response(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        request_id: ClusterTunnelRequestId,
+        response: Result<ClusterTunnelHttpResponse, ClusterTunnelError>,
+    ) {
+        if let Some(record) = self.tunnels.get_mut(&tunnel_id) {
+            record.snapshot.last_activity_ms = Some(current_time_ms());
+            if let Ok(response_ok) = &response {
+                let response_body_bytes = response_ok
+                    .body_bytes()
+                    .map_or(0_u64, |body| body.len().min(usize::MAX) as u64);
+                record.snapshot.transport.responses_received = record
+                    .snapshot
+                    .transport
+                    .responses_received
+                    .saturating_add(1);
+                record.snapshot.transport.bytes_received = record
+                    .snapshot
+                    .transport
+                    .bytes_received
+                    .saturating_add(response_body_bytes);
+            } else if let Err(error) = &response {
+                record.snapshot.last_error = Some(error.to_string());
+            }
+        }
+        if let Some(sender) = self
+            .pending_tunnel_requests
+            .remove(&ClusterTunnelRequestKey {
+                tunnel_id,
+                request_id,
+            })
+        {
+            let _ = sender.send(response);
+        }
+    }
+
+    fn close_tunnel_and_prepare_dispatch(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        reason: ClusterTunnelCloseReason,
+        detail: Option<String>,
+    ) -> Result<(NodeId, ClusterTransportPath), ClusterTunnelError> {
+        let Some(record) = self.tunnels.get(&tunnel_id).cloned() else {
+            return Err(ClusterTunnelError::TunnelUnknown { tunnel_id });
+        };
+        if !matches!(
+            record.snapshot.state,
+            ClusterTunnelState::Pending | ClusterTunnelState::Open
+        ) {
+            return Err(ClusterTunnelError::TunnelNotOpen { tunnel_id });
+        }
+        let peer_node_id = record.snapshot.peer_node_id.clone();
+        let session_path = record.snapshot.transport.session_path.clone();
+        self.close_tunnel_record(tunnel_id, ClusterTunnelState::Closed, Some(reason), detail);
+        Ok((peer_node_id, session_path))
+    }
+
+    fn tunnel_dispatch_path(
+        &self,
+        tunnel_id: ClusterTunnelId,
+    ) -> Option<(NodeId, ClusterTransportPath)> {
+        self.tunnels.get(&tunnel_id).map(|record| {
+            (
+                record.snapshot.peer_node_id.clone(),
+                record.snapshot.transport.session_path.clone(),
+            )
+        })
+    }
+
+    fn close_tunnel_record(
+        &mut self,
+        tunnel_id: ClusterTunnelId,
+        state: ClusterTunnelState,
+        close_reason: Option<ClusterTunnelCloseReason>,
+        detail: Option<String>,
+    ) {
+        let logical_stream = self.tunnels.get_mut(&tunnel_id).and_then(|record| {
+            record.snapshot.state = state;
+            record.snapshot.close_reason = close_reason;
+            record.snapshot.last_activity_ms = Some(current_time_ms());
+            if let Some(detail) = detail.clone() {
+                record.snapshot.last_error = Some(detail);
+            }
+            record.snapshot.logical_stream_id = None;
+            record.logical_stream.take()
+        });
+        if let Some(logical_stream) = logical_stream {
+            let _ = self.close_logical_stream(&logical_stream);
+        }
+        if state != ClusterTunnelState::Refused {
+            if let Some(sender) = self.pending_tunnel_opens.remove(&tunnel_id) {
+                let _ = sender.send(Err(ClusterTunnelError::TunnelNotOpen { tunnel_id }));
+            }
+        }
+        let pending_keys = self
+            .pending_tunnel_requests
+            .keys()
+            .copied()
+            .filter(|key| key.tunnel_id == tunnel_id)
+            .collect::<Vec<_>>();
+        for key in pending_keys {
+            if let Some(sender) = self.pending_tunnel_requests.remove(&key) {
+                let _ = sender.send(Err(ClusterTunnelError::TunnelNotOpen { tunnel_id }));
+            }
+        }
+    }
+
+    fn record_tunnel_service_error(&mut self, service_id: &str, error: impl Into<String>) {
+        if let Some(service) = self.tunnel_services.get_mut(service_id) {
+            service.last_error = Some(error.into());
+            service.last_activity_ms = Some(current_time_ms());
+        }
     }
 
     fn apply_verified_introduction(
@@ -3316,10 +4551,66 @@ struct PingMessage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelOpenMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    service_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelOpenAckMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    service_kind: ClusterTunnelServiceKind,
+    protocol: ClusterTunnelProtocol,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelOpenRefusedMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    service_id: String,
+    reason: ClusterTunnelOpenRefusalReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelHttpRequestMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    request_id: ClusterTunnelRequestId,
+    request: ClusterTunnelHttpRequest,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelHttpResponseMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    request_id: ClusterTunnelRequestId,
+    response: ClusterTunnelHttpResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TunnelCloseMessage {
+    sender: ClusterNodeIdentity,
+    tunnel_id: ClusterTunnelId,
+    reason: ClusterTunnelCloseReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum WireMessage {
     Hello(HelloMessage),
     Ping(PingMessage),
+    TunnelOpen(TunnelOpenMessage),
+    TunnelOpenAck(TunnelOpenAckMessage),
+    TunnelOpenRefused(TunnelOpenRefusedMessage),
+    TunnelHttpRequest(TunnelHttpRequestMessage),
+    TunnelHttpResponse(TunnelHttpResponseMessage),
+    TunnelClose(TunnelCloseMessage),
 }
 
 impl WireMessage {
@@ -3327,6 +4618,12 @@ impl WireMessage {
         match self {
             Self::Hello(message) => &message.sender,
             Self::Ping(message) => &message.sender,
+            Self::TunnelOpen(message) => &message.sender,
+            Self::TunnelOpenAck(message) => &message.sender,
+            Self::TunnelOpenRefused(message) => &message.sender,
+            Self::TunnelHttpRequest(message) => &message.sender,
+            Self::TunnelHttpResponse(message) => &message.sender,
+            Self::TunnelClose(message) => &message.sender,
         }
     }
 }
@@ -3588,6 +4885,7 @@ async fn run_transport(
     socket: Arc<UdpSocket>,
     state: Arc<Mutex<SharedState>>,
     config: TransportConfig,
+    mut command_rx: mpsc::UnboundedReceiver<TransportCommand>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     send_hello_to_seed_peers(&socket, &config, &state).await?;
@@ -3601,6 +4899,9 @@ async fn run_transport(
     loop {
         tokio::select! {
             _ = &mut shutdown_rx => return Ok(()),
+            Some(command) = command_rx.recv() => {
+                handle_transport_command(&socket, &state, &config, command).await?;
+            }
             _ = hello_tick.tick() => {
                 send_hello_to_seed_peers(&socket, &config, &state).await?;
             }
@@ -3751,6 +5052,131 @@ async fn send_ping_to_discovered_peers(
             false,
         )
         .await?;
+    }
+    Ok(())
+}
+
+async fn handle_transport_command(
+    socket: &Arc<UdpSocket>,
+    state: &Arc<Mutex<SharedState>>,
+    config: &TransportConfig,
+    command: TransportCommand,
+) -> Result<(), String> {
+    match command {
+        TransportCommand::OpenTunnel {
+            peer_node_id,
+            service_id,
+            response_tx,
+        } => {
+            let prepared = state.lock().await.prepare_outbound_tunnel_open(
+                &peer_node_id,
+                service_id.as_str(),
+                response_tx,
+            );
+            let Ok((tunnel_id, session_path)) = prepared else {
+                return Ok(());
+            };
+            let send_outcome = send_wire_message_to_path(
+                socket,
+                state,
+                config,
+                Some(&peer_node_id),
+                &session_path,
+                session_path.peer_addr,
+                WireMessage::TunnelOpen(TunnelOpenMessage {
+                    sender: config.local_identity.clone(),
+                    tunnel_id,
+                    service_id,
+                }),
+                false,
+            )
+            .await;
+            if let Err(error) = send_outcome {
+                let mut guard = state.lock().await;
+                guard.refuse_outbound_tunnel_open(
+                    tunnel_id,
+                    ClusterTunnelOpenRefusalReason::ProtocolUnsupported,
+                    Some(error),
+                );
+            }
+        }
+        TransportCommand::SendTunnelHttpRequest {
+            tunnel_id,
+            request,
+            response_tx,
+        } => {
+            let request_body_bytes = match request.body_bytes() {
+                Ok(body) => body.len(),
+                Err(error) => {
+                    let _ = response_tx.send(Err(error));
+                    return Ok(());
+                }
+            };
+            let prepared = state.lock().await.prepare_outbound_tunnel_request(
+                tunnel_id,
+                response_tx,
+                request_body_bytes,
+            );
+            let Ok((request_id, peer_node_id, session_path)) = prepared else {
+                return Ok(());
+            };
+            let send_outcome = send_wire_message_to_path(
+                socket,
+                state,
+                config,
+                Some(&peer_node_id),
+                &session_path,
+                session_path.peer_addr,
+                WireMessage::TunnelHttpRequest(TunnelHttpRequestMessage {
+                    sender: config.local_identity.clone(),
+                    tunnel_id,
+                    request_id,
+                    request,
+                }),
+                false,
+            )
+            .await;
+            if send_outcome.is_err() {
+                state.lock().await.complete_outbound_tunnel_response(
+                    tunnel_id,
+                    request_id,
+                    Err(ClusterTunnelError::TransportOffline),
+                );
+            }
+        }
+        TransportCommand::SendTunnelClose {
+            peer_node_id,
+            tunnel_id,
+            reason,
+            detail,
+        } => {
+            let session_path = {
+                let guard = state.lock().await;
+                guard
+                    .tunnel_dispatch_path(tunnel_id)
+                    .map(|(_, path)| path)
+                    .or_else(|| guard.peer_transport_path(&peer_node_id))
+            };
+            let Some(session_path) = session_path else {
+                return Ok(());
+            };
+            send_wire_message_to_path(
+                socket,
+                state,
+                config,
+                Some(&peer_node_id),
+                &session_path,
+                session_path.peer_addr,
+                WireMessage::TunnelClose(TunnelCloseMessage {
+                    sender: config.local_identity.clone(),
+                    tunnel_id,
+                    reason,
+                    detail,
+                }),
+                false,
+            )
+            .await?;
+        }
     }
     Ok(())
 }
@@ -4059,8 +5485,317 @@ async fn handle_wire_envelope(
                 guard.push_join_refusal(*refusal);
             }
         }
+        WireMessage::TunnelOpen(open) => {
+            if open.sender.node_id == config.local_identity.node_id {
+                return Ok(());
+            }
+            let accepted = state.lock().await.accept_inbound_tunnel_open(
+                &open.sender.node_id,
+                open.tunnel_id,
+                open.service_id.as_str(),
+                &transport.path,
+            );
+            match accepted {
+                Ok((service_kind, protocol)) => {
+                    send_wire_message_to_path(
+                        socket,
+                        state,
+                        config,
+                        Some(&open.sender.node_id),
+                        &transport.path,
+                        transport.path.peer_addr,
+                        WireMessage::TunnelOpenAck(TunnelOpenAckMessage {
+                            sender: config.local_identity.clone(),
+                            tunnel_id: open.tunnel_id,
+                            service_kind,
+                            protocol,
+                        }),
+                        false,
+                    )
+                    .await?;
+                }
+                Err(reason) => {
+                    send_wire_message_to_path(
+                        socket,
+                        state,
+                        config,
+                        Some(&open.sender.node_id),
+                        &transport.path,
+                        transport.path.peer_addr,
+                        WireMessage::TunnelOpenRefused(TunnelOpenRefusedMessage {
+                            sender: config.local_identity.clone(),
+                            tunnel_id: open.tunnel_id,
+                            service_id: open.service_id,
+                            reason,
+                            detail: None,
+                        }),
+                        false,
+                    )
+                    .await?;
+                }
+            }
+        }
+        WireMessage::TunnelOpenAck(ack) => {
+            state.lock().await.mark_outbound_tunnel_open(
+                ack.tunnel_id,
+                ack.service_kind,
+                ack.protocol,
+            );
+        }
+        WireMessage::TunnelOpenRefused(refused) => {
+            state.lock().await.refuse_outbound_tunnel_open(
+                refused.tunnel_id,
+                refused.reason,
+                refused.detail,
+            );
+        }
+        WireMessage::TunnelHttpRequest(request_message) => {
+            let request_body_bytes = request_message.request.body_bytes();
+            let request_body_len = match request_body_bytes {
+                Ok(body) => body.len(),
+                Err(error) => {
+                    state
+                        .lock()
+                        .await
+                        .complete_inbound_tunnel_response(request_message.tunnel_id, 0);
+                    send_wire_message_to_path(
+                        socket,
+                        state,
+                        config,
+                        Some(&request_message.sender.node_id),
+                        &transport.path,
+                        transport.path.peer_addr,
+                        WireMessage::TunnelHttpResponse(TunnelHttpResponseMessage {
+                            sender: config.local_identity.clone(),
+                            tunnel_id: request_message.tunnel_id,
+                            request_id: request_message.request_id,
+                            response: ClusterTunnelHttpResponse::bad_gateway(error.to_string()),
+                        }),
+                        false,
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            };
+            let service_policy = {
+                let mut guard = state.lock().await;
+                let record_request = guard
+                    .record_inbound_tunnel_request(request_message.tunnel_id, request_body_len);
+                if record_request.is_err() {
+                    None
+                } else {
+                    guard
+                        .tunnels
+                        .get(&request_message.tunnel_id)
+                        .and_then(|record| {
+                            guard
+                                .tunnel_services
+                                .get(record.snapshot.service_id.as_str())
+                                .map(|service| service.policy.clone())
+                        })
+                }
+            };
+            let response = if let Some(service_policy) = service_policy {
+                if request_body_len > service_policy.max_request_body_bytes {
+                    ClusterTunnelHttpResponse::new(413, "Payload Too Large")
+                        .with_header("content-type", "text/plain; charset=utf-8")
+                        .with_utf8_body("request body exceeds tunnel policy")
+                } else {
+                    match forward_http_request_to_local_service(
+                        &service_policy,
+                        &request_message.request,
+                    )
+                    .await
+                    {
+                        Ok(response) => response,
+                        Err(error) => {
+                            state.lock().await.record_tunnel_service_error(
+                                service_policy.service_id.as_str(),
+                                error.to_string(),
+                            );
+                            ClusterTunnelHttpResponse::bad_gateway(error.to_string())
+                        }
+                    }
+                }
+            } else {
+                ClusterTunnelHttpResponse::new(410, "Gone")
+                    .with_header("content-type", "text/plain; charset=utf-8")
+                    .with_utf8_body("tunnel is not open")
+            };
+            let response_body_len = response.body_bytes().map_or(0_usize, |body| body.len());
+            state
+                .lock()
+                .await
+                .complete_inbound_tunnel_response(request_message.tunnel_id, response_body_len);
+            send_wire_message_to_path(
+                socket,
+                state,
+                config,
+                Some(&request_message.sender.node_id),
+                &transport.path,
+                transport.path.peer_addr,
+                WireMessage::TunnelHttpResponse(TunnelHttpResponseMessage {
+                    sender: config.local_identity.clone(),
+                    tunnel_id: request_message.tunnel_id,
+                    request_id: request_message.request_id,
+                    response,
+                }),
+                false,
+            )
+            .await?;
+        }
+        WireMessage::TunnelHttpResponse(response_message) => {
+            state.lock().await.complete_outbound_tunnel_response(
+                response_message.tunnel_id,
+                response_message.request_id,
+                Ok(response_message.response),
+            );
+        }
+        WireMessage::TunnelClose(close) => {
+            state.lock().await.close_tunnel_record(
+                close.tunnel_id,
+                ClusterTunnelState::Closed,
+                Some(close.reason),
+                close.detail,
+            );
+        }
     }
     Ok(())
+}
+
+async fn forward_http_request_to_local_service(
+    service_policy: &ClusterTunnelServicePolicy,
+    request: &ClusterTunnelHttpRequest,
+) -> Result<ClusterTunnelHttpResponse, ClusterTunnelError> {
+    let body = request.body_bytes()?;
+    if body.len() > service_policy.max_request_body_bytes {
+        return Err(ClusterTunnelError::PayloadTooLarge {
+            maximum_bytes: service_policy.max_request_body_bytes,
+            actual_bytes: body.len(),
+        });
+    }
+    let raw_request = encode_raw_http_request(service_policy, request, &body);
+    let mut stream = TcpStream::connect(service_policy.local_addr)
+        .await
+        .map_err(|error| ClusterTunnelError::LocalServiceIo(error.to_string()))?;
+    stream
+        .write_all(&raw_request)
+        .await
+        .map_err(|error| ClusterTunnelError::LocalServiceIo(error.to_string()))?;
+    stream
+        .shutdown()
+        .await
+        .map_err(|error| ClusterTunnelError::LocalServiceIo(error.to_string()))?;
+    let mut raw_response = Vec::new();
+    stream
+        .read_to_end(&mut raw_response)
+        .await
+        .map_err(|error| ClusterTunnelError::LocalServiceIo(error.to_string()))?;
+    let response = decode_raw_http_response(&raw_response)?;
+    let response_body_len = response.body_bytes()?.len();
+    if response_body_len > service_policy.max_response_body_bytes {
+        return Err(ClusterTunnelError::PayloadTooLarge {
+            maximum_bytes: service_policy.max_response_body_bytes,
+            actual_bytes: response_body_len,
+        });
+    }
+    Ok(response)
+}
+
+fn encode_raw_http_request(
+    service_policy: &ClusterTunnelServicePolicy,
+    request: &ClusterTunnelHttpRequest,
+    body: &[u8],
+) -> Vec<u8> {
+    let method = request.method.trim();
+    let path = if request.path.starts_with('/') {
+        request.path.clone()
+    } else {
+        format!("/{}", request.path.trim())
+    };
+    let mut raw = format!("{method} {path} HTTP/1.1\r\n");
+    let mut saw_host = false;
+    let mut saw_connection = false;
+    let mut saw_content_length = false;
+    for header in &request.headers {
+        if header.name.eq_ignore_ascii_case("host") {
+            saw_host = true;
+        }
+        if header.name.eq_ignore_ascii_case("connection") {
+            saw_connection = true;
+        }
+        if header.name.eq_ignore_ascii_case("content-length") {
+            saw_content_length = true;
+        }
+        raw.push_str(&header.name);
+        raw.push_str(": ");
+        raw.push_str(&header.value);
+        raw.push_str("\r\n");
+    }
+    if !saw_host {
+        raw.push_str(format!("Host: {}\r\n", service_policy.local_addr).as_str());
+    }
+    if !saw_connection {
+        raw.push_str("Connection: close\r\n");
+    }
+    if !saw_content_length {
+        raw.push_str(format!("Content-Length: {}\r\n", body.len()).as_str());
+    }
+    raw.push_str("\r\n");
+    let mut encoded = raw.into_bytes();
+    encoded.extend_from_slice(body);
+    encoded
+}
+
+fn decode_raw_http_response(
+    raw_response: &[u8],
+) -> Result<ClusterTunnelHttpResponse, ClusterTunnelError> {
+    let Some(header_end) = raw_response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+    else {
+        return Err(ClusterTunnelError::LocalServiceProtocol(String::from(
+            "response missing header terminator",
+        )));
+    };
+    let header_bytes = &raw_response[..header_end];
+    let body_bytes = &raw_response[header_end + 4..];
+    let header_text = std::str::from_utf8(header_bytes)
+        .map_err(|error| ClusterTunnelError::LocalServiceProtocol(error.to_string()))?;
+    let mut lines = header_text.split("\r\n");
+    let Some(status_line) = lines.next() else {
+        return Err(ClusterTunnelError::LocalServiceProtocol(String::from(
+            "response missing status line",
+        )));
+    };
+    let mut status_parts = status_line.splitn(3, ' ');
+    let Some(_http_version) = status_parts.next() else {
+        return Err(ClusterTunnelError::LocalServiceProtocol(String::from(
+            "response status line missing HTTP version",
+        )));
+    };
+    let Some(status_code) = status_parts.next() else {
+        return Err(ClusterTunnelError::LocalServiceProtocol(String::from(
+            "response status line missing status code",
+        )));
+    };
+    let status_code = status_code
+        .parse::<u16>()
+        .map_err(|error| ClusterTunnelError::LocalServiceProtocol(error.to_string()))?;
+    let reason_phrase = status_parts.next().unwrap_or("").trim().to_owned();
+    let mut response = ClusterTunnelHttpResponse::new(status_code, reason_phrase);
+    for line in lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            return Err(ClusterTunnelError::LocalServiceProtocol(String::from(
+                "malformed response header",
+            )));
+        };
+        response = response.with_header(name.trim(), value.trim());
+    }
+    Ok(response.with_body_bytes(body_bytes))
 }
 
 async fn outbound_envelope(
@@ -4549,6 +6284,7 @@ mod tests {
             local_signing_key,
             network_state_persistence: ClusterNetworkStatePersistence::Ephemeral,
             introduction_policy: None,
+            tunnel_policy: ClusterTunnelPolicy::default(),
             trust_policy,
         }
     }
@@ -4611,16 +6347,13 @@ mod tests {
                 loopback_addr(31001),
                 "peer-key-a",
             )]);
-        let attested =
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                NodeId::new("node-b"),
-                loopback_addr(31001),
-                "peer-key-a",
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                    .with_device_identity_digest("device-b"),
-            )]);
+        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31001), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ]);
         let configured_other_version = configured.clone().with_trust_bundle_version(2);
         let configured_other_policy =
             configured
@@ -4709,18 +6442,15 @@ mod tests {
 
     #[test]
     fn explicit_wider_network_discovery_request_is_bounded_until_implemented() {
-        let assessment =
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                NodeId::new("node-b"),
-                loopback_addr(31003),
-                "peer-key-a",
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                    .with_device_identity_digest("device-b"),
-            )])
-            .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
-            .non_lan_discovery_assessment();
+        let assessment = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ])
+        .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
+        .non_lan_discovery_assessment();
 
         assert_eq!(
             assessment.discovery_posture,
@@ -4951,16 +6681,13 @@ mod tests {
 
     #[test]
     fn compute_market_assessment_for_attested_peers_only_waits_on_non_lan_discovery() {
-        let attested =
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                NodeId::new("node-b"),
-                loopback_addr(31003),
-                "peer-key-a",
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                    .with_device_identity_digest("device-b"),
-            )]);
+        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
+            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                        .with_device_identity_digest("device-b"),
+                ),
+        ]);
 
         let assessment = attested.compute_market_trust_assessment();
 
@@ -5094,15 +6821,17 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                remote_identity.node_id.clone(),
-                remote_addr,
-                remote_identity.auth_public_key.clone(),
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                    .with_device_identity_digest("device-remote"),
-            )]),
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -5117,6 +6846,7 @@ mod tests {
         let state = SharedState::new(
             BTreeSet::new(),
             &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5158,15 +6888,17 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                remote_identity.node_id.clone(),
-                remote_addr,
-                remote_identity.auth_public_key.clone(),
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                    .with_device_identity_digest("device-remote"),
-            )]),
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -5181,6 +6913,7 @@ mod tests {
         let state = SharedState::new(
             BTreeSet::new(),
             &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5231,15 +6964,17 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
-                remote_identity.node_id.clone(),
-                remote_addr,
-                remote_identity.auth_public_key.clone(),
-            )
-            .with_attestation_requirement(
-                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                    .with_device_identity_digest("device-remote"),
-            )]),
+            ClusterTrustPolicy::attested_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    remote_addr,
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_attestation_requirement(
+                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                        .with_device_identity_digest("device-remote"),
+                ),
+            ]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -5254,6 +6989,7 @@ mod tests {
         let state = SharedState::new(
             BTreeSet::new(),
             &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5310,6 +7046,7 @@ mod tests {
         let state = SharedState::new(
             BTreeSet::new(),
             &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5339,6 +7076,7 @@ mod tests {
         let mut state = SharedState::new(
             BTreeSet::new(),
             &ClusterTrustPolicy::trusted_lan(),
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5399,16 +7137,19 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
-                remote_identity.node_id.clone(),
-                loopback_addr(32022),
-                remote_identity.auth_public_key.clone(),
-            )
-            .with_relay_fallback_relays(vec![relay.clone()])]),
+            ClusterTrustPolicy::authenticated_configured_peers(vec![
+                ConfiguredClusterPeer::new(
+                    remote_identity.node_id.clone(),
+                    loopback_addr(32022),
+                    remote_identity.auth_public_key.clone(),
+                )
+                .with_relay_fallback_relays(vec![relay.clone()]),
+            ]),
         );
         let state = SharedState::new(
             BTreeSet::new(),
             &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );
@@ -5449,16 +7190,18 @@ mod tests {
             &remote_signing_key,
         );
         let remote_addr = loopback_addr(32031);
-        let trust_policy =
-            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+        let trust_policy = ClusterTrustPolicy::authenticated_configured_peers(vec![
+            ConfiguredClusterPeer::new(
                 remote_identity.node_id.clone(),
                 remote_addr,
                 remote_identity.auth_public_key.clone(),
             )
-            .with_max_concurrent_streams(2)]);
+            .with_max_concurrent_streams(2),
+        ]);
         let mut state = SharedState::new(
             BTreeSet::new(),
             &trust_policy,
+            &ClusterTunnelPolicy::default(),
             PersistedClusterNetworkState::empty(),
             ClusterNetworkStatePersistence::Ephemeral,
         );

@@ -14,8 +14,8 @@ Psionic is structured as a layered engine subtree.
    Runtime traits for devices, buffers, allocators, and execution.
 5. `psionic-net`
    Peer identity, direct/NAT/relay session lifecycle, relay-backed rendezvous,
-   durable trust/candidate state, logical-stream reservation, and transport
-   observations.
+   durable trust/candidate state, logical-stream reservation, bounded HTTP
+   service tunnels, and transport observations.
 6. Backend crates
    Backend-specific runtime implementations only.
 7. `psionic-models`

@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ClusterAdmissionConfig, ClusterError, ClusterIntroductionPolicy, ClusterTrustPolicy,
-    LocalClusterConfig, NodeAttestationEvidence, NodeRole,
+    ClusterTunnelPolicy, LocalClusterConfig, NodeAttestationEvidence, NodeRole,
 };
 
 /// Schema version for persisted operator cluster manifests.
@@ -30,6 +30,9 @@ pub struct ClusterOperatorManifest {
     /// Optional policy for accepted wider-network introduction sources.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub introduction_policy: Option<ClusterIntroductionPolicy>,
+    /// Policy for bounded service tunnels owned by this node.
+    #[serde(default)]
+    pub tunnel_policy: ClusterTunnelPolicy,
     /// Machine-checkable trust policy for the node.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -49,6 +52,7 @@ impl ClusterOperatorManifest {
             role: config.role,
             node_attestation: config.node_attestation.clone(),
             introduction_policy: config.introduction_policy.clone(),
+            tunnel_policy: config.tunnel_policy.clone(),
             trust_policy: config.trust_policy.clone(),
         }
     }
@@ -85,6 +89,8 @@ impl ClusterOperatorManifest {
             hasher.update(b"|introduction_policy|");
             hasher.update(introduction_policy.stable_digest().as_bytes());
         }
+        hasher.update(b"|tunnel_policy|");
+        hasher.update(self.tunnel_policy.stable_digest().as_bytes());
         for seed_peer in &self.seed_peers {
             hasher.update(b"|seed|");
             hasher.update(seed_peer.to_string().as_bytes());
@@ -136,6 +142,7 @@ impl From<ClusterOperatorManifest> for LocalClusterConfig {
             network_state_persistence: crate::ClusterNetworkStatePersistence::Ephemeral,
             node_attestation: manifest.node_attestation,
             introduction_policy: manifest.introduction_policy,
+            tunnel_policy: manifest.tunnel_policy,
             trust_policy: manifest.trust_policy,
         }
     }
@@ -150,6 +157,7 @@ mod tests {
     use super::*;
     use crate::{
         ClusterIntroductionPolicy, ClusterIntroductionSource, ClusterTrustPosture,
+        ClusterTunnelPolicy, ClusterTunnelServiceKind, ClusterTunnelServicePolicy,
         ConfiguredClusterPeer, NodeAttestationRequirement, NodeId,
     };
 
@@ -175,6 +183,15 @@ mod tests {
                 )],
                 30_000,
             )),
+            tunnel_policy: ClusterTunnelPolicy::new(vec![
+                ClusterTunnelServicePolicy::new_http(
+                    "desktop-control",
+                    ClusterTunnelServiceKind::DesktopControlHttp,
+                    loopback_addr(41000),
+                )
+                .with_max_request_body_bytes(2048)
+                .with_max_response_body_bytes(2048),
+            ]),
             trust_policy: ClusterTrustPolicy::attested_configured_peers(vec![
                 ConfiguredClusterPeer::new(NodeId::new("peer-b"), loopback_addr(31012), "peer-key")
                     .with_attestation_requirement(
@@ -227,6 +244,7 @@ mod tests {
         assert_eq!(config.role, manifest.role);
         assert_eq!(config.node_attestation, manifest.node_attestation);
         assert_eq!(config.introduction_policy, manifest.introduction_policy);
+        assert_eq!(config.tunnel_policy, manifest.tunnel_policy);
         assert_eq!(config.trust_policy, manifest.trust_policy);
         assert_eq!(
             config.trust_policy.posture,
