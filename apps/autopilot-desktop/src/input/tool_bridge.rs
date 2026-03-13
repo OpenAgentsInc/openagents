@@ -2031,28 +2031,13 @@ fn pane_action_to_hit_action(
             _ => unsupported(),
         },
         PaneKind::Calculator => unsupported(),
-        PaneKind::GoOnline => match action {
-            "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
+        PaneKind::GoOnline | PaneKind::ProviderControl => match action {
+            "toggle" | "set_online" | "set_offline" => Ok(PaneHitAction::GoOnlineToggle),
             "buy_mode_test_job" | "buy_test_job" | "submit_buy_mode_request" => {
                 Ok(PaneHitAction::BuyModePayments(
                     crate::pane_system::BuyModePaymentsPaneAction::ToggleLoop,
                 ))
             }
-            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => Ok(
-                PaneHitAction::ProviderControl(ProviderControlPaneAction::RunLocalFmSummaryTest),
-            ),
-            "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
-                Ok(PaneHitAction::ProviderControl(
-                    ProviderControlPaneAction::TriggerLocalRuntimeAction,
-                ))
-            }
-            "open_docs" | "documentation" => Ok(PaneHitAction::MissionControl(
-                crate::pane_system::MissionControlPaneAction::OpenDocumentation,
-            )),
-            _ => unsupported(),
-        },
-        PaneKind::ProviderControl => match action {
-            "toggle" | "set_online" | "set_offline" => Ok(PaneHitAction::GoOnlineToggle),
             "open_local_model" | "open_workbench" | "warm_model" | "download_model"
             | "local_runtime" => Ok(PaneHitAction::ProviderControl(
                 ProviderControlPaneAction::TriggerLocalRuntimeAction,
@@ -5789,6 +5774,8 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "provider",
             "provider_runtime",
             "runtime_control",
+            "mission_control",
+            "go_online",
         ],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
@@ -6144,6 +6131,14 @@ mod tests {
             resolve_pane_kind_for_runtime("foundation_models"),
             Some(PaneKind::AppleFmWorkbench)
         );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("mission_control"),
+            Some(PaneKind::ProviderControl)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("go_online"),
+            Some(PaneKind::ProviderControl)
+        );
     }
 
     #[test]
@@ -6169,13 +6164,13 @@ mod tests {
             PaneHitAction::ChatSend
         );
         assert_eq!(
-            pane_action_to_hit_action(PaneKind::GoOnline, "open_local_model", None)
-                .expect("mission control local model"),
+            pane_action_to_hit_action(PaneKind::ProviderControl, "open_local_model", None)
+                .expect("provider control local model"),
             PaneHitAction::ProviderControl(ProviderControlPaneAction::TriggerLocalRuntimeAction)
         );
         assert_eq!(
-            pane_action_to_hit_action(PaneKind::GoOnline, "test_local_fm", None)
-                .expect("mission control local fm test"),
+            pane_action_to_hit_action(PaneKind::ProviderControl, "test_local_fm", None)
+                .expect("provider control local fm test"),
             PaneHitAction::ProviderControl(ProviderControlPaneAction::RunLocalFmSummaryTest)
         );
         assert_eq!(

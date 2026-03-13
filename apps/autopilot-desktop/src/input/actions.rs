@@ -12,8 +12,7 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
-    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
-    ProviderControlPaneAction,
+    LocalInferencePaneAction, LogStreamPaneAction, ProviderControlPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9018,8 +9017,7 @@ pub(crate) fn ensure_mission_control_local_runtime_preflight(
     )
 }
 
-/// Queues Apple FM bridge refresh or start when the Mission Control pane is opened.
-/// Call once when the GoOnline pane is created (e.g. at startup).
+/// Queues Apple FM bridge refresh or start when the provider shell comes up.
 pub(crate) fn ensure_mission_control_apple_fm_refresh(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
@@ -9225,100 +9223,6 @@ pub(super) fn run_provider_control_action(
     }
 }
 
-pub(super) fn run_mission_control_action(
-    state: &mut crate::app_state::RenderState,
-    action: MissionControlPaneAction,
-) -> bool {
-    match action {
-        MissionControlPaneAction::OpenLocalModelWorkbench => {
-            let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
-                state.desktop_shell_mode,
-                &state.provider_runtime,
-                &state.gpt_oss_execution,
-            );
-            let surface = active_local_runtime_capability_surface(
-                state.desktop_shell_mode,
-                &state.provider_runtime,
-                &state.gpt_oss_execution,
-            );
-            match runtime_view.primary_action {
-                crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
-                | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
-                    open_local_runtime_workbench(state, &surface)
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm
-                | crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
-                | crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss
-                | crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss
-                | crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
-                    let Some(action) = mission_control_local_runtime_workbench_action(
-                        &surface,
-                        runtime_view.primary_action,
-                    ) else {
-                        state.provider_control.last_action =
-                            Some("Local runtime action unavailable".to_string());
-                        state.provider_control.last_error = Some(
-                            "Mission Control could not map the active local runtime action."
-                                .to_string(),
-                        );
-                        return true;
-                    };
-                    let success_label = match runtime_view.primary_action {
-                        crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm => {
-                            "Queued Apple FM bridge start"
-                        }
-                        crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm => {
-                            "Queued Apple FM bridge refresh"
-                        }
-                        crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
-                            "Queued GPT-OSS runtime refresh"
-                        }
-                        crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
-                            "Queued GPT-OSS model warm"
-                        }
-                        crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
-                            "Queued GPT-OSS model unload"
-                        }
-                        crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
-                        | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench
-                        | crate::app_state::MissionControlLocalRuntimeAction::None => unreachable!(),
-                    };
-                    run_mission_control_local_runtime_workbench_action(state, action, success_label)
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::None => {
-                    state.provider_control.last_action =
-                        Some("No supported local runtime".to_string());
-                    state.provider_control.last_error = Some(if runtime_view.lane.is_some() {
-                        "Mission Control local runtime action is currently unavailable.".to_string()
-                    } else {
-                        "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
-                            .to_string()
-                    });
-                    true
-                }
-            }
-        }
-        MissionControlPaneAction::RunLocalFmSummaryTest => {
-            run_mission_control_local_fm_summary_test(state)
-        }
-        MissionControlPaneAction::OpenDocumentation => {
-            match open_mission_control_documentation() {
-                Ok(path) => {
-                    state
-                        .mission_control
-                        .record_action(format!("Opened documentation ({})", path.display()));
-                }
-                Err(error) => {
-                    state.mission_control.last_action =
-                        Some("Documentation open failed".to_string());
-                    state.mission_control.last_error = Some(error);
-                }
-            }
-            true
-        }
-    }
-}
-
 pub(super) fn run_log_stream_action(
     state: &mut crate::app_state::RenderState,
     action: LogStreamPaneAction,
@@ -9411,19 +9315,6 @@ pub(super) fn run_buy_mode_payments_action(
             true
         }
     }
-}
-
-fn open_mission_control_documentation() -> Result<std::path::PathBuf, String> {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/plans/mission-control-pane.md");
-    if !path.is_file() {
-        return Err(format!(
-            "Mission Control documentation not found: {}",
-            path.display()
-        ));
-    }
-    open_path_in_default_app(path.as_path())?;
-    Ok(path)
 }
 
 fn spawn_editor_command(

@@ -338,14 +338,14 @@ mod pane_size_memory_tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("autopilot-pane-sizes-{now_nanos}.json"));
         let mut memory = PaneSizeMemory::load_or_default_at(path.clone());
-        memory.remember(PaneKind::GoOnline, Size::new(704.0, 436.0));
+        memory.remember(PaneKind::ProviderControl, Size::new(704.0, 436.0));
         memory
             .persist_if_dirty()
             .expect("pane size memory should persist");
 
         let loaded = PaneSizeMemory::load_or_default_at(path.clone());
         let remembered = loaded
-            .size_for(PaneKind::GoOnline)
+            .size_for(PaneKind::ProviderControl)
             .expect("remembered pane size should reload");
         assert_eq!(remembered.width, 704.0);
         assert_eq!(remembered.height, 436.0);
@@ -964,7 +964,6 @@ impl LogStreamPaneState {
 pub struct MissionControlPaneState {
     pub last_action: Option<String>,
     pub last_error: Option<String>,
-    actions_scroll_offset_px: f32,
 }
 
 impl Default for MissionControlPaneState {
@@ -972,30 +971,11 @@ impl Default for MissionControlPaneState {
         Self {
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
-            actions_scroll_offset_px: 0.0,
         }
     }
 }
 
 impl MissionControlPaneState {
-    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
-        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
-        *offset = clamped;
-        clamped
-    }
-
-    pub fn scroll_actions_by(&mut self, dy: f32) {
-        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
-    }
-
-    pub fn actions_scroll_offset(&self) -> f32 {
-        self.actions_scroll_offset_px
-    }
-
     pub fn record_action(&mut self, action: impl Into<String>) {
         self.last_action = Some(action.into());
         self.last_error = None;

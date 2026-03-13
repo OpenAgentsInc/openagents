@@ -30,7 +30,7 @@ use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
-use crate::pane_system::{BuyModePaymentsPaneAction, MissionControlPaneAction};
+use crate::pane_system::{BuyModePaymentsPaneAction, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
@@ -409,13 +409,6 @@ impl DesktopControlActionRequest {
     fn provider_mode_online_target(&self) -> Option<bool> {
         match self {
             Self::SetProviderMode { online } => Some(*online),
-            _ => None,
-        }
-    }
-
-    fn mission_control_pane_action(&self) -> Option<MissionControlPaneAction> {
-        match self {
-            Self::RunAppleFmSmokeTest => Some(MissionControlPaneAction::RunLocalFmSummaryTest),
             _ => None,
         }
     }
@@ -1544,22 +1537,13 @@ fn apply_action_request(
         record_command_outcome(state, action.label(), &response);
         return attach_snapshot_metadata(state, response);
     }
-    if let Some(mission_control_action) = action.mission_control_pane_action() {
-        let response = match action {
-            DesktopControlActionRequest::RunAppleFmSmokeTest => {
-                run_apple_fm_smoke_test_action(state)
-            }
-            _ => mission_control_action_response(state, mission_control_action),
-        };
-        record_command_outcome(state, action.label(), &response);
-        return attach_snapshot_metadata(state, response);
-    }
     let response = match action {
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
         DesktopControlActionRequest::RefreshLocalRuntime => refresh_local_runtime_action(state),
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
+        DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
         DesktopControlActionRequest::RefreshGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::Refresh,
@@ -1599,7 +1583,6 @@ fn apply_action_request(
             log_tail_response(state, *limit)
         }
         DesktopControlActionRequest::SetProviderMode { .. }
-        | DesktopControlActionRequest::RunAppleFmSmokeTest
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
         | DesktopControlActionRequest::Withdraw { .. } => {
@@ -1895,7 +1878,11 @@ fn refresh_apple_fm_action(state: &mut RenderState) -> DesktopControlActionRespo
 }
 
 fn run_apple_fm_smoke_test_action(state: &mut RenderState) -> DesktopControlActionResponse {
-    mission_control_action_response(state, MissionControlPaneAction::RunLocalFmSummaryTest)
+    provider_control_action_response(
+        state,
+        ProviderControlPaneAction::RunLocalFmSummaryTest,
+        "Provider Control action applied",
+    )
 }
 
 fn desktop_control_local_runtime_error(
@@ -1975,12 +1962,13 @@ fn queue_gpt_oss_runtime_action(
     run_desktop_control_local_runtime_workbench_action(state, action, action_label)
 }
 
-fn mission_control_action_response(
+fn provider_control_action_response(
     state: &mut RenderState,
-    action: MissionControlPaneAction,
+    action: ProviderControlPaneAction,
+    success_label: &str,
 ) -> DesktopControlActionResponse {
-    crate::input::desktop_control_run_mission_control_action(state, action);
-    mission_control_status_response(state, "Mission Control action applied")
+    crate::input::desktop_control_run_provider_control_action(state, action);
+    mission_control_status_response(state, success_label)
 }
 
 fn buy_mode_action_response(
@@ -2910,7 +2898,6 @@ mod tests {
     };
     use crate::autopilot_compute_presence::pump_provider_chat_presence;
     use crate::nip28_chat_lane::{Nip28ChatLaneUpdate, Nip28ChatLaneWorker};
-    use crate::pane_system::MissionControlPaneAction;
     use crate::provider_nip90_lane::{
         ProviderNip90AuthIdentity, ProviderNip90ComputeCapability, ProviderNip90LaneCommand,
         ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90PublishOutcome,
@@ -4427,42 +4414,11 @@ mod tests {
             Some(false)
         );
         assert_eq!(
-            DesktopControlActionRequest::RunAppleFmSmokeTest.mission_control_pane_action(),
-            Some(MissionControlPaneAction::RunLocalFmSummaryTest)
+            DesktopControlActionRequest::RunAppleFmSmokeTest.label(),
+            "apple-fm-smoke-test"
         );
         assert_eq!(
-            DesktopControlActionRequest::RefreshLocalRuntime.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::RefreshGptOss.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::WarmGptOss.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::UnloadGptOss.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::RefreshWallet.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::StartBuyMode.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::StopBuyMode.mission_control_pane_action(),
-            None
-        );
-        assert_eq!(
-            DesktopControlActionRequest::Withdraw {
-                bolt11: "lnbc1example".to_string(),
-            }
-            .mission_control_pane_action(),
+            DesktopControlActionRequest::RunAppleFmSmokeTest.provider_mode_online_target(),
             None
         );
     }
