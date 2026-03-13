@@ -644,6 +644,9 @@ fn open_startup_panes(state: &mut RenderState) {
             PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
                 let _ = ensure_mission_control_apple_fm_refresh(state);
+                state
+                    .spark_wallet
+                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }
@@ -654,6 +657,9 @@ fn open_startup_panes(state: &mut RenderState) {
             }
             PaneKind::SparkWallet => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                state
+                    .spark_wallet
+                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }

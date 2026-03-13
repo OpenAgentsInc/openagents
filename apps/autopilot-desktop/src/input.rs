@@ -623,6 +623,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_mission_control_buy_mode_tick(state, now) {
         changed = true;
     }
+    if run_startup_spark_wallet_convergence_tick(state) {
+        changed = true;
+    }
     if run_pending_buyer_payment_watchdog_tick(state, now) {
         changed = true;
     }
@@ -665,6 +668,25 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
     changed
+}
+
+fn run_startup_spark_wallet_convergence_tick(state: &mut crate::app_state::RenderState) -> bool {
+    let now_epoch_seconds = current_epoch_seconds();
+    if !state
+        .spark_wallet
+        .startup_convergence_refresh_due(now_epoch_seconds)
+    {
+        return false;
+    }
+
+    state
+        .spark_wallet
+        .note_startup_convergence_refresh_queued(now_epoch_seconds);
+    if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+        state.spark_wallet.last_error = Some(error);
+        state.spark_wallet.cancel_startup_convergence();
+    }
+    true
 }
 
 fn run_goal_restart_recovery(state: &mut crate::app_state::RenderState) -> bool {
