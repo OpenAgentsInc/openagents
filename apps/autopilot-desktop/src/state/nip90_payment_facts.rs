@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use crate::app_state::{JobHistoryState, NetworkRequestsState, PaneLoadState};
 use crate::nip90_compute_flow::{Nip90FlowPhase, build_buyer_request_flow_snapshot};
 use crate::spark_wallet::{SparkPaneState, is_settled_wallet_payment_status};
+use crate::state::operations::{
+    NetworkRequestProviderObservationHistoryEvent, NetworkRequestProviderObservationHistoryKind,
+};
 use serde::{Deserialize, Serialize};
 
 const NIP90_PAYMENT_FACT_SCHEMA_VERSION: u16 = 1;
@@ -180,6 +183,8 @@ pub struct Nip90PaymentFact {
     pub selected_relays: Vec<String>,
     pub publish_accepted_relays: Vec<String>,
     pub publish_rejected_relays: Vec<String>,
+    #[serde(default)]
+    pub provider_observation_history: Vec<NetworkRequestProviderObservationHistoryEvent>,
     pub source_quality: Nip90PaymentFactSourceQuality,
 }
 
@@ -307,6 +312,9 @@ impl Nip90PaymentFactLedgerState {
             .map(normalize_pubkey_key)
             .filter(|value| !value.is_empty());
         let mut facts_by_request = BTreeMap::<String, Nip90PaymentFact>::new();
+        for fact in self.facts.iter().cloned() {
+            merge_fact(&mut facts_by_request, fact);
+        }
 
         for snapshot in network_requests
             .submitted
@@ -327,7 +335,9 @@ impl Nip90PaymentFactLedgerState {
             .map(|payment| (payment.id.as_str(), payment))
             .collect::<BTreeMap<_, _>>();
         for row in &job_history.rows {
-            let wallet_payment = seller_wallet_by_pointer.get(row.payment_pointer.as_str()).copied();
+            let wallet_payment = seller_wallet_by_pointer
+                .get(row.payment_pointer.as_str())
+                .copied();
             let fact = seller_fact_from_history_row(
                 row,
                 wallet_payment,
@@ -365,7 +375,10 @@ impl Nip90PaymentFactLedgerState {
 
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Rebuilt NIP-90 payment fact ledger ({} facts)", fact_count));
+        self.last_action = Some(format!(
+            "Rebuilt NIP-90 payment fact ledger ({} facts)",
+            fact_count
+        ));
     }
 }
 
@@ -383,7 +396,9 @@ fn buyer_fact_from_snapshot(
 ) -> Nip90PaymentFact {
     let status = match snapshot.phase {
         Nip90FlowPhase::Failed => Nip90PaymentFactStatus::Failed,
-        Nip90FlowPhase::SellerSettledPendingWallet => Nip90PaymentFactStatus::SellerSettlementObserved,
+        Nip90FlowPhase::SellerSettledPendingWallet => {
+            Nip90PaymentFactStatus::SellerSettlementObserved
+        }
         Nip90FlowPhase::Paid => {
             if snapshot.seller_success_feedback_event_id.is_some() {
                 Nip90PaymentFactStatus::SellerSettlementObserved
@@ -413,6 +428,21 @@ fn buyer_fact_from_snapshot(
     } else {
         Nip90PaymentFactSourceQuality::RequestProjection
     };
+    let result_observed_at = first_provider_history_epoch_seconds(
+        snapshot.provider_observation_history.as_slice(),
+        |event| event.kind == NetworkRequestProviderObservationHistoryKind::ResultObserved,
+    );
+    let invoice_observed_at = merge_timestamp(
+        first_provider_history_epoch_seconds(
+            snapshot.provider_observation_history.as_slice(),
+            |event| provider_history_event_has_invoice_signal(event),
+        ),
+        snapshot.payment_required_at_epoch_seconds,
+    );
+    let seller_settlement_feedback_at = first_provider_history_epoch_seconds(
+        snapshot.provider_observation_history.as_slice(),
+        |event| provider_history_event_is_seller_settlement(event),
+    );
 
     Nip90PaymentFact {
         fact_id: payment_fact_id(snapshot.request_id.as_str()),
@@ -430,12 +460,18 @@ fn buyer_fact_from_snapshot(
             snapshot.seller_success_feedback_event_id.as_deref(),
         ),
         buyer_nostr_pubkey: local_nostr_pubkey_hex.map(ToString::to_string),
-        provider_nostr_pubkey: normalize_optional_string(snapshot.payable_provider_pubkey.as_deref())
-            .or_else(|| normalize_optional_string(snapshot.result_provider_pubkey.as_deref()))
-            .or_else(|| normalize_optional_string(snapshot.invoice_provider_pubkey.as_deref()))
-            .or_else(|| normalize_optional_string(snapshot.selected_provider_pubkey.as_deref())),
-        invoice_provider_pubkey: normalize_optional_string(snapshot.invoice_provider_pubkey.as_deref()),
-        result_provider_pubkey: normalize_optional_string(snapshot.result_provider_pubkey.as_deref()),
+        provider_nostr_pubkey: normalize_optional_string(
+            snapshot.payable_provider_pubkey.as_deref(),
+        )
+        .or_else(|| normalize_optional_string(snapshot.result_provider_pubkey.as_deref()))
+        .or_else(|| normalize_optional_string(snapshot.invoice_provider_pubkey.as_deref()))
+        .or_else(|| normalize_optional_string(snapshot.selected_provider_pubkey.as_deref())),
+        invoice_provider_pubkey: normalize_optional_string(
+            snapshot.invoice_provider_pubkey.as_deref(),
+        ),
+        result_provider_pubkey: normalize_optional_string(
+            snapshot.result_provider_pubkey.as_deref(),
+        ),
         invoice_observed_relays: snapshot.invoice_relay_urls.clone(),
         result_observed_relays: snapshot.result_relay_urls.clone(),
         lightning_destination_pubkey: normalize_optional_string(
@@ -451,10 +487,10 @@ fn buyer_fact_from_snapshot(
         status,
         settlement_authority: snapshot.authority.as_str().to_string(),
         request_published_at: snapshot.request_published_at_epoch_seconds,
-        result_observed_at: None,
-        invoice_observed_at: snapshot.payment_required_at_epoch_seconds,
+        result_observed_at,
+        invoice_observed_at,
         buyer_payment_pointer_at: snapshot.payment_sent_at_epoch_seconds,
-        seller_settlement_feedback_at: None,
+        seller_settlement_feedback_at,
         buyer_wallet_confirmed_at: if status == Nip90PaymentFactStatus::BuyerWalletSettled {
             snapshot.timestamp
         } else {
@@ -464,6 +500,7 @@ fn buyer_fact_from_snapshot(
         selected_relays: snapshot.request_publish_selected_relays.clone(),
         publish_accepted_relays: snapshot.request_publish_accepted_relays.clone(),
         publish_rejected_relays: snapshot.request_publish_rejected_relays.clone(),
+        provider_observation_history: snapshot.provider_observation_history.clone(),
         source_quality,
     }
 }
@@ -508,7 +545,9 @@ fn seller_fact_from_history_row(
         buyer_payment_pointer: None,
         seller_payment_pointer: normalize_optional_string(Some(row.payment_pointer.as_str())),
         buyer_payment_hash: None,
-        amount_sats: wallet_payment.map(|payment| payment.amount_sats).or(Some(row.payout_sats)),
+        amount_sats: wallet_payment
+            .map(|payment| payment.amount_sats)
+            .or(Some(row.payout_sats)),
         fees_sats: wallet_payment.map(|payment| payment.fees_sats),
         total_debit_sats: wallet_payment.map(|payment| payment.amount_sats),
         wallet_method: wallet_payment.map(|payment| payment.method.clone()),
@@ -528,8 +567,42 @@ fn seller_fact_from_history_row(
         selected_relays: Vec::new(),
         publish_accepted_relays: Vec::new(),
         publish_rejected_relays: Vec::new(),
+        provider_observation_history: Vec::new(),
         source_quality,
     }
+}
+
+fn first_provider_history_epoch_seconds(
+    history: &[NetworkRequestProviderObservationHistoryEvent],
+    predicate: impl Fn(&NetworkRequestProviderObservationHistoryEvent) -> bool,
+) -> Option<u64> {
+    history
+        .iter()
+        .filter(|event| predicate(event))
+        .map(|event| event.observed_at_epoch_ms / 1_000)
+        .find(|observed_at| *observed_at > 0)
+}
+
+fn provider_history_event_has_invoice_signal(
+    event: &NetworkRequestProviderObservationHistoryEvent,
+) -> bool {
+    event.kind == NetworkRequestProviderObservationHistoryKind::FeedbackObserved
+        && (event.bolt11_present
+            || event.amount_msats.is_some()
+            || event
+                .status
+                .as_deref()
+                .is_some_and(|status| status.eq_ignore_ascii_case("payment-required")))
+}
+
+fn provider_history_event_is_seller_settlement(
+    event: &NetworkRequestProviderObservationHistoryEvent,
+) -> bool {
+    event.kind == NetworkRequestProviderObservationHistoryKind::FeedbackObserved
+        && event
+            .status
+            .as_deref()
+            .is_some_and(|status| status.eq_ignore_ascii_case("success"))
 }
 
 fn merge_fact(map: &mut BTreeMap<String, Nip90PaymentFact>, mut incoming: Nip90PaymentFact) {
@@ -597,11 +670,10 @@ fn merge_fact(map: &mut BTreeMap<String, Nip90PaymentFact>, mut incoming: Nip90P
         );
         existing.amount_sats = merge_u64_field(existing.amount_sats, incoming.amount_sats);
         existing.fees_sats = merge_u64_field(existing.fees_sats, incoming.fees_sats);
-        existing.total_debit_sats = merge_u64_field(existing.total_debit_sats, incoming.total_debit_sats);
-        existing.wallet_method = merge_string_field(
-            existing.wallet_method.take(),
-            incoming.wallet_method.take(),
-        );
+        existing.total_debit_sats =
+            merge_u64_field(existing.total_debit_sats, incoming.total_debit_sats);
+        existing.wallet_method =
+            merge_string_field(existing.wallet_method.take(), incoming.wallet_method.take());
         existing.status = merge_status(existing.status, incoming.status);
         if incoming.source_quality.rank() > existing.source_quality.rank() {
             existing.source_quality = incoming.source_quality;
@@ -645,9 +717,15 @@ fn merge_fact(map: &mut BTreeMap<String, Nip90PaymentFact>, mut incoming: Nip90P
             std::mem::take(&mut existing.publish_rejected_relays),
             std::mem::take(&mut incoming.publish_rejected_relays),
         );
+        existing.provider_observation_history = merge_provider_observation_history(
+            std::mem::take(&mut existing.provider_observation_history),
+            std::mem::take(&mut incoming.provider_observation_history),
+        );
         return;
     }
 
+    incoming.provider_observation_history =
+        normalize_provider_observation_history(incoming.provider_observation_history);
     map.insert(incoming.request_id.clone(), incoming);
 }
 
@@ -753,6 +831,11 @@ fn upsert_actor(
 }
 
 fn normalize_facts(mut facts: Vec<Nip90PaymentFact>) -> Vec<Nip90PaymentFact> {
+    for fact in &mut facts {
+        fact.provider_observation_history = normalize_provider_observation_history(std::mem::take(
+            &mut fact.provider_observation_history,
+        ));
+    }
     facts.sort_by(|left, right| {
         right
             .latest_event_epoch_seconds()
@@ -764,6 +847,66 @@ fn normalize_facts(mut facts: Vec<Nip90PaymentFact>) -> Vec<Nip90PaymentFact> {
     facts.retain(|fact| seen.insert(fact.fact_id.clone()));
     facts.truncate(NIP90_PAYMENT_FACT_ROW_LIMIT);
     facts
+}
+
+fn normalize_provider_observation_history(
+    mut history: Vec<NetworkRequestProviderObservationHistoryEvent>,
+) -> Vec<NetworkRequestProviderObservationHistoryEvent> {
+    history.sort_by(|left, right| {
+        left.observed_at_epoch_ms
+            .cmp(&right.observed_at_epoch_ms)
+            .then_with(|| left.observed_order.cmp(&right.observed_order))
+            .then_with(|| left.history_id.cmp(&right.history_id))
+    });
+    let mut seen = BTreeSet::<String>::new();
+    history.retain(|event| seen.insert(event.history_id.clone()));
+    history
+}
+
+fn merge_provider_observation_history(
+    existing: Vec<NetworkRequestProviderObservationHistoryEvent>,
+    incoming: Vec<NetworkRequestProviderObservationHistoryEvent>,
+) -> Vec<NetworkRequestProviderObservationHistoryEvent> {
+    let mut events = BTreeMap::<String, NetworkRequestProviderObservationHistoryEvent>::new();
+    for event in existing.into_iter().chain(incoming) {
+        match events.entry(event.history_id.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(event);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let current = entry.get_mut();
+                current.observed_order = current.observed_order.min(event.observed_order);
+                current.observed_at_epoch_ms =
+                    current.observed_at_epoch_ms.min(event.observed_at_epoch_ms);
+                current.relay_urls =
+                    merge_string_vecs(std::mem::take(&mut current.relay_urls), event.relay_urls);
+                current.status = merge_string_field(current.status.take(), event.status);
+                current.status_extra =
+                    merge_string_field(current.status_extra.take(), event.status_extra);
+                current.amount_msats = merge_u64_field(current.amount_msats, event.amount_msats);
+                current.bolt11_present |= event.bolt11_present;
+                current.provider_pubkey =
+                    merge_string_field(current.provider_pubkey.take(), event.provider_pubkey);
+                current.previous_provider_pubkey = merge_string_field(
+                    current.previous_provider_pubkey.take(),
+                    event.previous_provider_pubkey,
+                );
+                current.observed_event_id =
+                    merge_string_field(current.observed_event_id.take(), event.observed_event_id);
+                current.winner_result_event_id = merge_string_field(
+                    current.winner_result_event_id.take(),
+                    event.winner_result_event_id,
+                );
+                current.winner_feedback_event_id = merge_string_field(
+                    current.winner_feedback_event_id.take(),
+                    event.winner_feedback_event_id,
+                );
+                current.selection_source =
+                    merge_string_field(current.selection_source.take(), event.selection_source);
+            }
+        }
+    }
+    normalize_provider_observation_history(events.into_values().collect())
 }
 
 fn normalize_relay_hops(mut relay_hops: Vec<Nip90RelayHop>) -> Vec<Nip90RelayHop> {
@@ -885,7 +1028,9 @@ fn infer_request_id_from_job_id(job_id: &str) -> String {
 }
 
 fn merge_string_field(left: Option<String>, right: Option<String>) -> Option<String> {
-    right.or(left).and_then(|value| normalize_optional_string(Some(value.as_str())))
+    right
+        .or(left)
+        .and_then(|value| normalize_optional_string(Some(value.as_str())))
 }
 
 fn merge_u64_field(left: Option<u64>, right: Option<u64>) -> Option<u64> {
@@ -913,7 +1058,10 @@ fn merge_string_vecs(left: Vec<String>, right: Vec<String>) -> Vec<String> {
     merged
 }
 
-fn merge_status(left: Nip90PaymentFactStatus, right: Nip90PaymentFactStatus) -> Nip90PaymentFactStatus {
+fn merge_status(
+    left: Nip90PaymentFactStatus,
+    right: Nip90PaymentFactStatus,
+) -> Nip90PaymentFactStatus {
     if left == Nip90PaymentFactStatus::Failed && right != Nip90PaymentFactStatus::Failed {
         return right;
     }
@@ -1017,7 +1165,10 @@ mod tests {
         JobHistoryStatus, NetworkRequestStatus,
     };
     use crate::spark_wallet::SparkPaneState;
-    use crate::state::operations::{NetworkRequestSubmission, NetworkRequestsState};
+    use crate::state::operations::{
+        NetworkRequestProviderObservationHistoryKind, NetworkRequestSubmission,
+        NetworkRequestsState,
+    };
     use openagents_spark::PaymentSummary;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1179,7 +1330,10 @@ mod tests {
             buyer_fact.status,
             Nip90PaymentFactStatus::BuyerWalletSettled
         );
-        assert_eq!(buyer_fact.buyer_nostr_pubkey.as_deref(), Some("localpubkey001"));
+        assert_eq!(
+            buyer_fact.buyer_nostr_pubkey.as_deref(),
+            Some("localpubkey001")
+        );
         assert_eq!(
             buyer_fact.provider_nostr_pubkey.as_deref(),
             Some("providerhex001")
@@ -1215,6 +1369,14 @@ mod tests {
             buyer_fact.result_observed_relays,
             vec!["wss://relay.result.test".to_string()]
         );
+        assert!(buyer_fact.result_observed_at.is_some());
+        assert_eq!(buyer_fact.invoice_observed_at, Some(1_762_700_700));
+        assert_eq!(buyer_fact.provider_observation_history.len(), 3);
+        assert!(buyer_fact.provider_observation_history.iter().any(|event| {
+            event.kind == NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+                && event.provider_pubkey.as_deref() == Some("providerhex001")
+                && event.selection_source.as_deref() == Some("preferred_provider_became_payable")
+        }));
 
         let seller_fact = ledger
             .fact_for_request("req-sell-001")
@@ -1227,9 +1389,13 @@ mod tests {
             seller_fact.provider_nostr_pubkey.as_deref(),
             Some("providerpubkey-local")
         );
-        assert_eq!(seller_fact.seller_payment_pointer.as_deref(), Some("wallet-recv-001"));
+        assert_eq!(
+            seller_fact.seller_payment_pointer.as_deref(),
+            Some("wallet-recv-001")
+        );
 
-        let buyer_actor_facts = ledger.facts_for_actor(Nip90ActorNamespace::Nostr, "localpubkey001");
+        let buyer_actor_facts =
+            ledger.facts_for_actor(Nip90ActorNamespace::Nostr, "localpubkey001");
         assert_eq!(buyer_actor_facts.len(), 1);
         let seller_actor_facts =
             ledger.facts_for_actor(Nip90ActorNamespace::Nostr, "providerpubkey-local");
@@ -1267,6 +1433,176 @@ mod tests {
         assert_eq!(reloaded.facts, ledger.facts);
         assert_eq!(reloaded.actors, ledger.actors);
         assert_eq!(reloaded.relay_hops, ledger.relay_hops);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn payment_fact_ledger_replays_multi_provider_history_after_reload_without_live_request_state()
+    {
+        let path = temp_path("nip90-payment-race-history");
+        let mut ledger = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
+        let mut network_requests = NetworkRequestsState::default();
+        let request_id = network_requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-001".to_string()),
+                request_type: "text-generation".to_string(),
+                payload: "race".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![
+                    "provideralpha001".to_string(),
+                    "providerbeta002".to_string(),
+                ],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 25,
+                timeout_seconds: 45,
+                authority_command_seq: 9,
+            })
+            .expect("request should queue");
+
+        network_requests.apply_nip90_request_publish_outcome_with_relays(
+            request_id.as_str(),
+            "event-request-race-001",
+            &["wss://relay.publish.one".to_string()],
+            &["wss://relay.publish.one".to_string()],
+            &[],
+            1,
+            0,
+            None,
+        );
+        network_requests.apply_nip90_buyer_result_event_with_relay(
+            request_id.as_str(),
+            "provideralpha001",
+            "event-result-alpha-001",
+            Some("wss://relay.result.alpha"),
+            Some("success"),
+        );
+        network_requests.apply_nip90_buyer_result_event_with_relay(
+            request_id.as_str(),
+            "providerbeta002",
+            "event-result-beta-001",
+            Some("wss://relay.result.beta"),
+            Some("success"),
+        );
+        network_requests.apply_nip90_buyer_result_event_with_relay(
+            request_id.as_str(),
+            "providerbeta002",
+            "event-result-beta-001",
+            Some("wss://relay.result.beta.alt/"),
+            Some("success"),
+        );
+        network_requests.apply_nip90_buyer_feedback_event_with_relay(
+            request_id.as_str(),
+            "providerbeta002",
+            "event-feedback-beta-001",
+            Some("wss://relay.invoice.beta"),
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(25_000),
+            Some("lnbc25n1beta"),
+        );
+        network_requests.apply_nip90_buyer_feedback_event_with_relay(
+            request_id.as_str(),
+            "provideralpha001",
+            "event-feedback-alpha-001",
+            Some("wss://relay.invoice.alpha"),
+            Some("payment-required"),
+            Some("invoice late"),
+            Some(25_000),
+            Some("lnbc25n1alpha"),
+        );
+
+        let spark_wallet = SparkPaneState::default();
+        let job_history = JobHistoryState::default();
+        ledger.sync_from_current_truth(
+            &network_requests,
+            &job_history,
+            &spark_wallet,
+            Some("LOCALBUYERKEY"),
+        );
+
+        let fact = ledger
+            .fact_for_request("req-race-001")
+            .expect("race fact should exist");
+        let history = &fact.provider_observation_history;
+        assert_eq!(history.len(), 5);
+        assert_eq!(
+            history
+                .iter()
+                .map(|event| (event.kind, event.provider_pubkey.clone()))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    NetworkRequestProviderObservationHistoryKind::ResultObserved,
+                    Some("provideralpha001".to_string()),
+                ),
+                (
+                    NetworkRequestProviderObservationHistoryKind::ResultObserved,
+                    Some("providerbeta002".to_string()),
+                ),
+                (
+                    NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+                    Some("providerbeta002".to_string()),
+                ),
+                (
+                    NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected,
+                    Some("providerbeta002".to_string()),
+                ),
+                (
+                    NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+                    Some("provideralpha001".to_string()),
+                ),
+            ]
+        );
+        let beta_result = history
+            .iter()
+            .find(|event| event.observed_event_id.as_deref() == Some("event-result-beta-001"))
+            .expect("beta result history should exist");
+        assert_eq!(
+            beta_result.relay_urls,
+            vec![
+                "wss://relay.result.beta".to_string(),
+                "wss://relay.result.beta.alt".to_string(),
+            ]
+        );
+        let winner_event = history
+            .iter()
+            .find(|event| {
+                event.kind == NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+            })
+            .expect("winner selection history should exist");
+        assert_eq!(
+            winner_event.provider_pubkey.as_deref(),
+            Some("providerbeta002")
+        );
+        assert_eq!(
+            winner_event.winner_result_event_id.as_deref(),
+            Some("event-result-beta-001")
+        );
+        assert_eq!(
+            winner_event.winner_feedback_event_id.as_deref(),
+            Some("event-feedback-beta-001")
+        );
+        assert_eq!(
+            winner_event.selection_source.as_deref(),
+            Some("preferred_provider_became_payable")
+        );
+
+        let mut reloaded = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
+        reloaded.sync_from_current_truth(
+            &NetworkRequestsState::default(),
+            &JobHistoryState::default(),
+            &SparkPaneState::default(),
+            Some("LOCALBUYERKEY"),
+        );
+        let reloaded_fact = reloaded
+            .fact_for_request("req-race-001")
+            .expect("reloaded race fact should remain available");
+        assert_eq!(
+            reloaded_fact.provider_observation_history,
+            fact.provider_observation_history
+        );
 
         let _ = std::fs::remove_file(path);
     }

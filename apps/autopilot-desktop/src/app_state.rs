@@ -10348,6 +10348,7 @@ mod tests {
             resolution_feedbacks: Vec::new(),
             observed_buyer_event_ids: Vec::new(),
             provider_observations: Vec::new(),
+            provider_observation_history: Vec::new(),
         }
     }
 
@@ -12684,7 +12685,10 @@ mod tests {
             .first()
             .expect("history row should be recorded");
         assert_eq!(row.status, JobHistoryStatus::Failed);
-        assert_eq!(row.requester_nostr_pubkey.as_deref(), Some(request.requester.as_str()));
+        assert_eq!(
+            row.requester_nostr_pubkey.as_deref(),
+            Some(request.requester.as_str())
+        );
         assert_eq!(row.payout_sats, 0);
         assert!(
             row.failure_reason
@@ -12711,11 +12715,7 @@ mod tests {
         active.start_from_request(&request);
         let job = active.job.as_ref().expect("active job exists");
         let mut history = JobHistoryState::default();
-        history.record_from_active_job(
-            job,
-            JobHistoryStatus::Failed,
-            Some("providerpubkey-local"),
-        );
+        history.record_from_active_job(job, JobHistoryStatus::Failed, Some("providerpubkey-local"));
         let row = history.rows.first().expect("history row should exist");
         assert_eq!(
             row.requester_nostr_pubkey.as_deref(),
