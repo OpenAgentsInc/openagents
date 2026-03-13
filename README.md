@@ -168,7 +168,11 @@ If you are using a terminal coding agent, you can paste this prompt:
 ```text
 Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available.
 
-Before starting the desktop app, test the Apple FM bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead. See AGENTS.md for the full "test bridge first" rule and swift/foundation-bridge/README.md for bridge details.
+If you are on macOS and using the Apple FM release path, test the bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
+
+If you are on a supported non-macOS NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app and verify with `autopilotctl local-runtime status`, `autopilotctl gpt-oss warm --wait`, and `autopilotctl wait gpt-oss-ready`.
+
+See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/headless-compute.md) for the current local-runtime runbooks.
 ```
 
 ## Run Locally
@@ -201,6 +205,29 @@ On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models*
 - **Build the bridge once** (from repo root): `cd swift/foundation-bridge && ./build.sh`. This produces `bin/foundation-bridge`. Building requires the Swift compiler (Xcode from the App Store, or `xcode-select --install` for Command Line Tools only).
 - **Test the bridge**: run `./bin/foundation-bridge`, then `curl -s http://127.0.0.1:11435/health` — you should get a JSON response. The desktop app can also start the bridge automatically when you open Mission Control.
 - **Shipping the app** so users don’t build on their machine: build the bridge once, then include `bin/foundation-bridge` in your app bundle (e.g. `YourApp.app/Contents/MacOS/foundation-bridge` or `Contents/Resources/foundation-bridge`). See [swift/foundation-bridge/README.md](swift/foundation-bridge/README.md) for steps and [crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md) for full bridge considerations (architecture, discovery, shipping, user requirements).
+
+### GPT-OSS local runtime (supported NVIDIA/CUDA hosts)
+
+On supported non-macOS NVIDIA hosts, Mission Control and `autopilotctl` use the
+same app-owned local-runtime contract for GPT-OSS.
+
+- Set `OPENAGENTS_GPT_OSS_BACKEND=cuda`
+- Set `OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf`
+- If the model-path env var is unset, the runtime looks for `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`
+- Launch the app, then verify with:
+
+```bash
+autopilotctl local-runtime status
+autopilotctl local-runtime refresh --wait
+autopilotctl gpt-oss warm --wait
+autopilotctl wait gpt-oss-ready
+```
+
+`Go Online` currently unlocks sell-compute on the GPT-OSS lane only when the
+backend is `cuda` and the configured GGUF model is loaded. Retained Metal/CPU
+GPT-OSS backends can still appear in Mission Control and desktop-control status,
+but they remain runtime bring-up/debug paths instead of supported sell-compute
+hosts.
 
 ## Programmatic Control And Verification
 

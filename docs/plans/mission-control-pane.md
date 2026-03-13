@@ -9,21 +9,21 @@ available only for dev-mode internal use.
 
 ## Product Rule
 
-Mission Control is FM-first.
+Mission Control is local-runtime-first.
 
 - `macOS = Apple Foundation Models via the Swift bridge`
-- `non-macOS NVIDIA path = Psionic GPT-OSS CUDA`
-- native Metal GPT-OSS is not the macOS MVP local-model lane
+- `supported non-macOS NVIDIA hosts = GPT-OSS via the Psionic CUDA lane`
+- retained GPT-OSS Metal/CPU hosts may still surface runtime truth, but they do
+  not currently unlock sell-compute
+- native Metal GPT-OSS is still not the macOS MVP local-model lane
 
-The key separation is now explicit:
+Mission Control owns provider readiness, wallet truth, job flow, and the active
+local-runtime story. The local-runtime area is lane-aware, not Apple-only:
 
-- Mission Control owns provider readiness, wallet truth, job flow, and the
-  Apple FM local-model story on macOS
-- GPT-OSS-specific loading, prompt testing, and runtime troubleshooting live in
-  the separate `GPT-OSS Workbench` pane, not in the main Mission Control shell
-
-Mission Control may still gate `GO ONLINE` on the active runtime being ready,
-but it should not behave like the primary GPT-OSS control panel anymore.
+- on macOS it speaks Apple FM truth
+- on supported NVIDIA/CUDA hosts it speaks GPT-OSS truth inline
+- the separate Apple FM and GPT-OSS workbenches still exist for deeper
+  inspection, prompt testing, and runtime-specific debugging
 
 ## Layout
 
@@ -118,12 +118,15 @@ In dev mode on macOS:
 - `OPEN APPLE FM` may still open the separate Apple FM workbench when the
   bridge and system model are ready
 
-In dev mode on the non-macOS NVIDIA CUDA path:
+On the supported NVIDIA/CUDA GPT-OSS path, Mission Control may render:
 
-- `OPEN GPT-OSS WORKBENCH`
+- `REFRESH GPT-OSS` when runtime health needs to be re-read
+- `WARM GPT-OSS` when the configured GGUF is present but not loaded
+- `UNLOAD GPT-OSS` when the configured model is resident
 
-That button only opens the separate GPT-OSS pane. It does not warm, load,
-unload, or debug GPT-OSS directly from Mission Control.
+On retained unsupported GPT-OSS host shapes such as Metal/CPU, the local-model
+button can still fall back to `OPEN GPT-OSS WORKBENCH` so the runtime state is
+truthful without pretending sell-compute is ready.
 
 If neither supported lane is available, the action is disabled and Mission
 Control says so plainly.
@@ -164,17 +167,16 @@ pane health rows.
 `GO ONLINE` only unlocks when the active local backend is ready:
 
 - on macOS: Apple FM bridge reachable, model available, and ready
-- on the NVIDIA GPT-OSS CUDA path: the configured model is actually resident
+- on the NVIDIA GPT-OSS CUDA path: the configured GGUF model is actually loaded
 
 Mission Control must not gate macOS provider mode on GGUF artifact presence.
-On NVIDIA hosts, Mission Control may reflect whether the local model is ready,
-but the actual GPT-OSS load/troubleshooting workflow belongs in the separate
-workbench.
+On retained GPT-OSS Metal/CPU hosts, Mission Control should stay explicit that
+runtime state is visible but sell-compute remains blocked until CUDA is active.
 
 ## Log Stream Copy
 
-The log stream must reflect backend truth without turning Mission Control into a
-second GPT-OSS debugging pane.
+The log stream must reflect the active backend truth without fabricating a
+different local-runtime model for Apple FM vs GPT-OSS.
 
 Examples on macOS:
 
@@ -185,11 +187,16 @@ Examples on macOS:
 
 Examples on the non-macOS NVIDIA path:
 
-- `NVIDIA local model ready. Manage GPT-OSS in the separate workbench pane.`
-- `Open the separate GPT-OSS workbench to load and validate the NVIDIA local model.`
+- `GPT-OSS ready via cuda backend (...)`
+- `GPT-OSS loading configured model (...)`
+- `GPT-OSS artifact missing. Configure a GGUF model before going online.`
+- `GPT-OSS backend: METAL`
+- `GPT-OSS model path: ...`
 
-Do not stream GPT-OSS artifact-path, warm/load-progress, or prompt-playground
-details in Mission Control. Those belong in `GPT-OSS Workbench`.
+Mission Control may stream backend, artifact, load-state, ready-model, model
+path, and error truth inline for the active GPT-OSS lane. The separate
+`GPT-OSS Workbench` still owns the prompt playground and full model-management
+surface.
 
 ## Pane Visibility Contract
 
@@ -200,6 +207,9 @@ To keep the local-model story clean:
 - the `GPT-OSS Workbench` pane is hidden on macOS
 - non-macOS builds keep that pane enabled, but it is presented as
   `GPT-OSS Workbench`
+- even when the separate GPT-OSS workbench exists, the Mission Control
+  local-runtime area still renders the active GPT-OSS lane inline on supported
+  NVIDIA hosts
 
 ## Data Sources
 
@@ -207,8 +217,11 @@ Mission Control is app-owned. It renders from:
 
 - `ProviderRuntimeState` for provider mode, active backend, and blockers
 - `AppleFmBridgeSnapshot` / `ProviderAppleFmRuntimeState` for Apple FM truth
-- `LocalInferenceExecutionSnapshot` / `ProviderOllamaRuntimeState` for the
+- `LocalInferenceExecutionSnapshot` / `ProviderGptOssRuntimeState` for the
   NVIDIA GPT-OSS CUDA gate
+- `local_runtime_capabilities.rs` for the shared app-owned local-runtime
+  capability model consumed by Mission Control, desktop control, and the
+  workbench panes
 - `SparkPaneState` for wallet truth
 - `NetworkRequestsState` / `NetworkRequestsPaneInputs` for inline buy-mode
   publish/result/payment lifecycle when enabled
@@ -239,7 +252,8 @@ Related local-model runtime panes live in:
 
 Mission Control is correct when all of the following are true:
 
-- macOS Mission Control speaks Apple FM truth instead of GPT-OSS-specific copy
+- Mission Control speaks the active local-runtime truth instead of inventing
+  separate ad hoc Apple-vs-GPT-OSS rules for each operation
 - the local-model action and `GO ONLINE` gate are honest about backend
   readiness
 - provider blockers and log lines come from the same backend/runtime state that
@@ -250,5 +264,7 @@ Mission Control is correct when all of the following are true:
   wallet truth rather than Mission Control-local inference
 - macOS does not expose a competing GPT-OSS local-model pane in the command
   palette
-- GPT-OSS-specific loading and troubleshooting are handled in the separate
-  `GPT-OSS Workbench` pane rather than in Mission Control
+- supported NVIDIA/CUDA hosts can refresh, warm, and unload GPT-OSS from the
+  Mission Control local-runtime area without leaving the screen
+- the separate `GPT-OSS Workbench` still owns prompt execution and deeper
+  runtime inspection
