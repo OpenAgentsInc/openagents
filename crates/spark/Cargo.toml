@@ -19,4 +19,4 @@ bitcoin = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
 hex = { workspace = true }
 dirs = "6.0.0"
-breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.6.6", default-features = false, features = ["rustls-tls"] }
+breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.6.6" }

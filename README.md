@@ -167,9 +167,9 @@ Requires the Rust toolchain (`cargo`/`rustc`) and `protoc` (Protocol Buffers com
 brew install protobuf
 ```
 
-**Install protoc on Debian/Ubuntu:**
+**Install build prerequisites on Debian/Ubuntu:**
 ```bash
-sudo apt-get install -y protobuf-compiler
+sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
 ```
 
 **Run:**
