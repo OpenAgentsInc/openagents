@@ -9,6 +9,7 @@ pub const HOTBAR_SLOT_NOSTR_IDENTITY: u8 = 2;
 pub const HOTBAR_SLOT_SPARK_WALLET: u8 = 3;
 pub const HOTBAR_SLOT_COMMAND_PALETTE: u8 = 4;
 pub const HOTBAR_SLOT_PROVIDER_CONTROL: u8 = 5;
+pub const HOTBAR_SLOT_EARNINGS_JOBS: u8 = 6;
 
 pub const HOTBAR_COMMAND_PALETTE_ICON: &str = "K";
 pub const HOTBAR_COMMAND_PALETTE_TOOLTIP: &str = "Command palette";
@@ -273,7 +274,7 @@ const PANE_SPECS: [PaneSpec; 43] = [
             slot: HOTBAR_SLOT_PROVIDER_CONTROL,
             icon: ">",
             tooltip: "Provider control",
-            shortcut: None,
+            shortcut: Some("5"),
         }),
     },
     PaneSpec {
@@ -323,18 +324,23 @@ const PANE_SPECS: [PaneSpec; 43] = [
     },
     PaneSpec {
         kind: PaneKind::EarningsScoreboard,
-        title: "Earnings Scoreboard",
-        default_width: 640.0,
-        default_height: 320.0,
+        title: "Earnings & Jobs",
+        default_width: 980.0,
+        default_height: 560.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.earnings_scoreboard",
-            label: "Earnings Scoreboard",
-            description: "Open sats/day, lifetime, jobs/day and last-result metrics pane",
+            label: "Earnings & Jobs",
+            description: "Open provider earnings, active-job, inbox, and recent history summaries",
             keybinding: None,
         }),
-        hotbar: None,
+        hotbar: Some(PaneHotbarSpec {
+            slot: HOTBAR_SLOT_EARNINGS_JOBS,
+            icon: "$",
+            tooltip: "Earnings and jobs",
+            shortcut: Some("6"),
+        }),
     },
     PaneSpec {
         kind: PaneKind::RelayConnections,
@@ -898,7 +904,10 @@ mod tests {
         let provider_spec = pane_spec_by_command_id("pane.provider_control")
             .expect("provider control command should resolve to a pane spec");
         assert_eq!(provider_spec.kind, PaneKind::ProviderControl);
-        assert!(provider_spec.singleton, "provider control pane must be singleton");
+        assert!(
+            provider_spec.singleton,
+            "provider control pane must be singleton"
+        );
         assert!(
             provider_spec.startup,
             "provider control pane should auto-open during startup"

@@ -323,6 +323,9 @@ pub enum CodexDiagnosticsPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EarningsScoreboardPaneAction {
     Refresh,
+    OpenJobInbox,
+    OpenActiveJob,
+    OpenJobHistory,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -998,7 +1001,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
-        PaneKind::EarningsScoreboard => pane_size_for_content(640.0, 320.0),
+        PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
             pane_size_for_content(900.0, 420.0)
         }
@@ -2932,13 +2935,39 @@ pub fn codex_diagnostics_clear_events_button_bounds(content_bounds: Bounds) -> B
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.clamp(160.0, 220.0);
+    let width = earnings_scoreboard_button_width(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
         width,
         34.0,
     )
+}
+
+pub fn earnings_scoreboard_job_inbox_button_bounds(content_bounds: Bounds) -> Bounds {
+    earnings_scoreboard_button_bounds(content_bounds, 1)
+}
+
+pub fn earnings_scoreboard_active_job_button_bounds(content_bounds: Bounds) -> Bounds {
+    earnings_scoreboard_button_bounds(content_bounds, 2)
+}
+
+pub fn earnings_scoreboard_history_button_bounds(content_bounds: Bounds) -> Bounds {
+    earnings_scoreboard_button_bounds(content_bounds, 3)
+}
+
+fn earnings_scoreboard_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let width = earnings_scoreboard_button_width(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD + index as f32 * (width + JOB_INBOX_BUTTON_GAP),
+        content_bounds.origin.y + CHAT_PAD,
+        width,
+        34.0,
+    )
+}
+
+fn earnings_scoreboard_button_width(content_bounds: Bounds) -> f32 {
+    ((content_bounds.size.width - CHAT_PAD * 2.0 - JOB_INBOX_BUTTON_GAP * 3.0) / 4.0).max(120.0)
 }
 
 pub fn relay_connections_url_input_bounds(content_bounds: Bounds) -> Bounds {
@@ -5410,9 +5439,8 @@ fn pane_hit_action_for_pane(
             if crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,
                 &state.gpt_oss_execution,
-            ) == Some(
-                crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels,
-            ) && provider_control_local_fm_test_button_bounds(content_bounds).contains(point)
+            ) == Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
+                && provider_control_local_fm_test_button_bounds(content_bounds).contains(point)
                 && state.provider_runtime.apple_fm.is_ready()
                 && !state.provider_control.local_fm_summary_is_pending()
             {
@@ -5608,12 +5636,26 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
-                Some(PaneHitAction::EarningsScoreboard(
+                return Some(PaneHitAction::EarningsScoreboard(
                     EarningsScoreboardPaneAction::Refresh,
-                ))
-            } else {
-                None
+                ));
             }
+            if earnings_scoreboard_job_inbox_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EarningsScoreboard(
+                    EarningsScoreboardPaneAction::OpenJobInbox,
+                ));
+            }
+            if earnings_scoreboard_active_job_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EarningsScoreboard(
+                    EarningsScoreboardPaneAction::OpenActiveJob,
+                ));
+            }
+            if earnings_scoreboard_history_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::EarningsScoreboard(
+                    EarningsScoreboardPaneAction::OpenJobHistory,
+                ));
+            }
+            None
         }
         PaneKind::RelayConnections => {
             if relay_connections_add_button_bounds(content_bounds).contains(point) {
@@ -6476,27 +6518,15 @@ pub fn dispatch_mission_control_log_scroll_event(
     );
     if !log_bounds.contains(cursor_position) {
         if let InputEvent::Scroll { dy, .. } = event {
-            let layout = mission_control_layout_for_mode(
-                content_bounds,
-                state.mission_control_buy_mode_enabled(),
-            );
             if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position)
             {
                 state.provider_control.scroll_by(*dy);
-                return true;
-            }
-            if layout.earnings_panel.contains(cursor_position) {
-                state.mission_control.scroll_earnings_by(*dy);
                 return true;
             }
             if mission_control_actions_scroll_viewport_bounds(content_bounds)
                 .contains(cursor_position)
             {
                 state.mission_control.scroll_actions_by(*dy);
-                return true;
-            }
-            if layout.active_jobs_panel.contains(cursor_position) {
-                state.mission_control.scroll_active_jobs_by(*dy);
                 return true;
             }
         }
@@ -6986,11 +7016,12 @@ mod tests {
         credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
         credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
         credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
-        earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
-        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-        job_history_search_input_bounds, job_history_status_button_bounds,
-        job_history_time_button_bounds, job_inbox_accept_button_bounds,
-        job_inbox_reject_button_bounds, job_inbox_row_bounds,
+        earnings_scoreboard_active_job_button_bounds, earnings_scoreboard_history_button_bounds,
+        earnings_scoreboard_job_inbox_button_bounds, earnings_scoreboard_refresh_button_bounds,
+        go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+        job_history_prev_page_button_bounds, job_history_search_input_bounds,
+        job_history_status_button_bounds, job_history_time_button_bounds,
+        job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
         local_inference_max_tokens_input_bounds, local_inference_prompt_input_bounds,
         local_inference_refresh_button_bounds, local_inference_requested_model_input_bounds,
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
@@ -7878,11 +7909,20 @@ mod tests {
     }
 
     #[test]
-    fn earnings_refresh_button_is_inside_content() {
-        let content = Bounds::new(0.0, 0.0, 640.0, 320.0);
-        let button = earnings_scoreboard_refresh_button_bounds(content);
-        assert!(content.contains(button.origin));
-        assert!(button.max_x() <= content.max_x());
-        assert!(button.max_y() <= content.max_y());
+    fn earnings_jobs_buttons_are_inside_content_and_ordered() {
+        let content = Bounds::new(0.0, 0.0, 980.0, 560.0);
+        let refresh = earnings_scoreboard_refresh_button_bounds(content);
+        let inbox = earnings_scoreboard_job_inbox_button_bounds(content);
+        let active = earnings_scoreboard_active_job_button_bounds(content);
+        let history = earnings_scoreboard_history_button_bounds(content);
+
+        for button in [refresh, inbox, active, history] {
+            assert!(content.contains(button.origin));
+            assert!(button.max_x() <= content.max_x());
+            assert!(button.max_y() <= content.max_y());
+        }
+        assert!(refresh.max_x() < inbox.min_x());
+        assert!(inbox.max_x() < active.min_x());
+        assert!(active.max_x() < history.min_x());
     }
 }
