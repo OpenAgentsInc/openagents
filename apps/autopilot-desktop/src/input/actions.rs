@@ -9069,7 +9069,21 @@ pub(super) fn run_rive_preview_action(
             state.rive_preview_runtime.surface = None;
             state.rive_preview.load_state = crate::app_state::PaneLoadState::Loading;
             state.rive_preview.last_error = None;
-            state.rive_preview.last_action = Some("Reloading packaged HUD asset".to_string());
+            state.rive_preview.last_action =
+                Some("Reloading selected packaged Rive asset".to_string());
+            true
+        }
+        RivePreviewPaneAction::PreviousAsset => {
+            let asset = crate::rive_assets::previous_packaged_rive_asset(
+                state.rive_preview.asset_id.as_str(),
+            );
+            apply_rive_preview_asset(state, asset, "Selected previous packaged Rive asset");
+            true
+        }
+        RivePreviewPaneAction::NextAsset => {
+            let asset =
+                crate::rive_assets::next_packaged_rive_asset(state.rive_preview.asset_id.as_str());
+            apply_rive_preview_asset(state, asset, "Selected next packaged Rive asset");
             true
         }
         RivePreviewPaneAction::TogglePlayback => {
@@ -9101,7 +9115,7 @@ pub(super) fn run_rive_preview_action(
                         state.rive_preview.load_state = crate::app_state::PaneLoadState::Ready;
                         state.rive_preview.last_error = None;
                         state.rive_preview.last_action =
-                            Some("Restarted packaged HUD scene".to_string());
+                            Some("Restarted packaged Rive scene".to_string());
                     }
                     Err(error) => {
                         state.rive_preview.load_state = crate::app_state::PaneLoadState::Error;
@@ -9137,6 +9151,29 @@ pub(super) fn run_rive_preview_action(
             true
         }
     }
+}
+
+fn apply_rive_preview_asset(
+    state: &mut crate::app_state::RenderState,
+    asset: crate::rive_assets::PackagedRiveAsset,
+    action_label: &str,
+) {
+    state.rive_preview_runtime.surface = None;
+    state.rive_preview.load_state = crate::app_state::PaneLoadState::Loading;
+    state.rive_preview.last_error = None;
+    state.rive_preview.asset_id = asset.id.to_string();
+    state.rive_preview.asset_name = asset.file_name.to_string();
+    state.rive_preview.artboard_name = Some(asset.default_artboard.to_string());
+    state.rive_preview.state_machine_name = Some(asset.default_scene.to_string());
+    state.rive_preview.frame_build_ms = None;
+    state.rive_preview.draw_call_count = 0;
+    state.rive_preview.image_count = 0;
+    state.rive_preview.scene_name = None;
+    state.rive_preview.last_pointer = None;
+    state.rive_preview.last_action = Some(format!(
+        "{action_label}: {} ({})",
+        asset.file_name, asset.id
+    ));
 }
 
 pub(super) fn run_apple_fm_workbench_action(
