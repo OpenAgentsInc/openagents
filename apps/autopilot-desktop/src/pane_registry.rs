@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 51] = [
+const PANE_SPECS: [PaneSpec; 52] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -298,6 +298,21 @@ const PANE_SPECS: [PaneSpec; 51] = [
             id: "pane.psionic_viz",
             label: "Psionic Mesh",
             description: "Open a derived GPT-OSS decode field built from Psionic runtime metrics",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::RivePreview,
+        title: "Rive Preview",
+        default_width: 1080.0,
+        default_height: 700.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.rive_preview",
+            label: "Rive Preview",
+            description: "Open the packaged HUD asset preview pane driven by the shared native Rive path",
             keybinding: None,
         }),
         hotbar: None,
@@ -995,6 +1010,18 @@ mod tests {
         assert!(
             !spec.startup,
             "psionic mesh pane should stay opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn rive_preview_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.rive_preview")
+            .expect("rive preview command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::RivePreview);
+        assert!(spec.singleton, "rive preview pane must be singleton");
+        assert!(
+            !spec.startup,
+            "rive preview pane should remain opt-in instead of opening at startup"
         );
     }
 

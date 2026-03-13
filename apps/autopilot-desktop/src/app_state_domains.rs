@@ -1,4 +1,5 @@
 use super::*;
+use wgpui::RiveFitMode;
 
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
@@ -26,6 +27,44 @@ impl Default for LocalInferencePaneState {
             output_chars: 0,
             last_metrics: None,
             last_provenance: None,
+        }
+    }
+}
+
+pub struct RivePreviewPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub asset_name: String,
+    pub artboard_name: Option<String>,
+    pub state_machine_name: Option<String>,
+    pub autoplay: bool,
+    pub playing: bool,
+    pub fit_mode: RiveFitMode,
+    pub frame_build_ms: Option<f32>,
+    pub draw_call_count: u32,
+    pub image_count: u32,
+    pub scene_name: Option<String>,
+    pub last_pointer: Option<Point>,
+}
+
+impl Default for RivePreviewPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting to load packaged HUD asset".to_string()),
+            asset_name: "simple-fui-hud.riv".to_string(),
+            artboard_name: Some("default".to_string()),
+            state_machine_name: Some("default".to_string()),
+            autoplay: true,
+            playing: true,
+            fit_mode: RiveFitMode::Contain,
+            frame_build_ms: None,
+            draw_call_count: 0,
+            image_count: 0,
+            scene_name: None,
+            last_pointer: None,
         }
     }
 }

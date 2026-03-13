@@ -1773,6 +1773,7 @@ fn execute_pane_set_input(
         PaneKind::AutopilotChat => apply_chat_input(state, &field, &value),
         PaneKind::RelayConnections => apply_relay_connections_input(state, &field, &value),
         PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
+        PaneKind::RivePreview => false,
         PaneKind::AppleFmWorkbench => apply_apple_fm_workbench_input(state, &field, &value),
         PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
         PaneKind::Settings => apply_settings_input(state, &field, &value),
@@ -1912,6 +1913,20 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                         "bridge_reachable": state.apple_fm_execution.reachable,
                         "ready_model": state.apple_fm_execution.ready_model,
                         "last_error": state.apple_fm_workbench.last_error,
+                    }),
+                );
+            }
+            PaneKind::RivePreview => {
+                map.insert(
+                    "rive_preview".to_string(),
+                    json!({
+                        "asset_name": state.rive_preview.asset_name,
+                        "playing": state.rive_preview.playing,
+                        "fit_mode": format!("{:?}", state.rive_preview.fit_mode),
+                        "draw_call_count": state.rive_preview.draw_call_count,
+                        "image_count": state.rive_preview.image_count,
+                        "scene_name": state.rive_preview.scene_name,
+                        "last_error": state.rive_preview.last_error,
                     }),
                 );
             }
@@ -2222,6 +2237,27 @@ fn pane_action_to_hit_action(
             )),
             "run" | "run_prompt" | "submit" => Ok(PaneHitAction::LocalInference(
                 LocalInferencePaneAction::RunPrompt,
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::RivePreview => match action {
+            "reload" | "reload_asset" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::ReloadAsset,
+            )),
+            "play" | "pause" | "toggle_playback" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::TogglePlayback,
+            )),
+            "restart" | "restart_scene" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::RestartScene,
+            )),
+            "contain" | "fit_contain" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Contain),
+            )),
+            "cover" | "fit_cover" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Cover),
+            )),
+            "fill" | "fit_fill" => Ok(PaneHitAction::RivePreview(
+                crate::pane_system::RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Fill),
             )),
             _ => unsupported(),
         },
@@ -5789,6 +5825,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "gpt_oss_viz",
             "decode_field",
         ],
+        PaneKind::RivePreview => &["rive", "rive_preview", "hud_preview"],
         PaneKind::AppleFmWorkbench => &[
             "apple_fm",
             "apple_fm_workbench",
@@ -5875,6 +5912,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::ProviderStatus => "provider_status",
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
+        PaneKind::RivePreview => "rive_preview",
         PaneKind::AppleFmWorkbench => "apple_fm_workbench",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",
@@ -6199,6 +6237,18 @@ mod tests {
             Some(PaneKind::AppleFmWorkbench)
         );
         assert_eq!(
+            resolve_pane_kind_for_runtime("pane.rive_preview"),
+            Some(PaneKind::RivePreview)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("rive"),
+            Some(PaneKind::RivePreview)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("hud_preview"),
+            Some(PaneKind::RivePreview)
+        );
+        assert_eq!(
             resolve_pane_kind_for_runtime("foundation_models"),
             Some(PaneKind::AppleFmWorkbench)
         );
@@ -6261,6 +6311,18 @@ mod tests {
             PaneHitAction::AppleFmWorkbench(
                 crate::pane_system::AppleFmWorkbenchPaneAction::RunStream
             )
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::RivePreview, "reload", None)
+                .expect("rive preview reload"),
+            PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::ReloadAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::RivePreview, "cover", None)
+                .expect("rive preview cover"),
+            PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::SetFitMode(
+                wgpui::RiveFitMode::Cover
+            ))
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::SparkWallet, "refresh", None)
