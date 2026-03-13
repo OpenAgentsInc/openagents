@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 const LANE_POLL: Duration = Duration::from_millis(15);
 const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(1);
 const MAX_MESSAGES_PER_RELAY_POLL: usize = 48;
+const MAX_UPDATES_PER_DRAIN: usize = 32;
+const MAX_PREVIEW_SEEN_REQUEST_IDS: usize = 4096;
 const SUBSCRIPTION_ID: &str = "autopilot-provider-nip90-ingress";
 const DEFAULT_TTL_SECONDS: u64 = 60;
 const NIP89_HANDLER_KIND: u16 = 31_990;
@@ -283,7 +285,10 @@ impl ProviderNip90LaneWorker {
 
     pub fn drain_updates(&mut self) -> Vec<ProviderNip90LaneUpdate> {
         let mut updates = Vec::new();
-        while let Ok(update) = self.update_rx.try_recv() {
+        while updates.len() < MAX_UPDATES_PER_DRAIN {
+            let Ok(update) = self.update_rx.try_recv() else {
+                break;
+            };
             updates.push(update);
         }
         updates
@@ -300,6 +305,7 @@ struct ProviderNip90LaneState {
     next_handler_publish_retry_at: Option<Instant>,
     tracked_provider_publish_request_ids: Vec<String>,
     tracked_buyer_request_ids: Vec<String>,
+    preview_seen_request_ids: HashSet<String>,
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
     relay_last_error: HashMap<String, String>,
@@ -406,6 +412,34 @@ impl ProviderNip90LaneState {
             "Buyer response relay tracking failed to connect".to_string()
         }
     }
+
+    fn clear_preview_request_cache(&mut self) {
+        self.preview_seen_request_ids.clear();
+    }
+
+    fn preview_request_should_reach_ui(&mut self, request: &JobInboxNetworkRequest) -> bool {
+        if self.preview_seen_request_ids.len() >= MAX_PREVIEW_SEEN_REQUEST_IDS {
+            self.preview_seen_request_ids.clear();
+        }
+
+        if !request.target_provider_pubkeys.is_empty() {
+            let Some(identity) = self.auth_identity.as_ref() else {
+                return false;
+            };
+            let local_pubkey = identity.public_key_hex.trim().to_ascii_lowercase();
+            let local_npub = identity.npub.trim().to_ascii_lowercase();
+            let targeted_here = request.target_provider_pubkeys.iter().any(|target| {
+                let normalized = target.trim().to_ascii_lowercase();
+                normalized == local_pubkey || normalized == local_npub
+            });
+            if !targeted_here {
+                return false;
+            }
+        }
+
+        self.preview_seen_request_ids
+            .insert(request.request_id.clone())
+    }
 }
 
 fn run_lane_loop(
@@ -450,6 +484,7 @@ fn run_lane_loop(
         next_handler_publish_retry_at: None,
         tracked_provider_publish_request_ids: Vec::new(),
         tracked_buyer_request_ids: Vec::new(),
+        preview_seen_request_ids: HashSet::new(),
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
         relay_last_error: HashMap::new(),
@@ -556,6 +591,11 @@ fn run_lane_loop(
         maybe_publish_handler_info(&runtime, &mut state, &update_tx);
 
         for request in outcome.requests {
+            if matches!(desired_state, DesiredLaneState::Preview)
+                && !state.preview_request_should_reach_ui(&request)
+            {
+                continue;
+            }
             state.snapshot.last_request_event_id = Some(request.request_id.clone());
             state.snapshot.last_request_at = Some(Instant::now());
             state.snapshot.last_error = None;
@@ -628,6 +668,7 @@ fn handle_command(
                 return;
             }
             state.auth_identity = identity;
+            state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.last_action = Some("Updated provider relay identity".to_string());
@@ -661,6 +702,7 @@ fn handle_command(
                     .unwrap_or_else(|| format!("{backend} capability unavailable"))
             };
             state.compute_capability = capability;
+            state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.last_action = Some(if is_ready {
@@ -682,6 +724,7 @@ fn handle_command(
             }
 
             state.snapshot.configured_relays = normalized;
+            state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.connected_relays = 0;
@@ -704,6 +747,7 @@ fn handle_command(
         }
         ProviderNip90LaneCommand::SetOnline { online } => {
             state.wants_online = online;
+            state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             if online {
@@ -2372,6 +2416,24 @@ mod tests {
         }
     }
 
+    fn fixture_lane_state() -> super::ProviderNip90LaneState {
+        super::ProviderNip90LaneState {
+            snapshot: super::ProviderNip90LaneSnapshot::default(),
+            wants_online: false,
+            pool: None,
+            auth_identity: Some(fixture_auth_identity()),
+            compute_capability: ProviderNip90ComputeCapability::default(),
+            handler_publication_state: super::HandlerPublicationState::None,
+            next_handler_publish_retry_at: None,
+            tracked_provider_publish_request_ids: Vec::new(),
+            tracked_buyer_request_ids: Vec::new(),
+            preview_seen_request_ids: HashSet::new(),
+            relay_last_seen: std::collections::HashMap::new(),
+            relay_latency_ms: std::collections::HashMap::new(),
+            relay_last_error: std::collections::HashMap::new(),
+        }
+    }
+
     #[test]
     fn maps_nip90_request_event_to_job_inbox_request() {
         let event = Event {
@@ -2423,6 +2485,54 @@ mod tests {
             row.raw_event_json
                 .as_deref()
                 .is_some_and(|value| value.contains("\"kind\": 5050"))
+        );
+    }
+
+    #[test]
+    fn preview_request_filter_skips_target_mismatches_and_duplicates() {
+        let mut state = fixture_lane_state();
+        let local_identity = fixture_auth_identity();
+
+        let targeted_elsewhere = Event {
+            id: "req-target-other".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_100,
+            kind: 5050,
+            tags: vec![
+                vec!["bid".to_string(), "2000".to_string()],
+                vec!["p".to_string(), "npub1someotherprovider".to_string()],
+            ],
+            content: "generate summary".to_string(),
+            sig: "11".repeat(64),
+        };
+        let targeted_elsewhere =
+            event_to_inbox_request(&targeted_elsewhere).expect("event should map to inbox row");
+        assert!(
+            !state.preview_request_should_reach_ui(&targeted_elsewhere),
+            "preview should drop targeted requests for other providers before they hit the UI"
+        );
+
+        let targeted_here = Event {
+            id: "req-target-local".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_101,
+            kind: 5050,
+            tags: vec![
+                vec!["bid".to_string(), "2000".to_string()],
+                vec!["p".to_string(), local_identity.npub.clone()],
+            ],
+            content: "generate summary".to_string(),
+            sig: "22".repeat(64),
+        };
+        let targeted_here =
+            event_to_inbox_request(&targeted_here).expect("event should map to inbox row");
+        assert!(
+            state.preview_request_should_reach_ui(&targeted_here),
+            "first matching preview request should reach the UI"
+        );
+        assert!(
+            !state.preview_request_should_reach_ui(&targeted_here),
+            "duplicate preview request should not churn the UI repeatedly"
         );
     }
 
