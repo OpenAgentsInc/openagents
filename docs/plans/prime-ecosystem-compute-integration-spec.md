@@ -838,6 +838,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Support attestation requirements, trust posture, and explicit refusal reasons for market-facing nodes.
 
 11. **Psionic Cluster: implement remote whole-request scheduling over wider-network transport**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3495`.
    - Productize the existing scheduler concepts so one node can admit a request and place it on another truthful node.
    - This is the first non-local compute execution lane worth selling.
 

@@ -51,8 +51,8 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 This subtree now has a tested CPU product baseline, a first Metal-backed
 `psionic.embeddings` path, wider-network `psionic-net` session establishment
 for direct/NAT/relay connectivity, durable ordered-state persistence, policy-
-driven wider-network candidate admission, and restart-safe catch-up in
-`psionic-cluster`, plus explicit AMD
+driven wider-network candidate admission, truthful remote whole-request
+scheduling, and restart-safe catch-up in `psionic-cluster`, plus explicit AMD
 discovery/readiness groundwork. AMD execution support is still future work.
 
 ## Docs

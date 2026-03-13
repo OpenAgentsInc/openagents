@@ -16,9 +16,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ClusterArtifactResidencyKey, ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
-    ClusterId, ClusterLink, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
-    ClusterMembershipStatus, ClusterNodeTelemetry, ClusterStabilityPosture, ClusterState,
-    ClusterTransportClass, NodeId, NodeRole,
+    ClusterDiscoveredCandidateStatus, ClusterId, ClusterLink, ClusterLinkKey, ClusterLinkStatus,
+    ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
+    ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeId, NodeRole,
 };
 
 /// Optional Exo-derived placement input for bounded scheduler experimentation.
@@ -296,6 +296,10 @@ pub enum WholeRequestSchedulingRefusalCode {
     TransportUnavailable,
     /// The scheduler excluded this node before evaluating it.
     PolicyExcluded,
+    /// The candidate exists in wider-network discovery truth but has not been admitted.
+    CandidateNotAccepted,
+    /// The candidate exists in wider-network discovery truth but was explicitly revoked.
+    CandidateRevoked,
 }
 
 /// One explicit candidate refusal emitted by the whole-request scheduler.
@@ -537,6 +541,38 @@ pub fn schedule_remote_whole_request(
                 ),
             ));
             continue;
+        }
+        if let Some(candidate) = state.discovery_candidates().get(node_id) {
+            match candidate.status {
+                ClusterDiscoveredCandidateStatus::Accepted => {}
+                ClusterDiscoveredCandidateStatus::Revoked => {
+                    let revocation_detail = candidate
+                        .revocation
+                        .as_ref()
+                        .and_then(|revocation| revocation.detail.as_deref())
+                        .unwrap_or("candidate_revoked");
+                    refusals.push(WholeRequestSchedulingRefusal::for_node(
+                        node_id.clone(),
+                        WholeRequestSchedulingRefusalCode::CandidateRevoked,
+                        format!(
+                            "candidate node `{}` was explicitly revoked under admission policy: {revocation_detail}",
+                            node_id.as_str()
+                        ),
+                    ));
+                    continue;
+                }
+                status => {
+                    refusals.push(WholeRequestSchedulingRefusal::for_node(
+                        node_id.clone(),
+                        WholeRequestSchedulingRefusalCode::CandidateNotAccepted,
+                        format!(
+                            "candidate node `{}` is present in discovery truth but is not admitted for scheduling while status is `{status:?}`",
+                            node_id.as_str()
+                        ),
+                    ));
+                    continue;
+                }
+            }
         }
         if !matches!(
             membership.identity.role,
@@ -793,7 +829,11 @@ pub fn schedule_remote_whole_request(
     )
     .with_communication_eligibility(communication_eligibility)
     .with_execution_topology(execution_topology.clone())
-    .with_selected_nodes(vec![selected_node]);
+    .with_selected_nodes(vec![selected_node])
+    .with_policy_digest(ClusterPolicyDigest::new(
+        ClusterPolicyDigestKind::Admission,
+        state.admission_policy().stable_digest(),
+    ));
     cluster_execution = cluster_execution
         .with_command_provenance(command_provenance_for_request(state, request, &best));
     if let Some(artifact_residency_digest) = artifact_residency_digest {
@@ -900,6 +940,12 @@ fn command_provenance_for_request(
 ) -> Vec<ClusterCommandProvenanceEvidence> {
     let mut provenance = Vec::new();
 
+    if let Some(authorization) = state.admission_policy_provenance() {
+        provenance.push(runtime_command_provenance(
+            ClusterAdmissionFactKind::AdmissionPolicy,
+            authorization,
+        ));
+    }
     if let Some(authorization) = state.membership_provenance(&request.scheduler_node_id) {
         provenance.push(
             runtime_command_provenance(
@@ -914,6 +960,17 @@ fn command_provenance_for_request(
             runtime_command_provenance(ClusterAdmissionFactKind::SelectedMembership, authorization)
                 .with_target_node_id(best.node_id.as_str()),
         );
+    }
+    if state.discovery_candidates().contains_key(&best.node_id) {
+        if let Some(authorization) = state.discovery_candidate_provenance(&best.node_id) {
+            provenance.push(
+                runtime_command_provenance(
+                    ClusterAdmissionFactKind::SelectedCandidateAdmission,
+                    authorization,
+                )
+                .with_target_node_id(best.node_id.as_str()),
+            );
+        }
     }
     if let Some(served_artifact_digest) = &request.served_artifact_digest {
         let artifact_key =
@@ -1302,12 +1359,13 @@ mod tests {
 
     use crate::{
         AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyKey,
-        ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
-        ClusterCommandAuthorityScope, ClusterCommandAuthorization, ClusterLeadershipRecord,
-        ClusterLink, ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus,
-        ClusterNamespace, ClusterNodeIdentity, ClusterNodeTelemetry, ClusterSnapshot,
-        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass, NodeEpoch,
-        NodeRole,
+        ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus, ClusterCandidateRevocation,
+        ClusterCandidateRevocationReason, ClusterCommandAuthorityScope,
+        ClusterCommandAuthorization, ClusterDiscoveredCandidateRecord,
+        ClusterDiscoveredCandidateStatus, ClusterLeadershipRecord, ClusterLink, ClusterLinkStatus,
+        ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity,
+        ClusterNodeTelemetry, ClusterSnapshot, ClusterStabilityPosture, ClusterState, ClusterTerm,
+        ClusterTransportClass, NodeEpoch, NodeRole,
     };
 
     use super::{
@@ -1442,6 +1500,44 @@ mod tests {
                 .with_bandwidth_mbps(1000),
         );
         snapshot
+    }
+
+    fn accepted_discovery_candidate(node_id: &str) -> ClusterDiscoveredCandidateRecord {
+        ClusterDiscoveredCandidateRecord {
+            candidate: crate::ClusterDiscoveryCandidate::new(
+                sample_cluster_id(),
+                ClusterNamespace::new("cluster-lan"),
+                crate::NodeId::new(node_id),
+                NodeRole::ExecutorOnly,
+                String::new(),
+                Vec::new(),
+            ),
+            introduced_by_source_id: String::from("operator-source"),
+            introduction_policy_digest: String::from("introduction-policy-digest"),
+            introduction_payload_digest: format!("introduction-payload-{node_id}"),
+            introduced_at_ms: 10_000,
+            expires_at_ms: 20_000,
+            observed_trust_bundle_version: None,
+            status: ClusterDiscoveredCandidateStatus::Accepted,
+            last_policy_decision: None,
+            revocation: None,
+            detail: Some(String::from("admitted_into_membership")),
+        }
+    }
+
+    fn revoked_discovery_candidate(node_id: &str) -> ClusterDiscoveredCandidateRecord {
+        let mut candidate = accepted_discovery_candidate(node_id);
+        candidate.status = ClusterDiscoveredCandidateStatus::Revoked;
+        candidate.revocation = Some(ClusterCandidateRevocation {
+            reason: ClusterCandidateRevocationReason::PolicyChanged,
+            policy_digest: String::from("admission-policy-digest"),
+            trust_policy_digest: String::from("trust-policy-digest"),
+            trust_assessment_digest: String::from("trust-assessment-digest"),
+            revoked_at_ms: 30_000,
+            detail: Some(String::from("trust_bundle_rotation")),
+        });
+        candidate.detail = Some(String::from("trust_bundle_rotation"));
+        candidate
     }
 
     #[test]
@@ -1579,6 +1675,98 @@ mod tests {
         assert_eq!(
             schedule.cluster_execution.command_provenance[3].fact_kind,
             ClusterAdmissionFactKind::Leadership
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_carries_admission_policy_and_candidate_provenance()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.leadership = Some(ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            crate::NodeId::new("scheduler"),
+            crate::ClusterEventIndex::initial(),
+        ));
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.membership_provenance.insert(
+            crate::NodeId::new("scheduler"),
+            sample_command_authorization(
+                "scheduler",
+                ClusterCommandAuthorityScope::SelfNode,
+                "scheduler-membership-command",
+            ),
+        );
+        snapshot.membership_provenance.insert(
+            crate::NodeId::new("worker-a"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-membership-command",
+            ),
+        );
+        snapshot.discovery_candidates.insert(
+            crate::NodeId::new("worker-a"),
+            accepted_discovery_candidate("worker-a"),
+        );
+        snapshot.discovery_candidate_provenance.insert(
+            crate::NodeId::new("worker-a"),
+            sample_command_authorization(
+                "scheduler",
+                ClusterCommandAuthorityScope::CoordinatorOnly,
+                "worker-a-candidate-admission",
+            ),
+        );
+        snapshot.admission_policy_provenance = Some(sample_command_authorization(
+            "scheduler",
+            ClusterCommandAuthorityScope::CoordinatorOnly,
+            "admission-policy-command",
+        ));
+        snapshot.artifact_residency_provenance.insert(
+            ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-artifact-command",
+            ),
+        );
+        snapshot.leadership_provenance = Some(sample_command_authorization(
+            "scheduler",
+            ClusterCommandAuthorityScope::ProposedLeader,
+            "leadership-command",
+        ));
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
+            .with_served_artifact_digest("artifact-1");
+
+        let schedule = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
+
+        assert!(
+            schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Admission),
+            "cluster execution should retain admission policy digest truth"
+        );
+        assert_eq!(schedule.cluster_execution.command_provenance.len(), 6);
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[0].fact_kind,
+            ClusterAdmissionFactKind::AdmissionPolicy
+        );
+        assert_eq!(
+            schedule.cluster_execution.command_provenance[3].fact_kind,
+            ClusterAdmissionFactKind::SelectedCandidateAdmission
         );
         Ok(())
     }
@@ -1749,7 +1937,10 @@ mod tests {
                 && note.detail.contains("stale-topology-digest")
         }));
         assert!(
-            cluster_execution.policy_digests.is_empty(),
+            !cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Placement),
             "ignored hint should not add placement digests"
         );
         assert!(
@@ -1892,6 +2083,59 @@ mod tests {
         assert!(failure.refusals.iter().any(|refusal| {
             refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-b"))
                 && refusal.code == WholeRequestSchedulingRefusalCode::TransportUnavailable
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_refuses_revoked_remote_candidate_even_if_membership_is_ready()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.discovery_candidates.insert(
+            crate::NodeId::new("worker-a"),
+            revoked_discovery_candidate("worker-a"),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-b"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot
+            .links
+            .get_mut(&crate::ClusterLinkKey::new(
+                crate::NodeId::new("scheduler"),
+                crate::NodeId::new("worker-b"),
+            ))
+            .ok_or_else(|| fixture_error("worker-b link"))?
+            .status = ClusterLinkStatus::Disconnected;
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
+            .with_served_artifact_digest("artifact-1");
+
+        let failure = schedule_remote_whole_request(&state, &request)
+            .expect_err("revoked and disconnected workers should refuse scheduling");
+
+        assert_eq!(
+            failure.code,
+            WholeRequestSchedulingFailureCode::NoEligibleRemoteNode
+        );
+        assert!(failure.refusals.iter().any(|refusal| {
+            refusal.node_id.as_ref() == Some(&crate::NodeId::new("worker-a"))
+                && refusal.code == WholeRequestSchedulingRefusalCode::CandidateRevoked
+                && refusal.detail.contains("trust_bundle_rotation")
         }));
         Ok(())
     }
