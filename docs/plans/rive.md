@@ -1,621 +1,458 @@
-Yes — the closest thing to an “exact import” path is to export the animation as a **`.riv` runtime file** and render that inside your Rust app with Rive’s runtime, rather than trying to convert it into some generic animation format. Rive’s docs treat `.riv` as the runtime export, and their Rust runtime can load `.riv` files directly. ([GitHub][1])
+# Rive Integration Plan For WGPUI
 
-The important catch is that **“exact” depends on the renderer**. Rive says different platforms can use different renderers with varying feature support, and their goal with the newer Rive Renderer is better fidelity to what you see in the editor. The current `rive-rs` repo says its existing Rust runtime uses **Vello** today, and that this backend has known visual differences versus the original design; they are working on making the official Rive Renderer available as another backend. ([rive.app][2])
+## Goal
 
-So, in practice:
+Render `.riv` assets inside the existing WGPUI render pipeline and prove the path with a dedicated Autopilot desktop pane.
 
-* **Best path for near-exact playback in WGPUI:** ship the `.riv` file and integrate `rive-rs` into your render layer. ([GitHub][1])
-* **Not really an exact path:** exporting to spritesheets, JSON, SVG, or manually rebuilding the motion in your own Rust animation system. That can reproduce the look, but it is not the same as running the original interactive/state-machine asset. Rive’s runtime model is built around artboards, state machines, and assets inside the `.riv` file. ([Rive][3])
+This plan replaces the earlier "just embed another runtime/renderer" framing. The shipping path should use our own WGPUI/WGPU renderer. It should not:
 
-A few details that matter for your app architecture:
+- spin up a second renderer or `wgpu::Surface`
+- rasterize `.riv` into spritesheets or per-frame SVG
+- treat `docs/plans/14270-30306-simple-fui-hud.riv` as the permanent runtime asset location
 
-* If the animation uses nested artboards/components you want accessible at runtime, those artboards should be flagged as **components**, because only component-marked artboards are exported to the `.riv` file. ([Rive][3])
-* If the file uses fonts, images, or audio, Rive supports **embedded**, **hosted**, or **referenced** asset export modes, which affects whether your Rust app must load assets itself. ([Rive][4])
+## Current Repo Reality
 
-My honest bottom line: **yes, you can export Rive in a format suitable for your Rust/WGPUI desktop app, and that format is `.riv`; but “exact” only really means exact if you embed Rive playback, not if you translate it into another animation system.** With `rive-rs` today, expect possible rendering deltas until the official Rive Renderer backend is available in Rust. ([GitHub][1])
+The integration has to fit the code that already exists:
 
-For your stack, I’d treat it like this:
+- `crates/wgpui-core/src/scene.rs` is the draw contract the renderer consumes. Today it carries layered quads, text, curves, and meshes, plus `svg_quads` that sit outside the layer model.
+- `crates/wgpui-render/src/renderer.rs` turns each scene layer into GPU buffers in `Renderer::prepare` and draws them in one pass in `Renderer::render_with_clear`.
+- `crates/wgpui-render/src/svg.rs` is an SVG rasterizer for static icon/image usage. It is fine for toolbar glyphs. It is the wrong path for interactive `.riv` playback.
+- `crates/wgpui/src/components/*` already contains reusable, product-agnostic visual components like `Heatmap`, `DotsGrid`, `RingGauge`, and `Scanlines`. A reusable Rive surface belongs in this layer, not in the app.
+- `apps/autopilot-desktop/src/pane_renderer.rs` is the app-side pane dispatcher. Panes paint through `PaintContext`.
+- A new desktop pane is never "just one file". The actual registration path runs through:
+  - `apps/autopilot-desktop/src/app_state.rs`
+  - `apps/autopilot-desktop/src/app_state_domains.rs`
+  - `apps/autopilot-desktop/src/panes/mod.rs`
+  - `apps/autopilot-desktop/src/panes/<pane>.rs`
+  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `apps/autopilot-desktop/src/pane_registry.rs`
+  - `apps/autopilot-desktop/src/pane_system.rs`
+  - `apps/autopilot-desktop/src/input/tool_bridge.rs` if we want automation aliases
 
-1. Designers ship `.riv`.
-2. WGPUI hosts a Rive surface/widget.
-3. Rust code drives state-machine inputs.
-4. Any unsupported fidelity edge cases get tested against the current `rive-rs` backend early.
+Two constraints from the current implementation matter immediately:
 
-If you want, I can sketch the exact integration plan for **WGPUI + `rive-rs`**, including how to wrap it as a reusable component.
+1. `Scene` is layered for quads, text, curves, and meshes, but not for SVG quads.
+2. Desktop redraw is already driven by the main event loop in `apps/autopilot-desktop/src/input.rs`, with a 16 ms active cadence and a 50 ms idle cadence via `handle_about_to_wait`.
 
-[1]: https://github.com/rive-app/rive-rs "GitHub - rive-app/rive-rs · GitHub"
-[2]: https://rive.app/renderer "Rive Renderer"
-[3]: https://help.rive.app/editor/fundamentals/nested-artboards "Components (formerly Nested Artboards) - Rive"
-[4]: https://help.rive.app/runtimes/loading-assets "Loading Assets - Rive"
+That means we do not need a second timing loop, but we do need a cleaner layered scene contract for vector/image drawables before Rive can fit properly.
 
----
+## Ownership Split
 
-Yes. The right target is **not** “convert Rive to our scene graph,” but **build a Rust renderer/runtime layer that can consume `.riv` assets and execute the same artboard + animation + state-machine model inside WGPUI**. That matches how Rive itself is structured: the `.riv` file contains artboards and their contents; runtimes query linear animations and state machines from artboards; playback advances the artboard over time; and the C++ runtime explicitly exposes an abstract renderer interface for plugging in an external vector renderer. ([GitHub][1])
+This needs to follow the repo boundary rules in `docs/OWNERSHIP.md`.
 
-One important reality check first: Rive has open-source runtimes and renderer code, but I did **not** find a clean official public “binary `.riv` file format spec” intended for third-party reimplementation. Their public docs frame Rive as an editor + stateful graphics format + runtime + renderer stack, and their current public interfaces emphasize loading `.riv` files through the runtime rather than documenting the binary format for others to reimplement from scratch. ([Rive][2])
+| Layer | Owner | Responsibility |
+| --- | --- | --- |
+| `crates/wgpui-core` | product-agnostic | vector scene types and scene integration |
+| `crates/wgpui-render` | product-agnostic | GPU compilation and rendering of vector batches |
+| `crates/wgpui` | product-agnostic | Rive-facing surface/controller API |
+| `apps/autopilot-desktop` | app-owned | preview pane, pane state, and app-specific input mapping |
 
-So the best spec is a **compatibility renderer spec**, not a speculative binary-format reverse-engineering spec. Concretely: parse `.riv` either by binding to or porting the open runtime model, then render with your own WGPU/WGPUI backend.
+The app should own "what do wallet/provider/runtime facts mean for this animation". The crates should own "how do we render a Rive artboard in WGPUI".
 
-# OpenAgents / WGPUI Rive-Compatible Renderer Spec
+## Design Rules
 
-**Status:** Draft v0.1
-**Goal:** Render `.riv` content inside the Rust/WGPUI desktop app with high fidelity, deterministic timing, and tight integration with the app event loop.
+1. Feed the existing `Scene -> Renderer::prepare -> Renderer::render_with_clear` path.
+2. Keep the renderer inside `crates/wgpui-render`; no side renderer hidden behind the pane.
+3. Keep the pane workbench app-owned and reusable surface logic crate-owned.
+4. Start with a preview/workbench pane, not a hardwired production HUD replacement.
+5. Treat the current `.riv` file in `docs/plans/` as a planning asset. Copy a runtime asset into `apps/autopilot-desktop/resources/rive/` when implementation starts.
 
-## 1. Scope
+## Target Architecture
 
-This spec defines a Rust-native subsystem, `oa_rive`, that:
+### 1. Generic Vector Scene Support In WGPUI
 
-* loads exported `.riv` assets,
-* instantiates artboards,
-* advances animations and state machines over time,
-* resolves data-bound inputs,
-* produces GPU draw commands for WGPU,
-* composites the result inside WGPUI surfaces,
-* supports embedded and referenced assets,
-* preserves enough of Rive semantics that designers can hand off `.riv` files without manual recreation.
+The right foundation is not a Rive-only render pass. It is a generic, layered vector batch that WGPUI can render and that a Rive adapter can emit.
 
-This subsystem is explicitly modeled around public Rive runtime concepts:
+Add a product-agnostic vector module to `crates/wgpui-core`:
 
-* `.riv` files contain artboards and their contents,
-* artboards expose linear animations and state machines,
-* state machines are advanced frame-by-frame over time,
-* runtime control occurs indirectly through inputs/data bindings rather than deep mutation of internal state,
-* assets may be embedded, hosted, or referenced. ([GitHub][1])
+- `crates/wgpui-core/src/vector.rs`
+- export it from `crates/wgpui-core/src/lib.rs`
 
-## 2. Non-goals
+Suggested types:
 
-Version 1 does **not** attempt to:
+- `VectorBatch`
+- `VectorPrimitive`
+- `VectorPath`
+- `VectorPaint`
+- `VectorStroke`
+- `VectorGradient`
+- `VectorImageRef`
+- `VectorTransform`
+- `VectorClip`
 
-* define a brand-new authoring format,
-* provide a full Rive editor replacement,
-* guarantee bit-identical raster output versus Rive’s own renderer,
-* support every future Rive feature on day one,
-* support hosted asset loading from Rive CDN by default.
+Extend `crates/wgpui-core/src/scene.rs`:
 
-Rive itself notes that different platforms use different renderers with varying feature support, and that visual consistency has historically varied by renderer. ([Rive][3])
+- add `vector_batches: Vec<(u32, VectorBatch, Option<Bounds>)>`
+- add `draw_vector_batch`
+- include vector batches in `Scene::layers()`
+- keep clip behavior consistent with quads/text/meshes
+- fix image-like drawables to be layer-aware
 
-## 3. Product intent
+For the image path, do one of these before landing Rive:
 
-For OpenAgents/WGPUI, this should be treated as a **UI animation runtime**, not merely a media player.
+- promote `SvgQuad` to the layered model by storing layer and clip with it, or
+- replace it with a general layered image primitive that SVG rasterization feeds into
 
-Primary use cases:
+Why this comes first:
 
-* onboarding flows,
-* animated HUD widgets,
-* wallet / earnings feedback,
-* expressive stateful controls,
-* mascot/orb/avatar systems,
-* reactive micro-interactions tied to app state.
+- Rive needs layered fills, strokes, clips, transforms, gradients, and images.
+- The current unlayered `svg_quads` path is already a sign that the scene contract needs to be cleaned up before a stateful vector runtime lands.
 
-## 4. Architecture overview
+### 2. Native WGPUI Vector Renderer
 
-The system is divided into six layers:
+Add the GPU-side vector compiler in `crates/wgpui-render`:
 
-1. **Container Loader**
-   Reads `.riv` bytes and produces an internal document model.
+- `crates/wgpui-render/src/vector.rs`
+- re-export it from `crates/wgpui-render/src/lib.rs`
 
-2. **Document Model**
-   Immutable file-level objects: artboards, assets, animations, state machines, shapes, paints, text runs.
+Extend `crates/wgpui-render/src/renderer.rs`:
 
-3. **Instance Layer**
-   Mutable live instances of artboards and state machines, with input values and animation clocks.
+- add `PreparedVectorBatch` inside the layer-preparation path
+- compile vector batches during `Renderer::prepare`
+- render vector batches in layer order inside `Renderer::render_with_clear`
+- keep one top-level render pass owned by `Renderer`
 
-4. **Layout + Fit Layer**
-   Maps artboard coordinates into WGPUI layout rectangles.
+Reuse existing infrastructure where it is good enough:
 
-5. **Renderer Backend**
-   Converts resolved vector content into WGPU draw passes.
+- filled paths can compile down to triangle buffers similar to `MeshPrimitive`
+- strokes can compile to line/strip buffers similar to the current curve/line path
 
-6. **Host Integration Layer**
-   Connects to WGPUI event loop, input system, focus, hit-testing, and invalidation.
+Initial renderer feature bar:
 
-## 5. Compatibility strategy
+- solid fills
+- strokes
+- transforms
+- clip stack
+- opacity
+- linear gradients
+- radial gradients
+- embedded or referenced images
+- deterministic batching and metrics
 
-There are two viable implementation paths.
+Do not route Rive through `crates/wgpui-render/src/svg.rs`. Keep `svg.rs` for static icon ingestion only.
 
-### Path A: Hybrid compatibility
+### 3. Rive Runtime Surface In `crates/wgpui`
 
-Use Rive’s open runtime as the semantic source of truth, but replace only the renderer backend.
+Add a neutral Rive module to the facade crate:
 
-This is the fastest path because the public C++ runtime already supports:
+- `crates/wgpui/src/rive.rs`
+- optionally `crates/wgpui/src/components/rive_surface.rs` if the final API reads better as a component
 
-* loading `.riv`,
-* querying artboards,
-* querying animations and state machines,
-* advancing artboards,
-* external renderer integration. ([GitHub][1])
+Do not bury this under `components::hud`. Rive is not HUD-specific.
 
-### Path B: Full Rust-native runtime
-
-Port enough of the runtime semantics into Rust so that `.riv` files can be loaded and advanced entirely natively.
-
-This yields deeper control and cleaner WGPUI integration, but costs more and carries format-drift risk if Rive changes the binary encoding or semantic model.
-
-**Recommendation:** do Path A first, but define internal Rust traits so the host app does not care whether semantics come from FFI or a native port.
-
-## 6. Core data model
-
-### 6.1 File
-
-A `RiveFile` is an immutable parsed asset.
-
-```rust
-pub struct RiveFile {
-    pub version: FileVersion,
-    pub artboards: Vec<ArtboardDef>,
-    pub assets: Vec<AssetDef>,
-    pub metadata: FileMetadata,
-}
-```
-
-### 6.2 Artboard
-
-An artboard is the root runtime composition unit.
+Suggested public surface:
 
 ```rust
-pub struct ArtboardDef {
-    pub name: String,
-    pub width: f32,
-    pub height: f32,
-    pub nodes: Vec<NodeDef>,
-    pub animations: Vec<LinearAnimationDef>,
-    pub state_machines: Vec<StateMachineDef>,
-    pub default_state_machine: Option<usize>,
-}
-```
+pub struct RiveSurface { /* persistent artboard/runtime state */ }
+pub struct RiveController { /* input + playback control */ }
 
-This mirrors Rive’s runtime model where rendering selects an artboard and optionally a specific state machine; otherwise the default is used. ([Rive][4])
-
-### 6.3 Live instance
-
-```rust
-pub struct ArtboardInstance {
-    pub def: Arc<ArtboardDef>,
-    pub world_state: WorldState,
-    pub inputs: InputStore,
-    pub active_linear_animations: Vec<LinearAnimationInstance>,
-    pub active_state_machine: Option<StateMachineInstance>,
-    pub needs_solve: bool,
-}
-```
-
-### 6.4 Inputs
-
-Expose only stable, public input handles to host code.
-
-```rust
-pub enum InputValue {
+pub enum RiveInputValue {
     Bool(bool),
     Number(f32),
     Trigger,
 }
 ```
 
-This follows Rive’s public runtime philosophy: state machines are meant to be controlled indirectly through inputs/data bindings rather than arbitrary direct mutation of internal state. ([Rive][4])
+Responsibilities:
 
-## 7. Timing and advancement model
+- load `.riv` bytes
+- hold artboard/state-machine instance state
+- advance by frame delta
+- accept named bool/number/trigger inputs
+- emit a `VectorBatch` into `PaintContext.scene`
 
-The engine advances in host frame time.
+Important boundary:
 
-```rust
-fn advance(instance: &mut ArtboardInstance, dt_seconds: f32);
-```
+- if we temporarily need a third-party loader/runtime to understand the `.riv` binary, hide it behind a thin adapter trait
+- do not let `rive-rs`, Vello, or another renderer become the presentation path
+- the long-term contract is `Rive -> VectorBatch -> WGPUI Renderer`
 
-Advance order:
+This is the only shape that keeps rendering ownership aligned with the repo.
 
-1. consume queued input changes,
-2. advance active state machine,
-3. evaluate active linear animations,
-4. solve transforms, deformations, constraints, and property propagation,
-5. mark paint/geometry caches dirty as needed,
-6. emit renderable scene.
+### 4. Frame Cadence And Redraw
 
-This reflects Rive’s runtime docs: state machines advance once per frame by delta time, evaluating keyframes, transitions, data-binding changes, and visible artboard elements. Runtimes may settle when nothing else changes. ([Rive][4])
+The desktop app already has an adequate redraw loop in `apps/autopilot-desktop/src/input.rs`.
 
-### 7.1 Settling
+Implementation rule:
 
-Instances may enter `Settled` state when:
+- while any visible `RiveSurface` is playing, transitioning, or waiting on asset decode, it must report "needs redraw"
+- `handle_about_to_wait` should include that state in its redraw decision, the same way it already does for provider animation and pending chat output
 
-* no active transition is progressing,
-* no keyframed value changes remain,
-* no input changed this frame,
-* no hover/pointer/focus event is pending.
+That means:
 
-When settled, the instance is skipped by the update loop until externally invalidated. This mirrors Rive’s documented settling optimization. ([Rive][4])
+- no second loop
+- no direct timer thread talking to the GPU
+- no per-pane surface ownership
 
-## 8. Rendering model
+The Rive surface should integrate with the existing 16 ms active / 50 ms idle cadence, and request redraw while the artboard is unsettled.
 
-## 8.1 Render abstraction
+### 5. Asset Packaging
 
-```rust
-pub trait VectorRenderer {
-    fn begin_frame(&mut self, target: &RenderTarget, clear: Option<Color>);
-    fn draw_path(&mut self, path: &ResolvedPath, paint: &ResolvedPaint, transform: Mat3);
-    fn draw_image(&mut self, image: &ResolvedImage, transform: Mat3, opacity: f32);
-    fn draw_text(&mut self, text: &ResolvedTextRun, transform: Mat3);
-    fn push_clip(&mut self, clip: &ResolvedClip, transform: Mat3);
-    fn pop_clip(&mut self);
-    fn end_frame(&mut self);
-}
-```
+The current file:
 
-The runtime layer must emit an ordered display list independent of backend.
+- `docs/plans/14270-30306-simple-fui-hud.riv`
 
-## 8.2 Backend target
+is good as a planning artifact, but it is the wrong place to load runtime assets from.
 
-Initial backend: `wgpu`.
+When implementation starts:
 
-Backend design goals:
+- copy or rename the asset to `apps/autopilot-desktop/resources/rive/simple-fui-hud.riv`
+- load it from there for runtime use
 
-* one pass encoder per WGPUI frame subtree,
-* path fill and stroke support,
-* high-quality antialiasing,
-* gradient support,
-* clip stack,
-* transform stack,
-* opacity layers,
-* text rendering via glyph atlas or analytic text path mode,
-* predictable batching.
+For the first working cut, the cleanest path is:
 
-## 8.3 Coordinate systems
+- store the file under `resources/rive/`
+- `include_bytes!` it from the desktop app or from a crate-level example harness
 
-Artboards are 2D and should be treated as orthographic UI scenes. Fit and alignment policy must be explicit at embed time.
+That avoids early bundle-path problems and keeps the first prototype deterministic.
 
-```rust
-pub enum Fit {
-    Fill,
-    Contain,
-    Cover,
-    FitWidth,
-    FitHeight,
-    None,
-    ScaleDown,
-}
+If we later want live-reload or user-selected assets, add that as a dev-only or explicit secondary path.
 
-pub enum Alignment {
-    TopLeft,
-    TopCenter,
-    TopRight,
-    CenterLeft,
-    Center,
-    CenterRight,
-    BottomLeft,
-    BottomCenter,
-    BottomRight,
-}
-```
+## Desktop Proof Pane
 
-## 9. Scene emission pipeline
+Start with a singleton workbench pane instead of wiring Rive straight into Provider Control or Earnings.
 
-The solver produces a retained but frame-stamped display list.
+The closest existing patterns are:
+
+- `PsionicViz` for a visual-only pane
+- `LocalInference` and `AppleFmWorkbench` for panes that mix controls and a visualization surface
+
+Add in `apps/autopilot-desktop`:
+
+- `PaneKind::RivePreview` in `src/app_state.rs`
+- `RivePaneState` in `src/app_state_domains.rs`
+- `src/panes/rive.rs`
+- `src/panes/mod.rs`
+- `src/pane_renderer.rs`
+- `src/pane_registry.rs`
+- `src/pane_system.rs`
+- `src/input/tool_bridge.rs` aliases if automation should open it
+
+Recommended pane metadata:
+
+- title: `Rive Preview`
+- command id: `pane.rive_preview`
+- aliases: `rive`, `rive_preview`, `hud_preview`
+- singleton: `true`
+
+Recommended pane state:
 
 ```rust
-pub struct DisplayList {
-    pub commands: Vec<DrawCommand>,
-    pub bounds: Rect,
-    pub generation: u64,
-}
-```
-
-`DrawCommand` variants:
-
-* `PushTransform`
-* `PopTransform`
-* `PushClip`
-* `PopClip`
-* `DrawPathFill`
-* `DrawPathStroke`
-* `DrawImage`
-* `DrawText`
-* `PushOpacityLayer`
-* `PopOpacityLayer`
-
-This keeps runtime semantics separate from WGPU implementation details.
-
-## 10. Asset loading
-
-Rive documents three asset modes: embedded, hosted, and referenced. Embedded assets are in the `.riv`; hosted assets may be loaded from Rive’s CDN; referenced assets are loaded by the application through a handler. ([Rive][5])
-
-For OpenAgents, define:
-
-```rust
-pub trait AssetResolver {
-    fn resolve_image(&self, asset_id: AssetId, hint: &AssetHint) -> Result<ImageAsset>;
-    fn resolve_font(&self, asset_id: AssetId, hint: &AssetHint) -> Result<FontAsset>;
-    fn resolve_audio(&self, asset_id: AssetId, hint: &AssetHint) -> Result<AudioAsset>;
-}
-```
-
-### Policy
-
-* **Embedded:** supported in v1.
-* **Referenced:** supported in v1.
-* **Hosted via Rive CDN:** disabled by default in desktop builds; opt-in only.
-
-Reason: desktop determinism, offline support, and fewer external dependencies.
-
-## 11. WGPUI integration
-
-Expose a widget/component:
-
-```rust
-pub struct RiveView {
-    pub file: Arc<RiveFile>,
-    pub artboard: Option<String>,
-    pub state_machine: Option<String>,
+pub struct RivePaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub asset_name: String,
+    pub artboard_name: Option<String>,
+    pub state_machine_name: Option<String>,
     pub autoplay: bool,
-    pub fit: Fit,
-    pub alignment: Alignment,
+    pub playing: bool,
+    pub fit_mode: RiveFitMode,
+    pub frame_build_ms: Option<f32>,
+    pub draw_call_count: u32,
+    pub last_pointer: Option<Point>,
 }
 ```
 
-Host-facing methods:
+Recommended runtime lifetime split:
 
-```rust
-impl RiveViewHandle {
-    pub fn play(&self);
-    pub fn pause(&self);
-    pub fn stop(&self);
-    pub fn set_bool(&self, name: &str, value: bool);
-    pub fn set_number(&self, name: &str, value: f32);
-    pub fn fire_trigger(&self, name: &str);
-}
-```
+- `RivePaneState` stores user-visible UI state
+- the loaded `RiveSurface`/controller lives in `RenderState` as non-serialized runtime state
+- reload swaps the runtime object but preserves selected artboard/state machine if still valid
 
-This matches the public runtime concepts Rive exposes across platforms: autoplay, play/pause/stop, choosing state machine by name, and driving behavior through inputs. ([Rive][4])
+Recommended first controls:
 
-### 11.1 Invalidation contract
+- reload asset
+- play/pause
+- restart animation
+- cycle fit mode
+- show current artboard/state machine
+- show renderer metrics and missing-feature warnings
 
-A `RiveView` requests redraw when:
+Input handling:
 
-* advancing while not settled,
-* an input changes,
-* hover/press/focus changes,
-* referenced assets finish loading,
-* layout rect changes.
+- if the first pane is mostly preview-only, add button hit targets in `pane_system.rs`
+- if we later need freeform asset-path or input editors, then add a small `RivePaneInputs` struct in `app_state.rs`
+- forward hover/down/up events to the Rive surface so interactive state machines can be exercised
 
-### 11.2 Threading
+## Concrete Work Plan
 
-* Parse off main thread.
-* GPU resource creation on render thread/device queue owner.
-* Live instance mutation on UI thread unless a lock-free command queue is adopted.
+### Phase 0: Fix The Scene Contract
 
-## 12. Events and interaction
+Files:
 
-The runtime host may forward:
+- `crates/wgpui-core/src/scene.rs`
+- `crates/wgpui-core/src/lib.rs`
+- `crates/wgpui-core/src/vector.rs`
+- `crates/wgpui-render/src/renderer.rs`
 
-* pointer move,
-* pointer enter/leave,
-* pointer down/up,
-* focus/blur,
-* visibility changes.
+Deliverables:
 
-Because Rive’s state machine runtime model is intentionally indirect, host interaction should be mapped to named inputs instead of poking internal states. ([Rive][4])
+- layer-aware vector batches
+- image-like drawables no longer bypass layering
+- render metrics updated to count vector batches
 
-Recommended convention:
+Exit criteria:
 
-* `hovered: bool`
-* `pressed: bool`
-* `clicked: trigger`
-* `focused: bool`
-* `value: number`
+- a static vector batch can be emitted in one pane layer and appear between pane background quads and pane text exactly where expected
 
-## 13. Fidelity requirements
+### Phase 1: Static `.riv` Frame
 
-### 13.1 Required visual features for v1
+Files:
 
-* solid fills
-* strokes
-* linear gradients
-* radial gradients
-* transforms
-* opacity
-* clipping
-* images
-* basic text
-* nested artboard rendering if present in parsed model
+- `crates/wgpui/src/rive.rs`
+- `crates/wgpui-render/src/vector.rs`
+- `apps/autopilot-desktop/src/panes/rive.rs`
 
-### 13.2 Stretch features
+Deliverables:
 
-* blur
-* drop shadow
-* blend modes beyond normal
-* mesh deformation optimization
-* advanced text shaping parity
-* audio sync hooks
+- load a packaged `.riv`
+- select the default artboard
+- emit a first-frame `VectorBatch`
+- paint it inside a desktop pane without a second renderer
 
-Rive states that cross-platform renderer differences affect which features are consistently supported and that new features like blur and drop shadow have historically been limited by renderer differences. ([Rive][3])
+Exit criteria:
 
-## 14. Performance targets
+- the HUD asset renders at the correct bounds
+- it respects pane clipping and resize
+- it draws through the normal `Renderer::prepare/render_with_clear` path
 
-For desktop OpenAgents UI:
+### Phase 2: Time And State Machines
 
-* cold parse of small UI `.riv`: under 15 ms on a modern laptop
-* warm instance creation: under 2 ms
-* steady-state idle settled view: zero per-frame solver cost
-* active lightweight animation: under 0.5 ms CPU/frame median
-* GPU budget per typical HUD animation: under 0.75 ms/frame at 60 fps on integrated graphics
+Files:
 
-## 15. Binary compatibility policy
+- `crates/wgpui/src/rive.rs`
+- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-desktop/src/panes/rive.rs`
+- `apps/autopilot-desktop/src/app_state_domains.rs`
 
-Because there is no public authoritative binary `.riv` spec intended for reimplementers, compatibility must be version-gated. ([Rive][2])
+Deliverables:
 
-Define:
+- frame-delta advancement
+- play/pause/restart controls
+- named bool/number/trigger inputs
+- hover/click forwarding
+- redraw participation in `handle_about_to_wait`
 
-```rust
-pub enum CompatibilityMode {
-    StrictKnownVersions,
-    BestEffortForwardCompatible,
-}
-```
+Exit criteria:
 
-### Rules
+- the pane can tick a state machine deterministically on the existing redraw cadence
+- interaction works without adding a second event loop
 
-* Accept only tested file-version ranges by default.
-* Log unsupported object types explicitly.
-* Fail soft on unknown optional features.
-* Fail hard on unknown core graph/object encodings.
+### Phase 3: Productionize The Pane
 
-## 16. Testing strategy
+Files:
 
-### 16.1 Golden semantic tests
+- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-desktop/src/pane_registry.rs`
+- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-desktop/src/pane_renderer.rs`
+- `apps/autopilot-desktop/src/input/tool_bridge.rs`
 
-For a curated asset corpus:
+Deliverables:
 
-* selected artboard names parse correctly,
-* selected state machine names resolve,
-* input changes produce expected property values,
-* settle behavior matches expectations.
+- full pane registration
+- command-palette visibility
+- automation aliases
+- user-facing fallback states for load or feature failures
 
-### 16.2 Golden visual tests
+Exit criteria:
 
-Render a fixed asset set at deterministic timestamps:
+- `pane.rive_preview` opens from the command system
+- repeated open/close/reload cycles are stable
+- the pane survives resize and focus changes cleanly
 
-* 0 ms
-* 100 ms
-* 250 ms
-* 500 ms
-* 1000 ms
+### Phase 4: Embed Into Real Product Surfaces
 
-Compare output against approved PNG references with tolerance thresholds.
+After the preview pane is stable, reuse the same `RiveSurface` inside real product panes instead of keeping Rive isolated forever.
 
-### 16.3 Cross-runtime comparison
+Likely first consumers:
 
-For each test asset:
+- provider / earnings score surfaces
+- onboarding / first-run celebratory HUD states
+- wallet milestone feedback
 
-* render using official runtime/renderer path where available,
-* render using `oa_rive`,
-* diff images and report drift.
+Rule:
 
-## 17. Observability
+- embed the reusable `RiveSurface`
+- do not fork a second app-local render path
 
-Expose debug HUD:
-
-* current artboard
-* current state machine
-* current inputs
-* settle/playing/paused state
-* frame advance dt
-* display list command count
-* path count
-* clip depth
-* GPU draw call count
-* unsupported feature flags encountered
-
-This fits your broader preference for robust telemetry and explicit state.
-
-## 18. Implementation phases
-
-### Phase 0: Feasibility
-
-* bind to open C++ runtime
-* load `.riv`
-* choose artboard
-* play one state machine
-* render bounding boxes or simple paths in WGPU
-
-### Phase 1: Hybrid renderer MVP
-
-* C++ runtime semantics
-* Rust WGPU renderer backend
-* embedded assets
-* play/pause/stop
-* bool/number/trigger inputs
-* WGPUI widget wrapper
-
-### Phase 2: Production parity
-
-* clips
-* gradients
-* text
-* referenced assets
-* settle/invalidation
-* snapshot testing
-
-### Phase 3: Native runtime migration
-
-* incremental Rust port of semantic model
-* FFI path retained as fallback
-* asset corpus validates equivalence
-
-## 19. Recommended crate layout
+## Data Flow
 
 ```text
-crates/
-  oa_rive/
-    src/lib.rs
-    src/file/
-    src/model/
-    src/instance/
-    src/solver/
-    src/display_list/
-    src/assets/
-    src/widget/
-  oa_rive_wgpu/
-    src/lib.rs
-    src/pipelines/
-    src/path_tessellation/
-    src/text/
-    src/images/
-    src/clips/
-  oa_rive_ffi/
-    src/lib.rs
-    build.rs
-    cxx/
+apps/autopilot-desktop::RivePaneState
+    -> wgpui::rive::RiveSurface
+    -> wgpui_core::scene::draw_vector_batch(...)
+    -> wgpui_render::Renderer::prepare(...)
+    -> wgpui_render::Renderer::render_with_clear(...)
 ```
 
-## 20. Public API sketch
+## Pane Wiring Checklist
 
-```rust
-pub struct RiveEngine;
+The pane work is not done until all of these are wired:
 
-impl RiveEngine {
-    pub fn load(bytes: &[u8], opts: LoadOptions) -> Result<Arc<RiveFile>>;
-    pub fn instantiate(file: Arc<RiveFile>, opts: InstanceOptions) -> Result<RiveHandle>;
-}
+- `apps/autopilot-desktop/src/app_state.rs`
+  - add `PaneKind::RivePreview`
+  - add `RenderState` storage for pane state and runtime object
+- `apps/autopilot-desktop/src/app_state_domains.rs`
+  - add `RivePaneState`
+- `apps/autopilot-desktop/src/panes/mod.rs`
+  - export the pane module
+- `apps/autopilot-desktop/src/panes/rive.rs`
+  - host the `RiveSurface`
+  - paint controls and metrics
+- `apps/autopilot-desktop/src/pane_renderer.rs`
+  - dispatch `PaneKind::RivePreview`
+- `apps/autopilot-desktop/src/pane_registry.rs`
+  - register title, size, command id, singleton flag
+- `apps/autopilot-desktop/src/pane_system.rs`
+  - minimum size
+  - hit boxes for controls
+  - cursor behavior if the surface becomes interactive
+- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+  - pane aliases for automation
+- `apps/autopilot-desktop/resources/rive/`
+  - packaged runtime asset
 
-pub struct RiveHandle { /* opaque */ }
+## Validation
 
-impl RiveHandle {
-    pub fn set_input(&self, name: &str, value: InputValue) -> Result<()>;
-    pub fn play(&self) -> Result<()>;
-    pub fn pause(&self) -> Result<()>;
-    pub fn stop(&self) -> Result<()>;
-    pub fn advance(&self, dt_seconds: f32) -> Result<AdvanceResult>;
-    pub fn snapshot(&self) -> DisplayList;
-}
-```
+Code-level validation:
 
-## 21. Key design decisions
+- `cargo test -p wgpui-core`
+- `cargo test -p wgpui-render`
+- `cargo test -p autopilot-desktop pane_registry`
 
-The biggest decision is this:
+Add focused tests for:
 
-**Do not make WGPUI understand Rive directly.**
-Make `oa_rive` emit a clean retained display list and host it as one widget.
+- vector batch layering
+- clip-stack behavior
+- renderer prepare determinism
+- Rive surface redraw/settled behavior
+- pane alias resolution
 
-That preserves replaceability. Later, if you abandon `.riv`, your app code still talks to the same animation widget API.
+Manual desktop smoke:
 
-## 22. Honest risk assessment
+1. open `pane.rive_preview`
+2. verify the packaged asset loads
+3. resize the pane and verify fit/alignment behavior
+4. toggle play/pause/restart
+5. click/hover the surface if the asset uses interactive inputs
+6. confirm renderer metrics stay sane and no second surface/loop is created
 
-The main technical risk is **format and semantic drift**. Since the official public surface emphasizes runtimes rather than a stable, third-party binary spec, a full clean-room parser is more fragile than a renderer-backend integration. ([Rive][2])
+## Explicit Non-Goals
 
-The second risk is **text and advanced effect fidelity**. Rive explicitly says different renderers have differed in supported features and fidelity across platforms. ([Rive][3])
+Do not:
 
-The third risk is **scope creep**. If you chase complete editor parity, this becomes a product-sized effort.
+- render Rive through `svg.rs`
+- export the asset to spritesheets or video for MVP
+- attach a second `wgpu::Surface` or renderer loop to the pane
+- load runtime assets from `docs/plans/`
+- push app-specific provider/wallet logic down into `crates/wgpui*`
 
-# Recommendation
+## Recommended First Implementation Order
 
-Build this in two steps:
-
-1. **Spec the host-facing runtime exactly as above.**
-2. **Implement semantics via the open runtime first, with your own WGPU backend.**
-
-That gets you real `.riv` support inside WGPUI fastest, while keeping the door open to a future all-Rust port.
-
-If you want, I can turn this into an **ADR-style repo document** next, with concrete Rust trait definitions and a milestone-by-milestone implementation plan.
-
-[1]: https://github.com/rive-app/rive-runtime "GitHub - rive-app/rive-runtime: Low-level C++ Rive runtime and renderer · GitHub"
-[2]: https://rive.app/runtimes?utm_source=chatgpt.com "Rive Runtimes"
-[3]: https://rive.app/renderer "Rive Renderer"
-[4]: https://help.rive.app/runtimes/state-machines "State Machine Playback - Rive"
-[5]: https://help.rive.app/runtimes/loading-assets "Loading Assets - Rive"
+1. Make scene drawables layer-aware enough for vector and image batches.
+2. Land a minimal vector batch renderer in `wgpui-render`.
+3. Land a reusable `RiveSurface` that emits that batch.
+4. Add the singleton `Rive Preview` pane around the packaged HUD asset.
+5. Only then start embedding the surface into other panes.
