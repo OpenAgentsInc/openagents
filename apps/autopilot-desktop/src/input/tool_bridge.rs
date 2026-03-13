@@ -2004,6 +2004,12 @@ fn pane_action_to_hit_action(
 
     match kind {
         PaneKind::ProjectOps => unsupported(),
+        PaneKind::LogStream => match action {
+            "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
+                crate::pane_system::LogStreamPaneAction::CopyAll,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::BuyModePayments => match action {
             "toggle" | "arm" => Ok(PaneHitAction::BuyModePayments(
                 crate::pane_system::BuyModePaymentsPaneAction::ToggleLoop,
@@ -5789,6 +5795,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
         PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
+        PaneKind::LogStream => &["log_stream", "logs", "runtime_logs"],
         PaneKind::BuyModePayments => {
             &["buy_mode", "buy_mode_payments", "buy_payments", "payment_history"]
         }
@@ -5829,6 +5836,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
+        PaneKind::LogStream => "log_stream",
         PaneKind::BuyModePayments => "buy_mode",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",

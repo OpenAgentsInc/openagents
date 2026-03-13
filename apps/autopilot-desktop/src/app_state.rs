@@ -106,6 +106,7 @@ pub enum PaneKind {
     JobInbox,
     ActiveJob,
     JobHistory,
+    LogStream,
     BuyModePayments,
     NostrIdentity,
     SparkWallet,
@@ -811,35 +812,29 @@ impl BuyModePaneState {
 
 pub type BuyModePaymentsPaneState = BuyModePaneState;
 
-pub struct MissionControlPaneState {
-    pub log_stream: TerminalPane,
-    pub last_action: Option<String>,
-    pub last_error: Option<String>,
-    log_copy_icon_clicked_at_epoch_ms: u64,
-    actions_scroll_offset_px: f32,
-    /// Dedupe keys for already-rendered Mission Control log entries.
+pub struct LogStreamPaneState {
+    pub terminal: TerminalPane,
+    copy_button_clicked_at_epoch_ms: u64,
+    /// Dedupe keys for already-rendered runtime log entries.
     rendered_log_content: Vec<String>,
     last_mirrored_trace_id: u64,
 }
 
-impl Default for MissionControlPaneState {
+impl Default for LogStreamPaneState {
     fn default() -> Self {
         Self {
-            log_stream: TerminalPane::new()
+            terminal: TerminalPane::new()
                 .title("\\ LOG STREAM")
                 .show_frame(false)
                 .code_block_style(true),
-            last_action: Some("Mission Control ready".to_string()),
-            last_error: None,
-            log_copy_icon_clicked_at_epoch_ms: 0,
-            actions_scroll_offset_px: 0.0,
+            copy_button_clicked_at_epoch_ms: 0,
             rendered_log_content: Vec::new(),
             last_mirrored_trace_id: 0,
         }
     }
 }
 
-impl MissionControlPaneState {
+impl LogStreamPaneState {
     const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
 
     fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
@@ -854,30 +849,12 @@ impl MissionControlPaneState {
         }
     }
 
-    pub fn mark_log_copy_icon_clicked(&mut self) {
-        self.log_copy_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
+    pub fn mark_copy_button_clicked(&mut self) {
+        self.copy_button_clicked_at_epoch_ms = current_epoch_millis_for_state();
     }
 
-    pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
-        Self::icon_click_feedback_intensity(self.log_copy_icon_clicked_at_epoch_ms, now_epoch_ms)
-    }
-
-    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
-        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
-        *offset = clamped;
-        clamped
-    }
-
-    pub fn scroll_actions_by(&mut self, dy: f32) {
-        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
-    }
-
-    pub fn actions_scroll_offset(&self) -> f32 {
-        self.actions_scroll_offset_px
+    pub fn copy_button_click_feedback(&self, now_epoch_ms: u64) -> f32 {
+        Self::icon_click_feedback_intensity(self.copy_button_clicked_at_epoch_ms, now_epoch_ms)
     }
 
     fn push_persisted_log_line(&mut self, line: TerminalLine) {
@@ -886,7 +863,7 @@ impl MissionControlPaneState {
             line.text.clone(),
             line.key.as_deref(),
         );
-        self.log_stream.push_line(line);
+        self.terminal.push_line(line);
     }
 
     fn build_runtime_terminal_line(
@@ -908,15 +885,6 @@ impl MissionControlPaneState {
         } else {
             line
         }
-    }
-
-    pub fn record_action(&mut self, action: impl Into<String>) {
-        self.last_action = Some(action.into());
-        self.last_error = None;
-    }
-
-    pub fn record_error(&mut self, error: impl Into<String>) {
-        self.last_error = Some(error.into());
     }
 
     pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
@@ -942,6 +910,8 @@ impl MissionControlPaneState {
 
     pub fn sync_log_stream(
         &mut self,
+        mission_action: Option<&str>,
+        mission_error: Option<&str>,
         desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
         provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
         local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
@@ -953,8 +923,8 @@ impl MissionControlPaneState {
         active_job: &ActiveJobState,
     ) {
         let (lines, content) = build_mission_control_log_lines(
-            self.last_action.as_deref(),
-            self.last_error.as_deref(),
+            mission_action,
+            mission_error,
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
@@ -978,7 +948,7 @@ impl MissionControlPaneState {
                     TerminalStream::Stdout
                 }
             };
-            self.log_stream.push_line(TerminalLine::new(
+            self.terminal.push_line(TerminalLine::new(
                 stream,
                 format!(
                     "{}  {}",
@@ -988,6 +958,51 @@ impl MissionControlPaneState {
             ));
             self.last_mirrored_trace_id = entry.id;
         }
+    }
+}
+
+pub struct MissionControlPaneState {
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    actions_scroll_offset_px: f32,
+}
+
+impl Default for MissionControlPaneState {
+    fn default() -> Self {
+        Self {
+            last_action: Some("Mission Control ready".to_string()),
+            last_error: None,
+            actions_scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl MissionControlPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_actions_by(&mut self, dy: f32) {
+        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
+    }
+
+    pub fn actions_scroll_offset(&self) -> f32 {
+        self.actions_scroll_offset_px
+    }
+
+    pub fn record_action(&mut self, action: impl Into<String>) {
+        self.last_action = Some(action.into());
+        self.last_error = None;
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.last_error = Some(error.into());
     }
 }
 
@@ -9673,6 +9688,7 @@ pub struct RenderState {
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
+    pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,
@@ -10045,8 +10061,7 @@ mod tests {
         EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
         JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        BuyModePaneState,
-        MissionControlPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
+        BuyModePaneState, LogStreamPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
         NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
         ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
@@ -17217,8 +17232,10 @@ mod tests {
             projection_file_path: earn_projection_test_path("mission-control-replay-reopen"),
         };
 
-        let mut first = MissionControlPaneState::default();
+        let mut first = LogStreamPaneState::default();
         first.sync_log_stream(
+            Some("Mission Control ready"),
+            None,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &super::LocalInferenceExecutionSnapshot::default(),
@@ -17231,14 +17248,16 @@ mod tests {
         );
         assert!(
             first
-                .log_stream
+                .terminal
                 .recent_lines(32)
                 .iter()
                 .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
         );
 
-        let mut reopened = MissionControlPaneState::default();
+        let mut reopened = LogStreamPaneState::default();
         reopened.sync_log_stream(
+            Some("Mission Control ready"),
+            None,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &super::LocalInferenceExecutionSnapshot::default(),
@@ -17251,7 +17270,7 @@ mod tests {
         );
         assert!(
             reopened
-                .log_stream
+                .terminal
                 .recent_lines(32)
                 .iter()
                 .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })

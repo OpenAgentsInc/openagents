@@ -690,7 +690,7 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     ) {
         changed = true;
     }
-    if state.mission_control.has_pending_mirrored_trace_logs() {
+    if state.log_stream.has_pending_mirrored_trace_logs() {
         changed = true;
     }
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
@@ -2827,6 +2827,7 @@ pub(super) fn run_pane_hit_action(
         ),
         PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
         PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
+        PaneHitAction::LogStream(action) => run_log_stream_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),

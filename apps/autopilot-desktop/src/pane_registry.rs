@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 43] = [
+const PANE_SPECS: [PaneSpec; 44] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -518,6 +518,21 @@ const PANE_SPECS: [PaneSpec; 43] = [
             id: "pane.job_history",
             label: "Job History",
             description: "Open immutable receipts with SA/SKL/AC proof links",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::LogStream,
+        title: "Log Stream",
+        default_width: 980.0,
+        default_height: 560.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.log_stream",
+            label: "Log Stream",
+            description: "Open replay-safe runtime logs with independent scroll and copy-all",
             keybinding: None,
         }),
         hotbar: None,

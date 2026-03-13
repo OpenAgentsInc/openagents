@@ -168,7 +168,7 @@ fn apply_mission_control_summary_update(
             state.provider_control.local_fm_summary_pending_request_id =
                 Some(started.request_id.clone());
             state.provider_control.local_fm_summary_text.clear();
-            state.mission_control.upsert_runtime_log_line(
+            state.log_stream.upsert_runtime_log_line(
                 mission_control_summary_line_key(started.request_id.as_str()),
                 TerminalStream::Stdout,
                 "Local FM summary streaming...",
@@ -204,7 +204,7 @@ fn apply_mission_control_summary_update(
                     state.provider_control.local_fm_summary_text
                 )
             };
-            state.mission_control.upsert_runtime_log_line(
+            state.log_stream.upsert_runtime_log_line(
                 mission_control_summary_line_key(delta.request_id.as_str()),
                 TerminalStream::Stdout,
                 text,
@@ -213,19 +213,19 @@ fn apply_mission_control_summary_update(
         AppleFmMissionControlSummaryUpdate::Completed(completed) => {
             state.provider_control.local_fm_summary_pending_request_id = None;
             state.provider_control.local_fm_summary_text = completed.response_text.clone();
-            state.mission_control.upsert_runtime_log_line(
+            state.log_stream.upsert_runtime_log_line(
                 mission_control_summary_line_key(completed.request_id.as_str()),
                 TerminalStream::Stdout,
                 format!("Local FM summary > {}", completed.response_text.trim()),
             );
             if let Some(model) = completed.model.as_deref() {
-                state.mission_control.push_runtime_log_line(
+                state.log_stream.push_runtime_log_line(
                     TerminalStream::Stdout,
                     format!("Local FM summary completed via {model}"),
                 );
             } else {
                 state
-                    .mission_control
+                    .log_stream
                     .push_runtime_log_line(TerminalStream::Stdout, completed.summary.clone());
             }
             state.provider_control.record_action(completed.summary.clone());
@@ -234,7 +234,7 @@ fn apply_mission_control_summary_update(
         AppleFmMissionControlSummaryUpdate::Failed(failed) => {
             state.provider_control.local_fm_summary_pending_request_id = None;
             state.provider_control.local_fm_summary_text.clear();
-            state.mission_control.upsert_runtime_log_line(
+            state.log_stream.upsert_runtime_log_line(
                 mission_control_summary_line_key(failed.request_id.as_str()),
                 TerminalStream::Stderr,
                 format!("Local FM summary failed // {}", failed.error),

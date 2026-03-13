@@ -10,7 +10,7 @@ use crate::app_state::{
     CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
     ProjectOpsPaneState, ProviderBlocker, ProviderControlPaneState, ProviderRuntimeState,
@@ -43,7 +43,7 @@ use crate::pane_system::{
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_copy_log_stream_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count,
     mission_control_layout_for_mode, mission_control_local_fm_test_button_bounds,
     mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
@@ -66,6 +66,7 @@ use crate::panes::{
     buy_mode as buy_mode_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
+    log_stream as log_stream_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
@@ -154,9 +155,23 @@ impl PaneRenderer {
         calculator_inputs: &mut CalculatorPaneInputs,
         provider_control: &mut ProviderControlPaneState,
         mission_control: &mut MissionControlPaneState,
+        log_stream: &mut LogStreamPaneState,
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         paint: &mut PaintContext,
     ) -> u32 {
+        log_stream.sync_log_stream(
+            mission_control.last_action.as_deref(),
+            mission_control.last_error.as_deref(),
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+            provider_blockers,
+            earn_job_lifecycle_projection,
+            spark_wallet,
+            network_requests,
+            job_inbox,
+            active_job,
+        );
         let mut indices: Vec<usize> = (0..panes.len()).collect();
         indices.sort_by_key(|idx| panes[*idx].z_index);
         let dim_inactive_panes = panes.len() > 1 && active_id.is_some();
@@ -388,6 +403,9 @@ impl PaneRenderer {
                         paint,
                     );
                 }
+                PaneKind::LogStream => {
+                    log_stream_pane::paint(content_bounds, log_stream, paint);
+                }
                 PaneKind::BuyModePayments => {
                     buy_mode_pane::paint(
                         content_bounds,
@@ -597,8 +615,8 @@ fn paint_autopilot_chat_pane(
 
 fn paint_go_online_pane(
     content_bounds: Bounds,
-    pane_is_active: bool,
-    cursor_position: Point,
+    _pane_is_active: bool,
+    _cursor_position: Point,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
     _autopilot_chat: &AutopilotChatState,
@@ -607,33 +625,20 @@ fn paint_go_online_pane(
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
-    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    _earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     backend_kernel_authority: bool,
     sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
     skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
     ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
     provider_blockers: &[ProviderBlocker],
     spark_wallet: &SparkPaneState,
-    network_requests: &NetworkRequestsState,
-    job_inbox: &JobInboxState,
-    active_job: &ActiveJobState,
+    _network_requests: &NetworkRequestsState,
+    _job_inbox: &JobInboxState,
+    _active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    mission_control.sync_log_stream(
-        desktop_shell_mode,
-        provider_runtime,
-        local_inference_runtime,
-        provider_blockers,
-        earn_job_lifecycle_projection,
-        spark_wallet,
-        network_requests,
-        job_inbox,
-        active_job,
-    );
-
     let layout = mission_control_layout_for_mode(content_bounds, buy_mode_enabled);
     let now = std::time::Instant::now();
-    let now_epoch_ms = mission_control_now_epoch_millis();
     let status_label = provider_runtime.mode.label().to_ascii_uppercase();
     let status_color = mission_control_mode_color(provider_runtime.mode);
     let wallet_status = match spark_wallet.network_status_label() {
@@ -779,7 +784,6 @@ fn paint_go_online_pane(
         ],
         paint,
     );
-    let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
     if buy_mode_enabled {
         paint_mission_control_section_panel(
             layout.buy_mode_panel,
@@ -1029,33 +1033,14 @@ fn paint_go_online_pane(
         false,
         paint,
     );
-    let log_copy_bounds =
-        mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
-    let log_copy_hovered = pointer_in_pane && log_copy_bounds.contains(cursor_position);
-    let log_copy_clicked = mission_control.log_copy_icon_click_feedback(now_epoch_ms);
-    paint_mission_control_log_copy_icon_button(
-        log_copy_bounds,
-        mission_control_orange_color(),
-        log_copy_hovered,
-        log_copy_clicked,
+    paint_mission_control_section_redirect(
+        layout.log_stream,
+        &[
+            "Runtime logs moved to Log Stream.",
+            "OPEN pane.log_stream FOR SCROLL + COPY.",
+        ],
         paint,
     );
-    let log_body_bounds = Bounds::new(
-        layout.log_stream.origin.x,
-        mission_control_section_content_y(layout.log_stream),
-        layout.log_stream.size.width,
-        (layout.log_stream.size.height
-            - MISSION_CONTROL_SECTION_CONTENT_TOP
-            - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
-            .max(0.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(log_body_bounds)
-            .with_background(mission_control_background_color().with_alpha(0.75))
-            .with_corner_radius(4.0),
-    );
-    mission_control.log_stream.set_title("");
-    mission_control.log_stream.paint(log_body_bounds, paint);
 }
 
 fn paint_mission_control_section_panel(

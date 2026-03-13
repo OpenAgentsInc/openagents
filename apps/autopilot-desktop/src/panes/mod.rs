@@ -9,6 +9,7 @@ pub mod codex;
 pub mod credit;
 pub mod earnings_jobs;
 pub mod local_inference;
+pub mod log_stream;
 pub mod project_ops;
 pub mod provider_control;
 pub mod relay_connections;
