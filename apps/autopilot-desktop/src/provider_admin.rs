@@ -522,6 +522,8 @@ mod tests {
             status: JobHistoryStatus::Succeeded,
             demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: 1,
+            requester_nostr_pubkey: Some("npub1buyer".to_string()),
+            provider_nostr_pubkey: Some("npub1provider".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

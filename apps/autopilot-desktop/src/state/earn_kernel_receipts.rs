@@ -1839,7 +1839,19 @@ impl EarnKernelReceiptState {
         };
         let link_candidates =
             history_row_link_candidate_receipt_ids(row, stage, request_id.as_str());
-        let receipt_tags = gpt_oss_execution_receipt_tags(row.execution_provenance.as_ref());
+        let mut receipt_tags = gpt_oss_execution_receipt_tags(row.execution_provenance.as_ref());
+        if let Some(requester_nostr_pubkey) = row.requester_nostr_pubkey.as_deref() {
+            receipt_tags.insert(
+                "requester_nostr_pubkey".to_string(),
+                requester_nostr_pubkey.to_string(),
+            );
+        }
+        if let Some(provider_nostr_pubkey) = row.provider_nostr_pubkey.as_deref() {
+            receipt_tags.insert(
+                "provider_nostr_pubkey".to_string(),
+                provider_nostr_pubkey.to_string(),
+            );
+        }
 
         let receipt = ReceiptBuilder::new(
             lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key.as_str()),
@@ -1861,6 +1873,8 @@ impl EarnKernelReceiptState {
             "job_id": row.job_id,
             "status": row.status.label(),
             "demand_source": row.demand_source.label(),
+            "requester_nostr_pubkey": row.requester_nostr_pubkey,
+            "provider_nostr_pubkey": row.provider_nostr_pubkey,
             "payout_sats": row.payout_sats,
             "payment_pointer": row.payment_pointer,
             "result_hash": row.result_hash,
@@ -10540,6 +10554,8 @@ fn rehydrate_job_history_candidate_from_receipt(receipt: &Receipt) -> Option<Job
         status,
         demand_source: JobDemandSource::OpenNetwork,
         completed_at_epoch_seconds: ms_to_epoch_seconds(receipt.created_at_ms),
+        requester_nostr_pubkey: receipt.tags.get("requester_nostr_pubkey").cloned(),
+        provider_nostr_pubkey: receipt.tags.get("provider_nostr_pubkey").cloned(),
         skill_scope_id: None,
         skl_manifest_a: None,
         skl_manifest_event_id: None,
@@ -10655,6 +10671,8 @@ mod tests {
             status: JobHistoryStatus::Succeeded,
             demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: 1_762_000_000,
+            requester_nostr_pubkey: Some("npub1buyer".to_string()),
+            provider_nostr_pubkey: Some("npub1provider".to_string()),
             skill_scope_id: Some("skill.scope".to_string()),
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -11174,6 +11192,14 @@ mod tests {
         assert_eq!(paid_row.status, JobHistoryStatus::Succeeded);
         assert_eq!(paid_row.payment_pointer, "wallet-payment-1");
         assert_eq!(paid_row.payout_sats, 77);
+        assert_eq!(
+            paid_row.requester_nostr_pubkey.as_deref(),
+            Some("npub1buyer")
+        );
+        assert_eq!(
+            paid_row.provider_nostr_pubkey.as_deref(),
+            Some("npub1provider")
+        );
 
         let failed_row = rows
             .iter()
@@ -11181,6 +11207,10 @@ mod tests {
             .expect("failed row");
         assert_eq!(failed_row.status, JobHistoryStatus::Failed);
         assert_eq!(failed_row.payment_pointer, "failed:failed-001");
+        assert_eq!(
+            failed_row.requester_nostr_pubkey.as_deref(),
+            Some("npub1buyer")
+        );
         assert_eq!(
             failed_row.failure_reason.as_deref(),
             Some(REASON_CODE_JOB_FAILED)

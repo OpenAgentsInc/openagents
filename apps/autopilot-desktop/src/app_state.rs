@@ -8533,6 +8533,8 @@ pub struct JobHistoryReceiptRow {
     pub status: JobHistoryStatus,
     pub demand_source: JobDemandSource,
     pub completed_at_epoch_seconds: u64,
+    pub requester_nostr_pubkey: Option<String>,
+    pub provider_nostr_pubkey: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -8558,6 +8560,8 @@ pub struct JobHistoryReceiptRow {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalletReconciledPayoutRow {
     pub job_id: String,
+    pub requester_nostr_pubkey: Option<String>,
+    pub provider_nostr_pubkey: Option<String>,
     pub payout_sats: u64,
     pub payment_pointer: String,
     pub completed_at_epoch_seconds: u64,
@@ -8690,7 +8694,12 @@ impl JobHistoryState {
         });
     }
 
-    pub fn record_from_active_job(&mut self, job: &ActiveJobRecord, status: JobHistoryStatus) {
+    pub fn record_from_active_job(
+        &mut self,
+        job: &ActiveJobRecord,
+        status: JobHistoryStatus,
+        local_provider_pubkey: Option<&str>,
+    ) {
         let completed = self
             .reference_epoch_seconds
             .saturating_add(self.rows.len() as u64 * 17);
@@ -8723,6 +8732,11 @@ impl JobHistoryState {
             status,
             demand_source: job.demand_source,
             completed_at_epoch_seconds: completed,
+            requester_nostr_pubkey: Some(job.requester.clone()),
+            provider_nostr_pubkey: local_provider_pubkey
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
             skill_scope_id: job.skill_scope_id.clone(),
             skl_manifest_a: job.skl_manifest_a.clone(),
             skl_manifest_event_id: job.skl_manifest_event_id.clone(),
@@ -8783,6 +8797,8 @@ impl JobHistoryState {
             }
             rows.push(WalletReconciledPayoutRow {
                 job_id: row.job_id.clone(),
+                requester_nostr_pubkey: row.requester_nostr_pubkey.clone(),
+                provider_nostr_pubkey: row.provider_nostr_pubkey.clone(),
                 payout_sats: payment.amount_sats,
                 payment_pointer: payment_pointer.to_string(),
                 completed_at_epoch_seconds: row.completed_at_epoch_seconds,
@@ -10205,6 +10221,8 @@ mod tests {
             status,
             demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds,
+            requester_nostr_pubkey: Some(format!("npub-requester:{job_id}")),
+            provider_nostr_pubkey: Some("npub-provider:local".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -12656,17 +12674,52 @@ mod tests {
         assert_eq!(job.stage, JobLifecycleStage::Delivered);
 
         let mut history = JobHistoryState::default();
-        history.record_from_active_job(job, JobHistoryStatus::Succeeded);
+        history.record_from_active_job(job, JobHistoryStatus::Succeeded, None);
         let row = history
             .rows
             .first()
             .expect("history row should be recorded");
         assert_eq!(row.status, JobHistoryStatus::Failed);
+        assert_eq!(row.requester_nostr_pubkey.as_deref(), Some(request.requester.as_str()));
         assert_eq!(row.payout_sats, 0);
         assert!(
             row.failure_reason
                 .as_deref()
                 .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
+    }
+
+    #[test]
+    fn job_history_records_local_provider_identity_when_supplied() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-provider-identity",
+            "summarize.text",
+            1200,
+            300,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        let job = active.job.as_ref().expect("active job exists");
+        let mut history = JobHistoryState::default();
+        history.record_from_active_job(
+            job,
+            JobHistoryStatus::Failed,
+            Some("providerpubkey-local"),
+        );
+        let row = history.rows.first().expect("history row should exist");
+        assert_eq!(
+            row.requester_nostr_pubkey.as_deref(),
+            Some(request.requester.as_str())
+        );
+        assert_eq!(
+            row.provider_nostr_pubkey.as_deref(),
+            Some("providerpubkey-local")
         );
     }
 
@@ -13021,7 +13074,7 @@ mod tests {
         let terminal_job = active.job.clone().expect("terminal active job");
 
         let mut history = JobHistoryState::default();
-        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded);
+        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded, None);
         let row = history.rows.first().expect("history row recorded");
         assert_eq!(row.status, JobHistoryStatus::Succeeded);
         assert_eq!(row.payout_sats, 50);
@@ -13332,7 +13385,7 @@ mod tests {
 
         let terminal = active.job.clone().expect("terminal job should exist");
         let mut history = JobHistoryState::default();
-        history.record_from_active_job(&terminal, JobHistoryStatus::Succeeded);
+        history.record_from_active_job(&terminal, JobHistoryStatus::Succeeded, None);
         let row = history.rows.first().expect("history row should exist");
         assert_eq!(row.demand_source, JobDemandSource::StarterDemand);
     }
@@ -13377,6 +13430,8 @@ mod tests {
             status: JobHistoryStatus::Failed,
             demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: history.reference_epoch_seconds + 10,
+            requester_nostr_pubkey: Some("npub1buyer".to_string()),
+            provider_nostr_pubkey: Some("npub1provider".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

@@ -4428,10 +4428,12 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
+            "{} {} src:{} payer:{} payee:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
+            row.requester_nostr_pubkey.as_deref().unwrap_or("unknown"),
+            row.provider_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.completed_at_epoch_seconds,
             row.skill_scope_id.as_deref().unwrap_or("none"),
             row.sa_tick_result_event_id.as_deref().unwrap_or("none"),
