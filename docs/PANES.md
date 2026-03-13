@@ -44,17 +44,15 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Review start, command exec, collaboration modes, experimental features, and gated experimental APIs.
 - `Codex Diagnostics`
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
-- `Go Online`
-  - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
-  - `v0.1` production default is fullscreen Mission Control with no pane workspace chrome, hotbar, or command-palette dependency.
-  - Mission Control is Apple FM-only in the production path: it shows Apple FM readiness, starts or refreshes the bridge inline, and keeps `GO ONLINE` disabled until Apple FM, wallet, and provider readiness are honest.
-  - Mission Control now includes the inline Lightning withdraw entry point, so the first paid-job loop no longer requires opening the separate wallet pay-invoice pane.
-  - Mission Control now exposes an inline `Buy Mode` control by default: a start/stop buyer loop that auto-dispatches one fixed `kind: 5050` request at `2 sats` every `12s` while armed, keeping at most one in-flight request and rendering publish/result/payment state inline without opening a second buyer pane.
-  - Buy Mode payment observability is documented in `docs/autopilot-earn/MISSION_CONTROL_BUY_MODE_PAYMENTS.md`: Mission Control mirrors buyer payment logs inline and the dedicated payment-history pane now keeps wallet pointers, pubkeys, payment hashes, and wallet detail for failed as well as settled sends.
-  - Dev mode still retains separate workbench/debug panes, including the NVIDIA `GPT-OSS Workbench` path on supported non-macOS hosts.
-  - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
+- `Provider Control`
+  - Canonical provider shell pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
+  - The hotbar shell is now the default production shell; there is no Mission Control fullscreen-only production mode.
+  - Owns `GO ONLINE` / `GO OFFLINE`, local runtime action, Apple FM smoke-test button when applicable, and provider inventory toggles.
+  - Shows provider/runtime truth inline: `Mode`, `Model`, `Backend`, `Load`, `Control`, `Preflight`, blockers, last action/error, and advertised inventory rows.
+  - `providers_online` remains sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
-  - Action: toggle online/offline.
+  - Startup pane and hotbar slot `1`.
+  - Action: toggle online/offline and runtime/inventory controls.
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
@@ -84,7 +82,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Buyer-side request composer for network submission.
   - Inputs: request type, payload, budget sats, timeout seconds (validated before submit).
   - MVP OpenAgents-posted public jobs should default to `race` resolution mode; future `windowed` mode can be added later for quality-sensitive jobs.
-  - Mission Control `Buy Mode` is the constrained inline variant of this buyer lane for `v0.1` smoke testing: start/stop loop, one in-flight request, fixed `kind: 5050`, fixed `2 sats`, fixed `12s` cadence, and no generic request authoring UI.
+  - `Buy Mode` is now the constrained dedicated pane for the `v0.1` smoke-test lane: start/stop loop, one in-flight request, fixed `kind: 5050`, fixed `2 sats`, fixed cadence, and no generic request authoring UI.
   - Output: submitted request rows with request id and response stream linkage.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Starter Jobs`
@@ -116,11 +114,22 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Validation blocks invalid relay URL prefixes and impossible numeric ranges before save.
   - Save flow persists schema-backed settings and explicitly flags reconnect-required changes.
   - Explicit pane state machine: `loading`, `ready`, `error`.
-- `Earnings Scoreboard`
-  - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
-  - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
+- `Earnings & Jobs`
+  - Canonical MVP earnings summary pane sourced from wallet/runtime/history lanes.
+  - Shows sats today, lifetime sats, jobs today, last job result, current online uptime, and recent inbox/active/history summaries.
   - Includes loop-integrity SLO metrics: first-job latency, completion ratio, payout success ratio, and wallet confirmation latency.
-  - Actions: refresh metrics and stale-state visibility.
+  - Startup pane and hotbar slot `4`.
+  - Actions: refresh metrics plus direct jump-off buttons for `Job Inbox`, `Active Job`, and `Job History`.
+- `Buy Mode`
+  - Dedicated buyer smoke-test pane for the fixed `kind: 5050` / `2 sats` loop.
+  - Shows current loop summary, provider/work/payment state, and replay-safe payment ledger history.
+  - `OPENAGENTS_ENABLE_BUY_MODE` now only suppresses this pane/flow when explicitly disabled; the default shell assumes Buy Mode is available.
+  - Action: start/stop loop and copy ledger.
+- `Log Stream`
+  - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
+  - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
+  - Hotbar slot `5`.
+  - Action: copy all logs.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
   - Remains visible while offline in preview mode so the user can see reachable market activity before opting into provider mode.
@@ -226,13 +235,15 @@ Current pane badge mapping:
 - `Codex Apps`: `source: codex`
 - `Codex Labs`: `source: codex`
 - `Codex Diagnostics`: `source: codex`
-- `Go Online`: `source: runtime`
+- `Provider Control`: `source: runtime`
 - `Provider Status`: `source: runtime`
 - `GPT-OSS Workbench`: `source: runtime`
-- `Earnings Scoreboard`: `source: runtime+wallet`
+- `Earnings & Jobs`: `source: runtime+wallet+receipts`
 - `Relay Connections`: `source: runtime`
 - `Sync Health`: `source: spacetime.sync.lifecycle`
 - `Network Requests`: `source: runtime`
+- `Buy Mode`: `source: buy`
+- `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`
 - `Alerts and Recovery`: `source: runtime`
@@ -256,8 +267,11 @@ Current pane badge mapping:
 ## Opening Panes
 
 - Hotbar:
+  - `1` opens `Provider Control`.
   - `2` opens `Nostr Keys (NIP-06)`.
   - `3` opens `Spark Lightning Wallet`.
+  - `4` opens `Earnings & Jobs`.
+  - `5` opens `Log Stream`.
   - `K` opens the command palette.
 - Command Palette (`K`):
   - `Autopilot Chat` -> opens `Autopilot Chat`.
@@ -268,13 +282,15 @@ Current pane badge mapping:
   - `Codex Apps` -> opens `Codex Apps`.
   - `Codex Labs` -> opens `Codex Labs`.
   - `Codex Diagnostics` -> opens `Codex Diagnostics`.
-  - `Go Online` -> opens `Go Online`.
+  - `Provider Control` -> opens `Provider Control`.
   - `Provider Status` -> opens `Provider Status`.
   - `GPT-OSS Workbench` -> opens `GPT-OSS Workbench`.
-  - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
+  - `Earnings & Jobs` -> opens `Earnings & Jobs`.
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
   - `Network Requests` -> opens `Network Requests`.
+  - `Buy Mode` -> opens `Buy Mode`.
+  - `Log Stream` -> opens `Log Stream`.
   - `Starter Jobs` -> opens `Starter Jobs`.
   - `Activity Feed` -> opens `Activity Feed`.
   - `Alerts and Recovery` -> opens `Alerts and Recovery`.
@@ -297,7 +313,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, GPT-OSS Workbench, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

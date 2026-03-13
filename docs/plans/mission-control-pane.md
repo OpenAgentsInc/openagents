@@ -1,270 +1,238 @@
-# Mission Control Pane
+# Mission Control Split Plan
 
-Mission Control remains the single earn-first shell in
-`apps/autopilot-desktop`. The pane kind stays `PaneKind::GoOnline`.
+Mission Control no longer exists as the active earn-first pane in
+`apps/autopilot-desktop`.
 
-For the `v0.1` release cut, the production path is the fullscreen one-screen
-shell described in `docs/v01.md`. Separate workbench/debug panes remain
-available only for dev-mode internal use.
+The old two-column fullscreen `PaneKind::GoOnline` shell was the right
+`v0.1` release cut, but the landed desktop architecture is now the split
+hotbar shell. The earn loop still stays front-and-center; it is just decomposed
+into focused panes instead of one monolith.
+
+`PaneKind::GoOnline` remains only as a hidden compatibility enum path for stale
+saved state and legacy tool aliases. It is not a supported pane surface, it has
+no pane spec, and it must not grow new UI again.
 
 ## Product Rule
 
-Mission Control is local-runtime-first.
+- Keep `docs/MVP.md` as the product authority.
+- Keep `docs/OWNERSHIP.md` as the authority for app-vs-crate boundaries.
+- Do not create "Mission Control Lite". New earn-shell work must either land in
+  an existing focused pane or justify a new pane with clear ownership.
+- Preserve the seller-first MVP loop: provider readiness, wallet truth,
+  earnings/jobs visibility, buyer smoke testing, and replay-safe logs must stay
+  one keystroke or one click away.
 
-- `macOS = Apple Foundation Models via the Swift bridge`
-- `supported non-macOS NVIDIA hosts = GPT-OSS via the Psionic CUDA lane`
-- retained GPT-OSS Metal/CPU hosts may still surface runtime truth, but they do
-  not currently unlock sell-compute
-- native Metal GPT-OSS is still not the macOS MVP local-model lane
+## Default Shell Contract
 
-Mission Control owns provider readiness, wallet truth, job flow, and the active
-local-runtime story. The local-runtime area is lane-aware, not Apple-only:
+The production desktop shell is now the hotbar shell. There is no longer a
+`Production vs Dev` shell split for the pane workspace.
 
-- on macOS it speaks Apple FM truth
-- on supported NVIDIA/CUDA hosts it speaks GPT-OSS truth inline
-- the separate Apple FM and GPT-OSS workbenches still exist for deeper
-  inspection, prompt testing, and runtime-specific debugging
+Startup behavior:
 
-## Layout
+- Open `Provider Control`.
+- Open `Earnings & Jobs`.
+- Lay them out as the default earn-first pair.
+- Bring `Provider Control` to front.
 
-Mission Control remains a two-column dashboard.
+Hotbar contract:
 
-### Left Column
+- `1` -> `Provider Control`
+- `2` -> `Nostr Keys (NIP-06)`
+- `3` -> `Spark Lightning Wallet`
+- `4` -> `Earnings & Jobs`
+- `5` -> `Log Stream`
+- `K` -> command palette
 
-`// SELL COMPUTE`
+Non-startup but first-class command-palette panes:
 
-- primary CTA: `GO ONLINE`
-- status rows: `Mode`, `Model`, `Backend`, `Load`, `Control`, `Preflight`
-- contextual hint below the state rows when the active local lane is blocked
+- `Buy Mode`
+- `Job Inbox`
+- `Active Job`
+- `Job History`
+- `Relay Connections`
+- `Sync Health`
+- `Provider Status`
+- `Apple FM Workbench`
+- `GPT-OSS Workbench`
 
-`// EARNINGS`
+## Pane Ownership
 
-- `Today`
-- `This Month`
-- `All Time`
-- BIP 177 integer display by default, with the existing legacy BTC toggle
+### Provider Control
 
-`// WALLET`
+Owns:
 
-- `Status`
-- `Address`
-- `Balance`
+- `GO ONLINE` / `GO OFFLINE`
+- provider mode truth (`offline`, `connecting`, `online`, `degraded`)
+- local-runtime truth (`Model`, `Backend`, `Load`, `Control`, `Preflight`)
+- blocker and last-action messaging
+- local runtime action button
+- Apple FM smoke-test button when that lane is active
+- provider inventory toggles
 
-Bottom actions:
+Primary data sources:
 
-- local-model action
-- inline Lightning withdraw input + action
+- `ProviderRuntimeState`
+- `LocalInferenceExecutionSnapshot`
+- Apple FM bridge/runtime snapshots
+- app-owned local runtime capability helpers in `app_state.rs`
 
-### Right Column
+Implementation grounding:
 
-`// ACTIVE JOBS`
+- `apps/autopilot-desktop/src/panes/provider_control.rs`
+- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-desktop/src/input/actions.rs`
 
-- one-line summary of the active job, or `Go Online to Start Jobs.`
+### Wallet
 
-`// BUY MODE` (feature-gated)
+Owns:
 
-- hidden unless `OPENAGENTS_ENABLE_BUY_MODE=1`
-- one-line summary of the latest outbound smoke-test request
-- status rows: `State`, `Kind`, `Budget`, `Result`, `Settlement`
-- action: `BUY 5050 TEST JOB`
+- wallet connectivity, address, and balances
+- invoice creation
+- Lightning payment / withdrawal flow
+- seed and custody-adjacent controls
 
-`// LOG STREAM`
+Canonical panes:
 
-- scrolling terminal-style status stream
-- shows provider mode, preflight blockers, local-model readiness, UI actions,
-  provider results, buy-mode lifecycle updates, and job lifecycle updates
+- `Spark Lightning Wallet`
+- `Create Lightning Invoice`
+- `Pay Lightning Invoice`
 
-## Buy Mode Contract
+Primary data source:
 
-Mission Control may expose a small inline `Buy Mode` block for internal and
-staging verification, but it must stay constrained enough that it does not
-become a second product surface.
+- `SparkPaneState`
 
-Contract:
+Mission Control rule:
 
-- gated behind `OPENAGENTS_ENABLE_BUY_MODE=1`
-- one outbound smoke-test at a time
-- publishes exactly one `kind: 5050` request per click
-- fixed spend: `2 sats`
-- uses a fixed tiny prompt template chosen for cheap validation of the result
-  path
-- buyer lifecycle renders inline from the same app-owned state used by the
-  existing `Network Requests` pane
-- terminal success requires both a provider result and a terminal buyer-wallet
-  payment success state
-- no general prompt composer, quote board, RFQ editor, or autonomous buy loop
-  in Mission Control for `v0.1`
+- provider/runtime surfaces may reference wallet readiness, but wallet controls
+  must live in wallet-owned panes rather than reappearing inside a monolith.
 
-This is a smoke-test lane for the real NIP-90 + Lightning path. It does not
-replace hosted starter demand and it should not dilute the earn-first release
-copy.
+### Earnings & Jobs
 
-## Local-Model Action Contract
+Owns:
 
-The local-model action is sourced from the same runtime truth that gates
-provider mode.
+- sats today / lifetime and job counts
+- current uptime and recent result summary
+- preview of inbox / active-job / recent-history state
+- jump-off actions into `Job Inbox`, `Active Job`, and `Job History`
 
-On the `v0.1` production path:
+Primary data sources:
 
-- `START APPLE FM` when the bridge is offline
-- `REFRESH APPLE FM` when the bridge is reachable
-- `STARTING APPLE FM` while bridge start is already in flight
+- `EarningsScoreboardState`
+- `EarnJobLifecycleProjectionState`
+- `JobInboxState`
+- `ActiveJobState`
+- `JobHistoryState`
+- wallet totals for payout truth
 
-This action stays inline in Mission Control for the release cut. It should not
-require opening a second pane to start or refresh Apple FM.
+Implementation grounding:
 
-In dev mode on macOS:
+- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
 
-- `OPEN APPLE FM` may still open the separate Apple FM workbench when the
-  bridge and system model are ready
+### Buy Mode
 
-On the supported NVIDIA/CUDA GPT-OSS path, Mission Control may render:
+Owns the constrained buyer smoke-test lane:
 
-- `REFRESH GPT-OSS` when runtime health needs to be re-read
-- `WARM GPT-OSS` when the configured GGUF is present but not loaded
-- `UNLOAD GPT-OSS` when the configured model is resident
+- start / stop buyer loop
+- fixed `kind: 5050`
+- fixed `2 sats`
+- one in-flight request at a time
+- app-owned target selection and payment-history ledger
 
-On retained unsupported GPT-OSS host shapes such as Metal/CPU, the local-model
-button can still fall back to `OPEN GPT-OSS WORKBENCH` so the runtime state is
-truthful without pretending sell-compute is ready.
+Primary data sources:
 
-If neither supported lane is available, the action is disabled and Mission
-Control says so plainly.
+- `BuyModePaymentsPaneState`
+- `NetworkRequestsState`
+- `SparkPaneState`
 
-## Provider mode and relay failures
+Mission Control rule:
 
-When you click **GO ONLINE**, the app:
+- buy mode is now its own pane. Do not regress to an inline buyer block inside a
+  replacement Mission Control dashboard.
 
-1. Starts the NIP-90 provider ingress lane (relay connections).
-2. **Provider mode** is derived from that lane and local inference in
-   `openagents-provider-substrate::derive_provider_lifecycle`.
+### Log Stream
 
-**Current behaviour:**
+Owns:
 
-- If **any** configured relay fails to connect (e.g. `Network is unreachable`),
-  the lane sets `last_error` and mode **Degraded**. The same error is then
-  passed into the lifecycle as `relay_error`, so **provider mode becomes
-  Degraded** and the UI shows DEGRADED and the error under `provider.runtime`.
-- So “first time I connected it went to degraded state cuz it got an error from
-  a relay” is **by design**: one relay failure is enough to mark provider
-  ingress as degraded.
-- Logs can look noisy because:
-  - `relay.connections` gets the relay error (e.g. `Failed connecting relay
-    wss://relay.nostr.band: ...`).
-  - `provider.runtime` then gets the same error (and sometimes an additional
-    “kernel authority unavailable” when hosted control is not configured).
-  - Both are cleared when the lane later succeeds (e.g. relay connects or
-    lane is retried).
+- replay-safe runtime log view
+- copy-all action
+- mirrored provider/buyer/wallet/session notices
 
-**Implemented (relaxed policy):** Degraded only when **no** relays are
-connected (`connected_relays == 0`). If at least one relay is up, provider
-mode is Online (or Preview) and `last_error` is cleared so the lifecycle
-does not see a relay error. Per-relay failures remain visible in the relay
-pane health rows.
+Primary data sources:
 
-## GO ONLINE Gate
+- `LogStreamPaneState`
+- app-owned mirrored action/error notices from the earn shell
 
-`GO ONLINE` only unlocks when the active local backend is ready:
+Implementation grounding:
 
-- on macOS: Apple FM bridge reachable, model available, and ready
-- on the NVIDIA GPT-OSS CUDA path: the configured GGUF model is actually loaded
+- `apps/autopilot-desktop/src/panes/log_stream.rs`
+- `apps/autopilot-desktop/src/runtime_log.rs`
 
-Mission Control must not gate macOS provider mode on GGUF artifact presence.
-On retained GPT-OSS Metal/CPU hosts, Mission Control should stay explicit that
-runtime state is visible but sell-compute remains blocked until CUDA is active.
+### Nostr Keys
 
-## Log Stream Copy
+Owns:
 
-The log stream must reflect the active backend truth without fabricating a
-different local-runtime model for Apple FM vs GPT-OSS.
+- NIP-06 identity material
+- reveal/copy/regenerate flows
+- the hotbar-visible network identity surface that used to be implicit inside
+  Mission Control onboarding/readiness copy
 
-Examples on macOS:
+## Phase Ordering
 
-- `Apple Foundation Models ready via Swift bridge (...)`
-- `Apple Foundation Models unavailable: ...`
-- `Apple Foundation Models bridge reachable but not ready yet.`
-- `Apple Foundation Models bridge is not running.`
+The split shipped in this order:
 
-Examples on the non-macOS NVIDIA path:
+1. `#3451` Extract `Provider Control`.
+2. `#3452` Promote the existing wallet panes and remove wallet duplication.
+3. `#3453` Promote `Earnings & Jobs` as the summary pane for earnings and job flow.
+4. `#3454` Extract `Buy Mode`.
+5. `#3455` Extract `Log Stream`.
+6. `#3456` Remove the shell gate and make the hotbar shell the default shell.
+7. `#3457` Delete residual Mission Control monolith plumbing.
+8. `#3458` / `#3459` / `#3460` update docs and verification around the landed shell.
 
-- `GPT-OSS ready via cuda backend (...)`
-- `GPT-OSS loading configured model (...)`
-- `GPT-OSS artifact missing. Configure a GGUF model before going online.`
-- `GPT-OSS backend: METAL`
-- `GPT-OSS model path: ...`
+## Compatibility Rules
 
-Mission Control may stream backend, artifact, load-state, ready-model, model
-path, and error truth inline for the active GPT-OSS lane. The separate
-`GPT-OSS Workbench` still owns the prompt playground and full model-management
-surface.
+- `pane.provider_control` is the canonical provider pane command.
+- Legacy tool/runtime aliases such as `mission_control` and `go_online` resolve
+  to `Provider Control` for compatibility only.
+- There is no `pane.mission_control` registry entry.
+- There is no dedicated Mission Control renderer.
+- There is no dev-mode-only workspace shell.
 
-## Pane Visibility Contract
+## Data Truth
 
-To keep the local-model story clean:
+The split changes shell composition, not the truth model.
 
-- `Mission Control` is the release-facing Apple FM surface on macOS
-- `Apple FM Workbench` remains available for dev-mode debugging and validation
-- the `GPT-OSS Workbench` pane is hidden on macOS
-- non-macOS builds keep that pane enabled, but it is presented as
-  `GPT-OSS Workbench`
-- even when the separate GPT-OSS workbench exists, the Mission Control
-  local-runtime area still renders the active GPT-OSS lane inline on supported
-  NVIDIA hosts
+- Provider truth remains app-owned in `apps/autopilot-desktop`.
+- Wallet truth remains explicit and authoritative in `SparkPaneState`.
+- Job lifecycle truth remains replay-safe and receipt-backed.
+- Buy-mode state remains app-owned and intentionally constrained.
+- Log mirroring remains replay-safe and suitable for desktop-control snapshots.
 
-## Data Sources
-
-Mission Control is app-owned. It renders from:
-
-- `ProviderRuntimeState` for provider mode, active backend, and blockers
-- `AppleFmBridgeSnapshot` / `ProviderAppleFmRuntimeState` for Apple FM truth
-- `LocalInferenceExecutionSnapshot` / `ProviderGptOssRuntimeState` for the
-  NVIDIA GPT-OSS CUDA gate
-- `local_runtime_capabilities.rs` for the shared app-owned local-runtime
-  capability model consumed by Mission Control, desktop control, and the
-  workbench panes
-- `SparkPaneState` for wallet truth
-- `NetworkRequestsState` / `NetworkRequestsPaneInputs` for inline buy-mode
-  publish/result/payment lifecycle when enabled
-- `EarnJobLifecycleProjectionState`, `JobInboxState`, and `ActiveJobState` for
-  job visibility
-
-There should not be a second inferred status path for Mission Control copy.
+The remaining `MissionControlPaneState` is a thin notice adapter used for
+mirrored action/error messages and desktop-control/log-stream continuity. It is
+not a pane contract and must not grow monolithic UI state again.
 
 ## Implementation Grounding
 
-The current implementation lives in:
+Current split-shell implementation is grounded in:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
 - `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-
-Related local-model runtime panes live in:
-
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/panes/apple_fm_workbench.rs`
-- `apps/autopilot-desktop/src/panes/local_inference.rs`
-- `crates/psionic/psionic-apple-fm`
+- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-desktop/src/desktop_shell.rs`
+- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-desktop/src/pane_renderer.rs`
+- `apps/autopilot-desktop/src/panes/provider_control.rs`
+- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
+- `apps/autopilot-desktop/src/panes/buy_mode.rs`
+- `apps/autopilot-desktop/src/panes/log_stream.rs`
 
 ## Definition Of Done
 
-Mission Control is correct when all of the following are true:
+The split remains correct only if all of the following stay true:
 
-- Mission Control speaks the active local-runtime truth instead of inventing
-  separate ad hoc Apple-vs-GPT-OSS rules for each operation
-- the local-model action and `GO ONLINE` gate are honest about backend
-  readiness
-- provider blockers and log lines come from the same backend/runtime state that
-  provider mode uses
-- enabling `OPENAGENTS_ENABLE_BUY_MODE=1` adds one inline `kind: 5050` /
-  `2 sats` buyer smoke-test flow without opening another pane
-- buy-mode success/failure state comes from `NetworkRequestsState` and Spark
-  wallet truth rather than Mission Control-local inference
-- macOS does not expose a competing GPT-OSS local-model pane in the command
-  palette
-- supported NVIDIA/CUDA hosts can refresh, warm, and unload GPT-OSS from the
-  Mission Control local-runtime area without leaving the screen
-- the separate `GPT-OSS Workbench` still owns prompt execution and deeper
-  runtime inspection
+- the default shell is the hotbar shell, not a hidden fullscreen singleton
+- provider, wallet, earnings/jobs, buy mode, and logs stay independently
+  scrollable and independently testable
+- no new work reintroduces combined Mission Control-only state, actions, or
+  rendering paths
+- legacy `GoOnline` compatibility stays thin and invisible to normal users
