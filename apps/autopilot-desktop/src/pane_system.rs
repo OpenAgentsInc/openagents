@@ -13,7 +13,7 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
     chat as chat_pane, local_inference as local_inference_pane,
-    relay_connections as relay_connections_pane, wallet as wallet_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -377,6 +377,14 @@ pub enum LocalInferencePaneAction {
     WarmModel,
     UnloadModel,
     RunPrompt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RivePreviewPaneAction {
+    ReloadAsset,
+    TogglePlayback,
+    RestartScene,
+    SetFitMode(wgpui::RiveFitMode),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -885,6 +893,7 @@ pub enum PaneHitAction {
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
     LocalInference(LocalInferencePaneAction),
+    RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
@@ -1001,6 +1010,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
+        PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
@@ -1528,6 +1538,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
+            | PaneKind::RivePreview
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -2439,6 +2450,71 @@ pub fn local_inference_run_button_bounds(content_bounds: Bounds) -> Bounds {
         unload.origin.y,
         148.0,
         unload.size.height,
+    )
+}
+
+pub fn rive_preview_reload_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        118.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn rive_preview_play_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reload = rive_preview_reload_button_bounds(content_bounds);
+    Bounds::new(
+        reload.max_x() + JOB_INBOX_BUTTON_GAP,
+        reload.origin.y,
+        96.0,
+        reload.size.height,
+    )
+}
+
+pub fn rive_preview_restart_button_bounds(content_bounds: Bounds) -> Bounds {
+    let play = rive_preview_play_button_bounds(content_bounds);
+    Bounds::new(
+        play.max_x() + JOB_INBOX_BUTTON_GAP,
+        play.origin.y,
+        96.0,
+        play.size.height,
+    )
+}
+
+pub fn rive_preview_fit_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let restart = rive_preview_restart_button_bounds(content_bounds);
+    let width = 92.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD + index.min(2) as f32 * (width + JOB_INBOX_BUTTON_GAP),
+        restart.max_y() + 8.0,
+        width,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn rive_preview_canvas_bounds(content_bounds: Bounds) -> Bounds {
+    let top = rive_preview_fit_button_bounds(content_bounds, 0).max_y() + 88.0;
+    let available_width = (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0);
+    let metrics_width = (available_width * 0.28)
+        .clamp(220.0, 300.0)
+        .min((available_width - 252.0).max(220.0));
+    let gap = if available_width >= 560.0 { 12.0 } else { 0.0 };
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top,
+        (available_width - metrics_width - gap).max(240.0),
+        (content_bounds.max_y() - top - CHAT_PAD).max(240.0),
+    )
+}
+
+pub fn rive_preview_metrics_bounds(content_bounds: Bounds) -> Bounds {
+    let canvas = rive_preview_canvas_bounds(content_bounds);
+    Bounds::new(
+        canvas.max_x() + 12.0,
+        canvas.origin.y,
+        (content_bounds.max_x() - canvas.max_x() - CHAT_PAD - 12.0).max(220.0),
+        canvas.size.height,
     )
 }
 
@@ -5762,6 +5838,35 @@ fn pane_hit_action_for_pane(
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
         PaneKind::PsionicViz => None,
+        PaneKind::RivePreview => {
+            if rive_preview_reload_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::ReloadAsset,
+                ))
+            } else if rive_preview_play_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::TogglePlayback,
+                ))
+            } else if rive_preview_restart_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::RestartScene,
+                ))
+            } else if rive_preview_fit_button_bounds(content_bounds, 0).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Contain),
+                ))
+            } else if rive_preview_fit_button_bounds(content_bounds, 1).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Cover),
+                ))
+            } else if rive_preview_fit_button_bounds(content_bounds, 2).contains(point) {
+                Some(PaneHitAction::RivePreview(
+                    RivePreviewPaneAction::SetFitMode(wgpui::RiveFitMode::Fill),
+                ))
+            } else {
+                None
+            }
+        }
         PaneKind::BuyerRaceMatrix => None,
         PaneKind::SellerEarningsTimeline => None,
         PaneKind::SettlementLadder => None,
@@ -6048,6 +6153,10 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
 
 pub fn dispatch_local_inference_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     local_inference_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_rive_preview_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    rive_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_apple_fm_workbench_input_event(

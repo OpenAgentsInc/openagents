@@ -12,9 +12,10 @@ use crate::app_state::{
     MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs, NetworkRequestsState,
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProjectOpsPaneState,
     ProviderBlocker, ProviderControlPaneState, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
@@ -63,7 +64,7 @@ use crate::panes::{
     local_inference as local_inference_pane, log_stream as log_stream_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
     psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
-    relay_connections as relay_connections_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
     seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, wallet as wallet_pane,
@@ -111,6 +112,8 @@ impl PaneRenderer {
         local_inference_runtime: &LocalInferenceExecutionSnapshot,
         apple_fm_execution: &AppleFmBridgeSnapshot,
         local_inference: &LocalInferencePaneState,
+        rive_preview: &mut RivePreviewPaneState,
+        rive_preview_runtime: &mut RivePreviewRuntimeState,
         apple_fm_workbench: &mut AppleFmWorkbenchPaneState,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
@@ -289,6 +292,9 @@ impl PaneRenderer {
                         local_inference_runtime,
                         paint,
                     );
+                }
+                PaneKind::RivePreview => {
+                    rive_pane::paint(content_bounds, rive_preview, rive_preview_runtime, paint);
                 }
                 PaneKind::AppleFmWorkbench => {
                     let capability_surface = local_runtime_capability_surface_for_lane(

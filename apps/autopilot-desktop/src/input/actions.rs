@@ -13,7 +13,7 @@ use crate::local_runtime_capabilities::{
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, LogStreamPaneAction, ProviderControlPaneAction,
-    SparkReplayPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9057,6 +9057,72 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
             handled
         }
         _ => false,
+    }
+}
+
+pub(super) fn run_rive_preview_action(
+    state: &mut crate::app_state::RenderState,
+    action: RivePreviewPaneAction,
+) -> bool {
+    match action {
+        RivePreviewPaneAction::ReloadAsset => {
+            state.rive_preview_runtime.surface = None;
+            state.rive_preview.load_state = crate::app_state::PaneLoadState::Loading;
+            state.rive_preview.last_error = None;
+            state.rive_preview.last_action = Some("Reloading packaged HUD asset".to_string());
+            true
+        }
+        RivePreviewPaneAction::TogglePlayback => {
+            state.rive_preview.playing = !state.rive_preview.playing;
+            state.rive_preview.last_action = Some(format!(
+                "Rive preview {}",
+                if state.rive_preview.playing {
+                    "playing"
+                } else {
+                    "paused"
+                }
+            ));
+            state.rive_preview.last_error = None;
+            true
+        }
+        RivePreviewPaneAction::RestartScene => {
+            if let Some(surface) = state.rive_preview_runtime.surface.as_mut() {
+                match surface.controller_mut().restart() {
+                    Ok(()) => {
+                        state.rive_preview.load_state = crate::app_state::PaneLoadState::Ready;
+                        state.rive_preview.last_error = None;
+                        state.rive_preview.last_action =
+                            Some("Restarted packaged HUD scene".to_string());
+                    }
+                    Err(error) => {
+                        state.rive_preview.load_state = crate::app_state::PaneLoadState::Error;
+                        state.rive_preview.last_error = Some(error.to_string());
+                        state.rive_preview.last_action =
+                            Some("Rive preview restart failed".to_string());
+                    }
+                }
+            } else {
+                state.rive_preview_runtime.surface = None;
+                state.rive_preview.load_state = crate::app_state::PaneLoadState::Loading;
+                state.rive_preview.last_error = None;
+                state.rive_preview.last_action =
+                    Some("Restart requested before first Rive load".to_string());
+            }
+            true
+        }
+        RivePreviewPaneAction::SetFitMode(fit_mode) => {
+            state.rive_preview.fit_mode = fit_mode;
+            state.rive_preview.last_action = Some(format!(
+                "Rive preview fit {}",
+                match fit_mode {
+                    wgpui::RiveFitMode::Contain => "contain",
+                    wgpui::RiveFitMode::Cover => "cover",
+                    wgpui::RiveFitMode::Fill => "fill",
+                }
+            ));
+            state.rive_preview.last_error = None;
+            true
+        }
     }
 }
 

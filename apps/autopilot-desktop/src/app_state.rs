@@ -14,7 +14,7 @@ use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
+use wgpui::{Bounds, EventContext, Modifiers, Point, RiveSurface, TextSystem, theme};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
@@ -93,6 +93,7 @@ pub enum PaneKind {
     ProviderStatus,
     LocalInference,
     PsionicViz,
+    RivePreview,
     AppleFmWorkbench,
     EarningsScoreboard,
     RelayConnections,
@@ -9709,6 +9710,11 @@ pub struct CastControlProcess {
     pub log_path: String,
 }
 
+#[derive(Default)]
+pub struct RivePreviewRuntimeState {
+    pub surface: Option<RiveSurface>,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -9785,6 +9791,8 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub local_inference: LocalInferencePaneState,
+    pub rive_preview: RivePreviewPaneState,
+    pub rive_preview_runtime: RivePreviewRuntimeState,
     pub apple_fm_workbench: AppleFmWorkbenchPaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,
     pub provider_admin_listen_addr: Option<String>,
