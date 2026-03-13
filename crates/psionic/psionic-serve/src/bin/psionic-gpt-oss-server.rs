@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::expect_used))]
+
 use std::{
     env,
     io::{self, Write},

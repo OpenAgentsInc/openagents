@@ -88,7 +88,7 @@ impl QuantizationMode {
             return None;
         }
         let element_count = shape.element_count();
-        if element_count == 0 || element_count % elements_per_block != 0 {
+        if element_count == 0 || !element_count.is_multiple_of(elements_per_block) {
             return None;
         }
         Some(QuantizedBlockLayout::new(

@@ -1554,6 +1554,8 @@ struct RawManifestLayer {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
+
     use std::{collections::BTreeMap, fs, io::Write, path::Path};
 
     use sha2::{Digest, Sha256};

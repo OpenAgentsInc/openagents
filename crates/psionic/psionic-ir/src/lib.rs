@@ -918,7 +918,7 @@ impl GraphBuilder {
     ) -> Result<Tensor, GraphError> {
         ensure_matching_context("rotary_embedding", &[input, cos, sin])?;
         let input_dims = input.spec().shape().dims();
-        if input_dims.len() != 4 || input_dims[3] == 0 || input_dims[3] % 2 != 0 {
+        if input_dims.len() != 4 || input_dims[3] == 0 || !input_dims[3].is_multiple_of(2) {
             return Err(extension_error(
                 "rotary_embedding",
                 format!(

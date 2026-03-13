@@ -1,7 +1,22 @@
 //! Metal backend discovery, allocation, submission, and minimal execution
 //! surfaces for Psionic.
 
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::borrow_as_ptr,
+    clippy::manual_is_multiple_of,
+    clippy::ref_as_ptr,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::vec_init_then_push
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::bool_assert_comparison,
+        clippy::expect_used,
+        clippy::panic_in_result_fn
+    )
+)]
 
 use std::{
     any::Any,
@@ -42,13 +57,13 @@ const FLASH_ATTENTION_FEATURE_FLAG: &str = "flash_attention";
 const METAL_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const METAL_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
 const METAL_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
-const METAL_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
+const METAL_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1024 * 1024;
 #[cfg(target_os = "macos")]
 const METAL_KERNEL_CACHE_MAX_ENTRIES: usize = 1;
 #[cfg(target_os = "macos")]
-const METAL_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
+const METAL_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 1024 * 1024;
 #[cfg(target_os = "macos")]
-const METAL_DENSE_PIPELINE_ESTIMATED_BYTES: u64 = 1 * 1024 * 1024;
+const METAL_DENSE_PIPELINE_ESTIMATED_BYTES: u64 = 1024 * 1024;
 const METAL_TEXT_GENERATION_POOL_MAX_CACHED_BUFFERS: usize = 512;
 const METAL_TEXT_GENERATION_POOL_MAX_CACHED_BYTES: u64 = 512 * 1024 * 1024;
 const METAL_TEXT_GENERATION_KERNEL_CACHE_MAX_ENTRIES: usize = 8;
@@ -485,7 +500,7 @@ impl fmt::Debug for MetalBuffer {
             .field("host_visible", &self.host_visible)
             .field("host_writable", &self.host_writable)
             .field("platform", &"<metal platform buffer>")
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -5920,7 +5935,7 @@ mod platform {
         Ok(NSRange::new(0, to_metal_size(byte_len)?))
     }
 
-    const EMBEDDINGS_METAL_SOURCE: &str = r#"
+    const EMBEDDINGS_METAL_SOURCE: &str = r"
 #include <metal_stdlib>
 using namespace metal;
 
@@ -6259,7 +6274,7 @@ kernel void psionic_expert_matvec_f32_ids_mxfp4(
         output[row] = partial[0];
     }
 }
-"#;
+";
 }
 
 #[cfg(not(target_os = "macos"))]

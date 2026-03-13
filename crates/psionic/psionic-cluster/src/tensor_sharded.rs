@@ -634,7 +634,7 @@ fn split_tensor_axis(
     if shard_count < 2 || axis_size < shard_count || axis_size == 0 {
         return None;
     }
-    if axis_size % shard_count != 0 {
+    if !axis_size.is_multiple_of(shard_count) {
         return None;
     }
     let partition_span = axis_size / shard_count;
@@ -877,6 +877,7 @@ fn runtime_transport_class(transport: ClusterTransportClass) -> RuntimeClusterTr
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tensor_sharded_failure(
     code: TensorShardedSchedulingFailureCode,
     detail: String,
@@ -948,7 +949,7 @@ const fn link_class_name(link_class: ClusterLinkClass) -> &'static str {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[allow(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::io::Error;
 

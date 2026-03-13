@@ -738,6 +738,7 @@ pub struct ClusterShardHandoff {
 impl ClusterShardHandoff {
     /// Creates one shard-handoff fact from explicit shard, node, and transfer truth.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         from_shard_id: usize,
         to_shard_id: usize,
@@ -2666,6 +2667,7 @@ pub struct ClusterEvidenceBundlePayload {
 impl ClusterEvidenceBundlePayload {
     /// Creates a new cluster evidence bundle payload from receipt-facing facts.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         product_id: impl Into<String>,
         request_id: impl Into<String>,
@@ -4370,8 +4372,8 @@ impl SandboxExecutionCapabilityProfile {
                 max_wall_time_ms: 300_000,
                 max_cpu_time_ms: 300_000,
                 max_memory_bytes: 2 * 1024 * 1024 * 1024,
-                max_stdout_bytes: 1 * 1024 * 1024,
-                max_stderr_bytes: 1 * 1024 * 1024,
+                max_stdout_bytes: 1024 * 1024,
+                max_stderr_bytes: 1024 * 1024,
             },
             accelerator_access: SandboxAcceleratorAccess::disabled(),
         }
@@ -5078,6 +5080,7 @@ pub struct ServedArtifactIdentity {
 impl ServedArtifactIdentity {
     /// Creates a served-artifact identity and computes its stable digest.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         model_id: impl Into<String>,
         model_revision: impl Into<String>,
@@ -5153,6 +5156,7 @@ pub struct PrefixCacheIdentity {
     pub prefix_tokens: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn digest_served_artifact_identity(
     model_id: &str,
     model_revision: &str,
@@ -6164,6 +6168,12 @@ pub struct ExecutionResult<B> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn
+    )]
+
     use std::collections::BTreeMap;
 
     use ed25519_dalek::SigningKey;
@@ -8841,8 +8851,8 @@ mod tests {
                     max_wall_time_ms: 300_000,
                     max_cpu_time_ms: 300_000,
                     max_memory_bytes: 2 * 1024 * 1024 * 1024,
-                    max_stdout_bytes: 1 * 1024 * 1024,
-                    max_stderr_bytes: 1 * 1024 * 1024,
+                    max_stdout_bytes: 1024 * 1024,
+                    max_stderr_bytes: 1024 * 1024,
                 },
                 accelerator_access: SandboxAcceleratorAccess::Disabled,
             }

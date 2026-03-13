@@ -194,7 +194,10 @@ mod backend {
         where
             F: FnOnce(&mut DesktopBleepInner) -> R,
         {
-            let mut inner = self.inner.lock().expect("bleep lock");
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             f(&mut inner)
         }
 
@@ -255,49 +258,47 @@ mod backend {
             sources: &[BleepSource],
             fetch_headers: Option<&BTreeMap<String, String>>,
         ) -> Result<BleepData, ()> {
-            for source in sources {
-                let bytes = match source {
-                    BleepSource::Bytes { data, .. } => data.clone(),
-                    BleepSource::Path { path, .. } => std::fs::read(path).map_err(|_| ())?,
-                    BleepSource::Url { url, .. } => {
-                        let client = reqwest::blocking::Client::new();
-                        let mut request = client.get(url);
-                        if let Some(headers) = fetch_headers {
-                            let mut header_map = HeaderMap::new();
-                            for (key, value) in headers {
-                                let Ok(name) = HeaderName::from_bytes(key.as_bytes()) else {
-                                    continue;
-                                };
-                                let Ok(value) = HeaderValue::from_str(value) else {
-                                    continue;
-                                };
-                                header_map.insert(name, value);
-                            }
-                            request = request.headers(header_map);
+            let Some(source) = sources.first() else {
+                return Err(());
+            };
+            let bytes = match source {
+                BleepSource::Bytes { data, .. } => data.clone(),
+                BleepSource::Path { path, .. } => std::fs::read(path).map_err(|_| ())?,
+                BleepSource::Url { url, .. } => {
+                    let client = reqwest::blocking::Client::new();
+                    let mut request = client.get(url);
+                    if let Some(headers) = fetch_headers {
+                        let mut header_map = HeaderMap::new();
+                        for (key, value) in headers {
+                            let Ok(name) = HeaderName::from_bytes(key.as_bytes()) else {
+                                continue;
+                            };
+                            let Ok(value) = HeaderValue::from_str(value) else {
+                                continue;
+                            };
+                            header_map.insert(name, value);
                         }
-                        let response = request.send().map_err(|_| ())?;
-                        response.bytes().map_err(|_| ())?.to_vec()
+                        request = request.headers(header_map);
                     }
-                };
+                    let response = request.send().map_err(|_| ())?;
+                    response.bytes().map_err(|_| ())?.to_vec()
+                }
+            };
 
-                let cursor = Cursor::new(bytes.clone());
-                let decoder = Decoder::new(cursor).map_err(|_| ())?;
-                let duration = decoder
-                    .total_duration()
-                    .map(|d| d.as_secs_f32())
-                    .unwrap_or(0.0);
+            let cursor = Cursor::new(bytes.clone());
+            let decoder = Decoder::new(cursor).map_err(|_| ())?;
+            let duration = decoder
+                .total_duration()
+                .map(|d| d.as_secs_f32())
+                .unwrap_or(0.0);
 
-                return Ok(BleepData { bytes, duration });
-            }
-            Err(())
+            Ok(BleepData { bytes, duration })
         }
     }
 
     impl BleepBackend for DesktopBleep {
         fn new(props: ResolvedBleepProps) -> Option<Self> {
-            if audio_engine().is_none() {
-                return None;
-            }
+            audio_engine()?;
             let bleep = Self {
                 inner: Arc::new(Mutex::new(DesktopBleepInner {
                     props,
@@ -357,7 +358,7 @@ mod backend {
             });
 
             if should_start {
-                self.with_lock(|inner| Self::start_playback(inner));
+                self.with_lock(Self::start_playback);
                 return;
             }
 
@@ -366,7 +367,7 @@ mod backend {
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
                     let (sources, last_play, fetch_headers) = {
-                        let inner = inner.lock().expect("bleep lock");
+                        let inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                         (
                             inner.props.sources.clone(),
                             inner.last_play_request,
@@ -375,7 +376,7 @@ mod backend {
                     };
 
                     let data = Self::load_data(&sources, fetch_headers.as_ref());
-                    let mut inner = inner.lock().expect("bleep lock");
+                    let mut inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                     match data {
                         Ok(data) => {
                             inner.data = Some(data);
@@ -386,14 +387,14 @@ mod backend {
                                 }
                             }
                         }
-                        Err(_) => {
+                        Err(()) => {
                             inner.load_state = LoadState::Error;
                         }
                     }
                 });
             } else if trigger_load {
                 self.load();
-                self.with_lock(|inner| Self::start_playback(inner));
+                self.with_lock(Self::start_playback);
             }
         }
 
@@ -428,20 +429,20 @@ mod backend {
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
                     let (sources, fetch_headers) = {
-                        let inner = inner.lock().expect("bleep lock");
+                        let inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                         (
                             inner.props.sources.clone(),
                             inner.props.settings.fetch_headers.clone(),
                         )
                     };
                     let data = Self::load_data(&sources, fetch_headers.as_ref());
-                    let mut inner = inner.lock().expect("bleep lock");
+                    let mut inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                     match data {
                         Ok(data) => {
                             inner.data = Some(data);
                             inner.load_state = LoadState::Loaded;
                         }
-                        Err(_) => {
+                        Err(()) => {
                             inner.load_state = LoadState::Error;
                         }
                     }
@@ -459,7 +460,7 @@ mod backend {
                         inner.data = Some(data);
                         inner.load_state = LoadState::Loaded;
                     }
-                    Err(_) => {
+                    Err(()) => {
                         inner.load_state = LoadState::Error;
                     }
                 });
@@ -1013,10 +1014,8 @@ impl BleepsManager {
     }
 
     pub fn unload(&mut self) {
-        for bleep in self.bleeps.values() {
-            if let Some(bleep) = bleep {
-                bleep.unload();
-            }
+        for bleep in self.bleeps.values().flatten() {
+            bleep.unload();
         }
     }
 

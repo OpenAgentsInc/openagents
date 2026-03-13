@@ -1,7 +1,21 @@
 //! CUDA backend discovery, allocation, submission, and dense execution surface
 //! for Psionic.
 
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::manual_is_multiple_of,
+    clippy::result_large_err,
+    clippy::too_many_arguments
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::bool_to_int_with_if,
+        clippy::expect_used,
+        clippy::manual_slice_size_calculation,
+        clippy::panic,
+        clippy::panic_in_result_fn
+    )
+)]
 
 use std::{collections::BTreeMap, fmt, io::ErrorKind, process::Command};
 
@@ -34,7 +48,7 @@ const OFFLINE_NO_DRIVER_MESSAGE: &str =
 const CUDA_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const CUDA_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
 const CUDA_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
-const CUDA_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
+const CUDA_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1024 * 1024;
 
 /// Exact plan surface currently covered by the first CUDA-backed served-product
 /// milestone.

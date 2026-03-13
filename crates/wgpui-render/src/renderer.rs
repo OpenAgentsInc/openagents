@@ -1055,9 +1055,7 @@ impl Renderer {
                 &self.image_bind_group_layout,
                 &self.image_sampler,
                 &cache_key,
-                rasterized.width,
-                rasterized.height,
-                &rasterized.pixels,
+                &rasterized,
             );
             self.image_texture_cache
                 .insert(cache_key.clone(), resources);
@@ -1234,9 +1232,7 @@ fn upload_rgba_texture(
     image_bind_group_layout: &wgpu::BindGroupLayout,
     image_sampler: &wgpu::Sampler,
     cache_key: &ImageTextureKey,
-    width: u32,
-    height: u32,
-    pixels: &[u8],
+    image: &RasterizedSceneImage,
 ) -> ImageGpuResources {
     let label = match cache_key {
         ImageTextureKey::Svg { .. } => "Scene SVG Texture",
@@ -1245,8 +1241,8 @@ fn upload_rgba_texture(
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
-            width,
-            height,
+            width: image.width,
+            height: image.height,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -1263,15 +1259,15 @@ fn upload_rgba_texture(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        pixels,
+        &image.pixels,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(width * 4),
-            rows_per_image: Some(height),
+            bytes_per_row: Some(image.width * 4),
+            rows_per_image: Some(image.height),
         },
         wgpu::Extent3d {
-            width,
-            height,
+            width: image.width,
+            height: image.height,
             depth_or_array_layers: 1,
         },
     );

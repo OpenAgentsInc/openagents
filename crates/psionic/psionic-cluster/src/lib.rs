@@ -2682,6 +2682,8 @@ fn trust_rollout_diagnostic_from_refusal(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
+
     use super::*;
 
     fn loopback_addr(port: u16) -> SocketAddr {

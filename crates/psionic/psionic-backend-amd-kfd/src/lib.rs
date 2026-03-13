@@ -1,5 +1,15 @@
 //! AMD KFD backend discovery, staging allocation, and submission substrate for Psionic.
 
+#![allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        unused_imports,
+        clippy::expect_used,
+        clippy::panic_in_result_fn
+    )
+)]
+
 use std::{
     fmt, fs,
     path::Path,

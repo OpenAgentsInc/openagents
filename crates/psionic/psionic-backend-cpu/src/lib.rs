@@ -25,7 +25,7 @@ pub const CRATE_ROLE: &str = "CPU reference backend";
 const CPU_POOL_MAX_CACHED_BUFFERS: usize = 64;
 const CPU_POOL_MAX_CACHED_BYTES: u64 = 8 * 1024 * 1024;
 const CPU_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
-const CPU_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
+const CPU_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1024 * 1024;
 
 /// Host-resident tensor buffer for CPU execution.
 #[derive(Clone, Debug, PartialEq)]
@@ -1000,7 +1000,7 @@ pub fn quantized_row_dot(
             "quantized mode {mode:?} does not use GGML blocks"
         )));
     };
-    if lhs.len() % elements_per_block != 0 {
+    if !lhs.len().is_multiple_of(elements_per_block) {
         return Err(RuntimeError::Backend(format!(
             "lhs row width {} is not divisible by {elements_per_block}",
             lhs.len()
@@ -1475,6 +1475,8 @@ fn for_each_index(shape: &Shape, mut f: impl FnMut(&[usize])) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic_in_result_fn)]
+
     use std::collections::BTreeMap;
 
     use psionic_core::{BackendExtensionKind, DType, Device, QuantizationMode, Shape, TensorSpec};
@@ -1580,7 +1582,7 @@ mod tests {
             runtime_resources.allocator_pool.policy.mode,
             AllocatorPoolMode::ExactTensorSpec
         );
-        assert_eq!(runtime_resources.kernel_cache.policy.enabled, false);
+        assert!(!runtime_resources.kernel_cache.policy.enabled);
         assert!(runtime_resources.device_memory_budget.is_none());
         assert_eq!(backend.health().status, HealthStatus::Ready);
         Ok(())

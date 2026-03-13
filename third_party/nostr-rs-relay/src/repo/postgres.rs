@@ -380,7 +380,7 @@ ON CONFLICT (id) DO NOTHING"#,
                 }
 
                 // check if this is still active; every 100 rows
-                if row_count % 100 == 0 && abandon_query_rx.try_recv().is_ok() {
+                if row_count.is_multiple_of(100) && abandon_query_rx.try_recv().is_ok() {
                     debug!(
                         "query cancelled by client (cid: {}, sub: {:?})",
                         client_id, sub.id
@@ -732,8 +732,8 @@ fn query_from_filter(f: &'_ ReqFilter) -> Option<QueryBuilder<'_, Postgres>> {
                 if val.is_empty() {
                     return None;
                 }
-                let has_plain_values = val.deref().into_iter().any(|v| !is_lower_hex(&v));
-                let has_hex_values = val.deref().into_iter().any(|v| is_lower_hex(&v));
+                let has_plain_values = val.deref().iter().any(|v| !is_lower_hex(v));
+                let has_hex_values = val.deref().iter().any(|v| is_lower_hex(v));
 
                 if let TagOperand::Or(v_or) = val {
                     query

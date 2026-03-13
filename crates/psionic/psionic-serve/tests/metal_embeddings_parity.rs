@@ -1,3 +1,10 @@
+#![allow(
+    unused_imports,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::panic_in_result_fn
+)]
+
 use psionic_backend_cpu::CpuBackend;
 use psionic_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
 use psionic_runtime::{DeviceDiscovery, HealthStatus, validation_reference_for_served_product};

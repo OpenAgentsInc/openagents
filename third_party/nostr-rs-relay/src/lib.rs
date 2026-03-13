@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 pub mod cli;
 pub mod close;
 pub mod config;

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
+
 use psionic_backend_cpu::CpuBackend;
 use psionic_provider::{ReceiptStatus, TextGenerationReceipt};
 use psionic_serve::{

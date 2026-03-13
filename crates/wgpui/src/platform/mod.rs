@@ -40,7 +40,7 @@ pub fn default_surface_config(
 )]
 pub(crate) fn is_webgpu_reliable_user_agent(user_agent: &str) -> bool {
     // Linux desktop WebGPU remains unstable in Chromium for our supported matrix.
-    !(user_agent.contains("Linux") && !user_agent.contains("Android"))
+    !user_agent.contains("Linux") || user_agent.contains("Android")
 }
 
 #[cfg(all(test, feature = "web"))]

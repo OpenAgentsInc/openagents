@@ -289,9 +289,9 @@ pub async fn db_writer(
         };
 
         // check for  NIP-05 verification
-        if nip05_enabled && validation.is_some() {
-            match validation.as_ref().unwrap() {
-                Ok(uv) => {
+        if nip05_enabled {
+            match validation.as_ref() {
+                Some(Ok(uv)) => {
                     if uv.is_valid(&settings.verified_users) {
                         info!(
                             "new event from verified author ({:?},{:?})",
@@ -313,10 +313,10 @@ pub async fn db_writer(
                         continue;
                     }
                 }
-                Err(
+                Some(Err(
                     Error::SqlError(rusqlite::Error::QueryReturnedNoRows)
                     | Error::SqlxError(sqlx::Error::RowNotFound),
-                ) => {
+                )) => {
                     debug!(
                         "no verification records found for pubkey: {:?}",
                         event.get_author_prefix()
@@ -329,10 +329,11 @@ pub async fn db_writer(
                         .ok();
                     continue;
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     warn!("checking nip05 verification status failed: {:?}", e);
                     continue;
                 }
+                None => {}
             }
         }
 

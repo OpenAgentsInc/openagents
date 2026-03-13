@@ -303,6 +303,8 @@ impl ClusterBenchmarkReceipt {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic)]
+
     use super::{
         CLUSTER_BENCHMARK_RECEIPT_SCHEMA_VERSION, ClusterBenchmarkContext, ClusterBenchmarkId,
         ClusterBenchmarkOutcome, ClusterBenchmarkReceipt, ClusterRecoveryBenchmarkContext,

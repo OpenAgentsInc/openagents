@@ -1,5 +1,10 @@
 //! OpenAgents provider-facing types for Psionic.
 
+#![cfg_attr(
+    test,
+    allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)
+)]
+
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

@@ -172,7 +172,7 @@ impl Condition {
             }
             Operator::Equals => {
                 // equals is interpreted as "must be equal to at least one provided value"
-                return self.values.iter().any(|&x| resolved_field == x);
+                return self.values.contains(&resolved_field);
             }
             Operator::NotEquals => {
                 // not-equals is interpreted as "must not be equal to any provided value"

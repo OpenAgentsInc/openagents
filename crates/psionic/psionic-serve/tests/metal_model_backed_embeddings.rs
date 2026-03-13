@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
+
 use psionic_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use psionic_runtime::HealthStatus;
 use psionic_serve::{

@@ -888,7 +888,7 @@ impl ConformanceSummary {
                 ConformanceCheckStatus::Failed => summary.failed += 1,
                 ConformanceCheckStatus::Unsupported => summary.unsupported += 1,
                 ConformanceCheckStatus::IntentionalDifference => {
-                    summary.intentional_differences += 1
+                    summary.intentional_differences += 1;
                 }
             }
         }

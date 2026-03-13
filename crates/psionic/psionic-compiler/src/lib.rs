@@ -172,6 +172,8 @@ pub fn compile_graph_for_selection(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use psionic_core::{DType, Device, QuantizationMode, Shape};
     use psionic_ir::GraphBuilder;
     use psionic_runtime::ExecutionTopologyPlan;
@@ -240,7 +242,7 @@ mod tests {
         let Ok(graph) = graph else {
             return;
         };
-        let devices = vec![
+        let devices = [
             sample_inventory("cuda:0", Some("00000000:01:00.0")),
             sample_inventory("cuda:1", Some("00000000:02:00.0")),
         ];

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
+
 use psionic_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use psionic_runtime::{BackendSelectionState, HealthStatus, LocalRuntimeErrorCode};
 use psionic_serve::{

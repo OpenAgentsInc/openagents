@@ -3327,6 +3327,8 @@ fn artifact_transfer_label(transfer_method: ClusterArtifactTransferMethod) -> &'
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic)]
+
     use std::net::SocketAddr;
 
     use ed25519_dalek::SigningKey;

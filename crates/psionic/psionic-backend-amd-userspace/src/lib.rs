@@ -1,6 +1,16 @@
 //! AMD userspace backend discovery, opt-in gating, staging allocation, and
 //! submission substrate for Psionic.
 
+#![allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        unused_imports,
+        clippy::expect_used,
+        clippy::panic_in_result_fn
+    )
+)]
+
 use std::{
     env, fmt, fs,
     path::Path,

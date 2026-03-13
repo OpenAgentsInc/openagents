@@ -1,3 +1,24 @@
+#![allow(
+    clippy::arc_with_non_send_sync,
+    clippy::assigning_clones,
+    clippy::collapsible_else_if,
+    clippy::expect_used,
+    clippy::manual_is_multiple_of,
+    clippy::needless_lifetimes,
+    clippy::too_many_arguments,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::useless_conversion
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::print_stdout,
+        clippy::useless_vec
+    )
+)]
+
 use std::{
     cmp::Ordering,
     env,
@@ -4902,9 +4923,7 @@ impl GptOssCudaModelInner {
             if can_use_q8_1_mmvq(layer.feed_forward_gate_up_experts_weight.mode)
                 && can_use_q8_1_mmvq(layer.feed_forward_down_experts_weight.mode)
             {
-                if false
-                    && can_use_q8_1_norm_fusion(layer.feed_forward_gate_up_experts_weight.columns)
-                {
+                if false {
                     submission.add_residual_rms_norm_q8_1_router_topk(
                         &layer_plan.projected_buffer,
                         current_hidden,
@@ -13637,7 +13656,7 @@ mod tests {
             vec![GptOssMetalLogitsOutputMode::GreedyToken]
         );
         assert_eq!(metrics.readback_bytes, std::mem::size_of::<u32>() as u64);
-        assert_eq!(metrics.raw_logits_materialized, false);
+        assert!(!metrics.raw_logits_materialized);
         Ok(())
     }
 
@@ -13660,7 +13679,7 @@ mod tests {
             metrics.readback_bytes,
             (2 * std::mem::size_of::<u32>() + 2 * std::mem::size_of::<f32>()) as u64
         );
-        assert_eq!(metrics.raw_logits_materialized, false);
+        assert!(!metrics.raw_logits_materialized);
         Ok(())
     }
 
@@ -13679,7 +13698,7 @@ mod tests {
             vec![GptOssMetalLogitsOutputMode::RawLogits]
         );
         assert!(metrics.readback_bytes >= std::mem::size_of::<f32>() as u64);
-        assert_eq!(metrics.raw_logits_materialized, true);
+        assert!(metrics.raw_logits_materialized);
         Ok(())
     }
 
@@ -13712,7 +13731,7 @@ mod tests {
         let prompt_perf = prompt_only.metrics.gpt_oss_perf.as_ref();
         let plus_one_perf = prompt_plus_one.metrics.gpt_oss_perf.as_ref();
 
-        eprintln!(
+        println!(
             "real metal short-text receipt: prompt_only_tokens={} prompt_only_wall_s={prompt_only_wall:.3} prompt_only_prompt_tps={prompt_tps:.3} exact_hit_plus_one_output_tokens={} exact_hit_plus_one_wall_s={prompt_plus_one_wall:.3} exact_hit_prefix_tokens_reused={:?} plus_one_termination={:?} plus_one_output={:?}",
             prompt_only.usage.input_tokens,
             prompt_plus_one.usage.output_tokens,
@@ -13721,7 +13740,7 @@ mod tests {
             prompt_plus_one.output.text,
         );
         if let Some(perf) = prompt_perf {
-            eprintln!(
+            println!(
                 "real metal prompt-only perf: step_count={} step_wall_s={:.3} attention_s={:.3} expert_projection_s={:.3} submissions={} kernels={} h2d_mb={:.3} d2h_mb={:.3}",
                 perf.step_count,
                 perf.stage_timings.step_wall_ns as f64 / 1_000_000_000.0,
@@ -13734,7 +13753,7 @@ mod tests {
             );
         }
         if let Some(perf) = plus_one_perf {
-            eprintln!(
+            println!(
                 "real metal plus-one perf: step_count={} step_wall_s={:.3} attention_s={:.3} expert_projection_s={:.3} submissions={} kernels={} h2d_mb={:.3} d2h_mb={:.3}",
                 perf.step_count,
                 perf.stage_timings.step_wall_ns as f64 / 1_000_000_000.0,
@@ -14159,7 +14178,7 @@ mod tests {
             .copied()
             .map(|value| f16_bits_to_f32(f32_to_f16_bits(value)))
             .collect::<Vec<_>>();
-        let expected = vec![
+        let expected = [
             quantized_row_dot(&input_f16, QuantizationMode::GgmlQ8_0, row_a.as_slice())?,
             quantized_row_dot(&input_f16, QuantizationMode::GgmlQ8_0, row_b.as_slice())?,
         ];

@@ -426,7 +426,7 @@ impl NostrRepo for SqliteRepo {
                             first_result = false;
                         }
                         // check if a checkpoint is trying to run, and abort
-                        if row_count % 100 == 0 {
+                        if row_count.is_multiple_of(100) {
                             {
                                 if self.checkpoint_in_progress.try_lock().is_err() {
                                     // lock was held, abort this query
@@ -444,7 +444,7 @@ impl NostrRepo for SqliteRepo {
                         }
 
                         // check if this is still active; every 100 rows
-                        if row_count % 100 == 0 && abandon_query_rx.try_recv().is_ok() {
+                        if row_count.is_multiple_of(100) && abandon_query_rx.try_recv().is_ok() {
                             debug!(
                                 "query cancelled by client (cid: {}, sub: {:?})",
                                 client_id, sub.id

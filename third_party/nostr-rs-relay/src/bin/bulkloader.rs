@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use nostr_rs_relay::config;
 use nostr_rs_relay::error::{Error, Result};
 use nostr_rs_relay::event::{single_char_tagname, Event};

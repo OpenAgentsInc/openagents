@@ -503,7 +503,7 @@ struct ViewportRepr {
 }
 
 fn set_viewport_inverse(viewport: &mut Viewport, inverse_view_transform: [f32; 6]) {
-    let repr = viewport as *mut Viewport as *mut ViewportRepr;
+    let repr = std::ptr::from_mut(viewport).cast::<ViewportRepr>();
     unsafe {
         (*repr).inverse_view_transform = inverse_view_transform;
     }

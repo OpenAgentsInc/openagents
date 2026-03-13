@@ -667,6 +667,8 @@ pub fn derive_provider_lifecycle(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{
         ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderComputeProduct,
         ProviderFailureClass, ProviderIngressMode, ProviderInventoryControls,

@@ -263,6 +263,8 @@ const fn default_true() -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 

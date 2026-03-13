@@ -32,6 +32,7 @@ fn hot_reload_requested(args: &[String]) -> bool {
 }
 
 // Restart the storybook process when the compiled binary changes.
+#[allow(clippy::exit)]
 fn start_hot_reload_watcher(args: Vec<String>) {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
