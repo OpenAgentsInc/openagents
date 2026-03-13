@@ -118,41 +118,46 @@ pub fn paint_wallet_pane(
     let (spark_sats, lightning_sats, onchain_sats, total_sats) =
         if let Some(balance) = spark_wallet.balance.as_ref() {
             (
-                balance.spark_sats,
-                balance.lightning_sats,
-                balance.onchain_sats,
-                balance.total_sats(),
+                balance.spark_sats.to_string(),
+                balance.lightning_sats.to_string(),
+                balance.onchain_sats.to_string(),
+                balance.total_sats().to_string(),
             )
         } else {
-            (0, 0, 0, 0)
+            (
+                "LOADING".to_string(),
+                "LOADING".to_string(),
+                "LOADING".to_string(),
+                "LOADING".to_string(),
+            )
         };
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Spark sats",
-        &spark_sats.to_string(),
+        spark_sats.as_str(),
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Lightning sats",
-        &lightning_sats.to_string(),
+        lightning_sats.as_str(),
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Onchain sats",
-        &onchain_sats.to_string(),
+        onchain_sats.as_str(),
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Total sats",
-        &total_sats.to_string(),
+        total_sats.as_str(),
     );
 
     if let Some(path) = spark_wallet.identity_path.as_ref() {

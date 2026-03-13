@@ -1257,10 +1257,15 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-")
     );
     println!(
-        "wallet: balance={} sats network={} status={} withdraw_ready={}",
-        snapshot.wallet.balance_sats,
+        "wallet: balance={} network={} status={} reconciling={} withdraw_ready={}",
+        if snapshot.wallet.balance_known {
+            format!("{} sats", snapshot.wallet.balance_sats)
+        } else {
+            "unknown".to_string()
+        },
         snapshot.wallet.network,
         snapshot.wallet.network_status,
+        snapshot.wallet.balance_reconciling,
         snapshot.wallet.can_withdraw
     );
     println!(

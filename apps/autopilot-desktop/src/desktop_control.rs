@@ -157,6 +157,8 @@ pub struct DesktopControlAppleFmStatus {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlWalletStatus {
     pub balance_sats: u64,
+    pub balance_known: bool,
+    pub balance_reconciling: bool,
     pub network: String,
     pub network_status: String,
     pub can_withdraw: bool,
@@ -1329,8 +1331,16 @@ fn desktop_control_gpt_oss_status(state: &RenderState) -> DesktopControlGptOssSt
 
 fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
     format!(
-        "wallet balance={} network_status={} withdraw_ready={}",
-        status.balance_sats, status.network_status, status.can_withdraw
+        "wallet balance={} network_status={} balance_known={} reconciling={} withdraw_ready={}",
+        if status.balance_known {
+            status.balance_sats.to_string()
+        } else {
+            "unknown".to_string()
+        },
+        status.network_status,
+        status.balance_known,
+        status.balance_reconciling,
+        status.can_withdraw
     )
 }
 
@@ -2051,11 +2061,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         &state.active_job,
         &state.earn_job_lifecycle_projection,
     );
-    let wallet_balance_sats = state
-        .spark_wallet
-        .balance
-        .as_ref()
-        .map_or(0, |balance| balance.total_sats());
+    let wallet_balance_sats = state.spark_wallet.total_balance_sats();
     let wallet_connected = state.spark_wallet.network_status_label() == "connected";
     let (wallet_can_withdraw, withdraw_block_reason) =
         withdraw_readiness(wallet_balance_sats, wallet_connected);
@@ -2137,7 +2143,9 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.provider_runtime.apple_fm.last_error.clone(),
         },
         wallet: DesktopControlWalletStatus {
-            balance_sats: wallet_balance_sats,
+            balance_sats: wallet_balance_sats.unwrap_or(0),
+            balance_known: wallet_balance_sats.is_some(),
+            balance_reconciling: state.spark_wallet.balance_reconciling(),
             network: state.spark_wallet.network_name().to_string(),
             network_status: state.spark_wallet.network_status_label().to_string(),
             can_withdraw: wallet_can_withdraw,
@@ -2401,10 +2409,13 @@ fn provider_desired_mode_hint(state: &RenderState) -> &'static str {
     }
 }
 
-fn withdraw_readiness(balance_sats: u64, wallet_connected: bool) -> (bool, Option<String>) {
+fn withdraw_readiness(balance_sats: Option<u64>, wallet_connected: bool) -> (bool, Option<String>) {
     if !wallet_connected {
         return (false, Some("wallet is not connected to Spark".to_string()));
     }
+    let Some(balance_sats) = balance_sats else {
+        return (false, Some("wallet balance is still reconciling".to_string()));
+    };
     if balance_sats == 0 {
         return (false, Some("wallet balance is zero".to_string()));
     }
@@ -2951,6 +2962,8 @@ mod tests {
             },
             wallet: DesktopControlWalletStatus {
                 balance_sats: 77,
+                balance_known: true,
+                balance_reconciling: false,
                 network: "mainnet".to_string(),
                 network_status: "connected".to_string(),
                 can_withdraw: true,

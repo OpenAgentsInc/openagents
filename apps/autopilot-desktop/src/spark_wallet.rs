@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -90,6 +90,7 @@ impl SparkWalletWorker {
 
         std::thread::spawn(move || {
             let mut state = SparkPaneState::with_network(initial_network);
+            let mut backlog = VecDeque::<SparkWalletCommand>::new();
             if let Err(error) = ensure_rustls_crypto_provider() {
                 state.last_error = Some(error);
                 let _ = result_tx.send(state.clone());
@@ -109,8 +110,12 @@ impl SparkWalletWorker {
                 }
             };
 
-            while let Ok(command) = command_rx.recv() {
+            loop {
+                let Some(command) = next_wallet_worker_command(&command_rx, &mut backlog) else {
+                    break;
+                };
                 if matches!(command, SparkWalletCommand::CancelPending) {
+                    backlog.clear();
                     while let Ok(_pending) = command_rx.try_recv() {}
                     state.last_error = None;
                     state.last_action = Some("Cancelled pending Spark actions".to_string());
@@ -118,6 +123,8 @@ impl SparkWalletWorker {
                     continue;
                 }
 
+                let command =
+                    coalesce_refresh_like_command_burst(command, &command_rx, &mut backlog);
                 state.apply_command(&runtime, command);
                 let _ = result_tx.send(state.clone());
             }
@@ -238,6 +245,18 @@ impl SparkPaneState {
             Network::Signet => "signet",
             Network::Regtest => "regtest",
         }
+    }
+
+    pub fn total_balance_sats(&self) -> Option<u64> {
+        self.balance.as_ref().map(Balance::total_sats)
+    }
+
+    pub fn balance_known(&self) -> bool {
+        self.balance.is_some()
+    }
+
+    pub fn balance_reconciling(&self) -> bool {
+        self.startup_convergence_active || self.pending_balance_confirmation_payment_id.is_some()
     }
 
     pub fn network_status_label(&self) -> &'static str {
@@ -696,9 +715,7 @@ impl SparkPaneState {
             }
             Err(error) => {
                 self.last_error = Some(format!("Failed to list payments: {error}"));
-                if self.pending_balance_confirmation_payment_id.is_none()
-                    && let Some(balance) = fetched_balance
-                {
+                if let Some(balance) = fetched_balance {
                     self.balance = Some(balance);
                 }
             }
@@ -714,8 +731,9 @@ impl SparkPaneState {
             return;
         };
 
+        self.balance = Some(balance);
+
         let Some(payment_id) = self.pending_balance_confirmation_payment_id.clone() else {
-            self.balance = Some(balance);
             return;
         };
 
@@ -735,7 +753,6 @@ impl SparkPaneState {
             return;
         }
 
-        self.balance = Some(balance);
         self.pending_balance_confirmation_payment_id = None;
         if is_settled_wallet_payment_status(payment.status.as_str()) {
             self.last_action = Some(format!(
@@ -856,6 +873,56 @@ fn current_epoch_seconds() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
+fn next_wallet_worker_command(
+    command_rx: &Receiver<SparkWalletCommand>,
+    backlog: &mut VecDeque<SparkWalletCommand>,
+) -> Option<SparkWalletCommand> {
+    if let Some(command) = backlog.pop_front() {
+        return Some(command);
+    }
+    command_rx.recv().ok()
+}
+
+fn is_refresh_like_wallet_command(command: &SparkWalletCommand) -> bool {
+    matches!(
+        command,
+        SparkWalletCommand::Refresh | SparkWalletCommand::Reload
+    )
+}
+
+fn coalesce_refresh_like_command_burst(
+    mut command: SparkWalletCommand,
+    command_rx: &Receiver<SparkWalletCommand>,
+    backlog: &mut VecDeque<SparkWalletCommand>,
+) -> SparkWalletCommand {
+    if !is_refresh_like_wallet_command(&command) {
+        return command;
+    }
+
+    loop {
+        let next = if let Some(next) = backlog.pop_front() {
+            next
+        } else {
+            match command_rx.try_recv() {
+                Ok(next) => next,
+                Err(_) => break,
+            }
+        };
+
+        if is_refresh_like_wallet_command(&next) {
+            if matches!(next, SparkWalletCommand::Reload) {
+                command = SparkWalletCommand::Reload;
+            }
+            continue;
+        }
+
+        backlog.push_front(next);
+        break;
+    }
+
+    command
+}
+
 fn ensure_rustls_crypto_provider() -> Result<(), String> {
     if rustls::crypto::CryptoProvider::get_default().is_some() {
         return Ok(());
@@ -917,15 +984,15 @@ mod tests {
     use super::{
         DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
         SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
-        SparkWalletWorker, configured_api_key, configured_network,
-        is_settled_wallet_payment_status, is_terminal_wallet_payment_status, run_with_timeout,
-        timeout_message,
+        SparkWalletWorker, coalesce_refresh_like_command_burst, configured_api_key,
+        configured_network, is_settled_wallet_payment_status,
+        is_terminal_wallet_payment_status, run_with_timeout, timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
     use openagents_spark::{Balance, PaymentSummary};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Mutex, mpsc};
     use std::time::Duration;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -1143,7 +1210,7 @@ mod tests {
     }
 
     #[test]
-    fn balance_refresh_waits_for_terminal_payment_status() {
+    fn balance_refresh_applies_even_while_payment_status_is_pending() {
         let mut state = SparkPaneState::with_network(Network::Regtest);
         state.balance = Some(Balance {
             spark_sats: 100,
@@ -1168,7 +1235,7 @@ mod tests {
             }],
         );
 
-        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(100));
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
         assert_eq!(
             state.pending_balance_confirmation_payment_id.as_deref(),
             Some("pay-123")
@@ -1203,6 +1270,61 @@ mod tests {
 
         assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
         assert_eq!(state.pending_balance_confirmation_payment_id, None);
+    }
+
+    #[test]
+    fn balance_refresh_applies_when_payment_history_is_missing_entry() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        state.balance = Some(Balance {
+            spark_sats: 100,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        state.pending_balance_confirmation_payment_id = Some("pay-123".to_string());
+
+        state.apply_balance_refresh_with_payment_confirmation(
+            Some(Balance {
+                spark_sats: 80,
+                lightning_sats: 0,
+                onchain_sats: 0,
+            }),
+            &[],
+        );
+
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
+        assert_eq!(
+            state.pending_balance_confirmation_payment_id.as_deref(),
+            Some("pay-123")
+        );
+        assert!(
+            state
+                .last_action
+                .as_deref()
+                .is_some_and(|value| value.contains("awaiting Spark confirmation"))
+        );
+    }
+
+    #[test]
+    fn refresh_command_burst_coalesces_to_single_reload() {
+        let (_tx, rx) = mpsc::channel::<SparkWalletCommand>();
+        let mut backlog = VecDeque::from([
+            SparkWalletCommand::Refresh,
+            SparkWalletCommand::Reload,
+            SparkWalletCommand::Refresh,
+            SparkWalletCommand::GenerateSparkAddress,
+        ]);
+
+        let command = coalesce_refresh_like_command_burst(
+            SparkWalletCommand::Refresh,
+            &rx,
+            &mut backlog,
+        );
+
+        assert!(matches!(command, SparkWalletCommand::Reload));
+        assert!(matches!(
+            backlog.pop_front(),
+            Some(SparkWalletCommand::GenerateSparkAddress)
+        ));
     }
 
     #[test]
