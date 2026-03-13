@@ -28,6 +28,7 @@ FUNDER_HOME="${OPENAGENTS_AUTOPILOTCTL_FUNDER_HOME:-$HOME}"
 FUNDER_IDENTITY_PATH="${OPENAGENTS_AUTOPILOTCTL_FUNDER_IDENTITY_PATH:-}"
 FUND_SATS="${OPENAGENTS_AUTOPILOTCTL_FUND_SATS:-100}"
 BUDGET_SATS="${OPENAGENTS_AUTOPILOTCTL_BUDGET_SATS:-2}"
+SPARK_NETWORK="${OPENAGENTS_SPARK_NETWORK:-mainnet}"
 MIN_SETTLED_BUYER_SATS="${OPENAGENTS_AUTOPILOTCTL_MIN_SETTLED_BUYER_SATS:-$(( BUDGET_SATS * 2 ))}"
 APP_START_TIMEOUT_SECONDS="${OPENAGENTS_AUTOPILOTCTL_APP_START_TIMEOUT_SECONDS:-90}"
 WAIT_TIMEOUT_MS="${OPENAGENTS_AUTOPILOTCTL_WAIT_TIMEOUT_MS:-120000}"
@@ -39,6 +40,14 @@ BRIDGE_PID=""
 RELAY_PID=""
 BUNDLE_PID=""
 RUNTIME_PID=""
+
+case "$SPARK_NETWORK" in
+  mainnet|regtest) ;;
+  *)
+    echo "[check-v01-packaged-autopilotctl-roundtrip] ERROR: OPENAGENTS_SPARK_NETWORK=${SPARK_NETWORK} is unsupported for this script; spark-wallet-cli only supports mainnet or regtest here" >&2
+    exit 1
+    ;;
+esac
 
 log() {
   echo "[check-v01-packaged-autopilotctl-roundtrip] $*"
@@ -245,9 +254,28 @@ capture_wallet_status() {
   local output_path="$3"
   OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
   "$SPARK_BIN" \
+    --network "$SPARK_NETWORK" \
     --identity-path "$identity_path" \
     --storage-dir "$storage_dir" \
     status >"$output_path"
+}
+
+capture_funder_wallet_status() {
+  local output_path="$1"
+  if [[ -n "$FUNDER_IDENTITY_PATH" ]]; then
+    HOME="$FUNDER_HOME" \
+    OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+    "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
+      --identity-path "$FUNDER_IDENTITY_PATH" \
+      status >"$output_path"
+  else
+    HOME="$FUNDER_HOME" \
+    OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+    "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
+      status >"$output_path"
+  fi
 }
 
 wait_for_wallet_balance() {
@@ -365,12 +393,14 @@ pay_invoice_from_funder() {
     HOME="$FUNDER_HOME" \
     OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
     "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
       --identity-path "$FUNDER_IDENTITY_PATH" \
       pay-invoice "$invoice" >"$output_path"
   else
     HOME="$FUNDER_HOME" \
     OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
     "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
       pay-invoice "$invoice" >"$output_path"
   fi
 }
@@ -385,6 +415,7 @@ fund_wallet() {
   log "Funding ${label} wallet with ${FUND_SATS} sats"
   OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
   "$SPARK_BIN" \
+    --network "$SPARK_NETWORK" \
     --identity-path "$identity_path" \
     --storage-dir "$storage_dir" \
     bolt11-invoice "$FUND_SATS" \
@@ -593,6 +624,13 @@ mkdir -p \
   "$BUNDLE_LOG_DIR" \
   "$RUNTIME_LOG_DIR"
 
+capture_funder_wallet_status "${RUN_DIR}/funder-status-before.json"
+FUNDER_BALANCE="$(status_total_sats "${RUN_DIR}/funder-status-before.json")"
+REQUIRED_FUNDER_SATS=$((FUND_SATS * 2))
+if (( FUNDER_BALANCE < REQUIRED_FUNDER_SATS )); then
+  die "Funder wallet in HOME=${FUNDER_HOME} only has ${FUNDER_BALANCE} sats on ${SPARK_NETWORK}; requires at least ${REQUIRED_FUNDER_SATS} sats to seed the bundle and runtime wallets. Set OPENAGENTS_AUTOPILOTCTL_FUNDER_HOME and optionally OPENAGENTS_AUTOPILOTCTL_FUNDER_IDENTITY_PATH to a funded Spark wallet."
+fi
+
 if ! curl -sf http://127.0.0.1:11435/health >/dev/null 2>&1; then
   log "Starting Foundation Models bridge"
   "$BRIDGE_BINARY" >"${RUN_DIR}/foundation-bridge.stdout.log" 2>"${RUN_DIR}/foundation-bridge.stderr.log" &
@@ -738,10 +776,22 @@ def load_balance(path: pathlib.Path):
     payload = json.loads(path.read_text())
     return payload.get("snapshot", {}).get("wallet", {}).get("balance_sats")
 
+def assert_split_shell_status(label: str, snapshot: dict):
+    shell_mode = snapshot.get("shell_mode")
+    dev_mode_enabled = snapshot.get("dev_mode_enabled")
+    if shell_mode != "hotbar":
+        raise SystemExit(f"{label} shell_mode changed unexpectedly: {shell_mode!r}")
+    if dev_mode_enabled is not False:
+        raise SystemExit(f"{label} dev_mode_enabled changed unexpectedly: {dev_mode_enabled!r}")
+
 runtime_buys_bundle_before = load_balance(run_dir_path / "runtime-buys-bundle-bundle-before-status.json")
 runtime_buys_bundle_after = load_balance(run_dir_path / "runtime-buys-bundle-bundle-after-status.json")
 bundle_buys_runtime_before = load_balance(run_dir_path / "bundle-buys-runtime-runtime-before-status.json")
 bundle_buys_runtime_after = load_balance(run_dir_path / "bundle-buys-runtime-runtime-after-status.json")
+bundle_final_snapshot = json.loads((run_dir / "bundle-final-status.json").read_text()).get("snapshot", {})
+runtime_final_snapshot = json.loads((run_dir / "runtime-final-status.json").read_text()).get("snapshot", {})
+assert_split_shell_status("bundle", bundle_final_snapshot)
+assert_split_shell_status("runtime", runtime_final_snapshot)
 
 summary = {
     "relayUrl": relay_url,
@@ -777,8 +827,8 @@ summary = {
         },
     },
     "finalStatus": {
-        "bundle": json.loads((run_dir / "bundle-final-status.json").read_text()).get("snapshot", {}),
-        "runtime": json.loads((run_dir / "runtime-final-status.json").read_text()).get("snapshot", {}),
+        "bundle": bundle_final_snapshot,
+        "runtime": runtime_final_snapshot,
     },
 }
 

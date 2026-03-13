@@ -12,15 +12,17 @@ The same repo now also has an app-owned desktop control plane for the running GU
 - `apps/autopilot-desktop/src/bin/autopilotctl.rs`
 
 That control plane is intentionally UI-synced. `autopilotctl` drives the running
-desktop app through the same Mission Control truth model the user sees on
-screen, instead of mutating a separate headless-only state machine.
+desktop app through the same split-shell truth model the user sees on screen:
+hotbar shell, Provider Control, Buy Mode, Wallet, Log Stream, and the mirrored
+runtime status surfaces all come from the same app-owned snapshot instead of a
+separate headless-only state machine.
 
 ## Desktop control and `autopilotctl`
 
 `autopilotctl` is the thin CLI client for the running desktop-control runtime.
 It can:
 
-- fetch the current Mission Control snapshot
+- fetch the current desktop-control snapshot
 - stream desktop-control event batches
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
@@ -66,16 +68,16 @@ autopilotctl apple-fm smoke-test
 
 ## Supported local-runtime hosts
 
-The app now exposes one app-owned `local_runtime` contract across Mission
-Control, desktop control, and `autopilotctl`, but the supported host stories
-are still lane-specific:
+The app now exposes one app-owned `local_runtime` contract across the split
+desktop shell, desktop control, and `autopilotctl`, but the supported host
+stories are still lane-specific:
 
 - macOS Apple Silicon: Apple FM via `foundation-bridge`
 - supported non-macOS NVIDIA hosts: GPT-OSS via the in-process Psionic CUDA lane
 - retained GPT-OSS Metal/CPU backends can still appear in status/readiness
   views, but `Go Online` currently unlocks sell-compute only for CUDA
 
-Mission Control now renders the active local-runtime lane inline. On supported
+Provider Control now renders the active local-runtime lane inline. On supported
 NVIDIA/CUDA hosts that means the local-runtime area can show GPT-OSS readiness,
 artifact state, load state, model path, and `REFRESH` / `WARM` / `UNLOAD`
 actions directly, while the separate GPT-OSS workbench remains the prompt
@@ -129,12 +131,12 @@ scripts/release/check-gpt-oss-nvidia-mission-control.sh
 
 Operational notes:
 
-- `local-runtime refresh` always targets the active Mission Control lane, but on
-  GPT-OSS it does not load the GGUF by itself
+- `local-runtime refresh` always targets the active Provider Control lane, but
+  on GPT-OSS it does not load the GGUF by itself
 - `gpt-oss warm` and `gpt-oss unload` act directly on the configured GGUF model
 - `provider online` will still block if the backend is not `cuda`, the GGUF is
   missing, or the configured model is not loaded
-- on retained Metal/CPU GPT-OSS hosts, Mission Control and `autopilotctl` stay
+- on retained Metal/CPU GPT-OSS hosts, Provider Control and `autopilotctl` stay
   truthful about runtime state but currently point you back to the GPT-OSS
   workbench instead of unlocking sell-compute
 
@@ -150,8 +152,16 @@ Useful env overrides:
 
 - `OPENAGENTS_HEADLESS_PROVIDER_BACKEND=auto|apple-fm|canned`
 - `OPENAGENTS_HEADLESS_MAX_REQUESTS=1`
+- `OPENAGENTS_HEADLESS_BUDGET_SATS=2`
+- `OPENAGENTS_HEADLESS_BUYER_HOME=/path/to/funded-home`
 - `OPENAGENTS_HEADLESS_RUN_DIR=/path/to/run-dir`
 - `OPENAGENTS_HEADLESS_PROVIDER_HOME=/path/to/provider-home`
+- `OPENAGENTS_SPARK_NETWORK=mainnet|regtest`
+
+The smoke script now performs a funding preflight with `spark-wallet-cli`
+before it boots the relay/provider pair. If the default buyer wallet does not
+have at least the requested budget on the selected Spark network, the script
+fails early and tells you which `HOME` it inspected.
 
 ## Multi-payment roundtrip
 
@@ -169,11 +179,17 @@ Useful env overrides:
 - `OPENAGENTS_HEADLESS_INTERVAL_SECONDS=8`
 - `OPENAGENTS_HEADLESS_TIMEOUT_SECONDS=75`
 - `OPENAGENTS_HEADLESS_PROVIDER_BACKEND=canned|auto|apple-fm`
+- `OPENAGENTS_HEADLESS_BUYER_HOME=/path/to/funded-home`
 - `OPENAGENTS_HEADLESS_RUN_DIR=/path/to/run-dir`
+- `OPENAGENTS_SPARK_NETWORK=mainnet|regtest`
 
 The roundtrip smoke script defaults to the deterministic `canned` backend so the payment path stays
 stable even on machines without Apple Foundation Models. It still uses real NIP-90 requests,
 real Spark invoices, and real Lightning settlement.
+
+The forward leg spends from the buyer wallet selected by `OPENAGENTS_HEADLESS_BUYER_HOME`
+(or the current shell `HOME` if unset). The script now checks that wallet up front and
+fails early if it cannot cover the requested forward leg on the selected Spark network.
 
 `OPENAGENTS_HEADLESS_REVERSE_COUNT` is treated as a ceiling, not a guarantee. After the forward leg,
 the script measures the actual sats burned per send from the default wallet and trims the reverse leg
@@ -221,10 +237,15 @@ Useful env overrides:
 - `OPENAGENTS_PACKAGED_BUYER_FUNDING_SATS=50`
 - `OPENAGENTS_PACKAGED_BUDGET_SATS=2`
 - `OPENAGENTS_PACKAGED_SKIP_BUILD=1`
+- `OPENAGENTS_SPARK_NETWORK=mainnet|regtest`
 
 The packaged smoke script is intentionally app-owned verification, not a library-only harness.
 It proves the production shell, desktop control runtime, and file-backed logs stay in sync
 through the v0.1 paid compute loop.
+
+Before generating funding invoices, the script now checks the configured funder wallet
+and fails early if `OPENAGENTS_PACKAGED_FUNDER_HOME` / `OPENAGENTS_PACKAGED_FUNDER_IDENTITY_PATH`
+do not point at a wallet that can cover the buyer seed amount on the selected Spark network.
 
 The packaged `.app` verification flow is still the macOS Apple FM release path.
 There is not yet a separate packaged GPT-OSS bundle check in this repo. For the
@@ -254,10 +275,26 @@ What it does:
   - targeted NIP-90 request dispatch
   - buyer payment settlement
   - provider settlement confirmation
+  - `shell_mode=hotbar`
+  - `dev_mode_enabled=false`
+
+Useful env overrides:
+
+- `OPENAGENTS_AUTOPILOTCTL_RUN_DIR=/path/to/run-dir`
+- `OPENAGENTS_AUTOPILOTCTL_FUNDER_HOME=/path/to/funded-home`
+- `OPENAGENTS_AUTOPILOTCTL_FUNDER_IDENTITY_PATH=/path/to/funded/identity.mnemonic`
+- `OPENAGENTS_AUTOPILOTCTL_FUND_SATS=100`
+- `OPENAGENTS_AUTOPILOTCTL_BUDGET_SATS=2`
+- `OPENAGENTS_AUTOPILOTCTL_SKIP_BUILD=1`
+- `OPENAGENTS_SPARK_NETWORK=mainnet|regtest`
 
 This is the closest thing in the repo to a production-shell end-to-end test.
 Use it when the question is not "does the library path work?" but "does the
 actual app bundle work when steered programmatically?"
+
+The roundtrip script also preflights the configured funder wallet and will stop
+before app launch if it cannot cover the bundle/runtime seed amounts. That keeps
+funding failures distinct from split-shell or desktop-control regressions.
 
 ## Separate processes
 

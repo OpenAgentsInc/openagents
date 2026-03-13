@@ -22,6 +22,7 @@ FUNDER_HOME="${OPENAGENTS_PACKAGED_FUNDER_HOME:-$HOME}"
 FUNDER_IDENTITY_PATH="${OPENAGENTS_PACKAGED_FUNDER_IDENTITY_PATH:-}"
 BUYER_FUNDING_SATS="${OPENAGENTS_PACKAGED_BUYER_FUNDING_SATS:-50}"
 BUDGET_SATS="${OPENAGENTS_PACKAGED_BUDGET_SATS:-2}"
+SPARK_NETWORK="${OPENAGENTS_SPARK_NETWORK:-mainnet}"
 BUYER_TIMEOUT_SECONDS="${OPENAGENTS_PACKAGED_BUYER_TIMEOUT_SECONDS:-90}"
 BUYER_INTERVAL_SECONDS="${OPENAGENTS_PACKAGED_BUYER_INTERVAL_SECONDS:-8}"
 APP_START_TIMEOUT_SECONDS="${OPENAGENTS_PACKAGED_APP_START_TIMEOUT_SECONDS:-90}"
@@ -32,6 +33,14 @@ SKIP_BUILD="${OPENAGENTS_PACKAGED_SKIP_BUILD:-0}"
 APP_PID=""
 BUYER_PID=""
 RELAY_PID=""
+
+case "$SPARK_NETWORK" in
+  mainnet|regtest) ;;
+  *)
+    echo "[check-v01-packaged-compute] ERROR: OPENAGENTS_SPARK_NETWORK=${SPARK_NETWORK} is unsupported for this script; spark-wallet-cli only supports mainnet or regtest here" >&2
+    exit 1
+    ;;
+esac
 
 log() {
   echo "[check-v01-packaged-compute] $*"
@@ -182,9 +191,28 @@ capture_buyer_wallet_status() {
   local output_path="$1"
   OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
   "$SPARK_BIN" \
+    --network "$SPARK_NETWORK" \
     --identity-path "$BUYER_IDENTITY_PATH" \
     --storage-dir "$BUYER_STORAGE_DIR" \
     status >"$output_path"
+}
+
+capture_funder_wallet_status() {
+  local output_path="$1"
+  if [[ -n "$FUNDER_IDENTITY_PATH" ]]; then
+    HOME="$FUNDER_HOME" \
+    OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+    "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
+      --identity-path "$FUNDER_IDENTITY_PATH" \
+      status >"$output_path"
+  else
+    HOME="$FUNDER_HOME" \
+    OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+    "$SPARK_BIN" \
+      --network "$SPARK_NETWORK" \
+      status >"$output_path"
+  fi
 }
 
 wait_for_buyer_wallet_balance() {
@@ -258,6 +286,12 @@ fi
 rm -rf "$RUN_DIR"
 mkdir -p "${APP_HOME}/.openagents" "$APP_LOG_DIR" "${BUYER_HOME}/.openagents/pylon"
 
+capture_funder_wallet_status "${RUN_DIR}/funder-status-before.json"
+FUNDER_BALANCE="$(status_total_sats "${RUN_DIR}/funder-status-before.json")"
+if (( FUNDER_BALANCE < BUYER_FUNDING_SATS )); then
+  die "Funder wallet in HOME=${FUNDER_HOME} only has ${FUNDER_BALANCE} sats on ${SPARK_NETWORK}; requires at least ${BUYER_FUNDING_SATS} sats to fund the isolated buyer. Set OPENAGENTS_PACKAGED_FUNDER_HOME and optionally OPENAGENTS_PACKAGED_FUNDER_IDENTITY_PATH to a funded Spark wallet."
+fi
+
 PORT="$(find_free_port)"
 RELAY_URL="ws://127.0.0.1:${PORT}"
 
@@ -308,6 +342,7 @@ capture_buyer_wallet_status "${RUN_DIR}/buyer-status-before.json"
 
 log "Funding isolated buyer wallet with ${BUYER_FUNDING_SATS} sats"
 "$SPARK_BIN" \
+  --network "$SPARK_NETWORK" \
   --identity-path "$BUYER_IDENTITY_PATH" \
   --storage-dir "$BUYER_STORAGE_DIR" \
   bolt11-invoice "$BUYER_FUNDING_SATS" \
@@ -318,12 +353,14 @@ if [[ -n "$FUNDER_IDENTITY_PATH" ]]; then
   HOME="$FUNDER_HOME" \
   OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
   "$SPARK_BIN" \
+  --network "$SPARK_NETWORK" \
   --identity-path "$FUNDER_IDENTITY_PATH" \
   pay-invoice "$BUYER_FUNDING_INVOICE" >"${RUN_DIR}/buyer-funding-payment.json"
 else
   HOME="$FUNDER_HOME" \
   OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
   "$SPARK_BIN" \
+  --network "$SPARK_NETWORK" \
   pay-invoice "$BUYER_FUNDING_INVOICE" >"${RUN_DIR}/buyer-funding-payment.json"
 fi
 
