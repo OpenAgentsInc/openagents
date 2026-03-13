@@ -648,7 +648,7 @@ fn open_startup_panes(state: &mut RenderState) {
                 state
                     .spark_wallet
                     .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
                     state.spark_wallet.last_error = Some(error);
                 }
             }
@@ -661,7 +661,7 @@ fn open_startup_panes(state: &mut RenderState) {
                 state
                     .spark_wallet
                     .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
                     state.spark_wallet.last_error = Some(error);
                 }
             }

@@ -660,7 +660,6 @@ fund_wallet "bundle" "$BUNDLE_IDENTITY_PATH" "$BUNDLE_STORAGE_DIR" "${RUN_DIR}/b
 fund_wallet "runtime" "$RUNTIME_IDENTITY_PATH" "$RUNTIME_STORAGE_DIR" "${RUN_DIR}/runtime-funding-invoice.json" "${RUN_DIR}/runtime-funding-payment.json" "${RUN_DIR}/runtime-status-funded.json"
 "$AUTOPILOTCTL_BIN" --manifest "$BUNDLE_MANIFEST" wallet refresh >"${RUN_DIR}/bundle-wallet-refresh-funded.json"
 "$AUTOPILOTCTL_BIN" --manifest "$RUNTIME_MANIFEST" wallet refresh >"${RUN_DIR}/runtime-wallet-refresh-funded.json"
-wait_for_manifest_wallet_balance "$BUNDLE_MANIFEST" "$FUND_SATS" 120 "${RUN_DIR}/bundle-status-funded-manifest.json" \
 wait_for_manifest_wallet_balance_sync \
   "$BUNDLE_MANIFEST" \
   "$BUNDLE_IDENTITY_PATH" \
