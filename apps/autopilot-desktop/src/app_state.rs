@@ -89,6 +89,7 @@ pub enum PaneKind {
     CodexLabs,
     CodexDiagnostics,
     GoOnline,
+    ProviderControl,
     ProviderStatus,
     LocalInference,
     AppleFmWorkbench,
@@ -603,6 +604,66 @@ impl Default for CalculatorPaneInputs {
     }
 }
 
+pub struct ProviderControlPaneState {
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    pub local_fm_summary_pending_request_id: Option<String>,
+    pub local_fm_summary_text: String,
+    scroll_offset_px: f32,
+}
+
+impl Default for ProviderControlPaneState {
+    fn default() -> Self {
+        Self {
+            last_action: Some("Provider Control ready".to_string()),
+            last_error: None,
+            local_fm_summary_pending_request_id: None,
+            local_fm_summary_text: String::new(),
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl ProviderControlPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+
+    pub fn record_action(&mut self, action: impl Into<String>) {
+        self.last_action = Some(action.into());
+        self.last_error = None;
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.last_error = Some(error.into());
+    }
+
+    pub fn begin_local_fm_summary(&mut self, request_id: impl Into<String>, detail: &str) {
+        let request_id = request_id.into();
+        self.local_fm_summary_pending_request_id = Some(request_id.clone());
+        self.local_fm_summary_text.clear();
+        self.record_action(format!("Streaming local FM summary for {detail} ({request_id})"));
+    }
+
+    pub fn local_fm_summary_is_pending(&self) -> bool {
+        self.local_fm_summary_pending_request_id.is_some()
+    }
+}
+
 pub struct MissionControlPaneState {
     pub log_stream: TerminalPane,
     pub load_funds_amount_sats: TextInput,
@@ -611,13 +672,10 @@ pub struct MissionControlPaneState {
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
     pub buy_mode_last_dispatch_at: Option<Instant>,
-    pub local_fm_summary_pending_request_id: Option<String>,
-    pub local_fm_summary_text: String,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     wallet_refresh_icon_clicked_at_epoch_ms: u64,
     log_copy_icon_clicked_at_epoch_ms: u64,
-    sell_scroll_offset_px: f32,
     earnings_scroll_offset_px: f32,
     wallet_scroll_offset_px: f32,
     actions_scroll_offset_px: f32,
@@ -668,13 +726,10 @@ impl Default for MissionControlPaneState {
             buy_mode_loop_enabled: false,
             buy_mode_next_dispatch_at: None,
             buy_mode_last_dispatch_at: None,
-            local_fm_summary_pending_request_id: None,
-            local_fm_summary_text: String::new(),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             wallet_refresh_icon_clicked_at_epoch_ms: 0,
             log_copy_icon_clicked_at_epoch_ms: 0,
-            sell_scroll_offset_px: 0.0,
             earnings_scroll_offset_px: 0.0,
             wallet_scroll_offset_px: 0.0,
             actions_scroll_offset_px: 0.0,
@@ -728,10 +783,6 @@ impl MissionControlPaneState {
         clamped
     }
 
-    pub fn scroll_sell_by(&mut self, dy: f32) {
-        self.sell_scroll_offset_px = (self.sell_scroll_offset_px + dy).max(0.0);
-    }
-
     pub fn scroll_earnings_by(&mut self, dy: f32) {
         self.earnings_scroll_offset_px = (self.earnings_scroll_offset_px + dy).max(0.0);
     }
@@ -750,10 +801,6 @@ impl MissionControlPaneState {
 
     pub fn scroll_active_jobs_by(&mut self, dy: f32) {
         self.active_jobs_scroll_offset_px = (self.active_jobs_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn clamp_sell_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.sell_scroll_offset_px, max_scroll)
     }
 
     pub fn clamp_earnings_scroll_offset(&mut self, max_scroll: f32) -> f32 {
@@ -904,20 +951,6 @@ impl MissionControlPaneState {
 
     pub fn record_error(&mut self, error: impl Into<String>) {
         self.last_error = Some(error.into());
-    }
-
-    pub fn begin_local_fm_summary(&mut self, request_id: impl Into<String>, detail: &str) {
-        let request_id = request_id.into();
-        self.local_fm_summary_pending_request_id = Some(request_id.clone());
-        self.local_fm_summary_text.clear();
-        self.push_runtime_log_line(
-            TerminalStream::Stdout,
-            format!("Local FM summary queued [{request_id}] // {detail}"),
-        );
-    }
-
-    pub fn local_fm_summary_is_pending(&self) -> bool {
-        self.local_fm_summary_pending_request_id.is_some()
     }
 
     pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
@@ -9708,6 +9741,7 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
+    pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub autopilot_chat: AutopilotChatState,

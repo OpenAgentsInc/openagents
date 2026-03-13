@@ -60,6 +60,7 @@ use crate::pane_system::{
     clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_fm_workbench_input_event,
     dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
+    dispatch_provider_control_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
@@ -2232,6 +2233,9 @@ fn dispatch_mouse_scroll(
         } else {
             handled |= dispatch_mission_control_log_scroll_event(state, point, event);
             if !handled {
+                handled |= dispatch_provider_control_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_buy_mode_payments_scroll_event(state, point, event);
             }
             if !handled {
@@ -2798,8 +2802,9 @@ pub(super) fn run_pane_hit_action(
             } else {
                 ProviderDesiredMode::Offline
             },
-            "mission control toggle",
+            "provider toggle",
         ),
+        PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
         PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
