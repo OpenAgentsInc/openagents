@@ -141,6 +141,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Keeps wallet-confirmed Spark receives on the main horizontal rail and pushes settlement-observed / inferred rows into a visibly degraded secondary section.
   - Shows payout size, payer pubkey, settlement authority, and confirmation latency without making the operator read raw wallet/history rows.
   - Action: read-only payout visibility.
+- `Settlement Ladder`
+  - Operator-first per-request proof pane for answering exactly where a NIP-90 payment flow stopped.
+  - Shows six proof rungs: request observed, result observed, invoice observed, buyer payment pointer assigned, seller settled, and buyer wallet confirmed.
+  - Keeps seller-wallet settlement proof distinct from buyer-wallet confirmation proof so adjacent stages do not imply one another.
+  - Action: read-only proof visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -261,6 +266,7 @@ Current pane badge mapping:
 - `Network Requests`: `source: runtime`
 - `Buy Mode`: `source: buy`
 - `Seller Earnings Timeline`: `source: stream.nip90_payment_facts.v1`
+- `Settlement Ladder`: `source: stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`

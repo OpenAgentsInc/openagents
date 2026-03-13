@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 46] = [
+const PANE_SPECS: [PaneSpec; 47] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -578,6 +578,21 @@ const PANE_SPECS: [PaneSpec; 46] = [
             id: "pane.seller_earnings_timeline",
             label: "Seller Earnings Timeline",
             description: "Open wallet-confirmed provider payout pulses with degraded settlement rows kept distinct",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::SettlementLadder,
+        title: "Settlement Ladder",
+        default_width: 1120.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.settlement_ladder",
+            label: "Settlement Ladder",
+            description: "Open a per-request proof ladder from request observation through settlement",
             keybinding: None,
         }),
         hotbar: None,
