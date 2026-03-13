@@ -78,6 +78,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Fills the entire pane content area with the looping HUD animation using `cover` fit mode and no in-content controls.
   - Exposes a fullscreen header action next to close; activating it promotes the pane into pane-level fullscreen, and `Esc` returns it to windowed mode.
   - Action: fullscreen toggle from pane chrome only.
+- `Frame Debugger`
+  - Live desktop cadence/debug pane for frame pacing, redraw pressure, and renderer timings.
+  - Tracks rolling FPS, last/rolling frame interval, frame CPU phases, draw-call density, and the current redraw drivers coming from background pumps, chat, provider animation, and Rive surfaces.
+  - Exists specifically to make render-loop lag visible from inside the app instead of inferring it from logs.
+  - Action: read-only diagnostics surface.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.

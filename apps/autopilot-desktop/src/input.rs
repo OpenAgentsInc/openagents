@@ -38,8 +38,9 @@ use winit::window::Fullscreen;
 
 use crate::app_state::{
     AlertDomain, App, CadCameraDragMode, CadCameraDragState, CadHotkeyAction,
-    ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest, JobInboxValidation,
-    NetworkRequestSubmission, PaneKind, ProviderMode,
+    ChatTranscriptSelectionDragState, EarnFailureClass, FrameRedrawPressureSnapshot,
+    JobInboxNetworkRequest, JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
+    RiveCadenceSnapshot,
 };
 use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::hotbar::{
@@ -493,9 +494,13 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             // Keep background lanes advancing even during redraw-heavy periods.
             // Without this, Codex notifications can backlog until the next input event.
             let _ = pump_background_state(state);
-            if render_frame(state).is_err() {
-                event_loop.exit();
-                return;
+            match render_frame(state) {
+                Ok(report) => state.frame_debugger.record_frame(report),
+                Err(error) => {
+                    state.frame_debugger.record_error(error.to_string());
+                    event_loop.exit();
+                    return;
+                }
             }
             let flashing_now = state.hotbar.is_flashing();
             let provider_animating = matches!(
@@ -567,29 +572,42 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     };
 
     let changed = pump_background_state(state);
-    let provider_animating = matches!(
-        state.provider_runtime.mode,
-        ProviderMode::Connecting | ProviderMode::Online
+    let preview_rive = build_rive_cadence_snapshot(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::RivePreview),
+        state.rive_preview_runtime.surface.as_ref(),
     );
-    let rive_needs_redraw = open_rive_surface_needs_redraw(state);
-    let should_redraw = should_request_desktop_redraw(
-        changed,
-        state.hotbar.is_flashing(),
-        provider_animating,
+    let presentation_rive = build_rive_cadence_snapshot(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::Presentation),
+        state.presentation_runtime.surface.as_ref(),
+    );
+    let rive_needs_redraw = preview_rive.needs_redraw || presentation_rive.needs_redraw;
+    let poll_interval = background_poll_interval(
         state.autopilot_chat.has_pending_messages(),
-        any_text_input_focused(state),
         rive_needs_redraw,
     );
+    let redraw_pressure = build_frame_redraw_pressure_snapshot(
+        state,
+        changed,
+        poll_interval,
+        preview_rive,
+        presentation_rive,
+    );
+    state
+        .frame_debugger
+        .note_redraw_pressure(redraw_pressure.clone());
+    let should_redraw = redraw_pressure.should_redraw;
     if should_redraw {
         state.window.request_redraw();
     }
 
     // Keep a lightweight cadence so background lane updates (Codex/runtime/spark) are surfaced
     // even when the user is idle and no UI events are incoming.
-    let poll_interval = background_poll_interval(
-        state.autopilot_chat.has_pending_messages(),
-        rive_needs_redraw,
-    );
     event_loop.set_control_flow(ControlFlow::WaitUntil(
         std::time::Instant::now() + poll_interval,
     ));
@@ -621,6 +639,55 @@ fn open_rive_surface_needs_redraw(state: &crate::app_state::RenderState) -> bool
 
 fn rive_preview_cadence_active(pane_open: bool, surface_needs_redraw: bool) -> bool {
     pane_open && surface_needs_redraw
+}
+
+fn build_rive_cadence_snapshot(
+    pane_open: bool,
+    surface: Option<&wgpui::RiveSurface>,
+) -> RiveCadenceSnapshot {
+    let surface_loaded = surface.is_some();
+    RiveCadenceSnapshot {
+        pane_open,
+        surface_loaded,
+        needs_redraw: pane_open && surface.is_some_and(|candidate| candidate.needs_redraw()),
+        animating: pane_open && surface.is_some_and(|candidate| candidate.is_animating()),
+        settled: pane_open && surface.is_some_and(|candidate| candidate.is_settled()),
+    }
+}
+
+fn build_frame_redraw_pressure_snapshot(
+    state: &mut crate::app_state::RenderState,
+    background_changed: bool,
+    poll_interval: std::time::Duration,
+    rive_preview: RiveCadenceSnapshot,
+    presentation: RiveCadenceSnapshot,
+) -> FrameRedrawPressureSnapshot {
+    let hotbar_flashing = state.hotbar.is_flashing();
+    let provider_animating = matches!(
+        state.provider_runtime.mode,
+        ProviderMode::Connecting | ProviderMode::Online
+    );
+    let chat_pending = state.autopilot_chat.has_pending_messages();
+    let text_input_focused = any_text_input_focused(state);
+    let should_redraw = should_request_desktop_redraw(
+        background_changed,
+        hotbar_flashing,
+        provider_animating,
+        chat_pending,
+        text_input_focused,
+        rive_preview.needs_redraw || presentation.needs_redraw,
+    );
+    FrameRedrawPressureSnapshot {
+        should_redraw,
+        background_changed,
+        hotbar_flashing,
+        provider_animating,
+        chat_pending,
+        text_input_focused,
+        poll_interval_ms: poll_interval.as_millis().min(u128::from(u32::MAX)) as u32,
+        rive_preview,
+        presentation,
+    }
 }
 
 fn should_request_desktop_redraw(

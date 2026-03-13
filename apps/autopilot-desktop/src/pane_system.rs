@@ -1014,6 +1014,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
+        PaneKind::FrameDebugger => pane_size_for_content(1080.0, 600.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
@@ -1565,6 +1566,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::PsionicViz
             | PaneKind::RivePreview
             | PaneKind::Presentation
+            | PaneKind::FrameDebugger
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -5883,7 +5885,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::PsionicViz | PaneKind::Presentation => None,
+        PaneKind::PsionicViz | PaneKind::Presentation | PaneKind::FrameDebugger => None,
         PaneKind::RivePreview => {
             if rive_preview_reload_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::RivePreview(

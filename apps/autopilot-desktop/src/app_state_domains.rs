@@ -1,6 +1,8 @@
 use super::*;
 use wgpui::RiveFitMode;
 
+const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
+
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -90,6 +92,341 @@ impl Default for PresentationPaneState {
             asset_id: asset.id.to_string(),
             asset_name: asset.file_name.to_string(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RiveCadenceSnapshot {
+    pub pane_open: bool,
+    pub surface_loaded: bool,
+    pub needs_redraw: bool,
+    pub animating: bool,
+    pub settled: bool,
+}
+
+impl RiveCadenceSnapshot {
+    pub fn cadence_label(&self) -> &'static str {
+        if !self.pane_open {
+            "closed"
+        } else if !self.surface_loaded {
+            "unloaded"
+        } else if self.animating {
+            "animating"
+        } else if self.needs_redraw {
+            "dirty"
+        } else if self.settled {
+            "settled"
+        } else {
+            "idle"
+        }
+    }
+
+    pub fn state_summary(&self) -> String {
+        format!(
+            "{} // loaded={} redraw={} settled={}",
+            self.cadence_label(),
+            self.surface_loaded,
+            self.needs_redraw,
+            self.settled
+        )
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FrameRedrawPressureSnapshot {
+    pub should_redraw: bool,
+    pub background_changed: bool,
+    pub hotbar_flashing: bool,
+    pub provider_animating: bool,
+    pub chat_pending: bool,
+    pub text_input_focused: bool,
+    pub poll_interval_ms: u32,
+    pub rive_preview: RiveCadenceSnapshot,
+    pub presentation: RiveCadenceSnapshot,
+}
+
+impl FrameRedrawPressureSnapshot {
+    pub fn active_reason_labels(&self) -> Vec<&'static str> {
+        let mut labels = Vec::new();
+        if self.background_changed {
+            labels.push("background");
+        }
+        if self.hotbar_flashing {
+            labels.push("hotbar");
+        }
+        if self.provider_animating {
+            labels.push("provider");
+        }
+        if self.chat_pending {
+            labels.push("chat");
+        }
+        if self.text_input_focused {
+            labels.push("text_input");
+        }
+        if self.rive_preview.needs_redraw {
+            labels.push("rive_preview");
+        }
+        if self.presentation.needs_redraw {
+            labels.push("presentation");
+        }
+        labels
+    }
+
+    pub fn reason_summary(&self) -> String {
+        let labels = self.active_reason_labels();
+        if labels.is_empty() {
+            "idle".to_string()
+        } else {
+            labels.join(" + ")
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FrameRedrawReasonCounters {
+    pub background_changed: u64,
+    pub hotbar_flashing: u64,
+    pub provider_animating: u64,
+    pub chat_pending: u64,
+    pub text_input_focused: u64,
+    pub rive_preview: u64,
+    pub presentation: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FrameRenderReport {
+    pub scene_build_ms: f32,
+    pub surface_acquire_ms: f32,
+    pub prepare_cpu_ms: f32,
+    pub render_cpu_ms: f32,
+    pub submit_present_ms: f32,
+    pub total_cpu_ms: f32,
+    pub draw_calls: u32,
+    pub layer_count: usize,
+    pub vector_batches: u32,
+    pub image_instances: u32,
+    pub svg_instances: u32,
+    pub svg_cache_size: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FrameSample {
+    pub frame_interval_ms: f32,
+    pub scene_build_ms: f32,
+    pub surface_acquire_ms: f32,
+    pub prepare_cpu_ms: f32,
+    pub render_cpu_ms: f32,
+    pub submit_present_ms: f32,
+    pub total_cpu_ms: f32,
+    pub draw_calls: u32,
+    pub layer_count: usize,
+    pub vector_batches: u32,
+    pub image_instances: u32,
+    pub svg_instances: u32,
+    pub svg_cache_size: usize,
+}
+
+pub struct FrameDebuggerPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub total_frames: u64,
+    pub redraw_requests: u64,
+    pub slow_frames_60hz: u64,
+    pub slow_frames_30hz: u64,
+    pub last_frame_interval_ms: Option<f32>,
+    pub rolling_frame_interval_ms: Option<f32>,
+    pub rolling_fps: Option<f32>,
+    pub last_report: Option<FrameSample>,
+    pub redraw_pressure: FrameRedrawPressureSnapshot,
+    pub redraw_reason_counters: FrameRedrawReasonCounters,
+    last_frame_completed_at: Option<Instant>,
+    samples: std::collections::VecDeque<FrameSample>,
+}
+
+impl Default for FrameDebuggerPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for first desktop frame sample".to_string()),
+            total_frames: 0,
+            redraw_requests: 0,
+            slow_frames_60hz: 0,
+            slow_frames_30hz: 0,
+            last_frame_interval_ms: None,
+            rolling_frame_interval_ms: None,
+            rolling_fps: None,
+            last_report: None,
+            redraw_pressure: FrameRedrawPressureSnapshot::default(),
+            redraw_reason_counters: FrameRedrawReasonCounters::default(),
+            last_frame_completed_at: None,
+            samples: std::collections::VecDeque::with_capacity(FRAME_DEBUGGER_SAMPLE_CAPACITY),
+        }
+    }
+}
+
+impl FrameDebuggerPaneState {
+    pub fn samples(&self) -> &std::collections::VecDeque<FrameSample> {
+        &self.samples
+    }
+
+    pub fn note_redraw_pressure(&mut self, snapshot: FrameRedrawPressureSnapshot) {
+        if snapshot.should_redraw {
+            self.redraw_requests = self.redraw_requests.saturating_add(1);
+            if snapshot.background_changed {
+                self.redraw_reason_counters.background_changed = self
+                    .redraw_reason_counters
+                    .background_changed
+                    .saturating_add(1);
+            }
+            if snapshot.hotbar_flashing {
+                self.redraw_reason_counters.hotbar_flashing = self
+                    .redraw_reason_counters
+                    .hotbar_flashing
+                    .saturating_add(1);
+            }
+            if snapshot.provider_animating {
+                self.redraw_reason_counters.provider_animating = self
+                    .redraw_reason_counters
+                    .provider_animating
+                    .saturating_add(1);
+            }
+            if snapshot.chat_pending {
+                self.redraw_reason_counters.chat_pending =
+                    self.redraw_reason_counters.chat_pending.saturating_add(1);
+            }
+            if snapshot.text_input_focused {
+                self.redraw_reason_counters.text_input_focused = self
+                    .redraw_reason_counters
+                    .text_input_focused
+                    .saturating_add(1);
+            }
+            if snapshot.rive_preview.needs_redraw {
+                self.redraw_reason_counters.rive_preview =
+                    self.redraw_reason_counters.rive_preview.saturating_add(1);
+            }
+            if snapshot.presentation.needs_redraw {
+                self.redraw_reason_counters.presentation =
+                    self.redraw_reason_counters.presentation.saturating_add(1);
+            }
+        }
+        self.last_action = Some(format!(
+            "Loop pressure {} @ {}ms poll",
+            snapshot.reason_summary(),
+            snapshot.poll_interval_ms
+        ));
+        self.redraw_pressure = snapshot;
+    }
+
+    pub fn record_frame(&mut self, report: FrameRenderReport) {
+        let now = Instant::now();
+        let frame_interval_ms = self
+            .last_frame_completed_at
+            .map(|last| now.saturating_duration_since(last).as_secs_f32() * 1_000.0)
+            .unwrap_or(report.total_cpu_ms.max(0.0));
+        self.last_frame_completed_at = Some(now);
+
+        let sample = FrameSample {
+            frame_interval_ms,
+            scene_build_ms: report.scene_build_ms,
+            surface_acquire_ms: report.surface_acquire_ms,
+            prepare_cpu_ms: report.prepare_cpu_ms,
+            render_cpu_ms: report.render_cpu_ms,
+            submit_present_ms: report.submit_present_ms,
+            total_cpu_ms: report.total_cpu_ms,
+            draw_calls: report.draw_calls,
+            layer_count: report.layer_count,
+            vector_batches: report.vector_batches,
+            image_instances: report.image_instances,
+            svg_instances: report.svg_instances,
+            svg_cache_size: report.svg_cache_size,
+        };
+
+        if self.samples.len() == FRAME_DEBUGGER_SAMPLE_CAPACITY {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(sample.clone());
+        self.total_frames = self.total_frames.saturating_add(1);
+        if sample.frame_interval_ms > 16.67 {
+            self.slow_frames_60hz = self.slow_frames_60hz.saturating_add(1);
+        }
+        if sample.frame_interval_ms > 33.34 {
+            self.slow_frames_30hz = self.slow_frames_30hz.saturating_add(1);
+        }
+
+        let rolling_interval = self
+            .samples
+            .iter()
+            .map(|entry| entry.frame_interval_ms)
+            .sum::<f32>()
+            / self.samples.len().max(1) as f32;
+        self.last_frame_interval_ms = Some(sample.frame_interval_ms);
+        self.rolling_frame_interval_ms = Some(rolling_interval);
+        self.rolling_fps = Some(if rolling_interval > f32::EPSILON {
+            1_000.0 / rolling_interval
+        } else {
+            0.0
+        });
+        self.last_report = Some(sample.clone());
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Frame {} recorded // {:.1} fps rolling // {:.2} ms cpu",
+            self.total_frames,
+            self.rolling_fps.unwrap_or_default(),
+            sample.total_cpu_ms
+        ));
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.load_state = PaneLoadState::Error;
+        self.last_error = Some(error.into());
+    }
+}
+
+#[cfg(test)]
+mod frame_debugger_tests {
+    use super::{FrameDebuggerPaneState, FrameRedrawPressureSnapshot, FrameRenderReport};
+
+    #[test]
+    fn frame_debugger_records_samples_and_rolling_fps() {
+        let mut state = FrameDebuggerPaneState::default();
+        state.record_frame(FrameRenderReport {
+            total_cpu_ms: 8.0,
+            scene_build_ms: 3.0,
+            render_cpu_ms: 2.0,
+            ..FrameRenderReport::default()
+        });
+        state.record_frame(FrameRenderReport {
+            total_cpu_ms: 10.0,
+            scene_build_ms: 4.0,
+            render_cpu_ms: 3.0,
+            ..FrameRenderReport::default()
+        });
+
+        assert_eq!(state.total_frames, 2);
+        assert_eq!(state.samples().len(), 2);
+        assert!(state.rolling_fps.is_some());
+        assert!(state.last_report.is_some());
+    }
+
+    #[test]
+    fn redraw_pressure_reason_summary_lists_active_drivers() {
+        let snapshot = FrameRedrawPressureSnapshot {
+            should_redraw: true,
+            background_changed: true,
+            presentation: super::RiveCadenceSnapshot {
+                pane_open: true,
+                surface_loaded: true,
+                needs_redraw: true,
+                animating: true,
+                settled: false,
+            },
+            ..FrameRedrawPressureSnapshot::default()
+        };
+
+        assert_eq!(snapshot.reason_summary(), "background + presentation");
     }
 }
 
