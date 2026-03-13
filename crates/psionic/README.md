@@ -25,7 +25,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-ir`: canonical graph and execution-plan representation.
 - `psionic-compiler`: lowering and scheduling boundaries over IR.
 - `psionic-runtime`: runtime traits for devices, allocation, and execution.
-- `psionic-net`: transport, peer identity, and session-establishment substrate.
+- `psionic-net`: peer identity, direct/NAT/relay session establishment, relay-backed rendezvous, and transport observations.
 - `psionic-cluster`: ordered-state, scheduling, and topology substrate over `psionic-net`.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
@@ -49,8 +49,9 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 ## Current Phase
 
 This subtree now has a tested CPU product baseline, a first Metal-backed
-`psionic.embeddings` path, and explicit AMD discovery/readiness groundwork.
-AMD execution support is still future work.
+`psionic.embeddings` path, wider-network `psionic-net` session establishment
+for direct/NAT/relay connectivity, and explicit AMD discovery/readiness
+groundwork. AMD execution support is still future work.
 
 ## Docs
 

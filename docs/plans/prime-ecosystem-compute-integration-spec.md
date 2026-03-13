@@ -811,6 +811,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The new crate should own peer identity, session establishment, stream classes, and transport observations.
 
 6. **Psionic Net: add direct-connect, NAT-traversal, and relay fallback session establishment**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3490`.
    - Rebuild the useful `prime-iroh` session semantics in Rust with OpenAgents-owned types and telemetry.
    - The deliverable is reliable peer connectivity across ordinary public-network conditions.
 
