@@ -59,10 +59,10 @@ use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane, buy_mode as buy_mode_pane,
     buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
-    log_stream as log_stream_pane, project_ops as project_ops_pane,
-    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
-    relay_connections as relay_connections_pane,
+    earnings_jobs as earnings_jobs_pane, key_ledger as key_ledger_pane,
+    local_inference as local_inference_pane, log_stream as log_stream_pane,
+    project_ops as project_ops_pane, provider_control as provider_control_pane,
+    psionic_viz as psionic_viz_pane, relay_connections as relay_connections_pane,
     seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_ladder as settlement_ladder_pane, skill as skill_pane, wallet as wallet_pane,
 };
@@ -413,6 +413,9 @@ impl PaneRenderer {
                 }
                 PaneKind::SettlementLadder => {
                     settlement_ladder_pane::paint(content_bounds, nip90_payment_facts, paint);
+                }
+                PaneKind::KeyLedger => {
+                    key_ledger_pane::paint(content_bounds, nip90_payment_facts, paint);
                 }
                 PaneKind::AgentProfileState => {
                     agent_pane::paint_agent_profile_state_pane(

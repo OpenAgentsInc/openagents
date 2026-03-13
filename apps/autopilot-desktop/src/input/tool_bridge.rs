@@ -2008,6 +2008,7 @@ fn pane_action_to_hit_action(
         PaneKind::BuyerRaceMatrix => unsupported(),
         PaneKind::SellerEarningsTimeline => unsupported(),
         PaneKind::SettlementLadder => unsupported(),
+        PaneKind::KeyLedger => unsupported(),
         PaneKind::LogStream => match action {
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
@@ -5818,6 +5819,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "payment_proof",
             "request_proof",
         ],
+        PaneKind::KeyLedger => &[
+            "key_ledger",
+            "actor_ledger",
+            "pubkey_ledger",
+            "payment_actors",
+        ],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -5861,6 +5868,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
         PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
         PaneKind::SettlementLadder => "settlement_ladder",
+        PaneKind::KeyLedger => "key_ledger",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",
