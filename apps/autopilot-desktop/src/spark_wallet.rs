@@ -48,6 +48,7 @@ pub(crate) fn decode_lightning_invoice_payment_hash(bolt11: &str) -> Option<Stri
 #[derive(Clone, Debug)]
 pub enum SparkWalletCommand {
     Refresh,
+    Reload,
     ConfigureEnv {
         vars: Vec<(String, String)>,
     },
@@ -317,6 +318,7 @@ impl SparkPaneState {
     fn apply_command(&mut self, runtime: &Runtime, command: SparkWalletCommand) {
         match command {
             SparkWalletCommand::Refresh => self.refresh(runtime),
+            SparkWalletCommand::Reload => self.reload(runtime),
             SparkWalletCommand::ConfigureEnv { vars } => self.configure_env(vars),
             SparkWalletCommand::GenerateSparkAddress => self.request_spark_address(runtime),
             SparkWalletCommand::GenerateBitcoinAddress => self.request_bitcoin_address(runtime),
@@ -409,6 +411,12 @@ impl SparkPaneState {
         self.refresh_balance_and_payments(runtime);
         self.complete_startup_convergence_after_refresh();
         self.last_action = Some("Wallet refreshed".to_string());
+    }
+
+    fn reload(&mut self, runtime: &Runtime) {
+        self.wallet = None;
+        self.network_status = None;
+        self.refresh(runtime);
     }
 
     fn complete_startup_convergence_after_refresh(&mut self) {

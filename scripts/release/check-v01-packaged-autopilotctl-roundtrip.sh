@@ -277,7 +277,7 @@ wait_for_manifest_wallet_balance() {
   while (( SECONDS < deadline )); do
     if (( SECONDS >= next_refresh_at )); then
       "$AUTOPILOTCTL_BIN" --manifest "$manifest" wallet refresh >/dev/null
-      next_refresh_at=$((SECONDS + 15))
+      next_refresh_at=$((SECONDS + 5))
     fi
     "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json status >"$output_path"
     local balance_sats
@@ -298,6 +298,24 @@ PY
     sleep 2
   done
   return 1
+}
+
+wait_for_manifest_wallet_balance_sync() {
+  local manifest="$1"
+  local identity_path="$2"
+  local storage_dir="$3"
+  local timeout_seconds="$4"
+  local manifest_output_path="$5"
+  local wallet_status_path="$6"
+
+  capture_wallet_status "$identity_path" "$storage_dir" "$wallet_status_path"
+  local expected_sats
+  expected_sats="$(status_total_sats "$wallet_status_path")"
+  wait_for_manifest_wallet_balance \
+    "$manifest" \
+    "$expected_sats" \
+    "$timeout_seconds" \
+    "$manifest_output_path"
 }
 
 manifest_wallet_balance() {
@@ -456,12 +474,24 @@ run_buy_cycle() {
   local buyer_manifest="$2"
   local seller_label="$3"
   local seller_manifest="$4"
-  local seller_latest_log="$5"
-  local seller_session_log="$6"
-  local seller_expect_settlement="$7"
-  local cycle_slug="$8"
+  local seller_identity_path="$5"
+  local seller_storage_dir="$6"
+  local seller_latest_log="$7"
+  local seller_session_log="$8"
+  local seller_expect_settlement="$9"
+  local cycle_slug="${10}"
 
   local seller_before_path="${RUN_DIR}/${cycle_slug}-${seller_label}-before-status.json"
+  local seller_before_wallet_path="${RUN_DIR}/${cycle_slug}-${seller_label}-before-wallet-status.json"
+  "$AUTOPILOTCTL_BIN" --manifest "$seller_manifest" wallet refresh >/dev/null
+  wait_for_manifest_wallet_balance_sync \
+    "$seller_manifest" \
+    "$seller_identity_path" \
+    "$seller_storage_dir" \
+    120 \
+    "$seller_before_path" \
+    "$seller_before_wallet_path" \
+    || die "${seller_label} app wallet did not converge before ${cycle_slug}"
   local seller_after_path="${RUN_DIR}/${cycle_slug}-${seller_label}-after-status.json"
   local seller_before_sats
   seller_before_sats="$(manifest_wallet_balance "$seller_manifest" "$seller_before_path")"
@@ -631,11 +661,22 @@ fund_wallet "runtime" "$RUNTIME_IDENTITY_PATH" "$RUNTIME_STORAGE_DIR" "${RUN_DIR
 "$AUTOPILOTCTL_BIN" --manifest "$BUNDLE_MANIFEST" wallet refresh >"${RUN_DIR}/bundle-wallet-refresh-funded.json"
 "$AUTOPILOTCTL_BIN" --manifest "$RUNTIME_MANIFEST" wallet refresh >"${RUN_DIR}/runtime-wallet-refresh-funded.json"
 wait_for_manifest_wallet_balance "$BUNDLE_MANIFEST" "$FUND_SATS" 120 "${RUN_DIR}/bundle-status-funded-manifest.json" \
-  || wait_for_manifest_wallet_balance "$BUNDLE_MANIFEST" "$MIN_SETTLED_BUYER_SATS" 120 "${RUN_DIR}/bundle-status-funded-manifest.json" \
-  || die "Bundled app did not observe at least ${MIN_SETTLED_BUYER_SATS} settled sats after funding"
-wait_for_manifest_wallet_balance "$RUNTIME_MANIFEST" "$FUND_SATS" 120 "${RUN_DIR}/runtime-status-funded-manifest.json" \
-  || wait_for_manifest_wallet_balance "$RUNTIME_MANIFEST" "$MIN_SETTLED_BUYER_SATS" 120 "${RUN_DIR}/runtime-status-funded-manifest.json" \
-  || die "Runtime app did not observe at least ${MIN_SETTLED_BUYER_SATS} settled sats after funding"
+wait_for_manifest_wallet_balance_sync \
+  "$BUNDLE_MANIFEST" \
+  "$BUNDLE_IDENTITY_PATH" \
+  "$BUNDLE_STORAGE_DIR" \
+  120 \
+  "${RUN_DIR}/bundle-status-funded-manifest.json" \
+  "${RUN_DIR}/bundle-status-funded-wallet.json" \
+  || die "Bundled app did not converge to its funded wallet balance after funding"
+wait_for_manifest_wallet_balance_sync \
+  "$RUNTIME_MANIFEST" \
+  "$RUNTIME_IDENTITY_PATH" \
+  "$RUNTIME_STORAGE_DIR" \
+  120 \
+  "${RUN_DIR}/runtime-status-funded-manifest.json" \
+  "${RUN_DIR}/runtime-status-funded-wallet.json" \
+  || die "Runtime app did not converge to its funded wallet balance after funding"
 
 log "Selecting the managed main channel in both apps"
 "$AUTOPILOTCTL_BIN" --manifest "$BUNDLE_MANIFEST" chat main >"${RUN_DIR}/bundle-chat-main.json"
@@ -667,10 +708,10 @@ wait_for_chat_message "$BUNDLE_MANIFEST" "$RUNTIME_TO_BUNDLE_MESSAGE" 60 \
   || die "Bundled app did not observe runtime chat message"
 
 log "Running runtime buyer -> bundled seller payment flow"
-run_buy_cycle "runtime" "$RUNTIME_MANIFEST" "bundle" "$BUNDLE_MANIFEST" "$BUNDLE_LATEST_LOG" "$BUNDLE_SESSION_LOG" 180 "runtime-buys-bundle"
+run_buy_cycle "runtime" "$RUNTIME_MANIFEST" "bundle" "$BUNDLE_MANIFEST" "$BUNDLE_IDENTITY_PATH" "$BUNDLE_STORAGE_DIR" "$BUNDLE_LATEST_LOG" "$BUNDLE_SESSION_LOG" 180 "runtime-buys-bundle"
 
 log "Running bundled buyer -> runtime seller payment flow"
-run_buy_cycle "bundle" "$BUNDLE_MANIFEST" "runtime" "$RUNTIME_MANIFEST" "$RUNTIME_LATEST_LOG" "$RUNTIME_SESSION_LOG" 180 "bundle-buys-runtime"
+run_buy_cycle "bundle" "$BUNDLE_MANIFEST" "runtime" "$RUNTIME_MANIFEST" "$RUNTIME_IDENTITY_PATH" "$RUNTIME_STORAGE_DIR" "$RUNTIME_LATEST_LOG" "$RUNTIME_SESSION_LOG" 180 "bundle-buys-runtime"
 
 log "Capturing final control snapshots"
 "$AUTOPILOTCTL_BIN" --manifest "$BUNDLE_MANIFEST" --json status >"${RUN_DIR}/bundle-final-status.json"
