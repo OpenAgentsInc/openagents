@@ -12,7 +12,7 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
-    LocalInferencePaneAction, MissionControlPaneAction,
+    LocalInferencePaneAction, MissionControlPaneAction, ProviderControlPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -8948,8 +8948,8 @@ fn open_local_runtime_workbench(
     surface: &LocalRuntimeCapabilitySurface,
 ) -> bool {
     let Some(kind) = surface.workbench_pane_kind() else {
-        state.mission_control.last_action = Some("No supported local runtime".to_string());
-        state.mission_control.last_error = Some(
+        state.provider_control.last_action = Some("No supported local runtime".to_string());
+        state.provider_control.last_error = Some(
             "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
                 .to_string(),
         );
@@ -8957,9 +8957,9 @@ fn open_local_runtime_workbench(
     };
     crate::pane_system::PaneController::create_for_kind(state, kind);
     state
-        .mission_control
+        .provider_control
         .record_action(format!("Opened {}", surface.workbench_label));
-    state.mission_control.last_error = None;
+    state.provider_control.last_error = None;
     true
 }
 
@@ -8970,11 +8970,11 @@ fn run_mission_control_local_runtime_workbench_action(
 ) -> bool {
     let handled = run_local_runtime_workbench_action(state, action);
     if let Some(error) = local_runtime_workbench_action_error(state, action) {
-        state.mission_control.last_action =
+        state.provider_control.last_action =
             Some(local_runtime_workbench_failure_label(action).to_string());
-        state.mission_control.last_error = Some(error);
+        state.provider_control.last_error = Some(error);
     } else if handled {
-        state.mission_control.record_action(success_label);
+        state.provider_control.record_action(success_label);
     }
     handled
 }
@@ -9010,9 +9010,9 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
                 state.provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting");
             if bridge_starting {
                 state
-                    .mission_control
+                    .provider_control
                     .record_action("Apple FM bridge start already in progress");
-                state.mission_control.last_error = None;
+                state.provider_control.last_error = None;
                 return true;
             }
             let handled = if state.provider_runtime.apple_fm.reachable {
@@ -9022,16 +9022,16 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
             };
             if handled && state.apple_fm_workbench.last_error.is_none() {
                 state
-                    .mission_control
+                    .provider_control
                     .record_action(if state.provider_runtime.apple_fm.reachable {
                         "Queued Apple FM bridge refresh"
                     } else {
                         "Queued Apple FM bridge start"
                     });
             } else if !handled {
-                state.mission_control.last_action =
+                state.provider_control.last_action =
                     Some("Apple FM mission control action failed".to_string());
-                state.mission_control.last_error = state.apple_fm_workbench.last_error.clone();
+                state.provider_control.last_error = state.apple_fm_workbench.last_error.clone();
             }
             handled
         }
@@ -9112,6 +9112,93 @@ pub(super) fn run_apple_fm_workbench_action(
             ));
             state.apple_fm_workbench.last_error = None;
             true
+        }
+    }
+}
+
+pub(super) fn run_provider_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: ProviderControlPaneAction,
+) -> bool {
+    match action {
+        ProviderControlPaneAction::TriggerLocalRuntimeAction => {
+            let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            );
+            let surface = active_local_runtime_capability_surface(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            );
+            match runtime_view.primary_action {
+                crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
+                    open_local_runtime_workbench(state, &surface)
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                    let Some(workbench_action) = mission_control_local_runtime_workbench_action(
+                        &surface,
+                        runtime_view.primary_action,
+                    ) else {
+                        state.provider_control.last_action =
+                            Some("Local runtime action unavailable".to_string());
+                        state.provider_control.last_error = Some(
+                            "Provider Control could not map the active local runtime action."
+                                .to_string(),
+                        );
+                        return true;
+                    };
+                    let success_label = match runtime_view.primary_action {
+                        crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm => {
+                            "Queued Apple FM bridge start"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm => {
+                            "Queued Apple FM bridge refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
+                            "Queued GPT-OSS runtime refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
+                            "Queued GPT-OSS model warm"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                            "Queued GPT-OSS model unload"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::None => unreachable!(),
+                    };
+                    run_mission_control_local_runtime_workbench_action(
+                        state,
+                        workbench_action,
+                        success_label,
+                    )
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::None => {
+                    state.provider_control.last_action =
+                        Some("No supported local runtime".to_string());
+                    state.provider_control.last_error = Some(if runtime_view.lane.is_some() {
+                        "Provider Control local runtime action is currently unavailable."
+                            .to_string()
+                    } else {
+                        "Provider Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
+                            .to_string()
+                    });
+                    true
+                }
+            }
+        }
+        ProviderControlPaneAction::RunLocalFmSummaryTest => {
+            run_mission_control_local_fm_summary_test(state)
+        }
+        ProviderControlPaneAction::ToggleInventory(target) => {
+            run_provider_status_action(state, ProviderStatusPaneAction::ToggleInventory(target))
         }
     }
 }
@@ -9294,9 +9381,9 @@ pub(super) fn run_mission_control_action(
                         &surface,
                         runtime_view.primary_action,
                     ) else {
-                        state.mission_control.last_action =
+                        state.provider_control.last_action =
                             Some("Local runtime action unavailable".to_string());
-                        state.mission_control.last_error = Some(
+                        state.provider_control.last_error = Some(
                             "Mission Control could not map the active local runtime action."
                                 .to_string(),
                         );
@@ -9325,9 +9412,9 @@ pub(super) fn run_mission_control_action(
                     run_mission_control_local_runtime_workbench_action(state, action, success_label)
                 }
                 crate::app_state::MissionControlLocalRuntimeAction::None => {
-                    state.mission_control.last_action =
+                    state.provider_control.last_action =
                         Some("No supported local runtime".to_string());
-                    state.mission_control.last_error = Some(if runtime_view.lane.is_some() {
+                    state.provider_control.last_error = Some(if runtime_view.lane.is_some() {
                         "Mission Control local runtime action is currently unavailable.".to_string()
                     } else {
                         "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
@@ -9552,21 +9639,21 @@ fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::Rende
     ) != Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
     {
         state
-            .mission_control
+            .provider_control
             .record_error("Local FM test is only available on Apple Foundation Models");
         return true;
     }
 
-    if state.mission_control.local_fm_summary_is_pending() {
+    if state.provider_control.local_fm_summary_is_pending() {
         state
-            .mission_control
+            .provider_control
             .record_action("Local FM summary test already streaming");
         return true;
     }
 
     if !state.provider_runtime.apple_fm.is_ready() {
         state
-            .mission_control
+            .provider_control
             .record_error("Local FM test requires Apple Foundation Models to be ready");
         return true;
     }
@@ -9588,14 +9675,14 @@ fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::Rende
     match state.queue_apple_fm_bridge_command(command) {
         Ok(()) => {
             state
-                .mission_control
+                .provider_control
                 .begin_local_fm_summary(request_id, "latest Mission Control results");
             state.provider_runtime.last_result =
                 Some("Queued local Apple Foundation Models summary test".to_string());
         }
         Err(error) => {
             state
-                .mission_control
+                .provider_control
                 .record_error(format!("Failed to queue local FM summary test: {error}"));
         }
     }

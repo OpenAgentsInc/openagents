@@ -165,22 +165,22 @@ fn apply_mission_control_summary_update(
 ) {
     match update {
         AppleFmMissionControlSummaryUpdate::Started(started) => {
-            state.mission_control.local_fm_summary_pending_request_id =
+            state.provider_control.local_fm_summary_pending_request_id =
                 Some(started.request_id.clone());
-            state.mission_control.local_fm_summary_text.clear();
+            state.provider_control.local_fm_summary_text.clear();
             state.mission_control.upsert_runtime_log_line(
                 mission_control_summary_line_key(started.request_id.as_str()),
                 TerminalStream::Stdout,
                 "Local FM summary streaming...",
             );
-            state.mission_control.record_action(format!(
+            state.provider_control.record_action(format!(
                 "Local FM summary test running [{}]",
                 started.request_id
             ));
         }
         AppleFmMissionControlSummaryUpdate::Delta(delta) => {
             if state
-                .mission_control
+                .provider_control
                 .local_fm_summary_pending_request_id
                 .as_deref()
                 != Some(delta.request_id.as_str())
@@ -188,11 +188,11 @@ fn apply_mission_control_summary_update(
                 return;
             }
             state
-                .mission_control
+                .provider_control
                 .local_fm_summary_text
                 .push_str(&delta.delta);
             let text = if state
-                .mission_control
+                .provider_control
                 .local_fm_summary_text
                 .trim()
                 .is_empty()
@@ -201,7 +201,7 @@ fn apply_mission_control_summary_update(
             } else {
                 format!(
                     "Local FM summary > {}",
-                    state.mission_control.local_fm_summary_text
+                    state.provider_control.local_fm_summary_text
                 )
             };
             state.mission_control.upsert_runtime_log_line(
@@ -211,8 +211,8 @@ fn apply_mission_control_summary_update(
             );
         }
         AppleFmMissionControlSummaryUpdate::Completed(completed) => {
-            state.mission_control.local_fm_summary_pending_request_id = None;
-            state.mission_control.local_fm_summary_text = completed.response_text.clone();
+            state.provider_control.local_fm_summary_pending_request_id = None;
+            state.provider_control.local_fm_summary_text = completed.response_text.clone();
             state.mission_control.upsert_runtime_log_line(
                 mission_control_summary_line_key(completed.request_id.as_str()),
                 TerminalStream::Stdout,
@@ -228,20 +228,18 @@ fn apply_mission_control_summary_update(
                     .mission_control
                     .push_runtime_log_line(TerminalStream::Stdout, completed.summary.clone());
             }
-            state
-                .mission_control
-                .record_action(completed.summary.clone());
+            state.provider_control.record_action(completed.summary.clone());
             state.provider_runtime.last_result = Some(completed.summary.clone());
         }
         AppleFmMissionControlSummaryUpdate::Failed(failed) => {
-            state.mission_control.local_fm_summary_pending_request_id = None;
-            state.mission_control.local_fm_summary_text.clear();
+            state.provider_control.local_fm_summary_pending_request_id = None;
+            state.provider_control.local_fm_summary_text.clear();
             state.mission_control.upsert_runtime_log_line(
                 mission_control_summary_line_key(failed.request_id.as_str()),
                 TerminalStream::Stderr,
                 format!("Local FM summary failed // {}", failed.error),
             );
-            state.mission_control.record_error(failed.error.clone());
+            state.provider_control.record_error(failed.error.clone());
         }
     }
 }

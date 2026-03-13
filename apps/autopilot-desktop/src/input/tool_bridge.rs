@@ -38,9 +38,9 @@ use crate::pane_system::{
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
     EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
     LocalInferencePaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -2024,18 +2024,44 @@ fn pane_action_to_hit_action(
                 ))
             }
             "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => {
-                Ok(PaneHitAction::MissionControl(
-                    crate::pane_system::MissionControlPaneAction::RunLocalFmSummaryTest,
+                Ok(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::RunLocalFmSummaryTest,
                 ))
             }
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
-                Ok(PaneHitAction::MissionControl(
-                    crate::pane_system::MissionControlPaneAction::OpenLocalModelWorkbench,
+                Ok(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::TriggerLocalRuntimeAction,
                 ))
             }
             "open_docs" | "documentation" => Ok(PaneHitAction::MissionControl(
                 crate::pane_system::MissionControlPaneAction::OpenDocumentation,
             )),
+            _ => unsupported(),
+        },
+        PaneKind::ProviderControl => match action {
+            "toggle" | "set_online" | "set_offline" => Ok(PaneHitAction::GoOnlineToggle),
+            "open_local_model" | "open_workbench" | "warm_model" | "download_model"
+            | "local_runtime" => Ok(PaneHitAction::ProviderControl(
+                ProviderControlPaneAction::TriggerLocalRuntimeAction,
+            )),
+            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => {
+                Ok(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::RunLocalFmSummaryTest,
+                ))
+            }
+            "toggle_inventory" | "toggle_inventory_row" | "toggle_product" => {
+                let index = require_index(action)?;
+                let Some(target) =
+                    crate::app_state::ProviderInventoryProductToggleTarget::all()
+                        .get(index)
+                        .copied()
+                else {
+                    return unsupported();
+                };
+                Ok(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::ToggleInventory(target),
+                ))
+            }
             _ => unsupported(),
         },
         PaneKind::CodexAccount => match action {
@@ -5739,6 +5765,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "fm_workbench",
             "foundation_models",
         ],
+        PaneKind::ProviderControl => &[
+            "provider_control",
+            "provider",
+            "provider_runtime",
+            "runtime_control",
+        ],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
@@ -5764,6 +5796,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::CodexLabs => "codex_labs",
         PaneKind::CodexDiagnostics => "codex_diagnostics",
         PaneKind::GoOnline => "go_online",
+        PaneKind::ProviderControl => "provider_control",
         PaneKind::ProviderStatus => "provider_status",
         PaneKind::LocalInference => "local_inference",
         PaneKind::AppleFmWorkbench => "apple_fm_workbench",
@@ -5833,7 +5866,7 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, MissionControlPaneAction, PaneHitAction, RelayConnectionsPaneAction,
+        CadDemoPaneAction, PaneHitAction, ProviderControlPaneAction, RelayConnectionsPaneAction,
         SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
@@ -6112,12 +6145,19 @@ mod tests {
         assert_eq!(
             pane_action_to_hit_action(PaneKind::GoOnline, "open_local_model", None)
                 .expect("mission control local model"),
-            PaneHitAction::MissionControl(MissionControlPaneAction::OpenLocalModelWorkbench)
+            PaneHitAction::ProviderControl(ProviderControlPaneAction::TriggerLocalRuntimeAction)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::GoOnline, "test_local_fm", None)
                 .expect("mission control local fm test"),
-            PaneHitAction::MissionControl(MissionControlPaneAction::RunLocalFmSummaryTest)
+            PaneHitAction::ProviderControl(ProviderControlPaneAction::RunLocalFmSummaryTest)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::ProviderControl, "toggle_product", Some(0))
+                .expect("provider inventory toggle"),
+            PaneHitAction::ProviderControl(ProviderControlPaneAction::ToggleInventory(
+                crate::app_state::ProviderInventoryProductToggleTarget::all()[0],
+            ))
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::Settings, "save", None).expect("settings save"),

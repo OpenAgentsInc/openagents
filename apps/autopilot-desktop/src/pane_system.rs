@@ -351,6 +351,13 @@ pub enum MissionControlPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderControlPaneAction {
+    TriggerLocalRuntimeAction,
+    RunLocalFmSummaryTest,
+    ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BuyModePaymentsPaneAction {
     CopyAll,
 }
@@ -871,6 +878,7 @@ pub enum PaneHitAction {
     ChatToggleCategory(usize),
     ChatSelectThread(usize),
     GoOnlineToggle,
+    ProviderControl(ProviderControlPaneAction),
     MissionControl(MissionControlPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
     CodexAccount(CodexAccountPaneAction),
@@ -1002,6 +1010,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexLabs
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
+        PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(640.0, 320.0),
@@ -1554,6 +1563,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexApps
             | PaneKind::CodexLabs
             | PaneKind::CodexDiagnostics
+            | PaneKind::ProviderControl
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::SyncHealth
@@ -2388,6 +2398,63 @@ pub fn mission_control_local_model_button_bounds(content_bounds: Bounds) -> Boun
 
 pub fn mission_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bounds {
     mission_control_top_action_button_bounds(content_bounds, 1)
+}
+
+pub fn provider_control_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 12.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        34.0,
+    )
+}
+
+pub fn provider_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        provider_control_toggle_button_bounds(content_bounds).max_y() + 10.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        22.0,
+    )
+}
+
+pub fn provider_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        provider_control_local_model_button_bounds(content_bounds).max_y() + 8.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        22.0,
+    )
+}
+
+pub fn provider_control_inventory_toggle_button_bounds(
+    content_bounds: Bounds,
+    row_index: usize,
+) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        provider_control_local_fm_test_button_bounds(content_bounds).max_y()
+            + 12.0
+            + row_index as f32 * 30.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        22.0,
+    )
+}
+
+pub fn provider_control_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle_count = crate::app_state::ProviderInventoryProductToggleTarget::all().len();
+    let origin_y = provider_control_inventory_toggle_button_bounds(
+        content_bounds,
+        toggle_count.saturating_sub(1),
+    )
+    .max_y()
+        + 16.0;
+    Bounds::new(
+        content_bounds.origin.x + 8.0,
+        origin_y,
+        (content_bounds.size.width - 16.0).max(0.0),
+        (content_bounds.max_y() - 12.0 - origin_y).max(0.0),
+    )
 }
 
 fn mission_control_top_action_button_bounds(content_bounds: Bounds, row: usize) -> Bounds {
@@ -5414,8 +5481,8 @@ fn pane_hit_action_for_pane(
                 &state.gpt_oss_execution,
             ) && mission_control_local_model_button_bounds(content_bounds).contains(point)
             {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenLocalModelWorkbench,
+                Some(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::TriggerLocalRuntimeAction,
                 ))
             } else if crate::app_state::mission_control_local_runtime_lane(
                 state.desktop_shell_mode,
@@ -5425,14 +5492,67 @@ fn pane_hit_action_for_pane(
             ) && mission_control_local_fm_test_button_bounds(content_bounds)
                 .contains(point)
                 && state.provider_runtime.apple_fm.is_ready()
-                && !state.mission_control.local_fm_summary_is_pending()
+                && !state.provider_control.local_fm_summary_is_pending()
             {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::RunLocalFmSummaryTest,
+                Some(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::RunLocalFmSummaryTest,
                 ))
             } else {
                 None
             }
+        }
+        PaneKind::ProviderControl => {
+            if provider_control_toggle_button_bounds(content_bounds).contains(point) {
+                if matches!(
+                    state.provider_runtime.mode,
+                    crate::app_state::ProviderMode::Offline
+                        | crate::app_state::ProviderMode::Degraded
+                ) && !state.mission_control_go_online_enabled()
+                {
+                    return None;
+                }
+                return Some(PaneHitAction::GoOnlineToggle);
+            }
+            if mission_control_show_local_model_button(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            ) && mission_control_local_model_button_enabled(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            ) && provider_control_local_model_button_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::TriggerLocalRuntimeAction,
+                ));
+            }
+            if crate::app_state::mission_control_local_runtime_lane(
+                state.desktop_shell_mode,
+                &state.gpt_oss_execution,
+            ) == Some(
+                crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels,
+            ) && provider_control_local_fm_test_button_bounds(content_bounds).contains(point)
+                && state.provider_runtime.apple_fm.is_ready()
+                && !state.provider_control.local_fm_summary_is_pending()
+            {
+                return Some(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::RunLocalFmSummaryTest,
+                ));
+            }
+            for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
+                .iter()
+                .enumerate()
+            {
+                if provider_control_inventory_toggle_button_bounds(content_bounds, row_index)
+                    .contains(point)
+                {
+                    return Some(PaneHitAction::ProviderControl(
+                        ProviderControlPaneAction::ToggleInventory(*target),
+                    ));
+                }
+            }
+            None
         }
         PaneKind::CodexAccount => {
             if codex_account_refresh_button_bounds(content_bounds).contains(point) {
@@ -6519,7 +6639,7 @@ pub fn dispatch_mission_control_log_scroll_event(
             );
             if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position)
             {
-                state.mission_control.scroll_sell_by(*dy);
+                state.provider_control.scroll_by(*dy);
                 return true;
             }
             if layout.earnings_panel.contains(cursor_position) {
@@ -6558,6 +6678,32 @@ pub fn dispatch_mission_control_log_scroll_event(
         .log_stream
         .event(event, log_bounds, &mut state.event_context)
         .is_handled()
+}
+
+pub fn dispatch_provider_control_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::ProviderControl {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = provider_control_scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.provider_control.scroll_by(scroll_dy);
+    true
 }
 
 pub fn dispatch_buy_mode_payments_scroll_event(

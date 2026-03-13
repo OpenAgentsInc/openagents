@@ -13,10 +13,10 @@ use crate::app_state::{
     JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    ProjectOpsPaneState, ProviderBlocker, ProviderControlPaneState, ProviderRuntimeState,
+    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
+    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
     mission_control_show_local_model_button,
 };
@@ -72,7 +72,8 @@ use crate::panes::{
     buy_mode_payments as buy_mode_payments_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     local_inference as local_inference_pane, project_ops as project_ops_pane,
-    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
+    provider_control as provider_control_pane, relay_connections as relay_connections_pane,
+    skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -157,6 +158,7 @@ impl PaneRenderer {
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
+        provider_control: &mut ProviderControlPaneState,
         mission_control: &mut MissionControlPaneState,
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         paint: &mut PaintContext,
@@ -243,6 +245,7 @@ impl PaneRenderer {
                         buy_mode_enabled,
                         autopilot_chat,
                         nostr_identity,
+                        provider_control,
                         mission_control,
                         provider_runtime,
                         local_inference_runtime,
@@ -257,6 +260,19 @@ impl PaneRenderer {
                         network_requests,
                         job_inbox,
                         active_job,
+                        paint,
+                    );
+                }
+                PaneKind::ProviderControl => {
+                    provider_control_pane::paint_provider_control_pane(
+                        content_bounds,
+                        provider_control,
+                        desktop_shell_mode,
+                        provider_runtime,
+                        local_inference_runtime,
+                        provider_blockers,
+                        backend_kernel_authority,
+                        spark_wallet,
                         paint,
                     );
                 }
@@ -586,6 +602,7 @@ fn paint_go_online_pane(
     buy_mode_enabled: bool,
     autopilot_chat: &AutopilotChatState,
     nostr_identity: Option<&nostr::NostrIdentity>,
+    provider_control: &mut ProviderControlPaneState,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
@@ -632,6 +649,7 @@ fn paint_go_online_pane(
     let rail_gap = 10.0;
     let rail_width = ((layout.status_row.size.width - rail_gap * 3.0) / 4.0).max(0.0);
     let alert_message = mission_control_alert_message(
+        provider_control,
         mission_control,
         desktop_shell_mode,
         provider_runtime,
@@ -805,7 +823,7 @@ fn paint_go_online_pane(
     let sell_viewport = mission_control_sell_scroll_viewport_bounds(content_bounds);
     let sell_max_scroll =
         mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
-    let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
+    let sell_scroll = provider_control.clamp_scroll_offset_to(sell_max_scroll);
     paint_mission_control_go_online_button(
         toggle_bounds,
         toggle_label,
@@ -1113,7 +1131,7 @@ fn paint_go_online_pane(
     if mission_control_local_fm_test_button_visible(desktop_shell_mode, local_inference_runtime) {
         let test_bounds = mission_control_local_fm_test_button_bounds(content_bounds);
         let test_enabled = mission_control_local_fm_test_enabled(
-            mission_control,
+            provider_control,
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
@@ -1121,7 +1139,7 @@ fn paint_go_online_pane(
         paint_mission_control_command_button(
             test_bounds,
             &mission_control_local_fm_test_button_label(
-                mission_control,
+                provider_control,
                 provider_runtime,
                 local_inference_runtime,
                 desktop_shell_mode,
@@ -2134,6 +2152,7 @@ fn mission_control_truth_legend() -> &'static str {
 }
 
 fn mission_control_alert_message(
+    provider_control: &ProviderControlPaneState,
     mission_control: &MissionControlPaneState,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
@@ -2141,6 +2160,15 @@ fn mission_control_alert_message(
     provider_blockers: &[ProviderBlocker],
     spark_wallet: &SparkPaneState,
 ) -> (String, Hsla) {
+    if let Some(error) = provider_control.last_error.as_deref().map(str::trim)
+        && !error.is_empty()
+    {
+        return (
+            format!("ALERT // {}", error.to_ascii_uppercase()),
+            mission_control_red_color(),
+        );
+    }
+
     if let Some(error) = mission_control.last_error.as_deref().map(str::trim)
         && !error.is_empty()
     {
@@ -2170,6 +2198,15 @@ fn mission_control_alert_message(
         return (
             format!("READY PATH // {}", load_hint.to_ascii_uppercase()),
             mission_control_amber_color(),
+        );
+    }
+
+    if let Some(action) = provider_control.last_action.as_deref().map(str::trim)
+        && !action.is_empty()
+    {
+        return (
+            format!("MISSION // {}", action.to_ascii_uppercase()),
+            mission_control_cyan_color(),
         );
     }
 
@@ -2575,12 +2612,12 @@ fn mission_control_local_fm_test_button_visible(
 }
 
 fn mission_control_local_fm_test_button_label(
-    mission_control: &MissionControlPaneState,
+    provider_control: &ProviderControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
 ) -> String {
-    if mission_control.local_fm_summary_is_pending() {
+    if provider_control.local_fm_summary_is_pending() {
         String::from("STREAMING LOCAL FM")
     } else if mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime)
         != Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
@@ -2594,12 +2631,12 @@ fn mission_control_local_fm_test_button_label(
 }
 
 fn mission_control_local_fm_test_enabled(
-    mission_control: &MissionControlPaneState,
+    provider_control: &ProviderControlPaneState,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> bool {
-    !mission_control.local_fm_summary_is_pending()
+    !provider_control.local_fm_summary_is_pending()
         && mission_control_local_runtime_is_ready(
             desktop_shell_mode,
             provider_runtime,
@@ -6864,7 +6901,7 @@ fn mission_control_recent_receive_history(spark_wallet: &SparkPaneState) -> Stri
     }
 }
 
-fn mission_control_blocker_detail(
+pub(crate) fn mission_control_blocker_detail(
     blocker: ProviderBlocker,
     spark_wallet: &SparkPaneState,
     provider_runtime: &ProviderRuntimeState,
@@ -6971,7 +7008,7 @@ mod tests {
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
         JobInboxDecision, JobInboxRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        MissionControlPaneState, PaneLoadState,
+        MissionControlPaneState, PaneLoadState, ProviderControlPaneState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
@@ -7787,11 +7824,11 @@ mod tests {
         }
         let mut provider = ProviderRuntimeState::default();
         let local = LocalInferenceExecutionSnapshot::default();
-        let mut mission_control = fixture_mission_control();
+        let mut provider_control = ProviderControlPaneState::default();
 
         assert_eq!(
             mission_control_local_fm_test_button_label(
-                &mission_control,
+                &provider_control,
                 &provider,
                 &local,
                 crate::desktop_shell::DesktopShellMode::Production,
@@ -7799,7 +7836,7 @@ mod tests {
             "LOCAL FM NOT READY"
         );
         assert!(!mission_control_local_fm_test_enabled(
-            &mission_control,
+            &provider_control,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &local,
@@ -7810,7 +7847,7 @@ mod tests {
         provider.apple_fm.ready_model = Some("apple-foundation-model".to_string());
         assert_eq!(
             mission_control_local_fm_test_button_label(
-                &mission_control,
+                &provider_control,
                 &provider,
                 &local,
                 crate::desktop_shell::DesktopShellMode::Production,
@@ -7818,16 +7855,17 @@ mod tests {
             "TEST LOCAL FM"
         );
         assert!(mission_control_local_fm_test_enabled(
-            &mission_control,
+            &provider_control,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &local,
         ));
 
-        mission_control.local_fm_summary_pending_request_id = Some("mission-control-fm-1".into());
+        provider_control.local_fm_summary_pending_request_id =
+            Some("mission-control-fm-1".into());
         assert_eq!(
             mission_control_local_fm_test_button_label(
-                &mission_control,
+                &provider_control,
                 &provider,
                 &local,
                 crate::desktop_shell::DesktopShellMode::Production,
@@ -7835,7 +7873,7 @@ mod tests {
             "STREAMING LOCAL FM"
         );
         assert!(!mission_control_local_fm_test_enabled(
-            &mission_control,
+            &provider_control,
             crate::desktop_shell::DesktopShellMode::Production,
             &provider,
             &local,
