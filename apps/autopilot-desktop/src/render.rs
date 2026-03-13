@@ -1098,12 +1098,12 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
         if dev_mode {
             let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
-            let total_sats = state
+            let wallet_chip_label = state
                 .spark_wallet
                 .balance
                 .as_ref()
-                .map_or(0, spark_total_balance_sats);
-            let wallet_chip_label = format_sats_amount(total_sats);
+                .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
+                .unwrap_or_else(|| "LOADING".to_string());
             let wallet_label_font_size = 11.0;
             let icon_text_gap = 8.0;
             let label_width = paint
@@ -1294,12 +1294,12 @@ pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
     }
     let logical = logical_size(&state.config, state.scale_factor);
     let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
-    let total_sats = state
+    let wallet_chip_label = state
         .spark_wallet
         .balance
         .as_ref()
-        .map_or(0, spark_total_balance_sats);
-    let wallet_chip_label = format_sats_amount(total_sats);
+        .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
+        .unwrap_or_else(|| "LOADING".to_string());
     let wallet_label_font_size = 11.0;
     let icon_text_gap = 8.0;
     let group_x = wallet_chip_bounds.origin.x + 6.0;
