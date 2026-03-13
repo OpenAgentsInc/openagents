@@ -7,12 +7,22 @@ cd "$ROOT_DIR"
 RUN_DIR="${OPENAGENTS_HEADLESS_RUN_DIR:-$ROOT_DIR/target/headless-compute-roundtrip}"
 PROVIDER_HOME="${OPENAGENTS_HEADLESS_PROVIDER_HOME:-$RUN_DIR/provider}"
 PROVIDER_IDENTITY_PATH="$PROVIDER_HOME/identity.mnemonic"
+BUYER_HOME="${OPENAGENTS_HEADLESS_BUYER_HOME:-$HOME}"
 FORWARD_COUNT="${OPENAGENTS_HEADLESS_FORWARD_COUNT:-6}"
 REQUESTED_REVERSE_COUNT="${OPENAGENTS_HEADLESS_REVERSE_COUNT:-3}"
 INTERVAL_SECONDS="${OPENAGENTS_HEADLESS_INTERVAL_SECONDS:-8}"
 TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_TIMEOUT_SECONDS:-75}"
 PROVIDER_BACKEND="${OPENAGENTS_HEADLESS_PROVIDER_BACKEND:-canned}"
 BUDGET_SATS="${OPENAGENTS_HEADLESS_BUDGET_SATS:-2}"
+SPARK_NETWORK="${OPENAGENTS_SPARK_NETWORK:-mainnet}"
+
+case "$SPARK_NETWORK" in
+  mainnet|regtest) ;;
+  *)
+    echo "OPENAGENTS_SPARK_NETWORK=${SPARK_NETWORK} is unsupported for this script; spark-wallet-cli only supports mainnet or regtest here" >&2
+    exit 1
+    ;;
+esac
 
 if (( FORWARD_COUNT < 1 )); then
   echo "OPENAGENTS_HEADLESS_FORWARD_COUNT must be at least 1" >&2
@@ -91,7 +101,11 @@ PY
 wallet_status() {
   local output_path="$1"
   shift
-  "$SPARK_BIN" "$@" status >"$output_path"
+  HOME="$BUYER_HOME" \
+  "$SPARK_BIN" \
+    --network "$SPARK_NETWORK" \
+    "$@" \
+    status >"$output_path"
 }
 
 run_phase() {
@@ -133,7 +147,7 @@ run_phase() {
   sleep 5
 
   echo "starting ${phase} buyer"
-  if ! "${buyer_cmd[@]}" >"$buyer_log" 2>&1; then
+  if ! HOME="$BUYER_HOME" "${buyer_cmd[@]}" >"$buyer_log" 2>&1; then
     echo
     echo "${phase} buyer failed; logs follow"
     echo "--- ${phase}-provider.log ---"
@@ -148,7 +162,7 @@ run_phase() {
 }
 
 echo "creating default + provider identities"
-"$HEADLESS_BIN" identity >"$RUN_DIR/default-identity.json"
+HOME="$BUYER_HOME" "$HEADLESS_BIN" identity >"$RUN_DIR/default-identity.json"
 "$HEADLESS_BIN" identity --identity-path "$PROVIDER_IDENTITY_PATH" >"$RUN_DIR/provider-identity.json"
 
 DEFAULT_PUBKEY="$(json_field "$RUN_DIR/default-identity.json" publicKeyHex)"
@@ -160,6 +174,14 @@ echo "capturing initial wallet status"
 wallet_status "$RUN_DIR/default-status-initial.json"
 wallet_status "$RUN_DIR/provider-status-initial.json" --identity-path "$PROVIDER_IDENTITY_PATH"
 
+DEFAULT_INITIAL_BALANCE="$(json_field "$RUN_DIR/default-status-initial.json" balance.totalSats)"
+MIN_FORWARD_BALANCE=$((FORWARD_COUNT * BUDGET_SATS))
+if (( DEFAULT_INITIAL_BALANCE < MIN_FORWARD_BALANCE )); then
+  echo "default buyer wallet in HOME=${BUYER_HOME} only has ${DEFAULT_INITIAL_BALANCE} sats on ${SPARK_NETWORK}; requires at least ${MIN_FORWARD_BALANCE} sats to attempt ${FORWARD_COUNT} forward jobs at ${BUDGET_SATS} sats/job" >&2
+  echo "fund that wallet first or point OPENAGENTS_HEADLESS_BUYER_HOME at a funded Spark home" >&2
+  exit 1
+fi
+
 echo "phase 1: default wallet pays provider wallet ${FORWARD_COUNT} times"
 run_phase "forward" "$PROVIDER_IDENTITY_PATH" "" "$PROVIDER_PUBKEY" "$FORWARD_COUNT"
 
@@ -167,7 +189,6 @@ echo "capturing post-forward wallet status"
 wallet_status "$RUN_DIR/default-status-after-forward.json"
 wallet_status "$RUN_DIR/provider-status-after-forward.json" --identity-path "$PROVIDER_IDENTITY_PATH"
 
-DEFAULT_INITIAL_BALANCE="$(json_field "$RUN_DIR/default-status-initial.json" balance.totalSats)"
 DEFAULT_AFTER_FORWARD_BALANCE="$(json_field "$RUN_DIR/default-status-after-forward.json" balance.totalSats)"
 PROVIDER_AFTER_FORWARD_BALANCE="$(json_field "$RUN_DIR/provider-status-after-forward.json" balance.totalSats)"
 
