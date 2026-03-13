@@ -218,6 +218,10 @@ pub enum ComputeBackendFamily {
 #[serde(rename_all = "snake_case")]
 pub enum ComputeExecutionKind {
     LocalInference,
+    ClusteredInference,
+    SandboxExecution,
+    EvaluationRun,
+    TrainingJob,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -225,6 +229,131 @@ pub enum ComputeExecutionKind {
 pub enum ComputeFamily {
     Inference,
     Embeddings,
+    SandboxExecution,
+    Evaluation,
+    Training,
+    AdapterHosting,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeTopologyKind {
+    #[default]
+    SingleNode,
+    RemoteWholeRequest,
+    Replicated,
+    PipelineSharded,
+    LayerSharded,
+    TensorSharded,
+    SandboxIsolated,
+    TrainingElastic,
+}
+
+impl ComputeTopologyKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::SingleNode => "single_node",
+            Self::RemoteWholeRequest => "remote_whole_request",
+            Self::Replicated => "replicated",
+            Self::PipelineSharded => "pipeline_sharded",
+            Self::LayerSharded => "layer_sharded",
+            Self::TensorSharded => "tensor_sharded",
+            Self::SandboxIsolated => "sandbox_isolated",
+            Self::TrainingElastic => "training_elastic",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeProvisioningKind {
+    #[default]
+    DesktopLocal,
+    ClusterAttached,
+    RemoteSandbox,
+    ReservedClusterWindow,
+}
+
+impl ComputeProvisioningKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::DesktopLocal => "desktop_local",
+            Self::ClusterAttached => "cluster_attached",
+            Self::RemoteSandbox => "remote_sandbox",
+            Self::ReservedClusterWindow => "reserved_cluster_window",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeProofPosture {
+    #[default]
+    DeliveryProofOnly,
+    None,
+    TopologyAndDelivery,
+    ToplocAugmented,
+    ChallengeEligible,
+}
+
+impl ComputeProofPosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::DeliveryProofOnly => "delivery_proof_only",
+            Self::None => "none",
+            Self::TopologyAndDelivery => "topology_and_delivery",
+            Self::ToplocAugmented => "toploc_augmented",
+            Self::ChallengeEligible => "challenge_eligible",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorRequirements {
+    #[serde(default)]
+    pub validator_pool_ref: Option<String>,
+    #[serde(default)]
+    pub policy_ref: Option<String>,
+    #[serde(default)]
+    pub minimum_validator_count: Option<u32>,
+    #[serde(default)]
+    pub challenge_window_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeArtifactResidency {
+    #[serde(default)]
+    pub residency_class: Option<String>,
+    #[serde(default)]
+    pub staging_policy: Option<String>,
+    #[serde(default)]
+    pub artifact_set_digest: Option<String>,
+    #[serde(default)]
+    pub warm: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEnvironmentBinding {
+    #[serde(default)]
+    pub environment_ref: String,
+    #[serde(default)]
+    pub environment_version: Option<String>,
+    #[serde(default)]
+    pub dataset_ref: Option<String>,
+    #[serde(default)]
+    pub rubric_ref: Option<String>,
+    #[serde(default)]
+    pub evaluator_policy_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeCheckpointBinding {
+    #[serde(default)]
+    pub checkpoint_family: String,
+    #[serde(default)]
+    pub latest_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub recovery_posture: Option<String>,
 }
 
 macro_rules! canonical_reason_code_enum {
@@ -355,6 +484,20 @@ pub struct ComputeCapabilityEnvelope {
     #[serde(default)]
     pub compute_family: Option<ComputeFamily>,
     #[serde(default)]
+    pub topology_kind: Option<ComputeTopologyKind>,
+    #[serde(default)]
+    pub provisioning_kind: Option<ComputeProvisioningKind>,
+    #[serde(default)]
+    pub proof_posture: Option<ComputeProofPosture>,
+    #[serde(default)]
+    pub validator_requirements: Option<ComputeValidatorRequirements>,
+    #[serde(default)]
+    pub artifact_residency: Option<ComputeArtifactResidency>,
+    #[serde(default)]
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    #[serde(default)]
+    pub checkpoint_binding: Option<ComputeCheckpointBinding>,
+    #[serde(default)]
     pub model_policy: Option<String>,
     #[serde(default)]
     pub model_family: Option<String>,
@@ -378,6 +521,56 @@ pub struct LaunchComputeProductSpec {
     pub backend_family: ComputeBackendFamily,
     pub execution_kind: ComputeExecutionKind,
     pub compute_family: ComputeFamily,
+}
+
+pub fn validate_compute_capability_envelope(
+    envelope: &ComputeCapabilityEnvelope,
+) -> Result<(), String> {
+    if let Some(requirements) = envelope.validator_requirements.as_ref() {
+        if requirements.minimum_validator_count == Some(0) {
+            return Err("compute_validator_count_invalid".to_string());
+        }
+        let has_policy_ref = requirements
+            .policy_ref
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        let has_pool_ref = requirements
+            .validator_pool_ref
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        if !has_policy_ref && !has_pool_ref {
+            return Err("compute_validator_requirements_missing_reference".to_string());
+        }
+    }
+
+    if envelope.proof_posture == Some(ComputeProofPosture::ChallengeEligible)
+        && envelope.validator_requirements.is_none()
+    {
+        return Err("compute_challenge_posture_requires_validator_requirements".to_string());
+    }
+
+    if let Some(environment_binding) = envelope.environment_binding.as_ref() {
+        if environment_binding.environment_ref.trim().is_empty() {
+            return Err("compute_environment_binding_ref_missing".to_string());
+        }
+    }
+
+    if let Some(checkpoint_binding) = envelope.checkpoint_binding.as_ref() {
+        if checkpoint_binding.checkpoint_family.trim().is_empty() {
+            return Err("compute_checkpoint_family_missing".to_string());
+        }
+    }
+
+    if let Some(artifact_residency) = envelope.artifact_residency.as_ref()
+        && artifact_residency
+            .artifact_set_digest
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_artifact_residency_digest_invalid".to_string());
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -606,6 +799,8 @@ pub fn validate_launch_compute_product(
         return Err("compute_product_capability_envelope_missing".to_string());
     };
 
+    validate_compute_capability_envelope(envelope)?;
+
     match envelope.backend_family {
         Some(value) if value == spec.backend_family => {}
         Some(_) => return Err("compute_product_backend_family_mismatch".to_string()),
@@ -671,9 +866,11 @@ pub fn validate_launch_compute_product(
 mod tests {
     use super::{
         COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementMode, GptOssRuntimeCapability,
-        validate_launch_compute_product,
+        ComputeCheckpointBinding, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
+        ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+        ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
+        ComputeValidatorRequirements, GptOssRuntimeCapability,
+        validate_compute_capability_envelope, validate_launch_compute_product,
     };
     use serde_json::json;
 
@@ -698,6 +895,13 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some("text-generation".to_string()),
                 model_family: Some("llama3.3".to_string()),
                 host_capability: Some(ComputeHostCapability {
@@ -739,6 +943,13 @@ mod tests {
             backend_family: Some(ComputeBackendFamily::GptOss),
             execution_kind: Some(ComputeExecutionKind::LocalInference),
             compute_family: Some(ComputeFamily::Embeddings),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            validator_requirements: None,
+            artifact_residency: None,
+            environment_binding: None,
+            checkpoint_binding: None,
             model_policy: Some("embeddings".to_string()),
             model_family: Some("nomic-embed".to_string()),
             host_capability: Some(ComputeHostCapability {
@@ -759,5 +970,94 @@ mod tests {
         let err = validate_launch_compute_product(&product)
             .expect_err("gpt_oss embeddings should be rejected");
         assert_eq!(err, "compute_product_launch_product_id_unsupported");
+    }
+
+    #[test]
+    fn validates_environment_and_checkpoint_bound_launch_product() {
+        let mut product = launch_product("gpt_oss.text_generation");
+        product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            compute_family: Some(ComputeFamily::Inference),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            validator_requirements: None,
+            artifact_residency: None,
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env://math/basic".to_string(),
+                environment_version: Some("v1".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/basic".to_string()),
+            }),
+            checkpoint_binding: Some(ComputeCheckpointBinding {
+                checkpoint_family: "decoder".to_string(),
+                latest_checkpoint_ref: Some("checkpoint://decoder/latest".to_string()),
+                recovery_posture: Some("warm-resume".to_string()),
+            }),
+            model_policy: Some("text-generation".to_string()),
+            model_family: Some("llama3.3".to_string()),
+            host_capability: Some(ComputeHostCapability {
+                accelerator_vendor: Some("nvidia".to_string()),
+                accelerator_family: Some("h100".to_string()),
+                memory_gb: Some(80),
+            }),
+            apple_platform: None,
+            gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some("llama3.3".to_string()),
+                quantization: Some("q4_k_m".to_string()),
+            }),
+            latency_ms_p50: Some(400),
+            throughput_per_minute: Some(1_200),
+            concurrency_limit: Some(2),
+        });
+        validate_launch_compute_product(&product)
+            .expect("environment and checkpoint bindings should remain launch-valid");
+    }
+
+    #[test]
+    fn rejects_challenge_posture_without_validator_requirements() {
+        let envelope = ComputeCapabilityEnvelope {
+            proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            ..ComputeCapabilityEnvelope::default()
+        };
+        let err = validate_compute_capability_envelope(&envelope)
+            .expect_err("challenge posture should require validator requirements");
+        assert_eq!(
+            err,
+            "compute_challenge_posture_requires_validator_requirements"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_environment_binding_ref() {
+        let envelope = ComputeCapabilityEnvelope {
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "   ".to_string(),
+                ..ComputeEnvironmentBinding::default()
+            }),
+            ..ComputeCapabilityEnvelope::default()
+        };
+        let err = validate_compute_capability_envelope(&envelope)
+            .expect_err("environment binding should require a non-empty ref");
+        assert_eq!(err, "compute_environment_binding_ref_missing");
+    }
+
+    #[test]
+    fn rejects_zero_validator_count() {
+        let envelope = ComputeCapabilityEnvelope {
+            validator_requirements: Some(ComputeValidatorRequirements {
+                validator_pool_ref: Some("validator://pool/alpha".to_string()),
+                policy_ref: None,
+                minimum_validator_count: Some(0),
+                challenge_window_ms: Some(30_000),
+            }),
+            ..ComputeCapabilityEnvelope::default()
+        };
+        let err = validate_compute_capability_envelope(&envelope)
+            .expect_err("validator count must be positive");
+        assert_eq!(err, "compute_validator_count_invalid");
     }
 }

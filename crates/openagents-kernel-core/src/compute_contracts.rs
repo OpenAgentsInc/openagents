@@ -487,10 +487,16 @@ fn compute_backend_family_from_proto(value: i32) -> Result<ComputeBackendFamily>
     }
 }
 
-fn compute_execution_kind_to_proto(value: ComputeExecutionKind) -> i32 {
+fn compute_execution_kind_to_proto(value: ComputeExecutionKind) -> Result<i32> {
     match value {
         ComputeExecutionKind::LocalInference => {
-            proto_compute::ComputeExecutionKind::LocalInference as i32
+            Ok(proto_compute::ComputeExecutionKind::LocalInference as i32)
+        }
+        ComputeExecutionKind::ClusteredInference
+        | ComputeExecutionKind::SandboxExecution
+        | ComputeExecutionKind::EvaluationRun
+        | ComputeExecutionKind::TrainingJob => {
+            Err(anyhow!("compute_proto_execution_kind_unsupported"))
         }
     }
 }
@@ -508,10 +514,14 @@ fn compute_execution_kind_from_proto(value: i32) -> Result<ComputeExecutionKind>
     }
 }
 
-fn compute_family_to_proto(value: ComputeFamily) -> i32 {
+fn compute_family_to_proto(value: ComputeFamily) -> Result<i32> {
     match value {
-        ComputeFamily::Inference => proto_compute::ComputeFamily::Inference as i32,
-        ComputeFamily::Embeddings => proto_compute::ComputeFamily::Embeddings as i32,
+        ComputeFamily::Inference => Ok(proto_compute::ComputeFamily::Inference as i32),
+        ComputeFamily::Embeddings => Ok(proto_compute::ComputeFamily::Embeddings as i32),
+        ComputeFamily::SandboxExecution
+        | ComputeFamily::Evaluation
+        | ComputeFamily::Training
+        | ComputeFamily::AdapterHosting => Err(anyhow!("compute_proto_family_unsupported")),
     }
 }
 
@@ -1055,8 +1065,8 @@ fn compute_index_correction_reason_from_proto(value: i32) -> Option<ComputeIndex
 
 pub fn compute_capability_envelope_to_proto(
     envelope: &ComputeCapabilityEnvelope,
-) -> proto_compute::ComputeCapabilityEnvelope {
-    proto_compute::ComputeCapabilityEnvelope {
+) -> Result<proto_compute::ComputeCapabilityEnvelope> {
+    Ok(proto_compute::ComputeCapabilityEnvelope {
         backend_family: envelope
             .backend_family
             .map(compute_backend_family_to_proto)
@@ -1064,10 +1074,12 @@ pub fn compute_capability_envelope_to_proto(
         execution_kind: envelope
             .execution_kind
             .map(compute_execution_kind_to_proto)
+            .transpose()?
             .unwrap_or(proto_compute::ComputeExecutionKind::Unspecified as i32),
         compute_family: envelope
             .compute_family
             .map(compute_family_to_proto)
+            .transpose()?
             .unwrap_or(proto_compute::ComputeFamily::Unspecified as i32),
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
@@ -1096,7 +1108,7 @@ pub fn compute_capability_envelope_to_proto(
         latency_ms_p50: envelope.latency_ms_p50,
         throughput_per_minute: envelope.throughput_per_minute,
         concurrency_limit: envelope.concurrency_limit,
-    }
+    })
 }
 
 pub fn compute_capability_envelope_from_proto(
@@ -1115,6 +1127,13 @@ pub fn compute_capability_envelope_from_proto(
             != proto_compute::ComputeFamily::Unspecified as i32)
             .then(|| compute_family_from_proto(envelope.compute_family))
             .transpose()?,
+        topology_kind: None,
+        provisioning_kind: None,
+        proof_posture: None,
+        validator_requirements: None,
+        artifact_residency: None,
+        environment_binding: None,
+        checkpoint_binding: None,
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
         host_capability: envelope.host_capability.as_ref().map(|capability| {
@@ -1167,7 +1186,8 @@ pub fn compute_product_to_proto(product: &ComputeProduct) -> Result<proto_comput
         capability_envelope: product
             .capability_envelope
             .as_ref()
-            .map(compute_capability_envelope_to_proto),
+            .map(compute_capability_envelope_to_proto)
+            .transpose()?,
         metadata_json: json_value_to_string(&product.metadata)?,
     })
 }
@@ -1402,11 +1422,13 @@ pub fn delivery_proof_to_proto(proof: &DeliveryProof) -> Result<proto_compute::D
         promised_capability_envelope: proof
             .promised_capability_envelope
             .as_ref()
-            .map(compute_capability_envelope_to_proto),
+            .map(compute_capability_envelope_to_proto)
+            .transpose()?,
         observed_capability_envelope: proof
             .observed_capability_envelope
             .as_ref()
-            .map(compute_capability_envelope_to_proto),
+            .map(compute_capability_envelope_to_proto)
+            .transpose()?,
         metadata_json: json_value_to_string(&proof.metadata)?,
     })
 }
@@ -2465,8 +2487,9 @@ mod tests {
         close_structured_capacity_instrument_request_from_proto,
         close_structured_capacity_instrument_request_to_proto,
         close_structured_capacity_instrument_response_from_proto,
-        close_structured_capacity_instrument_response_to_proto, compute_index_from_proto,
-        compute_index_to_proto, compute_product_from_proto, compute_product_to_proto,
+        close_structured_capacity_instrument_response_to_proto,
+        compute_capability_envelope_to_proto, compute_index_from_proto, compute_index_to_proto,
+        compute_product_from_proto, compute_product_to_proto,
         correct_compute_index_request_from_proto, correct_compute_index_request_to_proto,
         correct_compute_index_response_from_proto, correct_compute_index_response_to_proto,
         create_structured_capacity_instrument_request_from_proto,
@@ -2525,6 +2548,13 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
+                topology_kind: None,
+                provisioning_kind: None,
+                proof_posture: None,
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some("text_generation".to_string()),
                 model_family: Some("llama3.3".to_string()),
                 host_capability: None,
@@ -2605,6 +2635,13 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
+                topology_kind: None,
+                provisioning_kind: None,
+                proof_posture: None,
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some("gpt_oss.text_generation.launch".to_string()),
                 model_family: Some("llama3.2".to_string()),
                 host_capability: None,
@@ -2622,6 +2659,13 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
+                topology_kind: None,
+                provisioning_kind: None,
+                proof_posture: None,
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some("gpt_oss.text_generation.launch".to_string()),
                 model_family: Some("llama3.2".to_string()),
                 host_capability: None,
@@ -2727,6 +2771,40 @@ mod tests {
         )
         .expect("structured roundtrip");
         assert_eq!(structured_roundtrip, structured);
+    }
+
+    #[test]
+    fn capability_envelope_to_proto_rejects_core_only_execution_kind() {
+        let error = compute_capability_envelope_to_proto(&ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+            compute_family: Some(ComputeFamily::Inference),
+            ..ComputeCapabilityEnvelope::default()
+        })
+        .expect_err("unsupported execution kind should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("compute_proto_execution_kind_unsupported")
+        );
+    }
+
+    #[test]
+    fn capability_envelope_to_proto_rejects_core_only_compute_family() {
+        let error = compute_capability_envelope_to_proto(&ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            compute_family: Some(ComputeFamily::SandboxExecution),
+            ..ComputeCapabilityEnvelope::default()
+        })
+        .expect_err("unsupported compute family should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("compute_proto_family_unsupported")
+        );
     }
 
     #[test]

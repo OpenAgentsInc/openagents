@@ -1582,6 +1582,13 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
                 backend_family: Some(binding.backend_family),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(binding.compute_family),
+                topology_kind: None,
+                provisioning_kind: None,
+                proof_posture: None,
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some(binding.model_policy.to_string()),
                 model_family: None,
                 host_capability: None,
@@ -1956,6 +1963,10 @@ fn evaluate_delivery_proof(
             }
         }
         ComputeFamily::Embeddings => embedding_quantity_from_output(output_text),
+        ComputeFamily::SandboxExecution
+        | ComputeFamily::Evaluation
+        | ComputeFamily::Training
+        | ComputeFamily::AdapterHosting => 0,
     };
 
     let mut evaluation = DeliveryProofEvaluation {
@@ -2013,6 +2024,12 @@ fn evaluate_delivery_proof(
                 "inference delivery missing execution output or runtime attestation"
             }
             ComputeFamily::Embeddings => "embedding delivery missing vector-like execution output",
+            ComputeFamily::SandboxExecution
+            | ComputeFamily::Evaluation
+            | ComputeFamily::Training
+            | ComputeFamily::AdapterHosting => {
+                "delivery used a compute family outside the retained MVP launch set"
+            }
         };
         set_delivery_rejection(
             &mut evaluation,
@@ -2104,6 +2121,13 @@ fn promised_capability_envelope_for_delivery(
         backend_family: Some(binding.backend_family),
         execution_kind: Some(ComputeExecutionKind::LocalInference),
         compute_family: Some(binding.compute_family),
+        topology_kind: None,
+        provisioning_kind: None,
+        proof_posture: None,
+        validator_requirements: None,
+        artifact_residency: None,
+        environment_binding: None,
+        checkpoint_binding: None,
         model_policy: Some(binding.model_policy.to_string()),
         model_family: model_identity.clone(),
         host_capability: None,
@@ -2128,6 +2152,13 @@ fn observed_capability_envelope_for_delivery(
         backend_family: Some(observed_backend_family),
         execution_kind: Some(ComputeExecutionKind::LocalInference),
         compute_family: Some(binding.compute_family),
+        topology_kind: None,
+        provisioning_kind: None,
+        proof_posture: None,
+        validator_requirements: None,
+        artifact_residency: None,
+        environment_binding: None,
+        checkpoint_binding: None,
         model_policy: Some(binding.model_policy.to_string()),
         model_family: Some(provenance.served_model.clone()),
         host_capability: None,
@@ -2166,6 +2197,10 @@ fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
         (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Embeddings) => {
             "meter.apple_fm.embeddings.unsupported"
         }
+        (_, ComputeFamily::SandboxExecution)
+        | (_, ComputeFamily::Evaluation)
+        | (_, ComputeFamily::Training)
+        | (_, ComputeFamily::AdapterHosting) => "meter.compute.unsupported",
     }
 }
 
@@ -2230,6 +2265,10 @@ fn inferred_quantity_for_family(
                 .map(str::trim)
                 .filter(|value| !value.is_empty()),
         ),
+        ComputeFamily::SandboxExecution
+        | ComputeFamily::Evaluation
+        | ComputeFamily::Training
+        | ComputeFamily::AdapterHosting => 0,
     }
 }
 
@@ -3270,6 +3309,10 @@ fn compute_family_label(compute_family: ComputeFamily) -> &'static str {
     match compute_family {
         ComputeFamily::Inference => "inference",
         ComputeFamily::Embeddings => "embeddings",
+        ComputeFamily::SandboxExecution => "sandbox_execution",
+        ComputeFamily::Evaluation => "evaluation",
+        ComputeFamily::Training => "training",
+        ComputeFamily::AdapterHosting => "adapter_hosting",
     }
 }
 
@@ -3584,6 +3627,13 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(compute_family),
+                topology_kind: None,
+                provisioning_kind: None,
+                proof_posture: None,
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
                 model_policy: Some(product_id.to_string()),
                 model_family: Some("nomic-embed-text".to_string()),
                 host_capability: None,
