@@ -2004,6 +2004,7 @@ fn pane_action_to_hit_action(
 
     match kind {
         PaneKind::ProjectOps => unsupported(),
+        PaneKind::PsionicViz => unsupported(),
         PaneKind::LogStream => match action {
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
@@ -5763,6 +5764,13 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "gptoss",
             "workbench",
         ],
+        PaneKind::PsionicViz => &[
+            "psionic_viz",
+            "psionic_mesh",
+            "psionic",
+            "gpt_oss_viz",
+            "decode_field",
+        ],
         PaneKind::AppleFmWorkbench => &[
             "apple_fm",
             "apple_fm_workbench",
@@ -5811,6 +5819,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::ProviderControl => "provider_control",
         PaneKind::ProviderStatus => "provider_status",
         PaneKind::LocalInference => "local_inference",
+        PaneKind::PsionicViz => "psionic_viz",
         PaneKind::AppleFmWorkbench => "apple_fm_workbench",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",

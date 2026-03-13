@@ -992,6 +992,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
+        PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
@@ -1512,6 +1513,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ProviderControl
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
+            | PaneKind::PsionicViz
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -5719,6 +5721,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
+        PaneKind::PsionicViz => None,
         PaneKind::BuyModePayments => {
             if buy_mode_payments_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(
