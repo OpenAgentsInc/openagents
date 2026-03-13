@@ -7232,7 +7232,8 @@ mod tests {
     fn mission_control_compact_buy_mode_keeps_load_funds_readable() {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let layout = super::mission_control_layout_for_mode(content_bounds, true);
-        let viewport = super::mission_control_load_funds_scroll_viewport_bounds(content_bounds, true);
+        let viewport =
+            super::mission_control_load_funds_scroll_viewport_bounds(content_bounds, true);
 
         assert!(layout.load_funds_panel.size.height >= 150.0);
         assert!(viewport.size.height >= 96.0);

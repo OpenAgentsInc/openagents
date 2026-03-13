@@ -23,6 +23,7 @@ use crate::app_state::{
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
+use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
@@ -270,18 +271,30 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::LocalInference => {
+                    let capability_surface = local_runtime_capability_surface_for_lane(
+                        MissionControlLocalRuntimeLane::GptOss,
+                        provider_runtime,
+                        local_inference_runtime,
+                    );
                     local_inference_pane::paint(
                         content_bounds,
                         local_inference,
+                        &capability_surface,
                         local_inference_runtime,
                         local_inference_inputs,
                         paint,
                     );
                 }
                 PaneKind::AppleFmWorkbench => {
+                    let capability_surface = local_runtime_capability_surface_for_lane(
+                        MissionControlLocalRuntimeLane::AppleFoundationModels,
+                        provider_runtime,
+                        local_inference_runtime,
+                    );
                     apple_fm_workbench_pane::paint(
                         content_bounds,
                         apple_fm_workbench,
+                        &capability_surface,
                         apple_fm_execution,
                         apple_fm_workbench_inputs,
                         paint,

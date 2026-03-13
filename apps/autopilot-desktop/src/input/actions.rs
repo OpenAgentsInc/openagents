@@ -5,6 +5,10 @@ use crate::apple_fm_bridge::{
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
+use crate::local_runtime_capabilities::{
+    LocalRuntimeCapabilitySurface, LocalRuntimeWorkbenchAction,
+    active_local_runtime_capability_surface, mission_control_local_runtime_workbench_action,
+};
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, MissionControlPaneAction,
@@ -8819,6 +8823,18 @@ pub(super) fn run_provider_status_action(
     }
 }
 
+pub(crate) fn run_local_runtime_workbench_action(
+    state: &mut crate::app_state::RenderState,
+    action: LocalRuntimeWorkbenchAction,
+) -> bool {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(action) => {
+            run_apple_fm_workbench_action(state, action)
+        }
+        LocalRuntimeWorkbenchAction::GptOss(action) => run_local_inference_action(state, action),
+    }
+}
+
 pub(super) fn run_local_inference_action(
     state: &mut crate::app_state::RenderState,
     action: LocalInferencePaneAction,
@@ -8907,6 +8923,59 @@ pub(super) fn run_local_inference_action(
             true
         }
     }
+}
+
+fn local_runtime_workbench_action_error(
+    state: &crate::app_state::RenderState,
+    action: LocalRuntimeWorkbenchAction,
+) -> Option<String> {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(_) => state.apple_fm_workbench.last_error.clone(),
+        LocalRuntimeWorkbenchAction::GptOss(_) => state.local_inference.last_error.clone(),
+    }
+}
+
+fn local_runtime_workbench_failure_label(action: LocalRuntimeWorkbenchAction) -> &'static str {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(_) => "Apple FM mission control action failed",
+        LocalRuntimeWorkbenchAction::GptOss(_) => "GPT-OSS mission control action failed",
+    }
+}
+
+fn open_local_runtime_workbench(
+    state: &mut crate::app_state::RenderState,
+    surface: &LocalRuntimeCapabilitySurface,
+) -> bool {
+    let Some(kind) = surface.workbench_pane_kind() else {
+        state.mission_control.last_action = Some("No supported local runtime".to_string());
+        state.mission_control.last_error = Some(
+            "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
+                .to_string(),
+        );
+        return true;
+    };
+    crate::pane_system::PaneController::create_for_kind(state, kind);
+    state
+        .mission_control
+        .record_action(format!("Opened {}", surface.workbench_label));
+    state.mission_control.last_error = None;
+    true
+}
+
+fn run_mission_control_local_runtime_workbench_action(
+    state: &mut crate::app_state::RenderState,
+    action: LocalRuntimeWorkbenchAction,
+    success_label: &str,
+) -> bool {
+    let handled = run_local_runtime_workbench_action(state, action);
+    if let Some(error) = local_runtime_workbench_action_error(state, action) {
+        state.mission_control.last_action =
+            Some(local_runtime_workbench_failure_label(action).to_string());
+        state.mission_control.last_error = Some(error);
+    } else if handled {
+        state.mission_control.record_action(success_label);
+    }
+    handled
 }
 
 /// Queues Apple FM bridge refresh or start when the Mission Control pane is opened.
@@ -9188,96 +9257,54 @@ pub(super) fn run_mission_control_action(
                 &state.provider_runtime,
                 &state.gpt_oss_execution,
             );
+            let surface = active_local_runtime_capability_surface(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            );
             match runtime_view.primary_action {
+                crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
+                    open_local_runtime_workbench(state, &surface)
+                }
                 crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm
                 | crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
-                | crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench => {
-                    if runtime_view.primary_action
-                        == crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
-                    {
-                        crate::pane_system::PaneController::create_for_kind(
-                            state,
-                            crate::app_state::PaneKind::AppleFmWorkbench,
-                        );
-                        state
-                            .mission_control
-                            .record_action("Opened Apple FM workbench");
-                        state.mission_control.last_error = None;
-                        return true;
-                    }
-
-                    let bridge_starting = state.provider_runtime.apple_fm.bridge_status.as_deref()
-                        == Some("starting");
-                    let handled = if runtime_view.primary_action
-                        == crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
-                    {
-                        run_apple_fm_workbench_action(
-                            state,
-                            AppleFmWorkbenchPaneAction::RefreshBridge,
-                        )
-                    } else if bridge_starting {
-                        true
-                    } else {
-                        run_apple_fm_workbench_action(
-                            state,
-                            AppleFmWorkbenchPaneAction::StartBridge,
-                        )
-                    };
-
-                    if bridge_starting {
-                        state
-                            .mission_control
-                            .record_action("Apple FM bridge start already in progress");
-                        state.mission_control.last_error = None;
-                    } else if state.apple_fm_workbench.last_error.is_none() {
-                        state.mission_control.record_action(
-                            if runtime_view.primary_action
-                                == crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
-                            {
-                                "Queued Apple FM bridge refresh"
-                            } else {
-                                "Queued Apple FM bridge start"
-                            },
-                        );
-                    } else {
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                    let Some(action) = mission_control_local_runtime_workbench_action(
+                        &surface,
+                        runtime_view.primary_action,
+                    ) else {
                         state.mission_control.last_action =
-                            Some("Apple FM mission control action failed".to_string());
-                        state.mission_control.last_error =
-                            state.apple_fm_workbench.last_error.clone();
-                    }
-                    handled
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
-                    queue_mission_control_gpt_oss_action(
-                        state,
-                        LocalInferenceRuntimeCommand::Refresh,
-                        "Queued GPT-OSS runtime refresh",
-                    )
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
-                    queue_mission_control_gpt_oss_action(
-                        state,
-                        LocalInferenceRuntimeCommand::WarmConfiguredModel,
-                        "Queued GPT-OSS model warm",
-                    )
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
-                    queue_mission_control_gpt_oss_action(
-                        state,
-                        LocalInferenceRuntimeCommand::UnloadConfiguredModel,
-                        "Queued GPT-OSS model unload",
-                    )
-                }
-                crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
-                    crate::pane_system::PaneController::create_for_kind(
-                        state,
-                        crate::app_state::PaneKind::LocalInference,
-                    );
-                    state
-                        .mission_control
-                        .record_action("Opened GPT-OSS workbench");
-                    state.mission_control.last_error = None;
-                    true
+                            Some("Local runtime action unavailable".to_string());
+                        state.mission_control.last_error = Some(
+                            "Mission Control could not map the active local runtime action."
+                                .to_string(),
+                        );
+                        return true;
+                    };
+                    let success_label = match runtime_view.primary_action {
+                        crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm => {
+                            "Queued Apple FM bridge start"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm => {
+                            "Queued Apple FM bridge refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
+                            "Queued GPT-OSS runtime refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
+                            "Queued GPT-OSS model warm"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                            "Queued GPT-OSS model unload"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::None => unreachable!(),
+                    };
+                    run_mission_control_local_runtime_workbench_action(state, action, success_label)
                 }
                 crate::app_state::MissionControlLocalRuntimeAction::None => {
                     state.mission_control.last_action =
@@ -9658,21 +9685,6 @@ fn queue_local_inference_pane_command(
         }
     }
     true
-}
-
-fn queue_mission_control_gpt_oss_action(
-    state: &mut crate::app_state::RenderState,
-    command: LocalInferenceRuntimeCommand,
-    action_label: &str,
-) -> bool {
-    let handled = queue_local_inference_pane_command(state, command, action_label);
-    if state.local_inference.last_error.is_none() {
-        state.mission_control.record_action(action_label);
-    } else {
-        state.mission_control.last_action = Some("GPT-OSS mission control action failed".into());
-        state.mission_control.last_error = state.local_inference.last_error.clone();
-    }
-    handled
 }
 
 fn queue_apple_fm_pane_command(

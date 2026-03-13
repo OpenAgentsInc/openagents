@@ -461,14 +461,12 @@ fn apply_ignored_ingress_request(
     state.job_inbox.last_error = None;
     state.job_inbox.last_action = Some(format!(
         "Ignored live NIP-90 request {} ({})",
-        request.request_id,
-        reason
+        request.request_id, reason
     ));
 
     state.provider_runtime.last_result = Some(format!(
         "relay ingress ignored request {} ({})",
-        request.request_id,
-        reason
+        request.request_id, reason
     ));
     state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
     state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());

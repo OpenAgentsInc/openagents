@@ -34,6 +34,7 @@ mod input;
 mod kernel_control;
 mod labor_orchestrator;
 mod local_inference_runtime;
+mod local_runtime_capabilities;
 pub mod logging;
 mod nip28_chat_lane;
 mod nip90_compute_domain_events;

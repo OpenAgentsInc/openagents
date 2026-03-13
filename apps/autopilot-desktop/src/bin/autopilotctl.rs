@@ -1223,11 +1223,17 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.provider.blocker_codes.len()
     );
     println!(
-        "local runtime: lane={} policy={} ready={} go_online_ready={} action={} enabled={} model={} backend={} load={}",
+        "local runtime: lane={} policy={} ready={} go_online_ready={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} model={} backend={} load={}",
         snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
         snapshot.local_runtime.policy,
         snapshot.local_runtime.runtime_ready,
         snapshot.local_runtime.go_online_ready,
+        snapshot.local_runtime.workbench_label,
+        snapshot.local_runtime.supports_run_text,
+        snapshot.local_runtime.supports_streaming,
+        snapshot.local_runtime.supports_structured,
+        snapshot.local_runtime.supports_model_management,
+        snapshot.local_runtime.supports_sessions,
         snapshot.local_runtime.action,
         snapshot.local_runtime.action_enabled,
         snapshot.local_runtime.model_label,
@@ -1351,12 +1357,18 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
 
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
     println!(
-        "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} action={} enabled={} label={}",
+        "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} label={}",
         snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
         snapshot.local_runtime.policy,
         snapshot.local_runtime.runtime_ready,
         snapshot.local_runtime.go_online_ready,
         snapshot.local_runtime.supports_sell_compute,
+        snapshot.local_runtime.workbench_label,
+        snapshot.local_runtime.supports_run_text,
+        snapshot.local_runtime.supports_streaming,
+        snapshot.local_runtime.supports_structured,
+        snapshot.local_runtime.supports_model_management,
+        snapshot.local_runtime.supports_sessions,
         snapshot.local_runtime.action,
         snapshot.local_runtime.action_enabled,
         snapshot.local_runtime.action_label

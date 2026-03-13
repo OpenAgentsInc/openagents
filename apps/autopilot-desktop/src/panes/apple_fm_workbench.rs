@@ -4,6 +4,9 @@ use crate::app_state::{
     AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, PaneKind, RenderState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
+use crate::local_runtime_capabilities::{
+    LocalRuntimeCapabilitySurface, local_runtime_capability_summary,
+};
 use crate::pane_renderer::{
     paint_action_button, paint_secondary_button, paint_wrapped_label_line, split_text_for_display,
 };
@@ -34,6 +37,7 @@ const OUTPUT_SECTION_MAX_LINES: usize = 7;
 pub fn paint(
     content_bounds: Bounds,
     pane_state: &mut AppleFmWorkbenchPaneState,
+    capability_surface: &LocalRuntimeCapabilitySurface,
     runtime: &AppleFmBridgeSnapshot,
     inputs: &mut AppleFmWorkbenchPaneInputs,
     paint: &mut PaintContext,
@@ -145,6 +149,7 @@ pub fn paint(
         );
     }
     let summary_text = workbench_summary_text(
+        capability_surface,
         pane_state,
         runtime,
         operation_summary.as_str(),
@@ -622,11 +627,13 @@ fn bridge_status_accent(
 }
 
 fn workbench_summary_text(
+    capability_surface: &LocalRuntimeCapabilitySurface,
     pane_state: &AppleFmWorkbenchPaneState,
     runtime: &AppleFmBridgeSnapshot,
     operation: &str,
     session: &str,
 ) -> String {
+    let capability_summary = local_runtime_capability_summary(capability_surface);
     let headline = if let Some(error) = pane_state
         .last_error
         .as_deref()
@@ -650,7 +657,9 @@ fn workbench_summary_text(
         })
         .unwrap_or_else(|| "REQUEST idle".to_string());
     format!(
-        "SWIFT BRIDGE // {headline} // OP {} // SESSION {} // {request}",
+        "{} // CAP {} // {headline} // OP {} // SESSION {} // {request}",
+        capability_surface.workbench_label.to_ascii_uppercase(),
+        compact_workbench_value(capability_summary.as_str(), 36),
         compact_workbench_value(operation, 18),
         compact_workbench_value(session, 18),
     )

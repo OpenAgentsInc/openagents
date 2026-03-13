@@ -203,6 +203,13 @@ pub(crate) fn desktop_control_run_mission_control_action(
     actions::run_mission_control_action(state, action)
 }
 
+pub(crate) fn desktop_control_run_local_runtime_workbench_action(
+    state: &mut crate::app_state::RenderState,
+    action: crate::local_runtime_capabilities::LocalRuntimeWorkbenchAction,
+) -> bool {
+    actions::run_local_runtime_workbench_action(state, action)
+}
+
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
         return;
