@@ -110,6 +110,7 @@ pub enum PaneKind {
     LogStream,
     BuyModePayments,
     BuyerRaceMatrix,
+    SellerEarningsTimeline,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,

@@ -62,7 +62,9 @@ use crate::panes::{
     earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
     log_stream as log_stream_pane, project_ops as project_ops_pane,
     provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
-    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
+    relay_connections as relay_connections_pane,
+    seller_earnings_timeline as seller_earnings_timeline_pane, skill as skill_pane,
+    wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -399,6 +401,13 @@ impl PaneRenderer {
                         content_bounds,
                         network_requests,
                         spark_wallet,
+                        paint,
+                    );
+                }
+                PaneKind::SellerEarningsTimeline => {
+                    seller_earnings_timeline_pane::paint(
+                        content_bounds,
+                        nip90_payment_facts,
                         paint,
                     );
                 }

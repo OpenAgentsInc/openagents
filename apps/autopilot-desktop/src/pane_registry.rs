@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 45] = [
+const PANE_SPECS: [PaneSpec; 46] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -563,6 +563,21 @@ const PANE_SPECS: [PaneSpec; 45] = [
             id: "pane.buyer_race_matrix",
             label: "Buyer Race Matrix",
             description: "Open live NIP-90 provider competition lanes with replay-ready role splits",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::SellerEarningsTimeline,
+        title: "Seller Earnings Timeline",
+        default_width: 1120.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.seller_earnings_timeline",
+            label: "Seller Earnings Timeline",
+            description: "Open wallet-confirmed provider payout pulses with degraded settlement rows kept distinct",
             keybinding: None,
         }),
         hotbar: None,

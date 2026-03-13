@@ -2006,6 +2006,7 @@ fn pane_action_to_hit_action(
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
         PaneKind::BuyerRaceMatrix => unsupported(),
+        PaneKind::SellerEarningsTimeline => unsupported(),
         PaneKind::LogStream => match action {
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
@@ -5804,6 +5805,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "buyer_race",
             "nip90_race",
         ],
+        PaneKind::SellerEarningsTimeline => &[
+            "seller_earnings_timeline",
+            "seller_timeline",
+            "provider_payouts",
+            "earnings_timeline",
+        ],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -5845,6 +5852,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::LogStream => "log_stream",
         PaneKind::BuyModePayments => "buy_mode",
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
+        PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",
