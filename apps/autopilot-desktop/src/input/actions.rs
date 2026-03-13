@@ -9208,84 +9208,6 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
-        MissionControlPaneAction::RefreshWallet => {
-            state.mission_control.mark_wallet_refresh_icon_clicked();
-            queue_spark_command(state, SparkWalletCommand::Reload);
-            if let Some(error) = state.spark_wallet.last_error.clone() {
-                state.mission_control.record_error(error);
-            } else {
-                state.mission_control.record_action("Queued wallet refresh");
-            }
-            true
-        }
-        MissionControlPaneAction::CreateLightningReceiveTarget => {
-            let amount_sats = match parse_positive_amount_str(
-                state.mission_control.load_funds_amount_sats.get_value(),
-                "Lightning receive amount",
-            ) {
-                Ok(amount_sats) => amount_sats,
-                Err(error) => {
-                    state.spark_wallet.last_error = Some(error.clone());
-                    state.mission_control.record_error(error);
-                    return true;
-                }
-            };
-
-            queue_spark_command(
-                state,
-                SparkWalletCommand::CreateBolt11Invoice {
-                    amount_sats,
-                    description: Some("Mission Control load funds".to_string()),
-                    expiry_seconds: Some(3600),
-                },
-            );
-            if let Some(error) = state.spark_wallet.last_error.clone() {
-                state.mission_control.record_error(error);
-            } else {
-                state.mission_control.record_action(format!(
-                    "Queued Lightning receive target for {}",
-                    format_sats_amount(amount_sats)
-                ));
-            }
-            true
-        }
-        MissionControlPaneAction::CopyLightningReceiveTarget => {
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let notice = match state.spark_wallet.last_invoice_state(now_epoch_seconds) {
-                crate::spark_wallet::SparkInvoiceState::Empty => {
-                    "No Lightning receive target available. Generate one first.".to_string()
-                }
-                crate::spark_wallet::SparkInvoiceState::Expired => {
-                    "Lightning receive target expired. Generate a new one.".to_string()
-                }
-                crate::spark_wallet::SparkInvoiceState::Ready => {
-                    match state.spark_wallet.last_invoice.as_deref() {
-                        Some(invoice) if !invoice.trim().is_empty() => {
-                            match copy_to_clipboard(invoice) {
-                                Ok(()) => {
-                                    "Copied Lightning receive target to clipboard".to_string()
-                                }
-                                Err(error) => {
-                                    format!("Failed to copy Lightning receive target: {error}")
-                                }
-                            }
-                        }
-                        _ => {
-                            "No Lightning receive target available. Generate one first.".to_string()
-                        }
-                    }
-                }
-            };
-
-            if notice.starts_with("Copied") {
-                state.mission_control.record_action(notice);
-            } else {
-                state.mission_control.record_error(notice);
-            }
-            true
-        }
         MissionControlPaneAction::CopyLogStream => {
             state.mission_control.mark_log_copy_icon_clicked();
             let output = state
@@ -9303,50 +9225,6 @@ pub(super) fn run_mission_control_action(
                     Ok(()) => "Copied Mission Control log stream to clipboard".to_string(),
                     Err(error) => format!("Failed to copy Mission Control log stream: {error}"),
                 }
-            };
-
-            if notice.starts_with("Copied") {
-                state.mission_control.record_action(notice);
-            } else {
-                state.mission_control.record_error(notice);
-            }
-            true
-        }
-        MissionControlPaneAction::SendLightningPayment => {
-            let command = match build_pay_invoice_command(
-                PayInvoicePaneAction::SendPayment,
-                state.mission_control.send_invoice.get_value(),
-                state.mission_control.load_funds_amount_sats.get_value(),
-            ) {
-                Ok(command) => command,
-                Err(error) => {
-                    state.spark_wallet.last_error = Some(error.clone());
-                    state.mission_control.record_error(error);
-                    return true;
-                }
-            };
-
-            queue_spark_command(state, command);
-            if let Some(error) = state.spark_wallet.last_error.clone() {
-                state.mission_control.record_error(error);
-            } else {
-                state
-                    .mission_control
-                    .record_action("Queued Lightning withdrawal");
-                state.mission_control.send_invoice.set_value(String::new());
-            }
-            true
-        }
-        MissionControlPaneAction::CopySeedPhrase => {
-            let notice = match state.nostr_identity.as_ref() {
-                Some(identity) if !identity.mnemonic.trim().is_empty() => {
-                    match copy_to_clipboard(&identity.mnemonic) {
-                        Ok(()) => "Copied 12-word wallet seed to clipboard. Treat it like cash."
-                            .to_string(),
-                        Err(error) => format!("Failed to copy wallet seed: {error}"),
-                    }
-                }
-                _ => "No wallet seed loaded yet.".to_string(),
             };
 
             if notice.starts_with("Copied") {
@@ -9463,34 +9341,6 @@ pub(super) fn run_mission_control_action(
             state
                 .mission_control
                 .record_action("Opened Buy Mode payment history");
-            true
-        }
-        MissionControlPaneAction::SendWithdrawal => {
-            let command = match build_pay_invoice_command(
-                PayInvoicePaneAction::SendPayment,
-                state.mission_control.withdraw_invoice.get_value(),
-                "",
-            ) {
-                Ok(command) => command,
-                Err(error) => {
-                    state.spark_wallet.last_error = Some(error.clone());
-                    state.mission_control.record_error(error);
-                    return true;
-                }
-            };
-
-            queue_spark_command(state, command);
-            if let Some(error) = state.spark_wallet.last_error.clone() {
-                state.mission_control.record_error(error);
-            } else {
-                state
-                    .mission_control
-                    .record_action("Queued Lightning withdrawal");
-                state
-                    .mission_control
-                    .withdraw_invoice
-                    .set_value(String::new());
-            }
             true
         }
         MissionControlPaneAction::OpenDocumentation => {

@@ -31,6 +31,7 @@ use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
 use crate::pane_system::MissionControlPaneAction;
+use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
@@ -415,11 +416,9 @@ impl DesktopControlActionRequest {
     fn mission_control_pane_action(&self) -> Option<MissionControlPaneAction> {
         match self {
             Self::RunAppleFmSmokeTest => Some(MissionControlPaneAction::RunLocalFmSummaryTest),
-            Self::RefreshWallet => Some(MissionControlPaneAction::RefreshWallet),
             Self::StartBuyMode | Self::StopBuyMode => {
                 Some(MissionControlPaneAction::ToggleBuyModeLoop)
             }
-            Self::Withdraw { .. } => Some(MissionControlPaneAction::SendWithdrawal),
             _ => None,
         }
     }
@@ -1559,6 +1558,9 @@ fn apply_action_request(
             LocalInferenceRuntimeCommand::Refresh,
             "Queued GPT-OSS runtime refresh",
         ),
+        DesktopControlActionRequest::RefreshWallet => {
+            wallet_action_response(state, SparkPaneAction::Refresh, "Queued wallet refresh")
+        }
         DesktopControlActionRequest::WarmGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::WarmConfiguredModel,
@@ -1591,7 +1593,6 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::SetProviderMode { .. }
         | DesktopControlActionRequest::RunAppleFmSmokeTest
-        | DesktopControlActionRequest::RefreshWallet
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
         | DesktopControlActionRequest::Withdraw { .. } => {
@@ -1992,6 +1993,44 @@ fn mission_control_status_response(
     }
 }
 
+fn wallet_action_response(
+    state: &mut RenderState,
+    action: SparkPaneAction,
+    default_message: &str,
+) -> DesktopControlActionResponse {
+    crate::input::desktop_control_run_spark_action(state, action);
+    if let Some(error) = state.spark_wallet.last_error.clone() {
+        DesktopControlActionResponse::error(error)
+    } else {
+        DesktopControlActionResponse::ok(
+            state
+                .spark_wallet
+                .last_action
+                .clone()
+                .unwrap_or_else(|| default_message.to_string()),
+        )
+    }
+}
+
+fn pay_invoice_action_response(
+    state: &mut RenderState,
+    action: PayInvoicePaneAction,
+    default_message: &str,
+) -> DesktopControlActionResponse {
+    crate::input::desktop_control_run_pay_invoice_action(state, action);
+    if let Some(error) = state.spark_wallet.last_error.clone() {
+        DesktopControlActionResponse::error(error)
+    } else {
+        DesktopControlActionResponse::ok(
+            state
+                .spark_wallet
+                .last_action
+                .clone()
+                .unwrap_or_else(|| default_message.to_string()),
+        )
+    }
+}
+
 fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse {
     if !state.mission_control_buy_mode_enabled() {
         return DesktopControlActionResponse::error("Buy Mode is disabled for this session");
@@ -2031,10 +2070,10 @@ fn withdraw_action(state: &mut RenderState, bolt11: &str) -> DesktopControlActio
         return DesktopControlActionResponse::error("Withdrawal bolt11 invoice is required");
     }
     state
-        .mission_control
-        .withdraw_invoice
+        .pay_invoice_inputs
+        .payment_request
         .set_value(trimmed.to_string());
-    mission_control_action_response(state, MissionControlPaneAction::SendWithdrawal)
+    pay_invoice_action_response(state, PayInvoicePaneAction::SendPayment, "Queued Lightning withdrawal")
 }
 
 fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionResponse {
@@ -4385,7 +4424,7 @@ mod tests {
         );
         assert_eq!(
             DesktopControlActionRequest::RefreshWallet.mission_control_pane_action(),
-            Some(MissionControlPaneAction::RefreshWallet)
+            None
         );
         assert_eq!(
             DesktopControlActionRequest::StartBuyMode.mission_control_pane_action(),
@@ -4400,7 +4439,7 @@ mod tests {
                 bolt11: "lnbc1example".to_string(),
             }
             .mission_control_pane_action(),
-            Some(MissionControlPaneAction::SendWithdrawal)
+            None
         );
     }
 

@@ -127,9 +127,6 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
-    state.mission_control.load_funds_amount_sats.blur();
-    state.mission_control.send_invoice.blur();
-    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -173,9 +170,6 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
-    state.mission_control.load_funds_amount_sats.blur();
-    state.mission_control.send_invoice.blur();
-    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -214,9 +208,6 @@ fn focus_apple_fm_workbench_prompt_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.send_amount.blur();
     state.pay_invoice_inputs.payment_request.blur();
     state.pay_invoice_inputs.amount_sats.blur();
-    state.mission_control.load_funds_amount_sats.blur();
-    state.mission_control.send_invoice.blur();
-    state.mission_control.withdraw_invoice.blur();
     state.create_invoice_inputs.amount_sats.blur();
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
@@ -336,17 +327,11 @@ pub enum EarningsScoreboardPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
-    RefreshWallet,
-    CreateLightningReceiveTarget,
-    CopyLightningReceiveTarget,
     CopyLogStream,
-    SendLightningPayment,
-    CopySeedPhrase,
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
     ToggleBuyModeLoop,
     OpenBuyModePayments,
-    SendWithdrawal,
     OpenDocumentation,
 }
 
@@ -1398,22 +1383,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             if !content_bounds.contains(point) {
                 return CursorIcon::Default;
             }
-            if pane.kind == PaneKind::GoOnline
-                && (mission_control_load_funds_amount_input_bounds_for_scroll(
-                    content_bounds,
-                    state.mission_control_buy_mode_enabled(),
-                    state.mission_control.load_funds_scroll_offset(),
-                )
-                .contains(point)
-                    || mission_control_send_invoice_input_bounds_for_scroll(
-                        content_bounds,
-                        state.mission_control_buy_mode_enabled(),
-                        state.mission_control.load_funds_scroll_offset(),
-                    )
-                    .contains(point))
-            {
-                return CursorIcon::Text;
-            }
             if let Some(action) = pane_hit_action_for_pane(state, pane, point) {
                 if let PaneHitAction::CadDemo(cad_action) = action
                     && cad_action_uses_dense_row_hot_zone(cad_action)
@@ -1537,23 +1506,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
-            PaneKind::GoOnline => {
-                if mission_control_load_funds_amount_input_bounds_for_scroll(
-                    content_bounds,
-                    state.mission_control_buy_mode_enabled(),
-                    state.mission_control.load_funds_scroll_offset(),
-                )
-                .contains(point)
-                    || mission_control_send_invoice_input_bounds_for_scroll(
-                        content_bounds,
-                        state.mission_control_buy_mode_enabled(),
-                        state.mission_control.load_funds_scroll_offset(),
-                    )
-                    .contains(point)
-                {
-                    return CursorIcon::Text;
-                }
-            }
+            PaneKind::GoOnline => {}
             PaneKind::Empty
             | PaneKind::ProjectOps
             | PaneKind::CodexAccount
@@ -5365,31 +5318,6 @@ fn pane_hit_action_for_pane(
         PaneKind::Calculator => None,
         PaneKind::GoOnline => {
             let buy_mode_enabled = state.mission_control_buy_mode_enabled();
-            let lightning_amount_valid = state
-                .mission_control
-                .load_funds_amount_sats
-                .get_value()
-                .trim()
-                .parse::<u64>()
-                .ok()
-                .is_some_and(|value| value > 0);
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let lightning_copy_enabled = matches!(
-                state.spark_wallet.last_invoice_state(now_epoch_seconds),
-                crate::spark_wallet::SparkInvoiceState::Ready
-            );
-            let lightning_send_enabled = !state
-                .mission_control
-                .send_invoice
-                .get_value()
-                .trim()
-                .is_empty();
-            let seed_copy_enabled = state
-                .nostr_identity
-                .as_ref()
-                .is_some_and(|identity| !identity.mnemonic.trim().is_empty());
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 if matches!(
                     state.provider_runtime.mode,
@@ -5400,54 +5328,6 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
-            } else if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::RefreshWallet,
-                ))
-            } else if mission_control_lightning_receive_button_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            )
-            .contains(point)
-                && lightning_amount_valid
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::CreateLightningReceiveTarget,
-                ))
-            } else if mission_control_copy_lightning_button_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            )
-            .contains(point)
-                && lightning_copy_enabled
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::CopyLightningReceiveTarget,
-                ))
-            } else if mission_control_send_lightning_button_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            )
-            .contains(point)
-                && lightning_send_enabled
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::SendLightningPayment,
-                ))
-            } else if mission_control_copy_seed_button_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            )
-            .contains(point)
-                && seed_copy_enabled
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::CopySeedPhrase,
-                ))
             } else if mission_control_copy_log_stream_button_bounds(
                 content_bounds,
                 buy_mode_enabled,
@@ -6553,45 +6433,8 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
 }
 
 pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_mission_control = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::GoOnline)
-        .max_by_key(|pane| pane.z_index);
-    let Some(pane) = top_mission_control else {
-        return false;
-    };
-
-    let content_bounds = pane_content_bounds_for_pane(pane);
-    let buy_mode_enabled = state.mission_control_buy_mode_enabled();
-    let amount_handled = state
-        .mission_control
-        .load_funds_amount_sats
-        .event(
-            event,
-            mission_control_load_funds_amount_input_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            ),
-            &mut state.event_context,
-        )
-        .is_handled();
-    let send_handled = state
-        .mission_control
-        .send_invoice
-        .event(
-            event,
-            mission_control_send_invoice_input_bounds_for_scroll(
-                content_bounds,
-                buy_mode_enabled,
-                state.mission_control.load_funds_scroll_offset(),
-            ),
-            &mut state.event_context,
-        )
-        .is_handled();
-
-    amount_handled || send_handled
+    let _ = (state, event);
+    false
 }
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -6646,23 +6489,10 @@ pub fn dispatch_mission_control_log_scroll_event(
                 state.mission_control.scroll_earnings_by(*dy);
                 return true;
             }
-            if layout.wallet_panel.contains(cursor_position) {
-                state.mission_control.scroll_wallet_by(*dy);
-                return true;
-            }
             if mission_control_actions_scroll_viewport_bounds(content_bounds)
                 .contains(cursor_position)
             {
                 state.mission_control.scroll_actions_by(*dy);
-                return true;
-            }
-            if mission_control_load_funds_scroll_viewport_bounds(
-                content_bounds,
-                state.mission_control_buy_mode_enabled(),
-            )
-            .contains(cursor_position)
-            {
-                state.mission_control.scroll_load_funds_by(*dy);
                 return true;
             }
             if layout.active_jobs_panel.contains(cursor_position) {
@@ -7166,10 +6996,7 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
-        mission_control_copy_seed_button_bounds, mission_control_local_fm_test_button_bounds,
-        mission_control_local_model_button_bounds, mission_control_send_invoice_input_bounds,
-        mission_control_send_lightning_button_bounds, mission_control_wallet_refresh_button_bounds,
-        mission_control_withdraw_button_bounds, mission_control_withdraw_invoice_input_bounds,
+        mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
         network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
         network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
         network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
@@ -7266,21 +7093,6 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_withdraw_controls_fit_below_local_fm_controls() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let layout = super::mission_control_layout(content_bounds);
-        let local_model = mission_control_local_model_button_bounds(content_bounds);
-        let local_fm_test = mission_control_local_fm_test_button_bounds(content_bounds);
-        let withdraw_input = mission_control_withdraw_invoice_input_bounds(content_bounds);
-        let withdraw_button = mission_control_withdraw_button_bounds(content_bounds);
-
-        assert!(local_model.max_y() <= local_fm_test.origin.y);
-        assert!(local_fm_test.max_y() <= withdraw_input.origin.y);
-        assert!(withdraw_input.max_y() <= withdraw_button.origin.y);
-        assert!(withdraw_button.max_y() <= layout.actions_panel.max_y());
-    }
-
-    #[test]
     fn mission_control_action_buttons_clear_section_header() {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let layout = super::mission_control_layout(content_bounds);
@@ -7303,19 +7115,6 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_wallet_refresh_button_fits_inside_wallet_panel() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let layout = super::mission_control_layout(content_bounds);
-        let button = mission_control_wallet_refresh_button_bounds(content_bounds);
-
-        assert!(layout.wallet_panel.contains(button.origin));
-        assert!(button.max_x() <= layout.wallet_panel.max_x());
-        assert!(button.max_y() <= layout.wallet_panel.origin.y + 22.0);
-        assert_eq!(button.size.width, 14.0);
-        assert_eq!(button.size.height, 14.0);
-    }
-
-    #[test]
     fn mission_control_alert_band_leaves_room_for_truth_legend() {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let layout = super::mission_control_layout(content_bounds);
@@ -7323,111 +7122,6 @@ mod tests {
         assert!(layout.alert_band.size.height >= 40.0);
         assert!(layout.alert_band.max_y() < layout.left_column.origin.y);
         assert!(layout.alert_band.max_y() < layout.right_column.origin.y);
-    }
-
-    #[test]
-    fn mission_control_load_funds_controls_fit_inside_panel_without_buy_mode() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let layout = super::mission_control_layout_for_mode(content_bounds, false);
-        let load_funds = super::mission_control_load_funds_layout(content_bounds, false);
-
-        assert!(layout.active_jobs_panel.max_y() <= layout.load_funds_panel.origin.y);
-        assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.amount_input.origin)
-        );
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.send_invoice_input.origin)
-        );
-        assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
-        assert!(load_funds.details_column.max_x() <= layout.load_funds_panel.max_x());
-        assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
-    }
-
-    #[test]
-    fn mission_control_load_funds_controls_fit_inside_panel_with_buy_mode() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let layout = super::mission_control_layout_for_mode(content_bounds, true);
-        let load_funds = super::mission_control_load_funds_layout(content_bounds, true);
-
-        assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
-        assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.amount_input.origin)
-        );
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.send_invoice_input.origin)
-        );
-        assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
-        assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
-        assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
-    }
-
-    #[test]
-    fn mission_control_compact_buy_mode_keeps_load_funds_readable() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let layout = super::mission_control_layout_for_mode(content_bounds, true);
-        let viewport =
-            super::mission_control_load_funds_scroll_viewport_bounds(content_bounds, true);
-
-        assert!(layout.load_funds_panel.size.height >= 150.0);
-        assert!(viewport.size.height >= 96.0);
-        assert!(layout.log_stream.size.height >= 132.0);
-    }
-
-    #[test]
-    fn mission_control_load_funds_panel_grows_with_available_height() {
-        let compact_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let tall_bounds = Bounds::new(0.0, 0.0, 1040.0, 840.0);
-
-        let compact_layout = super::mission_control_layout_for_mode(compact_bounds, false);
-        let tall_layout = super::mission_control_layout_for_mode(tall_bounds, false);
-
-        assert!(
-            tall_layout.load_funds_panel.size.height > compact_layout.load_funds_panel.size.height
-        );
-        assert!(tall_layout.log_stream.size.height >= 153.0);
-    }
-
-    #[test]
-    fn mission_control_load_funds_send_and_seed_controls_stay_non_overlapping() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let receive_button =
-            super::mission_control_lightning_receive_button_bounds(content_bounds, true);
-        let send_input = mission_control_send_invoice_input_bounds(content_bounds, true);
-        let send_button = mission_control_send_lightning_button_bounds(content_bounds, true);
-        let copy_seed = mission_control_copy_seed_button_bounds(content_bounds, true);
-
-        assert!(send_input.origin.y - receive_button.max_y() >= 18.0);
-        assert!(send_input.max_y() <= send_button.origin.y);
-        assert_eq!(send_button.origin.y, copy_seed.origin.y);
-        assert!(send_button.max_x() <= copy_seed.origin.x);
-        assert!(send_button.size.height >= 20.0);
-        assert!(copy_seed.size.height >= 20.0);
-    }
-
-    #[test]
-    fn mission_control_load_funds_inputs_keep_readable_height_with_buy_mode() {
-        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
-        let load_funds = super::mission_control_load_funds_layout(content_bounds, true);
-
-        assert!(load_funds.amount_input.size.height >= 18.0);
-        assert!(load_funds.send_invoice_input.size.height >= 18.0);
-        assert_eq!(
-            load_funds.amount_input.size.height,
-            load_funds.send_invoice_input.size.height
-        );
     }
 
     #[test]
@@ -7441,8 +7135,7 @@ mod tests {
         assert!(button.max_x() <= layout.buy_mode_panel.max_x());
         assert!(button.max_y() <= layout.buy_mode_panel.max_y());
         assert!(layout.active_jobs_panel.max_y() <= layout.buy_mode_panel.origin.y);
-        assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
-        assert!(layout.load_funds_panel.max_y() <= layout.log_stream.origin.y);
+        assert!(layout.buy_mode_panel.max_y() <= layout.log_stream.origin.y);
     }
 
     #[test]
@@ -7450,7 +7143,7 @@ mod tests {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let layout = super::mission_control_layout_for_mode(content_bounds, true);
         let button = super::mission_control_buy_mode_button_bounds(content_bounds, true);
-        let status_row_bottom = layout.buy_mode_panel.origin.y + 48.0 + 34.0;
+        let status_row_bottom = layout.buy_mode_panel.origin.y + 48.0;
 
         assert!(status_row_bottom <= button.origin.y);
     }
@@ -7479,8 +7172,7 @@ mod tests {
         let tall_layout = super::mission_control_layout_for_mode(tall_bounds, true);
 
         assert!(tall_layout.buy_mode_panel.size.height > compact_layout.buy_mode_panel.size.height);
-        assert!(tall_layout.load_funds_panel.size.height >= 180.0);
-        assert!(tall_layout.log_stream.size.height >= 153.0);
+        assert!(tall_layout.log_stream.size.height >= 120.0);
     }
 
     #[test]
@@ -7490,8 +7182,8 @@ mod tests {
         let buy_mode_layout = super::mission_control_layout_for_mode(content_bounds, true);
         let standard_layout = super::mission_control_layout_for_mode(content_bounds, false);
 
-        assert!(buy_mode_layout.log_stream.size.height >= 153.0);
-        assert!(standard_layout.log_stream.size.height >= 153.0);
+        assert!(buy_mode_layout.log_stream.size.height >= 120.0);
+        assert!(standard_layout.log_stream.size.height >= 120.0);
     }
 
     #[test]

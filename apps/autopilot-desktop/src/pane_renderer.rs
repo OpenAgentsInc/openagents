@@ -46,13 +46,9 @@ use crate::pane_system::{
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
-    mission_control_copy_seed_button_bounds_for_scroll, mission_control_layout_for_mode,
-    mission_control_load_funds_layout_with_scroll,
-    mission_control_load_funds_scroll_viewport_bounds, mission_control_local_fm_test_button_bounds,
+    mission_control_layout_for_mode, mission_control_local_fm_test_button_bounds,
     mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
-    mission_control_send_invoice_input_bounds_for_scroll,
-    mission_control_send_lightning_button_bounds_for_scroll,
-    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
+    network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -601,7 +597,7 @@ fn paint_go_online_pane(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
     autopilot_chat: &AutopilotChatState,
-    nostr_identity: Option<&nostr::NostrIdentity>,
+    _nostr_identity: Option<&nostr::NostrIdentity>,
     provider_control: &mut ProviderControlPaneState,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
@@ -749,24 +745,7 @@ fn paint_go_online_pane(
         false,
         paint,
     );
-    paint_mission_control_section_panel(
-        layout.wallet_panel,
-        "WALLET",
-        mission_control_green_color(),
-        false,
-        paint,
-    );
-    let wallet_refresh_bounds = mission_control_wallet_refresh_button_bounds(content_bounds);
     let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
-    let wallet_refresh_hovered = pointer_in_pane && wallet_refresh_bounds.contains(cursor_position);
-    let wallet_refresh_clicked = mission_control.wallet_refresh_icon_click_feedback(now_epoch_ms);
-    paint_mission_control_wallet_refresh_icon_button(
-        wallet_refresh_bounds,
-        mission_control_green_color(),
-        wallet_refresh_hovered,
-        wallet_refresh_clicked,
-        paint,
-    );
     paint_mission_control_section_panel(
         layout.actions_panel,
         "CONTROL",
@@ -790,14 +769,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    paint_mission_control_section_panel(
-        layout.load_funds_panel,
-        "LOAD FUNDS",
-        mission_control_cyan_color(),
-        false,
-        paint,
-    );
-
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let wants_online = matches!(
         provider_runtime.mode,
@@ -1026,75 +997,6 @@ fn paint_go_online_pane(
         paint,
     );
 
-    let wallet_clip = mission_control_section_clip_bounds(layout.wallet_panel);
-    paint.scene.push_clip(wallet_clip);
-    let wallet_balance = spark_wallet
-        .balance
-        .as_ref()
-        .map(|balance| format_mission_control_amount(balance.total_sats()))
-        .unwrap_or_else(|| "LOADING".to_string());
-    let wallet_address = spark_wallet
-        .spark_address
-        .as_deref()
-        .or(spark_wallet.bitcoin_address.as_deref())
-        .map(mask_secret)
-        .unwrap_or_else(|| "NOT GENERATED".to_string());
-    let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
-    let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let wallet_content_height = 41.0 + 39.0 + 39.0 + 38.0;
-    let wallet_max_scroll =
-        mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
-    let wallet_scroll = mission_control.clamp_wallet_scroll_offset(wallet_max_scroll);
-    let mut wallet_y = mission_control_section_content_y(layout.wallet_panel) - wallet_scroll;
-    wallet_y = paint_mission_control_amount_line(
-        paint,
-        layout.wallet_panel.origin.x + 12.0,
-        wallet_y,
-        "Balance (₿)",
-        &wallet_balance,
-        mission_control_green_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.wallet_panel.size.width - 24.0,
-        true,
-    );
-    wallet_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        layout.wallet_panel.origin.x + 12.0,
-        wallet_y,
-        "Network",
-        &wallet_network,
-        wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
-        true,
-    );
-    wallet_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        layout.wallet_panel.origin.x + 12.0,
-        wallet_y,
-        "Status",
-        wallet_status,
-        wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
-        true,
-    );
-    let _ = paint_wrapped_label_line_mission_control_label(
-        paint,
-        layout.wallet_panel.origin.x + 12.0,
-        wallet_y,
-        "Target",
-        &wallet_address,
-        wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
-        false,
-    );
-    paint.scene.pop_clip();
-    paint_mission_control_section_scrollbar(
-        layout.wallet_panel,
-        wallet_content_height,
-        wallet_scroll,
-        paint,
-    );
-
     let download_bounds = mission_control_local_model_button_bounds(content_bounds);
     if mission_control_show_local_model_button(
         desktop_shell_mode,
@@ -1153,189 +1055,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    let load_funds_viewport =
-        mission_control_load_funds_scroll_viewport_bounds(content_bounds, buy_mode_enabled);
-    let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
-    let lightning_target_text = match lightning_state {
-        SparkInvoiceState::Ready => spark_wallet
-            .last_invoice
-            .as_deref()
-            .unwrap_or("Generate a Lightning invoice to fund this wallet.")
-            .to_string(),
-        SparkInvoiceState::Expired => {
-            "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
-        }
-        SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
-    };
-    let detail_lines = lightning_target_text.lines().count().max(1)
-        + mission_control_recent_receive_history(spark_wallet)
-            .lines()
-            .count()
-            .max(1);
-    let load_funds_content_height = 170.0 + detail_lines as f32 * 16.0;
-    let load_funds_max_scroll =
-        mission_control_max_scroll_for_viewport(load_funds_viewport, load_funds_content_height);
-    let load_funds_scroll = mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
-    let load_funds_layout = mission_control_load_funds_layout_with_scroll(
-        content_bounds,
-        buy_mode_enabled,
-        load_funds_scroll,
-    );
-    let lightning_amount_valid = mission_control
-        .load_funds_amount_sats
-        .get_value()
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .is_some_and(|value| value > 0);
-    paint.scene.push_clip(load_funds_viewport);
-    let mut lightning_sats_label = paint.text.layout_mono(
-        "LIGHTNING SATS (₿)",
-        Point::ZERO,
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    );
-    let lightning_sats_label_bounds = lightning_sats_label.bounds();
-    let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 12.0;
-    lightning_sats_label.origin = Point::new(
-        load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
-        lightning_sats_label_bottom
-            - lightning_sats_label_bounds.size.height
-            - lightning_sats_label_bounds.origin.y,
-    );
-    paint.scene.draw_text(lightning_sats_label);
-    mission_control
-        .load_funds_amount_sats
-        .set_max_width(load_funds_layout.amount_input.size.width);
-    mission_control
-        .load_funds_amount_sats
-        .paint(load_funds_layout.amount_input, paint);
-    paint_mission_control_command_button(
-        load_funds_layout.lightning_button,
-        "LIGHTNING RECEIVE",
-        mission_control_green_color(),
-        lightning_amount_valid,
-        paint,
-    );
-    paint_mission_control_command_button(
-        load_funds_layout.copy_lightning_button,
-        "COPY LIGHTNING",
-        mission_control_cyan_color(),
-        lightning_state == SparkInvoiceState::Ready,
-        paint,
-    );
-    let send_invoice_bounds = mission_control_send_invoice_input_bounds_for_scroll(
-        content_bounds,
-        buy_mode_enabled,
-        load_funds_scroll,
-    );
-    let mut lightning_withdraw_label = paint.text.layout_mono(
-        "LIGHTNING WITHDRAW",
-        Point::ZERO,
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    );
-    let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
-    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 12.0;
-    lightning_withdraw_label.origin = Point::new(
-        send_invoice_bounds.origin.x - lightning_withdraw_label_bounds.origin.x,
-        lightning_withdraw_label_bottom
-            - lightning_withdraw_label_bounds.size.height
-            - lightning_withdraw_label_bounds.origin.y,
-    );
-    paint.scene.draw_text(lightning_withdraw_label);
-    mission_control
-        .send_invoice
-        .set_max_width(send_invoice_bounds.size.width);
-    mission_control
-        .send_invoice
-        .paint(send_invoice_bounds, paint);
-    paint_mission_control_command_button(
-        mission_control_send_lightning_button_bounds_for_scroll(
-            content_bounds,
-            buy_mode_enabled,
-            load_funds_scroll,
-        ),
-        "LIGHTNING WITHDRAW",
-        mission_control_orange_color(),
-        !mission_control.send_invoice.get_value().trim().is_empty(),
-        paint,
-    );
-    paint_mission_control_command_button(
-        mission_control_copy_seed_button_bounds_for_scroll(
-            content_bounds,
-            buy_mode_enabled,
-            load_funds_scroll,
-        ),
-        "COPY SEED",
-        mission_control_cyan_color(),
-        nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
-        paint,
-    );
-    let load_funds_value_chunk_len =
-        mission_control_value_chunk_len(load_funds_layout.details_column);
-    let load_funds_body_chunk_len =
-        mission_control_body_chunk_len(load_funds_layout.details_column);
-    let mut load_funds_y = load_funds_layout.details_column.origin.y;
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Network",
-        &wallet_network,
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Connection",
-        wallet_status,
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Lightning",
-        mission_control_lightning_receive_state_label(lightning_state),
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_mission_control_body_block(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Lightning target",
-        &lightning_target_text,
-        load_funds_body_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    let _ = paint_mission_control_body_block(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Recent receives",
-        &mission_control_recent_receive_history(spark_wallet),
-        load_funds_body_chunk_len,
-        load_funds_layout.details_column.size.width,
-        false,
-    );
-    paint.scene.pop_clip();
-    paint_mission_control_scrollbar_for_viewport(
-        layout.load_funds_panel,
-        load_funds_viewport,
-        load_funds_content_height,
-        load_funds_scroll,
-        paint,
-    );
-
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
     let active_panel_state = mission_control_active_jobs_panel_state(
