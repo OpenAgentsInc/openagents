@@ -1271,7 +1271,7 @@ impl NetworkRequestsState {
         if !request_targets_provider(request, provider_pubkey) {
             tracing::info!(
                 target: "autopilot_desktop::buyer",
-                "Ignoring buyer feedback for targeted request_id={} provider={} targets=[{}]",
+                "Ignoring buyer feedback for targeted request_id={} provider_nostr={} targets=[{}]",
                 request_id,
                 provider_pubkey,
                 request.target_provider_pubkeys.join(",")
@@ -1391,7 +1391,7 @@ impl NetworkRequestsState {
         let status_label = status.unwrap_or("unknown");
         let status_extra = status_extra.unwrap_or("none");
         self.pane_set_ready(format!(
-            "Request {} feedback={} provider={} detail={}",
+            "Request {} feedback={} provider_nostr={} detail={}",
             request_id, status_label, provider_pubkey, status_extra
         ));
         resolution_action
@@ -1442,7 +1442,7 @@ impl NetworkRequestsState {
         if !request_targets_provider(request, provider_pubkey) {
             tracing::info!(
                 target: "autopilot_desktop::buyer",
-                "Ignoring buyer result for targeted request_id={} provider={} targets=[{}]",
+                "Ignoring buyer result for targeted request_id={} provider_nostr={} targets=[{}]",
                 request_id,
                 provider_pubkey,
                 request.target_provider_pubkeys.join(",")

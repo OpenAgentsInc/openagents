@@ -1009,13 +1009,13 @@ struct BuyModePaymentLedgerEntry {
     total_debit_sats: Option<u64>,
     wallet_status: String,
     wallet_method: String,
-    provider_pubkey: String,
+    provider_nostr_pubkey: String,
     request_id: String,
     payment_pointer: String,
     request_event_id: String,
     result_event_id: String,
     payment_hash: String,
-    destination_pubkey: String,
+    lightning_destination_pubkey: String,
     htlc_status: String,
     htlc_expiry_epoch_seconds: Option<u64>,
     wallet_detail: Option<String>,
@@ -1080,7 +1080,7 @@ fn buy_mode_request_ledger_entry(
     let amount_sats = wallet_payment
         .map(|payment| payment.amount_sats)
         .unwrap_or(request.budget_sats);
-    let provider_pubkey = request
+    let provider_nostr_pubkey = request
         .winning_provider_pubkey
         .as_deref()
         .or(request.last_provider_pubkey.as_deref())
@@ -1125,7 +1125,7 @@ fn buy_mode_request_ledger_entry(
         wallet_method: wallet_payment
             .map(|payment| payment.method.clone())
             .unwrap_or_else(|| "-".to_string()),
-        provider_pubkey,
+        provider_nostr_pubkey,
         request_id: request.request_id.clone(),
         payment_pointer,
         request_event_id,
@@ -1133,7 +1133,7 @@ fn buy_mode_request_ledger_entry(
         payment_hash: wallet_payment
             .and_then(|payment| payment.payment_hash.clone())
             .unwrap_or_else(|| "-".to_string()),
-        destination_pubkey: wallet_payment
+        lightning_destination_pubkey: wallet_payment
             .and_then(|payment| payment.destination_pubkey.clone())
             .unwrap_or_else(|| "-".to_string()),
         htlc_status: wallet_payment
@@ -1184,10 +1184,7 @@ fn buy_mode_wallet_backfill_entry(
         )),
         wallet_status,
         wallet_method: payment.method.clone(),
-        provider_pubkey: payment
-            .destination_pubkey
-            .clone()
-            .unwrap_or_else(|| "-".to_string()),
+        provider_nostr_pubkey: "-".to_string(),
         request_id: request_hint,
         payment_pointer: payment.id.clone(),
         request_event_id: "-".to_string(),
@@ -1196,7 +1193,7 @@ fn buy_mode_wallet_backfill_entry(
             .payment_hash
             .clone()
             .unwrap_or_else(|| "-".to_string()),
-        destination_pubkey: payment
+        lightning_destination_pubkey: payment
             .destination_pubkey
             .clone()
             .unwrap_or_else(|| "-".to_string()),
@@ -1299,7 +1296,7 @@ fn push_buy_mode_payment_entry_rows(
     rows.push((
         entry.stream.clone(),
         format!(
-            "{}  status={}  amount={} sats  fee={}  total_debit={}  wallet_status={}  wallet_method={}  provider_pubkey={}",
+            "{}  status={}  amount={} sats  fee={}  total_debit={}  wallet_status={}  wallet_method={}  provider_nostr_pubkey={}",
             buy_mode_payment_timestamp_label(entry.timestamp),
             entry.status,
             entry.amount_sats,
@@ -1307,7 +1304,7 @@ fn push_buy_mode_payment_entry_rows(
             buy_mode_optional_sats_label(entry.total_debit_sats),
             entry.wallet_status,
             entry.wallet_method,
-            entry.provider_pubkey,
+            entry.provider_nostr_pubkey,
         ),
     ));
     rows.push((
@@ -1322,15 +1319,15 @@ fn push_buy_mode_payment_entry_rows(
             entry.source,
         ),
     ));
-    if entry.destination_pubkey != "-"
+    if entry.lightning_destination_pubkey != "-"
         || entry.htlc_status != "-"
         || entry.htlc_expiry_epoch_seconds.is_some()
     {
         rows.push((
             entry.stream.clone(),
             format!(
-                "destination_pubkey={}  htlc_status={}  htlc_expiry={}",
-                entry.destination_pubkey,
+                "lightning_destination_pubkey={}  htlc_status={}  htlc_expiry={}",
+                entry.lightning_destination_pubkey,
                 entry.htlc_status,
                 buy_mode_payment_timestamp_label(entry.htlc_expiry_epoch_seconds),
             ),
@@ -14096,6 +14093,7 @@ mod tests {
                 && line.text.contains("total_debit=3 sats")
                 && line.text.contains("wallet_status=sent")
                 && line.text.contains("wallet_method=lightning")
+                && line.text.contains("provider_nostr_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
         }));
         assert!(lines.iter().any(|line| {
@@ -14104,6 +14102,10 @@ mod tests {
                 && line.text.contains("event-buy-ledger-001")
                 && line.text.contains("result-buy-ledger-001")
                 && line.text.contains("hash-buy-ledger-001")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("lightning_destination_pubkey=")
+                && line.text.contains(provider_pubkey.as_str())
         }));
     }
 
@@ -14156,9 +14158,9 @@ mod tests {
         let lines = pane.ledger.recent_lines(12);
 
         assert!(lines.iter().any(|line| {
-            line.text.contains("selected_provider=")
+            line.text.contains("selected_provider_nostr_pubkey=")
                 && line.text.contains(losing_provider.as_str())
-                && line.text.contains("payable_provider=")
+                && line.text.contains("payable_provider_nostr_pubkey=")
                 && line.text.contains(payable_provider.as_str())
                 && line.text.contains("losers=1")
         }));
@@ -14294,7 +14296,11 @@ mod tests {
                 .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") })
         );
         assert!(lines.iter().any(|line| {
-            line.text.contains("destination_pubkey=")
+            line.text.contains("lightning_destination_pubkey=")
+                && line.text.contains(provider_pubkey.as_str())
+        }));
+        assert!(lines.iter().any(|line| {
+            line.text.contains("provider_nostr_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
         }));
         assert!(lines.iter().any(|line| {
@@ -14402,7 +14408,12 @@ mod tests {
             line.text.contains("fee=3 sats") && line.text.contains("total_debit=5 sats")
         }));
         assert!(lines.iter().any(|line| {
-            line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
+            line.text.contains("lightning_destination_pubkey=")
+                && line.text.contains(provider_pubkey.as_str())
+        }));
+        assert!(!lines.iter().any(|line| {
+            line.text.contains("provider_nostr_pubkey=")
+                && line.text.contains(provider_pubkey.as_str())
         }));
         assert!(
             !lines

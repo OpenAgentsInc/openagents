@@ -607,7 +607,7 @@ pub(super) fn apply_buyer_response_event(
         .map_or(0, |duration| duration.as_secs());
     tracing::info!(
         target: "autopilot_desktop::buyer",
-        "Buyer response request_id={} kind={} event_id={} provider={} status={} status_extra={} amount_msats={} bolt11_present={}",
+        "Buyer response request_id={} kind={} event_id={} provider_nostr={} status={} status_extra={} amount_msats={} bolt11_present={}",
         event.request_id,
         event.kind.label(),
         event.event_id,
@@ -673,7 +673,7 @@ pub(super) fn apply_buyer_response_event(
             event.kind.label()
         ),
         detail: format!(
-            "request={} provider={} event_id={} kind={} status={} status_extra={} amount_msats={} bolt11={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+            "request={} provider_nostr={} event_id={} kind={} status={} status_extra={} amount_msats={} bolt11={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
             event.request_id,
             event.provider_pubkey,
             event.event_id,
@@ -762,7 +762,7 @@ fn queue_auto_payment_for_buyer_event(
         {
             tracing::warn!(
                 target: "autopilot_desktop::buyer",
-                "Refusing over-budget Spark payment request_id={} provider={} invoice_amount_sats={} approved_budget_sats={} amount_mismatch={} event_id={}",
+                "Refusing over-budget Spark payment request_id={} provider_nostr={} invoice_amount_sats={} approved_budget_sats={} amount_mismatch={} event_id={}",
                 event.request_id,
                 refusal.provider_pubkey,
                 refusal.invoice_amount_sats,
@@ -841,7 +841,7 @@ fn emit_buyer_resolution_telemetry(
             action.provider_pubkey
         ),
         detail: format!(
-            "request={} provider={} observed_event={} observed_kind={} observed_status={} observed_status_extra={} resolution_mode=race",
+            "request={} provider_nostr={} observed_event={} observed_kind={} observed_status={} observed_status_extra={} resolution_mode=race",
             action.request_id,
             action.provider_pubkey,
             observed_event.event_id,
@@ -933,7 +933,7 @@ fn queue_buyer_resolution_feedback(
                     action.provider_pubkey
                 ),
                 detail: format!(
-                    "request={} provider={} feedback_event_id={}",
+                    "request={} provider_nostr={} feedback_event_id={}",
                     action.request_id, action.provider_pubkey, feedback_event_id
                 ),
                 occurred_at_epoch_seconds: now_epoch_seconds,

@@ -10111,7 +10111,7 @@ pub(super) fn run_mission_control_buy_mode_tick(
             state.buy_mode_payments.schedule_next_buy_mode_dispatch(now);
             tracing::info!(
                 target: "autopilot_desktop::buy_mode",
-                "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={} target_provider={}",
+                "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={} target_provider_nostr={}",
                 request_id,
                 crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
                 crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,

@@ -1312,7 +1312,7 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
     );
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "buy mode in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
+            "buy mode in-flight: request={} phase={} status={} selected_provider_nostr={} result_provider_nostr={} invoice_provider_nostr={} payable_provider_nostr={} blockers={} blocker_summary={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
@@ -1442,7 +1442,7 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     print_buy_mode_target_text(snapshot);
     if let Some(request_id) = snapshot.buy_mode.in_flight_request_id.as_deref() {
         println!(
-            "in-flight: request={} phase={} status={} selected_provider={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={}",
+            "in-flight: request={} phase={} status={} selected_provider_nostr={} result_provider_nostr={} invoice_provider_nostr={} payable_provider_nostr={} blockers={} blocker_summary={}",
             request_id,
             snapshot.buy_mode.in_flight_phase.as_deref().unwrap_or("-"),
             snapshot.buy_mode.in_flight_status.as_deref().unwrap_or("-"),
@@ -1476,7 +1476,7 @@ fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     }
     for request in snapshot.buy_mode.recent_requests.iter().take(6) {
         println!(
-            "request={} status={} phase={} next={} result_provider={} invoice_provider={} payable_provider={} blockers={} blocker_summary={} payment_pointer={} payment_error={}",
+            "request={} status={} phase={} next={} result_provider_nostr={} invoice_provider_nostr={} payable_provider_nostr={} blockers={} blocker_summary={} payment_pointer={} payment_error={}",
             request.request_id,
             request.status,
             request.phase,
