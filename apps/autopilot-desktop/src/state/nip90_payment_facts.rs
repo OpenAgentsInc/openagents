@@ -158,6 +158,8 @@ pub struct Nip90PaymentFact {
     pub provider_nostr_pubkey: Option<String>,
     pub invoice_provider_pubkey: Option<String>,
     pub result_provider_pubkey: Option<String>,
+    pub invoice_observed_relays: Vec<String>,
+    pub result_observed_relays: Vec<String>,
     pub lightning_destination_pubkey: Option<String>,
     pub buyer_payment_pointer: Option<String>,
     pub seller_payment_pointer: Option<String>,
@@ -336,7 +338,7 @@ impl Nip90PaymentFactLedgerState {
 
         let facts = normalize_facts(facts_by_request.into_values().collect());
         let actors = derive_actors(facts.as_slice(), local_nostr_pubkey_hex.as_deref());
-        let relay_hops = normalize_relay_hops(Vec::new());
+        let relay_hops = derive_relay_hops(facts.as_slice());
 
         if self.facts == facts && self.actors == actors && self.relay_hops == relay_hops {
             if self.load_state == PaneLoadState::Loading {
@@ -434,6 +436,8 @@ fn buyer_fact_from_snapshot(
             .or_else(|| normalize_optional_string(snapshot.selected_provider_pubkey.as_deref())),
         invoice_provider_pubkey: normalize_optional_string(snapshot.invoice_provider_pubkey.as_deref()),
         result_provider_pubkey: normalize_optional_string(snapshot.result_provider_pubkey.as_deref()),
+        invoice_observed_relays: snapshot.invoice_relay_urls.clone(),
+        result_observed_relays: snapshot.result_relay_urls.clone(),
         lightning_destination_pubkey: normalize_optional_string(
             snapshot.destination_pubkey.as_deref(),
         ),
@@ -446,7 +450,7 @@ fn buyer_fact_from_snapshot(
         wallet_method: normalize_optional_string(Some(snapshot.wallet_method.as_str())),
         status,
         settlement_authority: snapshot.authority.as_str().to_string(),
-        request_published_at: None,
+        request_published_at: snapshot.request_published_at_epoch_seconds,
         result_observed_at: None,
         invoice_observed_at: snapshot.payment_required_at_epoch_seconds,
         buyer_payment_pointer_at: snapshot.payment_sent_at_epoch_seconds,
@@ -457,9 +461,9 @@ fn buyer_fact_from_snapshot(
             None
         },
         seller_wallet_confirmed_at: None,
-        selected_relays: Vec::new(),
-        publish_accepted_relays: Vec::new(),
-        publish_rejected_relays: Vec::new(),
+        selected_relays: snapshot.request_publish_selected_relays.clone(),
+        publish_accepted_relays: snapshot.request_publish_accepted_relays.clone(),
+        publish_rejected_relays: snapshot.request_publish_rejected_relays.clone(),
         source_quality,
     }
 }
@@ -498,6 +502,8 @@ fn seller_fact_from_history_row(
             .or_else(|| local_nostr_pubkey_hex.map(ToString::to_string)),
         result_provider_pubkey: normalize_optional_string(row.provider_nostr_pubkey.as_deref())
             .or_else(|| local_nostr_pubkey_hex.map(ToString::to_string)),
+        invoice_observed_relays: Vec::new(),
+        result_observed_relays: Vec::new(),
         lightning_destination_pubkey: None,
         buyer_payment_pointer: None,
         seller_payment_pointer: normalize_optional_string(Some(row.payment_pointer.as_str())),
@@ -564,6 +570,14 @@ fn merge_fact(map: &mut BTreeMap<String, Nip90PaymentFact>, mut incoming: Nip90P
         existing.result_provider_pubkey = merge_string_field(
             existing.result_provider_pubkey.take(),
             incoming.result_provider_pubkey.take(),
+        );
+        existing.invoice_observed_relays = merge_string_vecs(
+            std::mem::take(&mut existing.invoice_observed_relays),
+            std::mem::take(&mut incoming.invoice_observed_relays),
+        );
+        existing.result_observed_relays = merge_string_vecs(
+            std::mem::take(&mut existing.result_observed_relays),
+            std::mem::take(&mut incoming.result_observed_relays),
         );
         existing.lightning_destination_pubkey = merge_string_field(
             existing.lightning_destination_pubkey.take(),
@@ -771,6 +785,75 @@ fn normalize_relay_hops(mut relay_hops: Vec<Nip90RelayHop>) -> Vec<Nip90RelayHop
     });
     relay_hops.truncate(NIP90_RELAY_HOP_ROW_LIMIT);
     relay_hops
+}
+
+fn derive_relay_hops(facts: &[Nip90PaymentFact]) -> Vec<Nip90RelayHop> {
+    let mut relay_hops = Vec::new();
+    for fact in facts {
+        let request_publish_observed_at = fact
+            .request_published_at
+            .or_else(|| fact.latest_event_epoch_seconds())
+            .unwrap_or(0);
+        if let Some(event_id) = fact.request_event_id.as_deref() {
+            for relay_url in &fact.publish_accepted_relays {
+                relay_hops.push(Nip90RelayHop {
+                    request_id: fact.request_id.clone(),
+                    event_id: event_id.to_string(),
+                    hop_kind: Nip90RelayHopKind::PublishAccepted,
+                    relay_url: relay_url.clone(),
+                    direction: Nip90RelayHopDirection::Outbound,
+                    accepted: true,
+                    observed_at: request_publish_observed_at,
+                });
+            }
+            for relay_url in &fact.publish_rejected_relays {
+                relay_hops.push(Nip90RelayHop {
+                    request_id: fact.request_id.clone(),
+                    event_id: event_id.to_string(),
+                    hop_kind: Nip90RelayHopKind::PublishRejected,
+                    relay_url: relay_url.clone(),
+                    direction: Nip90RelayHopDirection::Outbound,
+                    accepted: false,
+                    observed_at: request_publish_observed_at,
+                });
+            }
+        }
+        if let Some(event_id) = fact.invoice_event_id.as_deref() {
+            let observed_at = fact
+                .invoice_observed_at
+                .or_else(|| fact.latest_event_epoch_seconds())
+                .unwrap_or(0);
+            for relay_url in &fact.invoice_observed_relays {
+                relay_hops.push(Nip90RelayHop {
+                    request_id: fact.request_id.clone(),
+                    event_id: event_id.to_string(),
+                    hop_kind: Nip90RelayHopKind::InvoiceIngress,
+                    relay_url: relay_url.clone(),
+                    direction: Nip90RelayHopDirection::Inbound,
+                    accepted: true,
+                    observed_at,
+                });
+            }
+        }
+        if let Some(event_id) = fact.result_event_id.as_deref() {
+            let observed_at = fact
+                .result_observed_at
+                .or_else(|| fact.latest_event_epoch_seconds())
+                .unwrap_or(0);
+            for relay_url in &fact.result_observed_relays {
+                relay_hops.push(Nip90RelayHop {
+                    request_id: fact.request_id.clone(),
+                    event_id: event_id.to_string(),
+                    hop_kind: Nip90RelayHopKind::ResultIngress,
+                    relay_url: relay_url.clone(),
+                    direction: Nip90RelayHopDirection::Inbound,
+                    accepted: true,
+                    observed_at,
+                });
+            }
+        }
+    }
+    normalize_relay_hops(relay_hops)
 }
 
 fn payment_fact_id(request_id: &str) -> String {
@@ -1004,18 +1087,47 @@ mod tests {
                 authority_command_seq: 7,
             })
             .expect("request should queue");
+        let selected_relays = vec![
+            "wss://relay.publish.one/".to_string(),
+            "wss://relay.publish.two".to_string(),
+        ];
+        let accepted_relay_urls = vec!["wss://relay.publish.one/".to_string()];
+        let rejected_relay_urls = vec!["wss://relay.publish.two".to_string()];
+        network_requests.apply_nip90_request_publish_outcome_with_relays(
+            request_id.as_str(),
+            "event-request-001",
+            selected_relays.as_slice(),
+            accepted_relay_urls.as_slice(),
+            rejected_relay_urls.as_slice(),
+            1,
+            1,
+            None,
+        );
+        network_requests.apply_nip90_buyer_feedback_event_with_relay(
+            request_id.as_str(),
+            "providerhex001",
+            "event-feedback-001",
+            Some("wss://relay.invoice.test/"),
+            Some("payment-required"),
+            Some("invoice required"),
+            Some(21_000),
+            Some("lnbc1buyer"),
+        );
+        network_requests.apply_nip90_buyer_result_event_with_relay(
+            request_id.as_str(),
+            "providerhex001",
+            "event-result-001",
+            Some("wss://relay.result.test/"),
+            Some("success"),
+        );
         let request = network_requests
             .submitted
             .iter_mut()
             .find(|request| request.request_id == request_id)
             .expect("request should exist");
-        request.published_request_event_id = Some("event-request-001".to_string());
         request.status = NetworkRequestStatus::Paid;
-        request.result_provider_pubkey = Some("providerhex001".to_string());
-        request.invoice_provider_pubkey = Some("providerhex001".to_string());
         request.winning_provider_pubkey = Some("providerhex001".to_string());
         request.winning_result_event_id = Some("event-result-001".to_string());
-        request.last_feedback_event_id = Some("event-feedback-001".to_string());
         request.last_payment_pointer = Some("wallet-send-001".to_string());
         request.payment_required_at_epoch_seconds = Some(1_762_700_700);
         request.payment_sent_at_epoch_seconds = Some(1_762_700_777);
@@ -1080,6 +1192,29 @@ mod tests {
             buyer_fact.source_quality,
             Nip90PaymentFactSourceQuality::BuyerWalletReconciled
         );
+        assert_eq!(
+            buyer_fact.selected_relays,
+            vec![
+                "wss://relay.publish.one".to_string(),
+                "wss://relay.publish.two".to_string(),
+            ]
+        );
+        assert_eq!(
+            buyer_fact.publish_accepted_relays,
+            vec!["wss://relay.publish.one".to_string()]
+        );
+        assert_eq!(
+            buyer_fact.publish_rejected_relays,
+            vec!["wss://relay.publish.two".to_string()]
+        );
+        assert_eq!(
+            buyer_fact.invoice_observed_relays,
+            vec!["wss://relay.invoice.test".to_string()]
+        );
+        assert_eq!(
+            buyer_fact.result_observed_relays,
+            vec!["wss://relay.result.test".to_string()]
+        );
 
         let seller_fact = ledger
             .fact_for_request("req-sell-001")
@@ -1103,6 +1238,30 @@ mod tests {
             ledger.facts_for_actor(Nip90ActorNamespace::LightningDestination, "02buyerdest");
         assert_eq!(lightning_actor_facts.len(), 1);
         assert_eq!(lightning_actor_facts[0].request_id, "req-buy-001");
+        assert!(ledger.relay_hops.iter().any(|hop| {
+            hop.request_id == "req-buy-001"
+                && hop.event_id == "event-request-001"
+                && hop.hop_kind == super::Nip90RelayHopKind::PublishAccepted
+                && hop.relay_url == "wss://relay.publish.one"
+        }));
+        assert!(ledger.relay_hops.iter().any(|hop| {
+            hop.request_id == "req-buy-001"
+                && hop.event_id == "event-request-001"
+                && hop.hop_kind == super::Nip90RelayHopKind::PublishRejected
+                && hop.relay_url == "wss://relay.publish.two"
+        }));
+        assert!(ledger.relay_hops.iter().any(|hop| {
+            hop.request_id == "req-buy-001"
+                && hop.event_id == "event-feedback-001"
+                && hop.hop_kind == super::Nip90RelayHopKind::InvoiceIngress
+                && hop.relay_url == "wss://relay.invoice.test"
+        }));
+        assert!(ledger.relay_hops.iter().any(|hop| {
+            hop.request_id == "req-buy-001"
+                && hop.event_id == "event-result-001"
+                && hop.hop_kind == super::Nip90RelayHopKind::ResultIngress
+                && hop.relay_url == "wss://relay.result.test"
+        }));
 
         let reloaded = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
         assert_eq!(reloaded.facts, ledger.facts);

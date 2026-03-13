@@ -8107,6 +8107,7 @@ pub struct ActiveJobRecord {
     pub job_id: String,
     pub request_id: String,
     pub requester: String,
+    pub source_relay_url: Option<String>,
     pub demand_source: JobDemandSource,
     pub demand_risk_class: JobDemandRiskClass,
     pub demand_risk_disposition: JobDemandRiskDisposition,
@@ -8242,6 +8243,7 @@ impl ActiveJobState {
             job_id,
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
+            source_relay_url: request.source_relay_url.clone(),
             demand_source: request.demand_source,
             demand_risk_class: demand_risk.class,
             demand_risk_disposition: demand_risk.disposition,
@@ -10170,6 +10172,7 @@ mod tests {
         JobInboxNetworkRequest {
             request_id: request_id.to_string(),
             requester: format!("npub1{request_id}"),
+            source_relay_url: None,
             demand_source,
             request_kind: 5050,
             capability: capability.to_string(),
@@ -10305,6 +10308,10 @@ mod tests {
         SubmittedNetworkRequest {
             request_id: request_id.to_string(),
             published_request_event_id: Some(request_id.to_string()),
+            request_published_at_epoch_seconds: Some(1_762_800_000),
+            request_publish_selected_relays: Vec::new(),
+            request_publish_accepted_relays: Vec::new(),
+            request_publish_rejected_relays: Vec::new(),
             request_type: "loop.pingpong.10sat".to_string(),
             payload: "{}".to_string(),
             resolution_mode: BuyerResolutionMode::Race,
@@ -17136,6 +17143,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-log-fee".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),

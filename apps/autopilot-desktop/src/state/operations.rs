@@ -488,11 +488,13 @@ pub struct BuyerResolutionAction {
 pub struct NetworkRequestProviderObservation {
     pub provider_pubkey: String,
     pub last_feedback_event_id: Option<String>,
+    pub last_feedback_relay_urls: Vec<String>,
     pub last_feedback_status: Option<String>,
     pub last_feedback_status_extra: Option<String>,
     pub last_feedback_amount_msats: Option<u64>,
     pub last_feedback_bolt11: Option<String>,
     pub last_result_event_id: Option<String>,
+    pub last_result_relay_urls: Vec<String>,
     pub last_result_status: Option<String>,
 }
 
@@ -525,6 +527,10 @@ impl AutoPaymentBudgetRefusal {
 pub struct SubmittedNetworkRequest {
     pub request_id: String,
     pub published_request_event_id: Option<String>,
+    pub request_published_at_epoch_seconds: Option<u64>,
+    pub request_publish_selected_relays: Vec<String>,
+    pub request_publish_accepted_relays: Vec<String>,
+    pub request_publish_rejected_relays: Vec<String>,
     pub request_type: String,
     pub payload: String,
     pub resolution_mode: BuyerResolutionMode,
@@ -980,6 +986,10 @@ impl NetworkRequestsState {
             SubmittedNetworkRequest {
                 request_id: request_id.clone(),
                 published_request_event_id: None,
+                request_published_at_epoch_seconds: None,
+                request_publish_selected_relays: Vec::new(),
+                request_publish_accepted_relays: Vec::new(),
+                request_publish_rejected_relays: Vec::new(),
                 request_type: request_type.to_string(),
                 payload: payload.to_string(),
                 resolution_mode,
@@ -1217,6 +1227,29 @@ impl NetworkRequestsState {
         rejected_relays: usize,
         first_error: Option<&str>,
     ) {
+        self.apply_nip90_request_publish_outcome_with_relays(
+            request_id,
+            event_id,
+            &[],
+            &[],
+            &[],
+            accepted_relays,
+            rejected_relays,
+            first_error,
+        );
+    }
+
+    pub fn apply_nip90_request_publish_outcome_with_relays(
+        &mut self,
+        request_id: &str,
+        event_id: &str,
+        selected_relays: &[String],
+        accepted_relay_urls: &[String],
+        rejected_relay_urls: &[String],
+        accepted_relays: usize,
+        rejected_relays: usize,
+        first_error: Option<&str>,
+    ) {
         let request_id = {
             let Some(request) = self
                 .submitted
@@ -1226,6 +1259,12 @@ impl NetworkRequestsState {
                 return;
             };
             request.published_request_event_id = Some(event_id.to_string());
+            request
+                .request_published_at_epoch_seconds
+                .get_or_insert_with(now_epoch_seconds);
+            request.request_publish_selected_relays = normalize_relay_urls(selected_relays);
+            request.request_publish_accepted_relays = normalize_relay_urls(accepted_relay_urls);
+            request.request_publish_rejected_relays = normalize_relay_urls(rejected_relay_urls);
             if accepted_relays > 0 {
                 request.status = NetworkRequestStatus::Streaming;
             } else {
@@ -1258,6 +1297,29 @@ impl NetworkRequestsState {
         amount_msats: Option<u64>,
         bolt11: Option<&str>,
     ) -> Option<BuyerResolutionAction> {
+        self.apply_nip90_buyer_feedback_event_with_relay(
+            request_id,
+            provider_pubkey,
+            event_id,
+            None,
+            status,
+            status_extra,
+            amount_msats,
+            bolt11,
+        )
+    }
+
+    pub fn apply_nip90_buyer_feedback_event_with_relay(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        relay_url: Option<&str>,
+        status: Option<&str>,
+        status_extra: Option<&str>,
+        amount_msats: Option<u64>,
+        bolt11: Option<&str>,
+    ) -> Option<BuyerResolutionAction> {
         let Some(request) = self
             .submitted
             .iter_mut()
@@ -1283,6 +1345,13 @@ impl NetworkRequestsState {
             .iter()
             .any(|observed| observed == event_id)
         {
+            if let Some(provider) = request.provider_observations.iter_mut().find(|observation| {
+                normalize_pubkey(observation.provider_pubkey.as_str())
+                    == normalize_pubkey(provider_pubkey)
+            }) && provider.last_feedback_event_id.as_deref() == Some(event_id)
+            {
+                merge_relay_url(&mut provider.last_feedback_relay_urls, relay_url);
+            }
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
@@ -1306,6 +1375,7 @@ impl NetworkRequestsState {
 
         let provider = observed_provider_mut(request, provider_pubkey);
         provider.last_feedback_event_id = Some(event_id.to_string());
+        provider.last_feedback_relay_urls = normalize_optional_relay(relay_url).into_iter().collect();
         provider.last_feedback_status = status.map(ToString::to_string);
         provider.last_feedback_status_extra = status_extra.map(ToString::to_string);
         if let Some(amount_msats) = amount_msats {
@@ -1429,6 +1499,23 @@ impl NetworkRequestsState {
         event_id: &str,
         status: Option<&str>,
     ) -> Option<BuyerResolutionAction> {
+        self.apply_nip90_buyer_result_event_with_relay(
+            request_id,
+            provider_pubkey,
+            event_id,
+            None,
+            status,
+        )
+    }
+
+    pub fn apply_nip90_buyer_result_event_with_relay(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        relay_url: Option<&str>,
+        status: Option<&str>,
+    ) -> Option<BuyerResolutionAction> {
         let Some(request) = self
             .submitted
             .iter_mut()
@@ -1454,6 +1541,13 @@ impl NetworkRequestsState {
             .iter()
             .any(|observed| observed == event_id)
         {
+            if let Some(provider) = request.provider_observations.iter_mut().find(|observation| {
+                normalize_pubkey(observation.provider_pubkey.as_str())
+                    == normalize_pubkey(provider_pubkey)
+            }) && provider.last_result_event_id.as_deref() == Some(event_id)
+            {
+                merge_relay_url(&mut provider.last_result_relay_urls, relay_url);
+            }
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
@@ -1467,6 +1561,7 @@ impl NetworkRequestsState {
 
         let provider = observed_provider_mut(request, provider_pubkey);
         provider.last_result_event_id = Some(event_id.to_string());
+        provider.last_result_relay_urls = normalize_optional_relay(relay_url).into_iter().collect();
         provider.last_result_status = status.map(ToString::to_string);
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
@@ -2060,11 +2155,13 @@ fn observed_provider_mut<'a>(
         .push(NetworkRequestProviderObservation {
             provider_pubkey: provider_pubkey.to_string(),
             last_feedback_event_id: None,
+            last_feedback_relay_urls: Vec::new(),
             last_feedback_status: None,
             last_feedback_status_extra: None,
             last_feedback_amount_msats: None,
             last_feedback_bolt11: None,
             last_result_event_id: None,
+            last_result_relay_urls: Vec::new(),
             last_result_status: None,
         });
     request
@@ -2172,6 +2269,39 @@ fn provider_has_error_only_signal(observation: &NetworkRequestProviderObservatio
         && !provider_has_non_error_result(observation)
         && !provider_has_payment_feedback(observation)
         && !provider_has_processing_feedback(observation)
+}
+
+fn normalize_relay_urls(relays: &[String]) -> Vec<String> {
+    let mut normalized = relays
+        .iter()
+        .map(|relay| relay.trim().trim_end_matches('/').to_string())
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn merge_relay_url(relays: &mut Vec<String>, relay_url: Option<&str>) {
+    let Some(relay_url) = normalize_optional_relay(relay_url) else {
+        return;
+    };
+    if relays.iter().all(|existing| existing != &relay_url) {
+        relays.push(relay_url);
+        relays.sort();
+    }
+}
+
+fn normalize_optional_relay(relay_url: Option<&str>) -> Option<String> {
+    relay_url
+        .map(|relay| relay.trim().trim_end_matches('/').to_string())
+        .filter(|relay| !relay.is_empty())
+}
+
+fn now_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 fn emit_buyer_unresolved_winner_if_needed(request: &SubmittedNetworkRequest) {

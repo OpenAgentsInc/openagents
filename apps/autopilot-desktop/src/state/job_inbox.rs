@@ -105,6 +105,7 @@ pub struct JobExecutionParam {
 pub struct JobInboxRequest {
     pub request_id: String,
     pub requester: String,
+    pub source_relay_url: Option<String>,
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
@@ -267,6 +268,7 @@ pub(crate) fn local_provider_keys(identity: &nostr::NostrIdentity) -> Vec<String
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
     pub requester: String,
+    pub source_relay_url: Option<String>,
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
@@ -331,6 +333,7 @@ impl JobInboxState {
             .find(|existing| existing.request_id == request.request_id)
         {
             existing.requester = request.requester;
+            existing.source_relay_url = request.source_relay_url;
             existing.demand_source = request.demand_source;
             existing.request_kind = request.request_kind;
             existing.capability = request.capability;
@@ -359,6 +362,7 @@ impl JobInboxState {
         self.requests.push(JobInboxRequest {
             request_id: request.request_id,
             requester: request.requester,
+            source_relay_url: request.source_relay_url,
             demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability,
@@ -484,6 +488,7 @@ mod tests {
         JobInboxRequest {
             request_id: "req-preview".to_string(),
             requester: "buyer".to_string(),
+            source_relay_url: Some("wss://relay.example".to_string()),
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "summarize.text".to_string(),

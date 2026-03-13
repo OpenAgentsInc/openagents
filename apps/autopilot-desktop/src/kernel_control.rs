@@ -3473,6 +3473,7 @@ mod tests {
             job_id: "job-gpt_oss-001".to_string(),
             request_id: "req-gpt_oss-001".to_string(),
             requester: "npub1buyer".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
             demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,

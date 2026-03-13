@@ -215,6 +215,9 @@ pub struct ProviderNip90PublishOutcome {
     pub request_id: String,
     pub role: ProviderNip90PublishRole,
     pub event_id: String,
+    pub selected_relays: Vec<String>,
+    pub accepted_relay_urls: Vec<String>,
+    pub rejected_relay_urls: Vec<String>,
     pub accepted_relays: usize,
     pub rejected_relays: usize,
     pub first_error: Option<String>,
@@ -242,6 +245,7 @@ pub struct ProviderNip90BuyerResponseEvent {
     pub request_id: String,
     pub provider_pubkey: String,
     pub event_id: String,
+    pub relay_url: Option<String>,
     pub kind: ProviderNip90BuyerResponseKind,
     pub status: Option<String>,
     pub status_extra: Option<String>,
@@ -857,6 +861,9 @@ fn handle_publish_event(
                 request_id,
                 role,
                 event_id,
+                selected_relays: Vec::new(),
+                accepted_relay_urls: Vec::new(),
+                rejected_relay_urls: Vec::new(),
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
@@ -878,6 +885,9 @@ fn handle_publish_event(
                 request_id,
                 role,
                 event_id,
+                selected_relays: Vec::new(),
+                accepted_relay_urls: Vec::new(),
+                rejected_relay_urls: Vec::new(),
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
@@ -902,6 +912,9 @@ fn handle_publish_event(
                 request_id,
                 role,
                 event_id,
+                selected_relays: Vec::new(),
+                accepted_relay_urls: Vec::new(),
+                rejected_relay_urls: Vec::new(),
                 accepted_relays: 0,
                 rejected_relays: 0,
                 first_error: Some(message),
@@ -934,6 +947,21 @@ fn handle_publish_event(
 
     match runtime.block_on(pool.publish(&event)) {
         Ok(confirmations) => {
+            let selected_relays = normalize_relay_urls(state.snapshot.configured_relays.clone());
+            let accepted_relay_urls = normalize_relay_urls(
+                confirmations
+                    .iter()
+                    .filter(|entry| entry.accepted)
+                    .map(|entry| entry.relay_url.clone())
+                    .collect(),
+            );
+            let rejected_relay_urls = normalize_relay_urls(
+                confirmations
+                    .iter()
+                    .filter(|entry| !entry.accepted)
+                    .map(|entry| entry.relay_url.clone())
+                    .collect(),
+            );
             let accepted_relays = confirmations.iter().filter(|entry| entry.accepted).count();
             let rejected_relays = confirmations.len().saturating_sub(accepted_relays);
             let first_error = confirmations
@@ -972,6 +1000,9 @@ fn handle_publish_event(
                     request_id,
                     role,
                     event_id,
+                    selected_relays,
+                    accepted_relay_urls,
+                    rejected_relay_urls,
                     accepted_relays,
                     rejected_relays,
                     first_error,
@@ -999,6 +1030,9 @@ fn handle_publish_event(
                     request_id,
                     role,
                     event_id,
+                    selected_relays: Vec::new(),
+                    accepted_relay_urls: Vec::new(),
+                    rejected_relay_urls: Vec::new(),
                     accepted_relays: 0,
                     rejected_relays: 0,
                     first_error: Some(message),
@@ -1392,6 +1426,17 @@ fn relay_map_key(relay_url: &str) -> String {
     relay_url.trim_end_matches('/').to_string()
 }
 
+fn normalize_relay_urls(relays: Vec<String>) -> Vec<String> {
+    let mut normalized = relays
+        .into_iter()
+        .map(|relay| relay_map_key(relay.trim()))
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
 fn relay_health_rows_for(
     configured_relays: &[String],
     status: ProviderNip90RelayStatus,
@@ -1554,12 +1599,15 @@ async fn poll_ingress(
                         relay_url.clone(),
                         elapsed_millis_u32(recv_started.elapsed()),
                     ));
-                    if let Some(request) = event_to_inbox_request(&event) {
+                    if let Some(request) =
+                        event_to_inbox_request(&event, Some(relay_url.as_str()))
+                    {
                         requests.push(request);
                     } else if let Some(buyer_event) = event_to_buyer_response_event(
                         &event,
                         &tracked_buyer_request_ids,
                         local_pubkey_hex,
+                        Some(relay_url.as_str()),
                     ) {
                         buyer_events.push(buyer_event);
                     }
@@ -1595,7 +1643,10 @@ async fn poll_ingress(
     }
 }
 
-fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
+fn event_to_inbox_request(
+    event: &Event,
+    relay_url: Option<&str>,
+) -> Option<JobInboxNetworkRequest> {
     if !is_job_request_kind(event.kind) {
         return None;
     }
@@ -1716,6 +1767,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
     Some(JobInboxNetworkRequest {
         request_id: event.id.clone(),
         requester: event.pubkey.clone(),
+        source_relay_url: relay_url.map(ToString::to_string),
         demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
         capability: capability_for_kind(event.kind),
@@ -1896,12 +1948,13 @@ fn event_to_buyer_response_event(
     event: &Event,
     tracked_buyer_request_ids: &HashSet<String>,
     local_pubkey_hex: Option<&str>,
+    relay_url: Option<&str>,
 ) -> Option<ProviderNip90BuyerResponseEvent> {
     if local_pubkey_hex.is_some_and(|pubkey| pubkey == event.pubkey) {
         return None;
     }
     if is_job_feedback_kind(event.kind) {
-        let feedback = parse_feedback_event(event)?;
+        let feedback = parse_feedback_event(event, relay_url)?;
         if !tracked_buyer_request_ids.contains(feedback.request_id.as_str()) {
             return None;
         }
@@ -1931,6 +1984,7 @@ fn event_to_buyer_response_event(
             request_id: result.request_id,
             provider_pubkey: event.pubkey.clone(),
             event_id: event.id.clone(),
+            relay_url: relay_url.map(ToString::to_string),
             kind: ProviderNip90BuyerResponseKind::Result,
             status,
             status_extra,
@@ -1943,7 +1997,10 @@ fn event_to_buyer_response_event(
     None
 }
 
-fn parse_feedback_event(event: &Event) -> Option<ProviderNip90BuyerResponseEvent> {
+fn parse_feedback_event(
+    event: &Event,
+    relay_url: Option<&str>,
+) -> Option<ProviderNip90BuyerResponseEvent> {
     let mut request_id = None::<String>;
     let (status, status_extra) = parse_status_tags(event.tags.as_slice());
     let mut amount_msats = None::<u64>;
@@ -1987,6 +2044,7 @@ fn parse_feedback_event(event: &Event) -> Option<ProviderNip90BuyerResponseEvent
         request_id,
         provider_pubkey: event.pubkey.clone(),
         event_id: event.id.clone(),
+        relay_url: relay_url.map(ToString::to_string),
         kind: ProviderNip90BuyerResponseKind::Feedback,
         status,
         status_extra,
@@ -2455,9 +2513,14 @@ mod tests {
             sig: "11".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, Some("wss://relay.ingress.test/"))
+            .expect("event should map to inbox row");
         assert_eq!(row.request_id, "req-001");
         assert_eq!(row.requester, "npub1buyer");
+        assert_eq!(
+            row.source_relay_url.as_deref(),
+            Some("wss://relay.ingress.test/")
+        );
         assert_eq!(row.capability, "text.generation");
         assert_eq!(row.demand_source.label(), "open-network");
         assert_eq!(row.request_kind, 5050);
@@ -2506,7 +2569,8 @@ mod tests {
             sig: "11".repeat(64),
         };
         let targeted_elsewhere =
-            event_to_inbox_request(&targeted_elsewhere).expect("event should map to inbox row");
+            event_to_inbox_request(&targeted_elsewhere, None)
+                .expect("event should map to inbox row");
         assert!(
             !state.preview_request_should_reach_ui(&targeted_elsewhere),
             "preview should drop targeted requests for other providers before they hit the UI"
@@ -2525,7 +2589,7 @@ mod tests {
             sig: "22".repeat(64),
         };
         let targeted_here =
-            event_to_inbox_request(&targeted_here).expect("event should map to inbox row");
+            event_to_inbox_request(&targeted_here, None).expect("event should map to inbox row");
         assert!(
             state.preview_request_should_reach_ui(&targeted_here),
             "first matching preview request should reach the UI"
@@ -2557,7 +2621,7 @@ mod tests {
             sig: "12".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, None).expect("event should map to inbox row");
         assert!(matches!(row.validation, JobInboxValidation::Valid));
         let execution_input = row
             .execution_input
@@ -2585,7 +2649,7 @@ mod tests {
             sig: "22".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, None).expect("event should map to inbox row");
         assert_eq!(row.request_id, "req-002");
         assert!(matches!(
             row.validation,
@@ -2612,7 +2676,7 @@ mod tests {
             sig: "13".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, None).expect("event should map to inbox row");
         assert!(matches!(
             row.validation,
             JobInboxValidation::Invalid(ref reason)
@@ -2640,7 +2704,7 @@ mod tests {
             sig: "14".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, None).expect("event should map to inbox row");
         assert!(matches!(
             row.validation,
             JobInboxValidation::Invalid(ref reason)
@@ -2668,7 +2732,7 @@ mod tests {
             sig: "33".repeat(64),
         };
 
-        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        let row = event_to_inbox_request(&event, None).expect("event should map to inbox row");
         assert!(row.encrypted);
         assert_eq!(row.encrypted_payload.as_deref(), Some("nip44-ciphertext"));
         assert_eq!(row.target_provider_pubkeys, vec!["aa".repeat(32)]);
@@ -2695,10 +2759,19 @@ mod tests {
             sig: "55".repeat(64),
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
-        let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
+        let buyer_event = event_to_buyer_response_event(
+            &event,
+            &tracked,
+            None,
+            Some("wss://relay.feedback.test/"),
+        )
+        .expect("feedback should map");
         assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Feedback);
         assert_eq!(buyer_event.request_id, "req-001");
+        assert_eq!(
+            buyer_event.relay_url.as_deref(),
+            Some("wss://relay.feedback.test/")
+        );
         assert_eq!(buyer_event.status.as_deref(), Some("payment-required"));
         assert_eq!(buyer_event.amount_msats, Some(10_000));
         assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1..."));
@@ -2726,7 +2799,8 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
+            event_to_buyer_response_event(&event, &tracked, None, None)
+                .expect("feedback should map");
         assert_eq!(
             buyer_event.bolt11.as_deref(),
             Some("lnbc10n1invoicefallback")
@@ -2751,7 +2825,8 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None).expect("feedback should map");
+            event_to_buyer_response_event(&event, &tracked, None, None)
+                .expect("feedback should map");
         assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1jsoncontent"));
     }
 
@@ -2776,10 +2851,19 @@ mod tests {
             sig: "66".repeat(64),
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
-        let buyer_event =
-            event_to_buyer_response_event(&event, &tracked, None).expect("result should map");
+        let buyer_event = event_to_buyer_response_event(
+            &event,
+            &tracked,
+            None,
+            Some("wss://relay.result.test/"),
+        )
+        .expect("result should map");
         assert_eq!(buyer_event.kind, ProviderNip90BuyerResponseKind::Result);
         assert_eq!(buyer_event.request_id, "req-001");
+        assert_eq!(
+            buyer_event.relay_url.as_deref(),
+            Some("wss://relay.result.test/")
+        );
         assert_eq!(buyer_event.status.as_deref(), Some("success"));
         assert_eq!(buyer_event.amount_msats, Some(10_000));
         assert_eq!(buyer_event.bolt11.as_deref(), Some("lnbc10n1..."));
@@ -2801,7 +2885,7 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         assert!(
-            event_to_buyer_response_event(&event, &tracked, None).is_none(),
+            event_to_buyer_response_event(&event, &tracked, None, None).is_none(),
             "untracked request ids should not emit buyer response events"
         );
     }
@@ -2824,7 +2908,12 @@ mod tests {
         };
         let tracked = std::collections::HashSet::from(["req-001".to_string()]);
         assert!(
-            event_to_buyer_response_event(&event, &tracked, Some(identity.public_key_hex.as_str()))
+            event_to_buyer_response_event(
+                &event,
+                &tracked,
+                Some(identity.public_key_hex.as_str()),
+                None,
+            )
                 .is_none(),
             "self-authored buyer feedback should not be re-ingested as provider activity"
         );

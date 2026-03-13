@@ -5314,6 +5314,7 @@ mod tests {
         JobInboxRequest {
             request_id: request_id.to_string(),
             requester: "buyer".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
