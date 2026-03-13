@@ -941,12 +941,24 @@ fn paint_go_online_pane(
         mission_control_section_max_scroll(layout.earnings_panel, earnings_content_height);
     let earnings_scroll = mission_control.clamp_earnings_scroll_offset(earnings_max_scroll);
     let mut earnings_y = mission_control_section_content_y(layout.earnings_panel) - earnings_scroll;
+    let today_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.sats_today),
+    );
+    let month_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.sats_this_month),
+    );
+    let lifetime_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.lifetime_sats),
+    );
     earnings_y = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "Today",
-        &format_mission_control_amount(earnings_scoreboard.sats_today),
+        &today_display,
         mission_control_green_color(),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
@@ -957,7 +969,7 @@ fn paint_go_online_pane(
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "This Month",
-        &format_mission_control_amount(earnings_scoreboard.sats_this_month),
+        &month_display,
         mission_control_text_color(),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
@@ -968,7 +980,7 @@ fn paint_go_online_pane(
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
         "All Time",
-        &format_mission_control_amount(earnings_scoreboard.lifetime_sats),
+        &lifetime_display,
         mission_control_cyan_color(),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
@@ -3225,40 +3237,63 @@ fn paint_earnings_scoreboard_pane(
         y += 16.0;
     }
 
+    let today_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_sats_amount(earnings_scoreboard.sats_today),
+    );
+    let month_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_sats_amount(earnings_scoreboard.sats_this_month),
+    );
+    let lifetime_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_sats_amount(earnings_scoreboard.lifetime_sats),
+    );
+    let jobs_today_display = if earnings_scoreboard.load_state == PaneLoadState::Loading {
+        "LOADING".to_string()
+    } else {
+        earnings_scoreboard.jobs_today.to_string()
+    };
+    let last_job_result_display = if earnings_scoreboard.load_state == PaneLoadState::Loading {
+        "LOADING".to_string()
+    } else {
+        earnings_scoreboard.last_job_result.clone()
+    };
+
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Today",
-        &format_sats_amount(earnings_scoreboard.sats_today),
+        &today_display,
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "This month",
-        &format_sats_amount(earnings_scoreboard.sats_this_month),
+        &month_display,
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Lifetime",
-        &format_sats_amount(earnings_scoreboard.lifetime_sats),
+        &lifetime_display,
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Jobs today",
-        &earnings_scoreboard.jobs_today.to_string(),
+        &jobs_today_display,
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Last job result",
-        &earnings_scoreboard.last_job_result,
+        &last_job_result_display,
     );
     let _ = paint_label_line(
         paint,
@@ -3308,6 +3343,14 @@ fn format_bps_percent(value: Option<u16>) -> String {
         || "n/a".to_string(),
         |bps| format!("{:.2}%", (bps as f64) / 100.0),
     )
+}
+
+fn earnings_scoreboard_amount_display(load_state: PaneLoadState, amount: String) -> String {
+    if load_state == PaneLoadState::Loading {
+        "LOADING".to_string()
+    } else {
+        amount
+    }
 }
 
 fn paint_relay_connections_pane(
@@ -6969,14 +7012,14 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 mod tests {
     use super::{
         active_job_clipboard_text, build_active_job_scroll_lines, create_invoice_view_state,
-        mission_control_active_jobs_panel_state, mission_control_body_chunk_len,
-        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
-        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
-        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
-        mission_control_local_model_button_label, mission_control_value_chunk_len,
-        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, request_freshness_summary, spark_wallet_view_state,
-        split_text_for_display,
+        earnings_scoreboard_amount_display, mission_control_active_jobs_panel_state,
+        mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
+        mission_control_buy_mode_payment_label, mission_control_go_online_hint,
+        mission_control_lightning_receive_state_label, mission_control_local_fm_test_button_label,
+        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
+        mission_control_value_chunk_len, mission_control_value_x_offset,
+        nostr_identity_view_state, pay_invoice_view_state, payment_terminal_status,
+        request_freshness_summary, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -7125,6 +7168,22 @@ mod tests {
             .messages
             .insert(presence_message.event_id.clone(), presence_message);
         chat
+    }
+
+    #[test]
+    fn earnings_scoreboard_amount_display_shows_loading_until_ready() {
+        assert_eq!(
+            earnings_scoreboard_amount_display(PaneLoadState::Loading, "\u{20BF} 0".to_string()),
+            "LOADING"
+        );
+        assert_eq!(
+            earnings_scoreboard_amount_display(PaneLoadState::Ready, "\u{20BF} 2".to_string()),
+            "\u{20BF} 2"
+        );
+        assert_eq!(
+            earnings_scoreboard_amount_display(PaneLoadState::Error, "\u{20BF} 2".to_string()),
+            "\u{20BF} 2"
+        );
     }
 
     fn fixture_active_job_request(request_id: &str) -> JobInboxRequest {
