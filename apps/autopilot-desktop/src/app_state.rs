@@ -15529,6 +15529,14 @@ mod tests {
     }
 
     #[test]
+    fn job_history_default_reference_uses_live_current_time() {
+        let history = JobHistoryState::default();
+        let now = super::current_reference_epoch_seconds();
+        assert!(history.reference_epoch_seconds <= now);
+        assert!(now.saturating_sub(history.reference_epoch_seconds) <= 5);
+    }
+
+    #[test]
     fn restart_preserves_earnings_scoreboard_from_persisted_receipts() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let receipt_path = temp_dir.path().join("earn-kernel-receipts.json");
@@ -15717,6 +15725,77 @@ mod tests {
 
         assert_eq!(score.lifetime_sats, 2400);
         assert_eq!(score.sats_this_month, 1500);
+    }
+
+    #[test]
+    fn earnings_scoreboard_today_window_uses_current_reference_day() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let reference = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 15, 8, 0, 0)
+            .single()
+            .expect("valid reference timestamp")
+            .timestamp() as u64;
+        let previous_day = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 13, 7, 59, 0)
+            .single()
+            .expect("valid prior-day timestamp")
+            .timestamp() as u64;
+        let current_day = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 15, 7, 59, 0)
+            .single()
+            .expect("valid current-day timestamp")
+            .timestamp() as u64;
+
+        let mut current_row = fixture_history_row(
+            "job-day-001",
+            JobHistoryStatus::Succeeded,
+            current_day,
+            1_500,
+        );
+        current_row.payment_pointer = "wallet-day-001".to_string();
+        let mut previous_row = fixture_history_row(
+            "job-day-002",
+            JobHistoryStatus::Succeeded,
+            previous_day,
+            900,
+        );
+        previous_row.payment_pointer = "wallet-day-002".to_string();
+        let mut history = seed_job_history(vec![current_row, previous_row]);
+        history.set_reference_epoch_seconds(reference);
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-day-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 1_500,
+                timestamp: current_day,
+                ..Default::default()
+            });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-day-002".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 900,
+                timestamp: previous_day,
+                ..Default::default()
+            });
+
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(score.jobs_today, 1);
+        assert_eq!(score.sats_today, 1_500);
+        assert_eq!(score.lifetime_sats, 2_400);
     }
 
     #[test]
