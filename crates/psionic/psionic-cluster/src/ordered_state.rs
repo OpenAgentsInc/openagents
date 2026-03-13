@@ -11,9 +11,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
+    ClusterComputeMarketTrustAssessment, ClusterComputeMarketTrustDisposition,
     ClusterDiscoveryCandidate, ClusterId, ClusterIntroductionPolicy,
     ClusterIntroductionVerificationError, ClusterJoinRefusal, ClusterNodeIdentity,
-    ConfiguredClusterPeer, NodeId, PeerSnapshot, SignedClusterIntroductionEnvelope,
+    ClusterTrustPolicy, ConfiguredClusterPeer, NodeAttestationRequirement, NodeId, NodeRole,
+    PeerSnapshot, SignedClusterIntroductionEnvelope,
 };
 
 /// Monotonic cluster-election term for the first ordered-control seam.
@@ -171,12 +173,383 @@ impl ClusterMembershipRecord {
 pub enum ClusterDiscoveredCandidateStatus {
     /// Candidate has been introduced but not yet admitted.
     Introduced,
+    /// Candidate is held out of admission pending a trust-policy fixup.
+    Quarantined,
     /// Candidate has been promoted into explicit membership truth.
     Accepted,
     /// Candidate was refused under current admission policy.
     Refused,
+    /// Candidate was explicitly revoked after prior introduction or admission.
+    Revoked,
     /// Candidate introduction expired before admission.
     Expired,
+}
+
+/// Policy-level disposition assigned to one discovery candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCandidateAdmissionDisposition {
+    /// Candidate currently satisfies the active policy and may be promoted.
+    Eligible,
+    /// Candidate is held pending a potentially recoverable trust-policy mismatch.
+    Quarantined,
+    /// Candidate is refused under the active policy.
+    Refused,
+}
+
+/// Stable refusal reason surfaced by one candidate admission decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCandidateAdmissionRefusalReason {
+    /// Current cluster trust posture is not eligible for market-facing admission claims.
+    ComputeMarketTrustRefused,
+    /// Candidate was not present in the configured peer allowlist.
+    CandidateNotConfigured,
+    /// Candidate auth key did not match the current or overlapping configured key set.
+    UnexpectedAuthPublicKey,
+    /// Candidate introduction source was not accepted by admission policy.
+    IntroductionSourceNotAllowed,
+    /// Candidate introduction policy digest was not accepted by admission policy.
+    IntroductionPolicyNotAllowed,
+    /// Candidate role was not accepted by admission policy.
+    RoleNotAllowed,
+    /// Candidate did not surface a trust-bundle version while policy required one.
+    TrustBundleVersionMissing,
+    /// Candidate trust-bundle version was outside the accepted rollout set.
+    TrustBundleVersionNotAccepted,
+    /// Candidate attestation facts were required but missing.
+    AttestationMissing,
+    /// Candidate attestation facts did not match the active requirement.
+    AttestationMismatch,
+    /// Candidate introduction expired before admission.
+    IntroductionExpired,
+}
+
+impl ClusterCandidateAdmissionRefusalReason {
+    const fn is_quarantinable(self) -> bool {
+        matches!(
+            self,
+            Self::UnexpectedAuthPublicKey
+                | Self::TrustBundleVersionMissing
+                | Self::TrustBundleVersionNotAccepted
+                | Self::AttestationMissing
+                | Self::AttestationMismatch
+        )
+    }
+}
+
+/// Machine-readable policy decision for one discovered candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCandidateAdmissionDecision {
+    /// Stable digest of the admission policy used for the decision.
+    pub policy_digest: String,
+    /// Stable digest of the trust policy active for the decision.
+    pub trust_policy_digest: String,
+    /// Stable digest of the compute-market trust assessment derived from policy.
+    pub trust_assessment_digest: String,
+    /// Policy disposition assigned to the candidate.
+    pub disposition: ClusterCandidateAdmissionDisposition,
+    /// Candidate trust-bundle version observed for the decision, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_trust_bundle_version: Option<u64>,
+    /// Explicit refusal reasons when the candidate is not currently eligible.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal_reasons: Vec<ClusterCandidateAdmissionRefusalReason>,
+}
+
+/// Stable revocation reason for one previously introduced or admitted candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCandidateRevocationReason {
+    /// Operator explicitly revoked the candidate.
+    OperatorRevoked,
+    /// Trust-bundle rollout or rollback invalidated the candidate.
+    TrustBundleChanged,
+    /// Admission policy changed and the candidate must be reintroduced later.
+    PolicyChanged,
+    /// Candidate attestation was invalidated or withdrawn.
+    AttestationInvalidated,
+    /// Candidate identity or key material is considered compromised.
+    IdentityCompromised,
+}
+
+/// Durable revocation fact attached to one candidate record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCandidateRevocation {
+    /// Stable revocation reason code.
+    pub reason: ClusterCandidateRevocationReason,
+    /// Stable digest of the admission policy active at revocation time.
+    pub policy_digest: String,
+    /// Stable digest of the trust policy active at revocation time.
+    pub trust_policy_digest: String,
+    /// Stable digest of the compute-market trust assessment active at revocation time.
+    pub trust_assessment_digest: String,
+    /// Inclusive logical timestamp when revocation occurred.
+    pub revoked_at_ms: u64,
+    /// Optional machine-readable detail string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Ordered-state policy for admitting wider-network discovery candidates.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterAdmissionPolicy {
+    /// Underlying trust policy that gates wider-network identity and trust-bundle posture.
+    pub trust_policy: ClusterTrustPolicy,
+    /// Whether only compute-market-eligible trust posture may admit candidates.
+    #[serde(default)]
+    pub require_market_trust_eligibility: bool,
+    /// Whether candidates must surface a trust-bundle version.
+    #[serde(default)]
+    pub require_known_trust_bundle_version: bool,
+    /// Accepted introduction sources for the current policy revision. Empty means any verified source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepted_introduction_source_ids: Vec<String>,
+    /// Accepted introduction-policy digests for the current policy revision. Empty means any digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepted_introduction_policy_digests: Vec<String>,
+    /// Candidate roles admitted by this policy. Empty means any role.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_candidate_roles: Vec<NodeRole>,
+    /// Fallback attestation requirement when one configured peer does not carry a tighter rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_attestation: Option<NodeAttestationRequirement>,
+}
+
+impl ClusterAdmissionPolicy {
+    /// Default trusted-LAN policy for the first retained scope.
+    #[must_use]
+    pub fn trusted_lan() -> Self {
+        Self {
+            trust_policy: ClusterTrustPolicy::trusted_lan(),
+            require_market_trust_eligibility: false,
+            require_known_trust_bundle_version: false,
+            accepted_introduction_source_ids: Vec::new(),
+            accepted_introduction_policy_digests: Vec::new(),
+            allowed_candidate_roles: Vec::new(),
+            required_attestation: None,
+        }
+    }
+
+    /// Internet-facing admission policy for operator-managed wider-network nodes.
+    #[must_use]
+    pub fn internet_facing(trust_policy: ClusterTrustPolicy) -> Self {
+        Self {
+            trust_policy,
+            require_market_trust_eligibility: true,
+            require_known_trust_bundle_version: true,
+            accepted_introduction_source_ids: Vec::new(),
+            accepted_introduction_policy_digests: Vec::new(),
+            allowed_candidate_roles: Vec::new(),
+            required_attestation: None,
+        }
+    }
+
+    /// Restricts the policy to one explicit set of accepted introduction sources.
+    #[must_use]
+    pub fn with_accepted_introduction_source_ids(
+        mut self,
+        mut accepted_introduction_source_ids: Vec<String>,
+    ) -> Self {
+        accepted_introduction_source_ids.sort_unstable();
+        accepted_introduction_source_ids.dedup();
+        self.accepted_introduction_source_ids = accepted_introduction_source_ids;
+        self
+    }
+
+    /// Restricts the policy to one explicit set of accepted introduction-policy digests.
+    #[must_use]
+    pub fn with_accepted_introduction_policy_digests(
+        mut self,
+        mut accepted_introduction_policy_digests: Vec<String>,
+    ) -> Self {
+        accepted_introduction_policy_digests.sort_unstable();
+        accepted_introduction_policy_digests.dedup();
+        self.accepted_introduction_policy_digests = accepted_introduction_policy_digests;
+        self
+    }
+
+    /// Restricts the policy to one explicit set of candidate roles.
+    #[must_use]
+    pub fn with_allowed_candidate_roles(
+        mut self,
+        mut allowed_candidate_roles: Vec<NodeRole>,
+    ) -> Self {
+        allowed_candidate_roles.sort_unstable();
+        allowed_candidate_roles.dedup();
+        self.allowed_candidate_roles = allowed_candidate_roles;
+        self
+    }
+
+    /// Requires one fallback attestation shape for candidates not covered by a configured-peer rule.
+    #[must_use]
+    pub fn with_required_attestation(
+        mut self,
+        required_attestation: NodeAttestationRequirement,
+    ) -> Self {
+        self.required_attestation = Some(required_attestation);
+        self
+    }
+
+    /// Returns a stable digest for the active admission policy.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_json_digest("cluster_admission_policy", self)
+    }
+
+    /// Returns the compute-market trust assessment implied by the active trust policy.
+    #[must_use]
+    pub fn compute_market_trust_assessment(&self) -> ClusterComputeMarketTrustAssessment {
+        self.trust_policy.compute_market_trust_assessment()
+    }
+
+    fn evaluate_candidate(
+        &self,
+        record: &ClusterDiscoveredCandidateRecord,
+    ) -> ClusterCandidateAdmissionDecision {
+        let trust_assessment = self.compute_market_trust_assessment();
+        let mut refusal_reasons = Vec::new();
+
+        if self.require_market_trust_eligibility
+            && matches!(
+                trust_assessment.disposition,
+                ClusterComputeMarketTrustDisposition::Refused
+            )
+        {
+            refusal_reasons.push(ClusterCandidateAdmissionRefusalReason::ComputeMarketTrustRefused);
+        }
+        if !self.allowed_candidate_roles.is_empty()
+            && !self
+                .allowed_candidate_roles
+                .contains(&record.candidate.role)
+        {
+            refusal_reasons.push(ClusterCandidateAdmissionRefusalReason::RoleNotAllowed);
+        }
+        if !self.accepted_introduction_source_ids.is_empty()
+            && !self
+                .accepted_introduction_source_ids
+                .contains(&record.introduced_by_source_id)
+        {
+            refusal_reasons
+                .push(ClusterCandidateAdmissionRefusalReason::IntroductionSourceNotAllowed);
+        }
+        if !self.accepted_introduction_policy_digests.is_empty()
+            && !self
+                .accepted_introduction_policy_digests
+                .contains(&record.introduction_policy_digest)
+        {
+            refusal_reasons
+                .push(ClusterCandidateAdmissionRefusalReason::IntroductionPolicyNotAllowed);
+        }
+
+        if self.require_known_trust_bundle_version {
+            match record.observed_trust_bundle_version {
+                Some(version)
+                    if version == self.trust_policy.trust_bundle_version
+                        || self
+                            .trust_policy
+                            .accepted_trust_bundle_versions
+                            .contains(&version) => {}
+                Some(_) => refusal_reasons
+                    .push(ClusterCandidateAdmissionRefusalReason::TrustBundleVersionNotAccepted),
+                None => refusal_reasons
+                    .push(ClusterCandidateAdmissionRefusalReason::TrustBundleVersionMissing),
+            }
+        }
+
+        if !self.trust_policy.configured_peers.is_empty() {
+            match self
+                .trust_policy
+                .configured_peers
+                .iter()
+                .find(|peer| peer.node_id == record.candidate.node_id)
+            {
+                Some(peer) => {
+                    if peer.auth_public_key != record.candidate.auth_public_key
+                        && !peer
+                            .previous_auth_public_keys
+                            .contains(&record.candidate.auth_public_key)
+                    {
+                        refusal_reasons
+                            .push(ClusterCandidateAdmissionRefusalReason::UnexpectedAuthPublicKey);
+                    }
+                    let required_attestation = peer
+                        .attestation_requirement
+                        .as_ref()
+                        .or(self.required_attestation.as_ref());
+                    if let Some(required_attestation) = required_attestation {
+                        match record.candidate.attestation.as_ref() {
+                            Some(evidence)
+                                if attestation_requirement_matches(
+                                    required_attestation,
+                                    evidence,
+                                ) => {}
+                            Some(_) => refusal_reasons
+                                .push(ClusterCandidateAdmissionRefusalReason::AttestationMismatch),
+                            None => refusal_reasons
+                                .push(ClusterCandidateAdmissionRefusalReason::AttestationMissing),
+                        }
+                    }
+                }
+                None => refusal_reasons
+                    .push(ClusterCandidateAdmissionRefusalReason::CandidateNotConfigured),
+            }
+        } else if let Some(required_attestation) = &self.required_attestation {
+            match record.candidate.attestation.as_ref() {
+                Some(evidence)
+                    if attestation_requirement_matches(required_attestation, evidence) => {}
+                Some(_) => {
+                    refusal_reasons
+                        .push(ClusterCandidateAdmissionRefusalReason::AttestationMismatch);
+                }
+                None => {
+                    refusal_reasons
+                        .push(ClusterCandidateAdmissionRefusalReason::AttestationMissing);
+                }
+            }
+        }
+
+        ClusterCandidateAdmissionDecision {
+            policy_digest: self.stable_digest(),
+            trust_policy_digest: trust_assessment.trust_policy_digest.clone(),
+            trust_assessment_digest: trust_assessment.stable_digest(),
+            disposition: if refusal_reasons.is_empty() {
+                ClusterCandidateAdmissionDisposition::Eligible
+            } else if refusal_reasons
+                .iter()
+                .all(|reason| reason.is_quarantinable())
+            {
+                ClusterCandidateAdmissionDisposition::Quarantined
+            } else {
+                ClusterCandidateAdmissionDisposition::Refused
+            },
+            observed_trust_bundle_version: record.observed_trust_bundle_version,
+            refusal_reasons,
+        }
+    }
+
+    fn revocation(
+        &self,
+        reason: ClusterCandidateRevocationReason,
+        revoked_at_ms: u64,
+        detail: Option<String>,
+    ) -> ClusterCandidateRevocation {
+        let trust_assessment = self.compute_market_trust_assessment();
+        ClusterCandidateRevocation {
+            reason,
+            policy_digest: self.stable_digest(),
+            trust_policy_digest: trust_assessment.trust_policy_digest.clone(),
+            trust_assessment_digest: trust_assessment.stable_digest(),
+            revoked_at_ms,
+            detail,
+        }
+    }
+}
+
+impl Default for ClusterAdmissionPolicy {
+    fn default() -> Self {
+        Self::trusted_lan()
+    }
 }
 
 /// Cluster-visible discovery candidate record kept separate from admitted membership.
@@ -194,8 +567,17 @@ pub struct ClusterDiscoveredCandidateRecord {
     pub introduced_at_ms: u64,
     /// Inclusive expiry timestamp for the introduction.
     pub expires_at_ms: u64,
+    /// Candidate trust-bundle version observed when the introduction was accepted, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_trust_bundle_version: Option<u64>,
     /// Current discovery-candidate status.
     pub status: ClusterDiscoveredCandidateStatus,
+    /// Most recent policy decision for this candidate, when one has been computed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_policy_decision: Option<ClusterCandidateAdmissionDecision>,
+    /// Explicit revocation fact for this candidate, when one has been recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revocation: Option<ClusterCandidateRevocation>,
     /// Machine-checkable detail for the current status, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -215,7 +597,10 @@ impl ClusterDiscoveredCandidateRecord {
             introduction_payload_digest: envelope.payload.stable_digest(),
             introduced_at_ms: envelope.payload.issued_at_ms,
             expires_at_ms: envelope.payload.expires_at_ms,
+            observed_trust_bundle_version: None,
             status: ClusterDiscoveredCandidateStatus::Introduced,
+            last_policy_decision: None,
+            revocation: None,
             detail: None,
         })
     }
@@ -224,6 +609,33 @@ impl ClusterDiscoveredCandidateRecord {
     #[must_use]
     pub const fn with_status(mut self, status: ClusterDiscoveredCandidateStatus) -> Self {
         self.status = status;
+        self
+    }
+
+    /// Attaches one observed trust-bundle version.
+    #[must_use]
+    pub const fn with_observed_trust_bundle_version(
+        mut self,
+        observed_trust_bundle_version: u64,
+    ) -> Self {
+        self.observed_trust_bundle_version = Some(observed_trust_bundle_version);
+        self
+    }
+
+    /// Attaches one machine-readable policy decision.
+    #[must_use]
+    pub fn with_policy_decision(
+        mut self,
+        last_policy_decision: ClusterCandidateAdmissionDecision,
+    ) -> Self {
+        self.last_policy_decision = Some(last_policy_decision);
+        self
+    }
+
+    /// Attaches one durable revocation fact.
+    #[must_use]
+    pub fn with_revocation(mut self, revocation: ClusterCandidateRevocation) -> Self {
+        self.revocation = Some(revocation);
         self
     }
 
@@ -1324,17 +1736,28 @@ pub enum ClusterCommand {
     ReconcileMembership { membership: ClusterMembershipRecord },
     /// Request that the leader remove one node from authoritative state.
     RemoveMember { node_id: NodeId, reason: String },
+    /// Request that the leader reconcile wider-network admission policy.
+    ReconcileAdmissionPolicy { policy: ClusterAdmissionPolicy },
     /// Request that the leader reconcile one discovered candidate record.
     ReconcileDiscoveryCandidate {
         candidate: ClusterDiscoveredCandidateRecord,
     },
     /// Request that the leader remove one discovered candidate from authoritative state.
     RemoveDiscoveryCandidate { node_id: NodeId, reason: String },
+    /// Request that the leader expire one discovered candidate.
+    ExpireDiscoveryCandidate { node_id: NodeId, expired_at_ms: u64 },
     /// Request that the leader promote one discovered candidate into explicit membership truth.
     AdmitDiscoveryCandidate {
         node_id: NodeId,
         advertised_addr: Option<SocketAddr>,
         membership_status: ClusterMembershipStatus,
+    },
+    /// Request that the leader revoke one discovered candidate or admitted member.
+    RevokeDiscoveryCandidate {
+        node_id: NodeId,
+        reason: ClusterCandidateRevocationReason,
+        revoked_at_ms: u64,
+        detail: Option<String>,
     },
     /// Request that the leader reconcile one connection fact.
     ReconcileConnection { link: ClusterLink },
@@ -1541,9 +1964,12 @@ impl ClusterCommand {
             | Self::ReconcileNodeTelemetry { .. }
             | Self::ReconcileArtifactResidency { .. }
             | Self::RequestCatchup { .. } => ClusterCommandAuthorityScope::SelfNode,
-            Self::ReconcileDiscoveryCandidate { .. }
+            Self::ReconcileAdmissionPolicy { .. }
+            | Self::ReconcileDiscoveryCandidate { .. }
             | Self::RemoveDiscoveryCandidate { .. }
+            | Self::ExpireDiscoveryCandidate { .. }
             | Self::AdmitDiscoveryCandidate { .. }
+            | Self::RevokeDiscoveryCandidate { .. }
             | Self::RemoveMember { .. } => ClusterCommandAuthorityScope::CoordinatorOnly,
             Self::ReconcileConnection { .. } => ClusterCommandAuthorityScope::LinkPeer,
             Self::UpdateLeadership { .. } => ClusterCommandAuthorityScope::ProposedLeader,
@@ -1818,16 +2244,27 @@ pub enum ClusterEvent {
     MembershipReconciled { membership: ClusterMembershipRecord },
     /// Remove one node from authoritative state.
     MembershipRemoved { node_id: NodeId, reason: String },
+    /// Insert or replace the wider-network admission policy.
+    AdmissionPolicyReconciled { policy: ClusterAdmissionPolicy },
     /// Insert or replace one discovered candidate record.
     DiscoveryCandidateReconciled {
         candidate: ClusterDiscoveredCandidateRecord,
     },
     /// Remove one discovered candidate from authoritative state.
     DiscoveryCandidateRemoved { node_id: NodeId, reason: String },
+    /// Mark one discovered candidate as expired.
+    DiscoveryCandidateExpired { node_id: NodeId, expired_at_ms: u64 },
     /// Promote one discovered candidate into explicit membership truth.
     DiscoveryCandidateAdmitted {
         node_id: NodeId,
         membership: ClusterMembershipRecord,
+    },
+    /// Revoke one discovered candidate or admitted member.
+    DiscoveryCandidateRevoked {
+        node_id: NodeId,
+        reason: ClusterCandidateRevocationReason,
+        revoked_at_ms: u64,
+        detail: Option<String>,
     },
     /// Insert or replace one connection/link fact.
     ConnectionReconciled { link: ClusterLink },
@@ -1889,6 +2326,9 @@ pub struct ClusterSnapshot {
     pub cluster_id: ClusterId,
     /// Explicit schema version for this snapshot.
     pub schema_version: ClusterSchemaVersion,
+    /// Active wider-network admission policy for discovered candidates.
+    #[serde(default)]
+    pub admission_policy: ClusterAdmissionPolicy,
     /// Highest authoritative event applied into this snapshot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_applied_event_index: Option<ClusterEventIndex>,
@@ -1903,6 +2343,9 @@ pub struct ClusterSnapshot {
     /// Command provenance for the current discovery-candidate map.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub discovery_candidate_provenance: BTreeMap<NodeId, ClusterCommandAuthorization>,
+    /// Command provenance for the current admission policy, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission_policy_provenance: Option<ClusterCommandAuthorization>,
     /// Current cluster links by canonical node pair.
     pub links: BTreeMap<ClusterLinkKey, ClusterLink>,
     /// Command provenance for the current link map.
@@ -1942,11 +2385,13 @@ impl ClusterSnapshot {
         Self {
             cluster_id,
             schema_version,
+            admission_policy: ClusterAdmissionPolicy::default(),
             last_applied_event_index: None,
             memberships: BTreeMap::new(),
             membership_provenance: BTreeMap::new(),
             discovery_candidates: BTreeMap::new(),
             discovery_candidate_provenance: BTreeMap::new(),
+            admission_policy_provenance: None,
             links: BTreeMap::new(),
             link_provenance: BTreeMap::new(),
             telemetry: BTreeMap::new(),
@@ -2070,6 +2515,8 @@ impl ClusterSnapshot {
         hasher.update(b"|snapshot|");
         hasher.update(self.topology_digest().as_bytes());
         hasher.update(b"|");
+        hasher.update(self.admission_policy.stable_digest().as_bytes());
+        hasher.update(b"|");
         hasher.update(
             self.last_applied_event_index
                 .map_or(0, ClusterEventIndex::as_u64)
@@ -2090,6 +2537,10 @@ impl ClusterSnapshot {
             hasher.update(b"|discovery_candidate_provenance|");
             hasher.update(node_id.as_str().as_bytes());
             hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        if let Some(authorization) = &self.admission_policy_provenance {
+            hasher.update(b"|admission_policy_provenance|");
             hasher.update(authorization.stable_digest().as_bytes());
         }
         for (link_key, authorization) in &self.link_provenance {
@@ -2293,6 +2744,12 @@ impl ClusterState {
         &self.snapshot.discovery_candidates
     }
 
+    /// Returns the active wider-network admission policy.
+    #[must_use]
+    pub fn admission_policy(&self) -> &ClusterAdmissionPolicy {
+        &self.snapshot.admission_policy
+    }
+
     /// Returns the current cluster link map.
     #[must_use]
     pub fn links(&self) -> &BTreeMap<ClusterLinkKey, ClusterLink> {
@@ -2326,6 +2783,12 @@ impl ClusterState {
         node_id: &NodeId,
     ) -> Option<&ClusterCommandAuthorization> {
         self.snapshot.discovery_candidate_provenance.get(node_id)
+    }
+
+    /// Returns the command provenance for the current admission policy, when known.
+    #[must_use]
+    pub fn admission_policy_provenance(&self) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.admission_policy_provenance.as_ref()
     }
 
     /// Returns the command provenance for one link record, when known.
@@ -2432,6 +2895,93 @@ impl ClusterState {
         self.snapshot.artifact_residency_digest()
     }
 
+    /// Returns the current compute-market trust assessment implied by admission policy.
+    #[must_use]
+    pub fn cluster_compute_market_trust_assessment(&self) -> ClusterComputeMarketTrustAssessment {
+        self.snapshot
+            .admission_policy
+            .compute_market_trust_assessment()
+    }
+
+    fn reconcile_candidate_against_policy(
+        &self,
+        candidate: ClusterDiscoveredCandidateRecord,
+    ) -> ClusterDiscoveredCandidateRecord {
+        if matches!(
+            candidate.status,
+            ClusterDiscoveredCandidateStatus::Accepted
+                | ClusterDiscoveredCandidateStatus::Expired
+                | ClusterDiscoveredCandidateStatus::Revoked
+        ) {
+            return candidate;
+        }
+
+        let decision = self
+            .snapshot
+            .admission_policy
+            .evaluate_candidate(&candidate);
+        let mut candidate = candidate.with_policy_decision(decision.clone());
+        candidate.revocation = None;
+        match decision.disposition {
+            ClusterCandidateAdmissionDisposition::Eligible => {
+                candidate.status = ClusterDiscoveredCandidateStatus::Introduced;
+                candidate.detail = None;
+            }
+            ClusterCandidateAdmissionDisposition::Quarantined => {
+                candidate.status = ClusterDiscoveredCandidateStatus::Quarantined;
+                candidate.detail = Some(String::from("admission_quarantined"));
+            }
+            ClusterCandidateAdmissionDisposition::Refused => {
+                candidate.status = ClusterDiscoveredCandidateStatus::Refused;
+                candidate.detail = Some(String::from("admission_refused"));
+            }
+        }
+        candidate
+    }
+
+    fn expire_candidate_record(
+        &self,
+        candidate: ClusterDiscoveredCandidateRecord,
+    ) -> ClusterDiscoveredCandidateRecord {
+        let trust_assessment = self.cluster_compute_market_trust_assessment();
+        let observed_trust_bundle_version = candidate.observed_trust_bundle_version;
+        let mut candidate = candidate.with_policy_decision(ClusterCandidateAdmissionDecision {
+            policy_digest: self.snapshot.admission_policy.stable_digest(),
+            trust_policy_digest: trust_assessment.trust_policy_digest.clone(),
+            trust_assessment_digest: trust_assessment.stable_digest(),
+            disposition: ClusterCandidateAdmissionDisposition::Refused,
+            observed_trust_bundle_version,
+            refusal_reasons: vec![ClusterCandidateAdmissionRefusalReason::IntroductionExpired],
+        });
+        candidate.status = ClusterDiscoveredCandidateStatus::Expired;
+        candidate.revocation = None;
+        candidate.detail = Some(String::from("introduction_expired"));
+        candidate
+    }
+
+    fn reevaluate_discovery_candidates(&mut self) {
+        let updated = self
+            .snapshot
+            .discovery_candidates
+            .clone()
+            .into_iter()
+            .map(|(node_id, candidate)| {
+                let candidate = if matches!(
+                    candidate.status,
+                    ClusterDiscoveredCandidateStatus::Accepted
+                        | ClusterDiscoveredCandidateStatus::Expired
+                        | ClusterDiscoveredCandidateStatus::Revoked
+                ) {
+                    candidate
+                } else {
+                    self.reconcile_candidate_against_policy(candidate)
+                };
+                (node_id, candidate)
+            })
+            .collect();
+        self.snapshot.discovery_candidates = updated;
+    }
+
     /// Authorizes one imperative cluster command against the current authoritative state.
     pub fn authorize_command(
         &self,
@@ -2534,9 +3084,12 @@ impl ClusterState {
                 }
             }
             ClusterCommand::RemoveMember { .. }
+            | ClusterCommand::ReconcileAdmissionPolicy { .. }
             | ClusterCommand::ReconcileDiscoveryCandidate { .. }
             | ClusterCommand::RemoveDiscoveryCandidate { .. }
-            | ClusterCommand::AdmitDiscoveryCandidate { .. } => {
+            | ClusterCommand::ExpireDiscoveryCandidate { .. }
+            | ClusterCommand::AdmitDiscoveryCandidate { .. }
+            | ClusterCommand::RevokeDiscoveryCandidate { .. } => {
                 return Err(refused_command_authorization(
                     ClusterCommandAuthorizationRefusalCode::CoordinatorRequired,
                     submitter_node_id.clone(),
@@ -2693,7 +3246,17 @@ impl ClusterState {
                     self.snapshot.leadership_provenance = None;
                 }
             }
+            ClusterEvent::AdmissionPolicyReconciled { policy } => {
+                self.snapshot.admission_policy = policy;
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot.admission_policy_provenance = Some(command_authorization);
+                } else {
+                    self.snapshot.admission_policy_provenance = None;
+                }
+                self.reevaluate_discovery_candidates();
+            }
             ClusterEvent::DiscoveryCandidateReconciled { candidate } => {
+                let candidate = self.reconcile_candidate_against_policy(candidate);
                 let node_id = candidate.candidate.node_id.clone();
                 self.snapshot
                     .discovery_candidates
@@ -2714,6 +3277,26 @@ impl ClusterState {
                     .discovery_candidate_provenance
                     .remove(&node_id);
             }
+            ClusterEvent::DiscoveryCandidateExpired { node_id, .. } => {
+                let Some(candidate_record) =
+                    self.snapshot.discovery_candidates.get(&node_id).cloned()
+                else {
+                    return Err(ClusterHistoryError::DiscoveryCandidateMissing { node_id });
+                };
+                self.snapshot.discovery_candidates.insert(
+                    node_id.clone(),
+                    self.expire_candidate_record(candidate_record),
+                );
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .insert(node_id, command_authorization);
+                } else {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .remove(&node_id);
+                }
+            }
             ClusterEvent::DiscoveryCandidateAdmitted {
                 node_id,
                 membership,
@@ -2723,6 +3306,7 @@ impl ClusterState {
                 else {
                     return Err(ClusterHistoryError::DiscoveryCandidateMissing { node_id });
                 };
+                let candidate_record = self.reconcile_candidate_against_policy(candidate_record);
 
                 if candidate_record.status != ClusterDiscoveredCandidateStatus::Introduced {
                     return Err(ClusterHistoryError::DiscoveryCandidateAdmissionRefused {
@@ -2730,11 +3314,16 @@ impl ClusterState {
                         status: candidate_record.status,
                     });
                 }
+                let policy_decision = self
+                    .snapshot
+                    .admission_policy
+                    .evaluate_candidate(&candidate_record);
 
                 self.snapshot.discovery_candidates.insert(
                     node_id.clone(),
                     candidate_record
                         .with_status(ClusterDiscoveredCandidateStatus::Accepted)
+                        .with_policy_decision(policy_decision)
                         .with_detail("admitted_into_membership"),
                 );
                 if let Some(command_authorization) = command_authorization.clone() {
@@ -2757,6 +3346,41 @@ impl ClusterState {
                 } else {
                     self.snapshot.membership_provenance.remove(&node_id);
                 }
+            }
+            ClusterEvent::DiscoveryCandidateRevoked {
+                node_id,
+                reason,
+                revoked_at_ms,
+                detail,
+            } => {
+                let Some(candidate_record) =
+                    self.snapshot.discovery_candidates.get(&node_id).cloned()
+                else {
+                    return Err(ClusterHistoryError::DiscoveryCandidateMissing { node_id });
+                };
+                let revocation = self.snapshot.admission_policy.revocation(
+                    reason,
+                    revoked_at_ms,
+                    detail.clone(),
+                );
+                self.snapshot.discovery_candidates.insert(
+                    node_id.clone(),
+                    candidate_record
+                        .with_status(ClusterDiscoveredCandidateStatus::Revoked)
+                        .with_revocation(revocation)
+                        .with_detail(detail.unwrap_or_else(|| String::from("candidate_revoked"))),
+                );
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .insert(node_id.clone(), command_authorization);
+                } else {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .remove(&node_id);
+                }
+                self.snapshot.memberships.remove(&node_id);
+                self.snapshot.membership_provenance.remove(&node_id);
             }
             ClusterEvent::ConnectionReconciled { link } => {
                 let link_key = link.key.clone();
@@ -3271,6 +3895,15 @@ fn cluster_persistence_format_error(error: serde_json::Error) -> ClusterHistoryE
     }
 }
 
+fn attestation_requirement_matches(
+    requirement: &NodeAttestationRequirement,
+    evidence: &crate::NodeAttestationEvidence,
+) -> bool {
+    requirement.issuer == evidence.issuer
+        && requirement.attestation_digest == evidence.attestation_digest
+        && requirement.device_identity_digest == evidence.device_identity_digest
+}
+
 fn next_expected_index(last_applied_event_index: Option<ClusterEventIndex>) -> ClusterEventIndex {
     last_applied_event_index.map_or(ClusterEventIndex::initial(), ClusterEventIndex::next)
 }
@@ -3425,23 +4058,29 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use tempfile::tempdir;
 
-    use crate::{AdmissionToken, ClusterDiscoveryCandidate, ClusterNamespace, NodeEpoch, NodeRole};
+    use crate::{
+        AdmissionToken, ClusterDiscoveryCandidate, ClusterDiscoveryPosture, ClusterNamespace,
+        NodeEpoch, NodeRole,
+    };
 
     use super::{
-        ClusterArtifactReference, ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
-        ClusterArtifactTransferMethod, ClusterBackendReadinessStatus, ClusterCatchupPayload,
-        ClusterCatchupRequest, ClusterCommand, ClusterCommandAuthorityScope,
+        ClusterAdmissionPolicy, ClusterArtifactReference, ClusterArtifactResidencyRecord,
+        ClusterArtifactResidencyStatus, ClusterArtifactTransferMethod,
+        ClusterBackendReadinessStatus, ClusterCandidateAdmissionDisposition,
+        ClusterCandidateAdmissionRefusalReason, ClusterCandidateRevocationReason,
+        ClusterCatchupPayload, ClusterCatchupRequest, ClusterCommand, ClusterCommandAuthorityScope,
         ClusterCommandAuthorizationError, ClusterCommandAuthorizationPolicy,
-        ClusterCommandAuthorizationRefusalCode, ClusterDiscoveredCandidateRecord,
-        ClusterDiscoveredCandidateStatus, ClusterElectionError, ClusterElectionLedger,
-        ClusterElectionMessage, ClusterEvent, ClusterEventIndex, ClusterEventLog,
-        ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
-        ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
-        ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
-        ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
-        ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
-        ClusterSplitBrainDiagnostic, ClusterStabilityPosture, ClusterState, ClusterTerm,
-        ClusterTransportClass, ConfiguredClusterPeer, IndexedClusterEvent,
+        ClusterCommandAuthorizationRefusalCode, ClusterComputeMarketTrustDisposition,
+        ClusterDiscoveredCandidateRecord, ClusterDiscoveredCandidateStatus, ClusterElectionError,
+        ClusterElectionLedger, ClusterElectionMessage, ClusterEvent, ClusterEventIndex,
+        ClusterEventLog, ClusterHistoryError, ClusterLeadershipLeasePolicy,
+        ClusterLeadershipLeaseStatus, ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink,
+        ClusterLinkClass, ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus,
+        ClusterNodeTelemetry, ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError,
+        ClusterRecoveryPolicy, ClusterRecoveryReason, ClusterRecoveryReplayWindow,
+        ClusterSchemaVersion, ClusterSnapshot, ClusterSplitBrainDiagnostic,
+        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
+        ClusterTrustPolicy, ConfiguredClusterPeer, IndexedClusterEvent,
     };
 
     fn sample_cluster_id() -> crate::ClusterId {
@@ -3503,9 +4142,78 @@ mod tests {
             introduction_payload_digest: format!("payload-digest-{port}"),
             introduced_at_ms: 10_000,
             expires_at_ms: 20_000,
+            observed_trust_bundle_version: None,
             status: ClusterDiscoveredCandidateStatus::Introduced,
+            last_policy_decision: None,
+            revocation: None,
             detail: None,
         }
+    }
+
+    fn sample_attested_discovery_candidate_record(
+        cluster_id: &crate::ClusterId,
+        node_id: crate::NodeId,
+        port: u16,
+        role: NodeRole,
+        trust_bundle_version: u64,
+    ) -> ClusterDiscoveredCandidateRecord {
+        let attestation = crate::NodeAttestationEvidence::new(
+            "attestation-authority",
+            format!("attestation-digest-{port}"),
+        )
+        .with_device_identity_digest(format!("device-digest-{port}"));
+        let mut candidate = sample_discovery_candidate_record(cluster_id, node_id, port, role)
+            .with_observed_trust_bundle_version(trust_bundle_version);
+        candidate.candidate = candidate.candidate.with_attestation(attestation);
+        candidate
+    }
+
+    fn sample_candidate_attestation_requirement(
+        candidate: &ClusterDiscoveredCandidateRecord,
+    ) -> crate::NodeAttestationRequirement {
+        let attestation = candidate
+            .candidate
+            .attestation
+            .as_ref()
+            .expect("candidate should carry attestation");
+        let mut requirement = crate::NodeAttestationRequirement::new(
+            attestation.issuer.clone(),
+            attestation.attestation_digest.clone(),
+        );
+        if let Some(device_identity_digest) = &attestation.device_identity_digest {
+            requirement = requirement.with_device_identity_digest(device_identity_digest.clone());
+        }
+        requirement
+    }
+
+    fn sample_internet_admission_policy(
+        candidate: &ClusterDiscoveredCandidateRecord,
+        trust_bundle_version: u64,
+    ) -> ClusterAdmissionPolicy {
+        let peer = ConfiguredClusterPeer::new(
+            candidate.candidate.node_id.clone(),
+            *candidate
+                .candidate
+                .advertised_addrs
+                .first()
+                .expect("candidate should advertise one addr"),
+            candidate.candidate.auth_public_key.clone(),
+        )
+        .with_attestation_requirement(sample_candidate_attestation_requirement(candidate));
+        let trust_policy = ClusterTrustPolicy::attested_configured_peers(vec![peer])
+            .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
+            .with_trust_bundle_version(trust_bundle_version);
+        let mut policy = ClusterAdmissionPolicy::internet_facing(trust_policy)
+            .with_accepted_introduction_source_ids(vec![candidate.introduced_by_source_id.clone()])
+            .with_accepted_introduction_policy_digests(vec![
+                candidate.introduction_policy_digest.clone(),
+            ])
+            .with_allowed_candidate_roles(vec![candidate.candidate.role]);
+        // Wider-network discovery is still surfaced as non-market-eligible upstream,
+        // but cluster admission policy should already be able to reason about
+        // attestation, trust-bundle rollout, and revocation locally.
+        policy.require_market_trust_eligibility = false;
+        policy
     }
 
     fn sample_state_with_coordinator_authority(
@@ -4931,14 +5639,14 @@ mod tests {
         });
 
         let replayed = log.replay().expect("candidate ledger should replay");
+        let stored = replayed
+            .discovery_candidates()
+            .get(&candidate.candidate.node_id)
+            .expect("candidate should replay into discovery ledger");
         assert_eq!(replayed.last_applied_event_index(), Some(event.index));
         assert_eq!(replayed.memberships().len(), 0);
-        assert_eq!(
-            replayed
-                .discovery_candidates()
-                .get(&candidate.candidate.node_id),
-            Some(&candidate)
-        );
+        assert_eq!(stored.candidate, candidate.candidate);
+        assert_eq!(stored.status, ClusterDiscoveredCandidateStatus::Introduced);
     }
 
     #[test]
@@ -5281,6 +5989,542 @@ mod tests {
             }
             payload => panic!("expected event payload, got {payload:?}"),
         }
+    }
+
+    #[test]
+    fn internet_grade_admission_policy_quarantines_candidate_until_rollout_matches() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4760,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let authorization_policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(
+            &cluster_id,
+            &coordinator,
+            &authorization_policy,
+        );
+        let candidate = sample_attested_discovery_candidate_record(
+            &cluster_id,
+            crate::NodeId::new("internet-worker"),
+            5760,
+            NodeRole::ExecutorOnly,
+            7,
+        );
+        let admission_policy = sample_internet_admission_policy(&candidate, 9);
+
+        let policy_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileAdmissionPolicy {
+                    policy: admission_policy.clone(),
+                },
+                &authorization_policy,
+            )
+            .expect("admission policy should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    state
+                        .last_applied_event_index()
+                        .expect("coordinator state should have authority")
+                        .next(),
+                    ClusterEvent::AdmissionPolicyReconciled {
+                        policy: admission_policy.clone(),
+                    },
+                )
+                .with_command_authorization(policy_authorization.clone()),
+            )
+            .expect("admission policy should apply");
+
+        let candidate_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileDiscoveryCandidate {
+                    candidate: candidate.clone(),
+                },
+                &authorization_policy,
+            )
+            .expect("candidate reconcile should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id,
+                    state
+                        .last_applied_event_index()
+                        .expect("admission policy should advance authority")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateReconciled {
+                        candidate: candidate.clone(),
+                    },
+                )
+                .with_command_authorization(candidate_authorization),
+            )
+            .expect("candidate reconcile should apply");
+
+        let stored = state
+            .discovery_candidates()
+            .get(&candidate.candidate.node_id)
+            .expect("candidate should be stored");
+        let decision = stored
+            .last_policy_decision
+            .as_ref()
+            .expect("candidate should carry policy decision");
+        assert_eq!(state.admission_policy(), &admission_policy);
+        assert_eq!(
+            state.admission_policy_provenance(),
+            Some(&policy_authorization)
+        );
+        assert_eq!(
+            state.cluster_compute_market_trust_assessment().disposition,
+            ClusterComputeMarketTrustDisposition::Refused
+        );
+        assert_eq!(stored.status, ClusterDiscoveredCandidateStatus::Quarantined);
+        assert_eq!(
+            decision.disposition,
+            ClusterCandidateAdmissionDisposition::Quarantined
+        );
+        assert!(
+            decision
+                .refusal_reasons
+                .contains(&ClusterCandidateAdmissionRefusalReason::TrustBundleVersionNotAccepted),
+            "trust-bundle mismatch should quarantine the candidate"
+        );
+    }
+
+    #[test]
+    fn admission_policy_rollout_reassesses_quarantined_candidate_and_allows_promotion() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4761,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let authorization_policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(
+            &cluster_id,
+            &coordinator,
+            &authorization_policy,
+        );
+        let candidate = sample_attested_discovery_candidate_record(
+            &cluster_id,
+            crate::NodeId::new("internet-worker"),
+            5761,
+            NodeRole::ExecutorOnly,
+            7,
+        );
+        let initial_policy = sample_internet_admission_policy(&candidate, 9);
+
+        for event in [
+            ClusterEvent::AdmissionPolicyReconciled {
+                policy: initial_policy.clone(),
+            },
+            ClusterEvent::DiscoveryCandidateReconciled {
+                candidate: candidate.clone(),
+            },
+        ] {
+            let command = match &event {
+                ClusterEvent::AdmissionPolicyReconciled { policy } => {
+                    ClusterCommand::ReconcileAdmissionPolicy {
+                        policy: policy.clone(),
+                    }
+                }
+                ClusterEvent::DiscoveryCandidateReconciled { candidate } => {
+                    ClusterCommand::ReconcileDiscoveryCandidate {
+                        candidate: candidate.clone(),
+                    }
+                }
+                _ => unreachable!("only policy and candidate reconcile events are used"),
+            };
+            let authorization = state
+                .authorize_command(
+                    &coordinator.identity.node_id,
+                    &command,
+                    &authorization_policy,
+                )
+                .expect("event should authorize");
+            state
+                .apply(
+                    IndexedClusterEvent::new(
+                        cluster_id.clone(),
+                        state
+                            .last_applied_event_index()
+                            .expect("coordinator state should have authority")
+                            .next(),
+                        event,
+                    )
+                    .with_command_authorization(authorization),
+                )
+                .expect("event should apply");
+        }
+
+        let rollout_policy = ClusterAdmissionPolicy {
+            trust_policy: initial_policy
+                .trust_policy
+                .clone()
+                .with_accepted_trust_bundle_versions(vec![7]),
+            ..initial_policy.clone()
+        };
+        let rollout_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileAdmissionPolicy {
+                    policy: rollout_policy.clone(),
+                },
+                &authorization_policy,
+            )
+            .expect("rollout policy should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    state
+                        .last_applied_event_index()
+                        .expect("candidate should already exist")
+                        .next(),
+                    ClusterEvent::AdmissionPolicyReconciled {
+                        policy: rollout_policy.clone(),
+                    },
+                )
+                .with_command_authorization(rollout_authorization),
+            )
+            .expect("rollout policy should apply");
+
+        let reevaluated = state
+            .discovery_candidates()
+            .get(&candidate.candidate.node_id)
+            .expect("candidate should remain present");
+        let reevaluated_decision = reevaluated
+            .last_policy_decision
+            .as_ref()
+            .expect("candidate should retain reevaluated decision");
+        assert_eq!(
+            reevaluated.status,
+            ClusterDiscoveredCandidateStatus::Introduced
+        );
+        assert_eq!(
+            reevaluated_decision.disposition,
+            ClusterCandidateAdmissionDisposition::Eligible
+        );
+        assert!(
+            reevaluated_decision.refusal_reasons.is_empty(),
+            "accepted rollout version should clear quarantine"
+        );
+
+        let admitted_membership = ClusterMembershipRecord::new(
+            crate::ClusterNodeIdentity {
+                cluster_id: cluster_id.clone(),
+                node_id: candidate.candidate.node_id.clone(),
+                node_epoch: NodeEpoch::initial(),
+                role: candidate.candidate.role,
+                auth_public_key: candidate.candidate.auth_public_key.clone(),
+                attestation: candidate.candidate.attestation.clone(),
+            },
+            candidate.candidate.advertised_addrs.first().copied(),
+            ClusterMembershipStatus::Ready,
+        );
+        let admit_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::AdmitDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    advertised_addr: admitted_membership.advertised_addr,
+                    membership_status: admitted_membership.status,
+                },
+                &authorization_policy,
+            )
+            .expect("candidate admission should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id,
+                    state
+                        .last_applied_event_index()
+                        .expect("rollout policy should advance authority")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateAdmitted {
+                        node_id: candidate.candidate.node_id.clone(),
+                        membership: admitted_membership.clone(),
+                    },
+                )
+                .with_command_authorization(admit_authorization),
+            )
+            .expect("candidate should admit after rollout");
+
+        assert_eq!(
+            state.memberships().get(&candidate.candidate.node_id),
+            Some(&admitted_membership)
+        );
+        assert_eq!(
+            state
+                .discovery_candidates()
+                .get(&candidate.candidate.node_id)
+                .map(|candidate| candidate.status),
+            Some(ClusterDiscoveredCandidateStatus::Accepted)
+        );
+    }
+
+    #[test]
+    fn revoking_discovery_candidate_removes_membership_and_records_reason() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4762,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let authorization_policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(
+            &cluster_id,
+            &coordinator,
+            &authorization_policy,
+        );
+        let candidate = sample_attested_discovery_candidate_record(
+            &cluster_id,
+            crate::NodeId::new("revoked-worker"),
+            5762,
+            NodeRole::ExecutorOnly,
+            7,
+        );
+        let admission_policy = sample_internet_admission_policy(&candidate, 7);
+
+        for event in [
+            ClusterEvent::AdmissionPolicyReconciled {
+                policy: admission_policy.clone(),
+            },
+            ClusterEvent::DiscoveryCandidateReconciled {
+                candidate: candidate.clone(),
+            },
+        ] {
+            let command = match &event {
+                ClusterEvent::AdmissionPolicyReconciled { policy } => {
+                    ClusterCommand::ReconcileAdmissionPolicy {
+                        policy: policy.clone(),
+                    }
+                }
+                ClusterEvent::DiscoveryCandidateReconciled { candidate } => {
+                    ClusterCommand::ReconcileDiscoveryCandidate {
+                        candidate: candidate.clone(),
+                    }
+                }
+                _ => unreachable!("only policy and candidate reconcile events are used"),
+            };
+            let authorization = state
+                .authorize_command(
+                    &coordinator.identity.node_id,
+                    &command,
+                    &authorization_policy,
+                )
+                .expect("setup event should authorize");
+            state
+                .apply(
+                    IndexedClusterEvent::new(
+                        cluster_id.clone(),
+                        state
+                            .last_applied_event_index()
+                            .expect("coordinator state should have authority")
+                            .next(),
+                        event,
+                    )
+                    .with_command_authorization(authorization),
+                )
+                .expect("setup event should apply");
+        }
+
+        let admitted_membership = ClusterMembershipRecord::new(
+            crate::ClusterNodeIdentity {
+                cluster_id: cluster_id.clone(),
+                node_id: candidate.candidate.node_id.clone(),
+                node_epoch: NodeEpoch::initial(),
+                role: candidate.candidate.role,
+                auth_public_key: candidate.candidate.auth_public_key.clone(),
+                attestation: candidate.candidate.attestation.clone(),
+            },
+            candidate.candidate.advertised_addrs.first().copied(),
+            ClusterMembershipStatus::Ready,
+        );
+        let admit_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::AdmitDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    advertised_addr: admitted_membership.advertised_addr,
+                    membership_status: admitted_membership.status,
+                },
+                &authorization_policy,
+            )
+            .expect("candidate admission should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    state
+                        .last_applied_event_index()
+                        .expect("candidate should be introduced")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateAdmitted {
+                        node_id: candidate.candidate.node_id.clone(),
+                        membership: admitted_membership.clone(),
+                    },
+                )
+                .with_command_authorization(admit_authorization),
+            )
+            .expect("candidate should admit before revocation");
+
+        let revoke_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::RevokeDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    reason: ClusterCandidateRevocationReason::PolicyChanged,
+                    revoked_at_ms: 30_000,
+                    detail: Some(String::from("trust_bundle_rotation")),
+                },
+                &authorization_policy,
+            )
+            .expect("candidate revocation should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id,
+                    state
+                        .last_applied_event_index()
+                        .expect("candidate should be admitted")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateRevoked {
+                        node_id: candidate.candidate.node_id.clone(),
+                        reason: ClusterCandidateRevocationReason::PolicyChanged,
+                        revoked_at_ms: 30_000,
+                        detail: Some(String::from("trust_bundle_rotation")),
+                    },
+                )
+                .with_command_authorization(revoke_authorization.clone()),
+            )
+            .expect("candidate revocation should apply");
+
+        let revoked = state
+            .discovery_candidates()
+            .get(&candidate.candidate.node_id)
+            .expect("candidate should remain in ledger after revocation");
+        assert_eq!(revoked.status, ClusterDiscoveredCandidateStatus::Revoked);
+        assert_eq!(
+            revoked
+                .revocation
+                .as_ref()
+                .map(|revocation| revocation.reason),
+            Some(ClusterCandidateRevocationReason::PolicyChanged)
+        );
+        assert_eq!(
+            state.discovery_candidate_provenance(&candidate.candidate.node_id),
+            Some(&revoke_authorization)
+        );
+        assert!(
+            state
+                .memberships()
+                .get(&candidate.candidate.node_id)
+                .is_none(),
+            "revocation should remove active membership truth"
+        );
+        assert!(
+            state
+                .membership_provenance(&candidate.candidate.node_id)
+                .is_none(),
+            "revocation should clear membership provenance"
+        );
+    }
+
+    #[test]
+    fn expiring_discovery_candidate_records_machine_reason() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4763,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let authorization_policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(
+            &cluster_id,
+            &coordinator,
+            &authorization_policy,
+        );
+        let candidate = sample_discovery_candidate_record(
+            &cluster_id,
+            crate::NodeId::new("expiring-worker"),
+            5763,
+            NodeRole::ExecutorOnly,
+        );
+
+        let candidate_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileDiscoveryCandidate {
+                    candidate: candidate.clone(),
+                },
+                &authorization_policy,
+            )
+            .expect("candidate reconcile should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    state
+                        .last_applied_event_index()
+                        .expect("coordinator state should have authority")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateReconciled {
+                        candidate: candidate.clone(),
+                    },
+                )
+                .with_command_authorization(candidate_authorization),
+            )
+            .expect("candidate reconcile should apply");
+
+        let expire_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ExpireDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    expired_at_ms: 21_000,
+                },
+                &authorization_policy,
+            )
+            .expect("candidate expiry should authorize");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id,
+                    state
+                        .last_applied_event_index()
+                        .expect("candidate should be introduced")
+                        .next(),
+                    ClusterEvent::DiscoveryCandidateExpired {
+                        node_id: candidate.candidate.node_id.clone(),
+                        expired_at_ms: 21_000,
+                    },
+                )
+                .with_command_authorization(expire_authorization),
+            )
+            .expect("candidate expiry should apply");
+
+        let expired = state
+            .discovery_candidates()
+            .get(&candidate.candidate.node_id)
+            .expect("candidate should remain in ledger after expiry");
+        let decision = expired
+            .last_policy_decision
+            .as_ref()
+            .expect("expiry should record policy decision");
+        assert_eq!(expired.status, ClusterDiscoveredCandidateStatus::Expired);
+        assert_eq!(expired.detail.as_deref(), Some("introduction_expired"));
+        assert_eq!(
+            decision.refusal_reasons,
+            vec![ClusterCandidateAdmissionRefusalReason::IntroductionExpired]
+        );
     }
 
     #[test]
