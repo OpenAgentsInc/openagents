@@ -9739,6 +9739,7 @@ pub struct RenderState {
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
     pub earn_job_lifecycle_projection: EarnJobLifecycleProjectionState,
+    pub nip90_payment_facts: crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState,
     pub earn_kernel_receipts: crate::state::earn_kernel_receipts::EarnKernelReceiptState,
     pub economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState,
     pub agent_profile_state: AgentProfileStatePaneState,
@@ -9785,6 +9786,19 @@ impl RenderState {
 
     pub fn reserve_runtime_command_seq(&mut self) -> u64 {
         self.allocate_runtime_command_seq()
+    }
+
+    pub fn refresh_nip90_payment_facts(&mut self) {
+        let local_nostr_pubkey_hex = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.clone());
+        self.nip90_payment_facts.sync_from_current_truth(
+            &self.network_requests,
+            &self.job_history,
+            &self.spark_wallet,
+            local_nostr_pubkey_hex.as_deref(),
+        );
     }
 
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
