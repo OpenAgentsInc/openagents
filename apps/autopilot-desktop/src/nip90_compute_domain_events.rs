@@ -183,6 +183,26 @@ pub(crate) fn emit_buyer_payment_settled(
     );
 }
 
+pub(crate) fn emit_buyer_seller_settled_pending_wallet_confirmation(
+    request_id: &str,
+    provider_pubkey: Option<&str>,
+    feedback_event_id: Option<&str>,
+    payment_pointer: Option<&str>,
+    local_wallet_status: &str,
+) {
+    tracing::info!(
+        target: TARGET,
+        domain_event = "buyer.seller_settled_pending_wallet_confirmation",
+        flow_role = "buyer",
+        request_id,
+        provider_pubkey = optional_str(provider_pubkey),
+        feedback_event_id = optional_str(feedback_event_id),
+        payment_pointer = optional_str(payment_pointer),
+        local_wallet_status,
+        "buyer.seller_settled_pending_wallet_confirmation"
+    );
+}
+
 pub(crate) fn emit_provider_result_signed(request_id: &str, event_id: &str, attempt: u32) {
     tracing::info!(
         target: TARGET,

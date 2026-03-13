@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
+use lightning_invoice::Bolt11Invoice;
 use nostr::identity_mnemonic_path;
 use openagents_spark::{
     Balance, Network, NetworkStatus, NetworkStatusReport, PaymentSummary, SparkSigner, SparkWallet,
@@ -16,8 +18,32 @@ use crate::bitcoin_display::format_sats_amount;
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+const STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS: u64 = 2;
+const STARTUP_CONVERGENCE_REFRESH_ATTEMPTS: u8 = 3;
 // MVP release fallback so Spark boots on first run without requiring shell env injection.
 const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+
+pub(crate) fn normalize_lightning_invoice_ref(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let normalized = trimmed
+        .strip_prefix("lightning://")
+        .or_else(|| trimmed.strip_prefix("LIGHTNING://"))
+        .or_else(|| trimmed.strip_prefix("lightning:"))
+        .or_else(|| trimmed.strip_prefix("LIGHTNING:"))
+        .unwrap_or(trimmed)
+        .trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_ascii_lowercase())
+    }
+}
+
+pub(crate) fn decode_lightning_invoice_payment_hash(bolt11: &str) -> Option<String> {
+    let normalized = normalize_lightning_invoice_ref(bolt11)?;
+    let invoice = Bolt11Invoice::from_str(normalized.as_str()).ok()?;
+    Some(invoice.payment_hash().to_string())
+}
 
 #[derive(Clone, Debug)]
 pub enum SparkWalletCommand {
@@ -138,6 +164,9 @@ pub struct SparkPaneState {
     pub last_payment_id: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    startup_convergence_active: bool,
+    startup_convergence_refreshes_remaining: u8,
+    startup_convergence_next_refresh_epoch_seconds: Option<u64>,
     env_overrides: HashMap<String, String>,
 }
 
@@ -161,6 +190,10 @@ impl Clone for SparkPaneState {
             last_payment_id: self.last_payment_id.clone(),
             last_action: self.last_action.clone(),
             last_error: self.last_error.clone(),
+            startup_convergence_active: self.startup_convergence_active,
+            startup_convergence_refreshes_remaining: self.startup_convergence_refreshes_remaining,
+            startup_convergence_next_refresh_epoch_seconds: self
+                .startup_convergence_next_refresh_epoch_seconds,
             env_overrides: self.env_overrides.clone(),
         }
     }
@@ -190,6 +223,9 @@ impl SparkPaneState {
             last_payment_id: None,
             last_action: None,
             last_error: None,
+            startup_convergence_active: false,
+            startup_convergence_refreshes_remaining: 0,
+            startup_convergence_next_refresh_epoch_seconds: None,
             env_overrides: HashMap::new(),
         }
     }
@@ -204,11 +240,54 @@ impl SparkPaneState {
     }
 
     pub fn network_status_label(&self) -> &'static str {
+        if self.startup_convergence_active {
+            return "reconciling";
+        }
         match self.network_status.as_ref().map(|status| status.status) {
             Some(NetworkStatus::Connected) => "connected",
             Some(NetworkStatus::Disconnected) => "disconnected",
             None => "unknown",
         }
+    }
+
+    pub fn begin_startup_convergence(&mut self, now_epoch_seconds: u64) {
+        if self.startup_convergence_active {
+            return;
+        }
+        self.startup_convergence_active = true;
+        self.startup_convergence_refreshes_remaining = STARTUP_CONVERGENCE_REFRESH_ATTEMPTS;
+        self.startup_convergence_next_refresh_epoch_seconds =
+            Some(now_epoch_seconds.saturating_add(STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS));
+        self.last_action = Some("Wallet reconciling after startup sync".to_string());
+    }
+
+    pub fn startup_convergence_refresh_due(&self, now_epoch_seconds: u64) -> bool {
+        self.startup_convergence_active
+            && self
+                .startup_convergence_next_refresh_epoch_seconds
+                .is_some_and(|due| now_epoch_seconds >= due)
+    }
+
+    pub fn note_startup_convergence_refresh_queued(&mut self, now_epoch_seconds: u64) {
+        if !self.startup_convergence_active {
+            return;
+        }
+        if self.startup_convergence_refreshes_remaining > 0 {
+            self.startup_convergence_refreshes_remaining -= 1;
+        }
+        self.startup_convergence_next_refresh_epoch_seconds =
+            if self.startup_convergence_refreshes_remaining == 0 {
+                None
+            } else {
+                Some(now_epoch_seconds.saturating_add(STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS))
+            };
+        self.last_action = Some("Wallet reconciling after startup sync".to_string());
+    }
+
+    pub fn cancel_startup_convergence(&mut self) {
+        self.startup_convergence_active = false;
+        self.startup_convergence_refreshes_remaining = 0;
+        self.startup_convergence_next_refresh_epoch_seconds = None;
     }
 
     pub fn last_invoice_state(&self, now_epoch_seconds: u64) -> SparkInvoiceState {
@@ -296,18 +375,15 @@ impl SparkPaneState {
     fn refresh(&mut self, runtime: &Runtime) {
         self.last_error = None;
 
-        // A fresh SDK session is the most reliable way to pick up external Spark activity,
-        // including funding or settlement changes initiated by another process sharing the
-        // same wallet identity/storage during packaged roundtrip tests.
-        self.wallet = None;
-
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
+            self.complete_startup_convergence_after_refresh();
             return;
         }
 
         let Some(wallet) = self.wallet.as_ref() else {
             self.last_error = Some("Spark wallet missing after initialization".to_string());
+            self.complete_startup_convergence_after_refresh();
             return;
         };
 
@@ -320,6 +396,7 @@ impl SparkPaneState {
             Ok(status) => status,
             Err(error) => {
                 self.last_error = Some(error);
+                self.complete_startup_convergence_after_refresh();
                 return;
             }
         };
@@ -330,7 +407,18 @@ impl SparkPaneState {
         self.network_status = Some(status);
 
         self.refresh_balance_and_payments(runtime);
+        self.complete_startup_convergence_after_refresh();
         self.last_action = Some("Wallet refreshed".to_string());
+    }
+
+    fn complete_startup_convergence_after_refresh(&mut self) {
+        if self.startup_convergence_active
+            && self
+                .startup_convergence_next_refresh_epoch_seconds
+                .is_none()
+        {
+            self.cancel_startup_convergence();
+        }
     }
 
     fn request_spark_address(&mut self, runtime: &Runtime) {
@@ -1107,6 +1195,48 @@ mod tests {
 
         assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
         assert_eq!(state.pending_balance_confirmation_payment_id, None);
+    }
+
+    #[test]
+    fn startup_convergence_refresh_due_after_interval() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+
+        state.begin_startup_convergence(100);
+
+        assert_eq!(state.network_status_label(), "reconciling");
+        assert!(!state.startup_convergence_refresh_due(101));
+        assert!(state.startup_convergence_refresh_due(102));
+
+        state.note_startup_convergence_refresh_queued(102);
+        assert!(!state.startup_convergence_refresh_due(103));
+        assert!(state.startup_convergence_refresh_due(104));
+    }
+
+    #[test]
+    fn startup_convergence_status_reports_reconciling_until_followups_finish() {
+        with_missing_identity_env(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            let mut state = SparkPaneState::with_network(Network::Regtest);
+
+            state.begin_startup_convergence(100);
+            assert_eq!(state.network_status_label(), "reconciling");
+
+            state.note_startup_convergence_refresh_queued(102);
+            state.note_startup_convergence_refresh_queued(104);
+            state.note_startup_convergence_refresh_queued(106);
+
+            state.apply_command(&runtime, SparkWalletCommand::Refresh);
+
+            assert!(
+                !state.startup_convergence_active,
+                "final startup refresh should clear reconciling state even on error"
+            );
+            assert_eq!(state.network_status_label(), "unknown");
+            assert!(state.last_error.is_some());
+        });
     }
 
     #[test]

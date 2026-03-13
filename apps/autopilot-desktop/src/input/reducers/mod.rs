@@ -186,15 +186,13 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     if !nip28_updates.is_empty() {
         tracing::debug!(count = nip28_updates.len(), "nip28: drain");
     }
+    let mut nip28_relay_events = Vec::new();
     for update in nip28_updates {
         use crate::nip28_chat_lane::Nip28ChatLaneUpdate;
         changed = true;
         match update {
             Nip28ChatLaneUpdate::RelayEvent(event) => {
-                state
-                    .autopilot_chat
-                    .managed_chat_projection
-                    .record_relay_event(event);
+                nip28_relay_events.push(event);
             }
             Nip28ChatLaneUpdate::PublishAck { event_id } => {
                 tracing::info!(event_id = %event_id, "nip28: outbound ack");
@@ -214,6 +212,12 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
             Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
         }
+    }
+    if !nip28_relay_events.is_empty() {
+        state
+            .autopilot_chat
+            .managed_chat_projection
+            .record_relay_events(nip28_relay_events);
     }
 
     {

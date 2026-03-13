@@ -844,6 +844,7 @@ pub struct NetworkRequestsState {
     pub accepted_forward_orders: Vec<AcceptedForwardComputeOrder>,
     pub submitted: Vec<SubmittedNetworkRequest>,
     pub pending_auto_payment_request_id: Option<String>,
+    next_pending_auto_payment_refresh_at: Option<std::time::Instant>,
     next_request_seq: u64,
 }
 
@@ -864,10 +865,14 @@ impl Default for NetworkRequestsState {
             accepted_forward_orders: Vec::new(),
             submitted: Vec::new(),
             pending_auto_payment_request_id: None,
+            next_pending_auto_payment_refresh_at: None,
             next_request_seq: 0,
         }
     }
 }
+
+pub(crate) const BUYER_AUTO_PAYMENT_REFRESH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(5);
 
 impl NetworkRequestsState {
     pub fn latest_request_by_type(&self, request_type: &str) -> Option<&SubmittedNetworkRequest> {
@@ -880,6 +885,43 @@ impl NetworkRequestsState {
         self.submitted
             .iter()
             .any(|request| request.request_type == request_type && !request.status.is_terminal())
+    }
+
+    pub fn active_auto_payment_observation_request_id(&self) -> Option<&str> {
+        let pending_request_id = self.pending_auto_payment_request_id.as_deref();
+        if let Some(request_id) = pending_request_id
+            && self.submitted.iter().any(|request| {
+                request.request_id == request_id
+                    && request_needs_auto_payment_observation(request, pending_request_id)
+            })
+        {
+            return Some(request_id);
+        }
+
+        self.submitted
+            .iter()
+            .find(|request| request_needs_auto_payment_observation(request, pending_request_id))
+            .map(|request| request.request_id.as_str())
+    }
+
+    pub fn buyer_payment_watchdog_due(&mut self, now: std::time::Instant) -> Option<String> {
+        let request_id = match self.active_auto_payment_observation_request_id() {
+            Some(request_id) => request_id.to_string(),
+            None => {
+                self.next_pending_auto_payment_refresh_at = None;
+                return None;
+            }
+        };
+
+        if matches!(
+            self.next_pending_auto_payment_refresh_at,
+            Some(next_refresh_at) if now < next_refresh_at
+        ) {
+            return None;
+        }
+
+        self.next_pending_auto_payment_refresh_at = Some(now + BUYER_AUTO_PAYMENT_REFRESH_INTERVAL);
+        Some(request_id)
     }
 
     pub fn queue_request_submission(
@@ -1244,6 +1286,9 @@ impl NetworkRequestsState {
             return None;
         };
         request.observed_buyer_event_ids.push(event_id.to_string());
+        let previous_seller_settlement_feedback_id =
+            buyer_request_seller_settlement_feedback(request)
+                .map(|(_, feedback_event_id)| feedback_event_id.to_string());
 
         let feedback_is_payment_required = matches!(
             status
@@ -1305,6 +1350,36 @@ impl NetworkRequestsState {
         select_payable_winner(request, Some(provider_pubkey));
         emit_buyer_unresolved_winner_if_needed(request);
         request.status = compute_request_status(request);
+        if buyer_request_seller_settled_pending_local_wallet(request) {
+            let current_seller_settlement_feedback = buyer_request_seller_settlement_feedback(
+                request,
+            )
+            .map(|(settled_provider_pubkey, feedback_event_id)| {
+                (
+                    settled_provider_pubkey.to_string(),
+                    feedback_event_id.to_string(),
+                )
+            });
+            if current_seller_settlement_feedback
+                .as_ref()
+                .map(|(_, feedback_event_id)| feedback_event_id.as_str())
+                != previous_seller_settlement_feedback_id.as_deref()
+                && let Some((settled_provider_pubkey, feedback_event_id)) =
+                    current_seller_settlement_feedback.as_ref()
+            {
+                nip90_compute_domain_events::emit_buyer_seller_settled_pending_wallet_confirmation(
+                    request.request_id.as_str(),
+                    Some(settled_provider_pubkey.as_str()),
+                    Some(feedback_event_id.as_str()),
+                    request.last_payment_pointer.as_deref(),
+                    if request.last_payment_pointer.is_some() {
+                        "pending"
+                    } else {
+                        "observation-missing"
+                    },
+                );
+            }
+        }
         let resolution_action = maybe_race_resolution_action_for_feedback(
             request,
             provider_pubkey,
@@ -1320,6 +1395,31 @@ impl NetworkRequestsState {
             request_id, status_label, provider_pubkey, status_extra
         ));
         resolution_action
+    }
+
+    pub fn should_process_buyer_response_event(
+        &self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+    ) -> bool {
+        let Some(request) = self
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+        else {
+            return false;
+        };
+        if request.status.is_terminal() {
+            return false;
+        }
+        if !request_targets_provider(request, provider_pubkey) {
+            return false;
+        }
+        !request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
     }
 
     pub fn apply_nip90_buyer_result_event(
@@ -1617,6 +1717,7 @@ impl NetworkRequestsState {
         request.payment_failed_at_epoch_seconds = None;
         request.status = NetworkRequestStatus::PaymentRequired;
         self.pending_auto_payment_request_id = Some(request_id.to_string());
+        self.next_pending_auto_payment_refresh_at = None;
 
         let amount_sats = analyze_invoice_amount_msats(amount_msats, Some(bolt11))
             .effective_amount_msats
@@ -1655,9 +1756,10 @@ impl NetworkRequestsState {
             request.payment_error = None;
             request.payment_notice = None;
             request.pending_bolt11 = None;
-            request.status = NetworkRequestStatus::Paid;
+            request.status = compute_request_status(request);
         }
         self.pending_auto_payment_request_id = None;
+        self.next_pending_auto_payment_refresh_at = None;
         self.pane_set_ready(format!(
             "Request {} settled buyer payment pointer {}",
             request_id, payment_pointer
@@ -1680,6 +1782,8 @@ impl NetworkRequestsState {
             return;
         }
         request.last_payment_pointer = Some(payment_pointer.to_string());
+        request.payment_notice = None;
+        request.status = compute_request_status(request);
     }
 
     pub fn record_auto_payment_notice(
@@ -1701,6 +1805,9 @@ impl NetworkRequestsState {
             return;
         };
         if request.status.is_terminal() {
+            return;
+        }
+        if request.last_payment_pointer.is_some() || request.pending_bolt11.is_some() {
             return;
         }
 
@@ -1742,6 +1849,9 @@ impl NetworkRequestsState {
         }
         if self.pending_auto_payment_request_id.as_deref() == Some(request_id) {
             self.pending_auto_payment_request_id = None;
+        }
+        if self.active_auto_payment_observation_request_id().is_none() {
+            self.next_pending_auto_payment_refresh_at = None;
         }
         let _ = self.pane_set_error(format!("Request {} payment failed: {}", request_id, error));
     }
@@ -1808,6 +1918,21 @@ impl NetworkRequestsState {
         }
         let _ = self.pane_set_error(message.to_string());
     }
+}
+
+fn request_needs_auto_payment_observation(
+    request: &SubmittedNetworkRequest,
+    pending_request_id: Option<&str>,
+) -> bool {
+    if request.status.is_terminal()
+        || request.payment_sent_at_epoch_seconds.is_some()
+        || request.payment_failed_at_epoch_seconds.is_some()
+    {
+        return false;
+    }
+
+    pending_request_id == Some(request.request_id.as_str())
+        || request.last_payment_pointer.is_some()
 }
 
 fn maybe_race_resolution_action_for_feedback(
@@ -2008,6 +2133,19 @@ fn provider_has_payment_feedback(observation: &NetworkRequestProviderObservation
     )
 }
 
+fn provider_has_success_feedback(observation: &NetworkRequestProviderObservation) -> bool {
+    matches!(
+        observation
+            .last_feedback_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("success")
+    )
+}
+
 fn provider_has_error_only_signal(observation: &NetworkRequestProviderObservation) -> bool {
     let feedback_error = matches!(
         observation
@@ -2073,6 +2211,38 @@ fn emit_buyer_payment_blocked(request: &SubmittedNetworkRequest) {
             .or(request.payment_notice.as_deref())
             .or(request.payment_error.as_deref()),
     );
+}
+
+pub(crate) fn buyer_request_seller_settlement_feedback(
+    request: &SubmittedNetworkRequest,
+) -> Option<(&str, &str)> {
+    let provider_pubkey = request
+        .winning_provider_pubkey
+        .as_deref()
+        .or(request.invoice_provider_pubkey.as_deref())
+        .or(request.result_provider_pubkey.as_deref())?;
+    let observation = request.provider_observations.iter().find(|observation| {
+        normalize_pubkey(observation.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+    })?;
+    if !provider_has_success_feedback(observation) {
+        return None;
+    }
+    observation
+        .last_feedback_event_id
+        .as_deref()
+        .map(|feedback_event_id| (observation.provider_pubkey.as_str(), feedback_event_id))
+}
+
+pub(crate) fn buyer_request_seller_settled_pending_local_wallet(
+    request: &SubmittedNetworkRequest,
+) -> bool {
+    if request.payment_error.is_some()
+        || request.payment_sent_at_epoch_seconds.is_some()
+        || request.status == NetworkRequestStatus::Paid
+    {
+        return false;
+    }
+    buyer_request_seller_settlement_feedback(request).is_some()
 }
 
 fn select_payable_winner(
@@ -2172,8 +2342,21 @@ fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestSt
     if request.payment_error.is_some() {
         return NetworkRequestStatus::Failed;
     }
-    if request.last_payment_pointer.is_some() {
+    if request.payment_sent_at_epoch_seconds.is_some()
+        || (request.status == NetworkRequestStatus::Paid && request.last_payment_pointer.is_some())
+    {
         return NetworkRequestStatus::Paid;
+    }
+
+    if request.pending_bolt11.is_some()
+        || request.last_payment_pointer.is_some()
+        || request.payment_notice.is_some()
+        || request
+            .provider_observations
+            .iter()
+            .any(provider_has_payment_feedback)
+    {
+        return NetworkRequestStatus::PaymentRequired;
     }
 
     let has_non_error_result = request
@@ -2182,16 +2365,6 @@ fn compute_request_status(request: &SubmittedNetworkRequest) -> NetworkRequestSt
         .any(provider_has_non_error_result);
     if has_non_error_result {
         return NetworkRequestStatus::ResultReceived;
-    }
-
-    if request.pending_bolt11.is_some()
-        || request.payment_notice.is_some()
-        || request
-            .provider_observations
-            .iter()
-            .any(provider_has_payment_feedback)
-    {
-        return NetworkRequestStatus::PaymentRequired;
     }
 
     if request

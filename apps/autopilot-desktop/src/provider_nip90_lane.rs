@@ -559,14 +559,21 @@ fn run_lane_loop(
             state.snapshot.last_request_event_id = Some(request.request_id.clone());
             state.snapshot.last_request_at = Some(Instant::now());
             state.snapshot.last_error = None;
-            state.snapshot.last_action = Some(format!(
-                "ingressed live NIP-90 request {} from relays",
-                request.request_id
-            ));
+            state.snapshot.last_action =
+                Some(if matches!(desired_state, DesiredLaneState::Preview) {
+                    "Relay preview observing market activity".to_string()
+                } else {
+                    format!(
+                        "ingressed live NIP-90 request {} from relays",
+                        request.request_id
+                    )
+                });
             let _ = update_tx.send(ProviderNip90LaneUpdate::IngressedRequest(request));
-            let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
-                state.snapshot.clone(),
-            )));
+            if !matches!(desired_state, DesiredLaneState::Preview) {
+                let _ = update_tx.send(ProviderNip90LaneUpdate::Snapshot(Box::new(
+                    state.snapshot.clone(),
+                )));
+            }
         }
 
         for buyer_event in outcome.buyer_events {
@@ -1687,6 +1694,8 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         ac_envelope_event_id: None,
         price_sats,
         ttl_seconds,
+        created_at_epoch_seconds: Some(event.created_at),
+        expires_at_epoch_seconds: Some(event.created_at.saturating_add(ttl_seconds)),
         validation,
     })
 }
@@ -2392,6 +2401,8 @@ mod tests {
         assert_eq!(row.request_kind, 5050);
         assert_eq!(row.price_sats, 25);
         assert_eq!(row.ttl_seconds, 90);
+        assert_eq!(row.created_at_epoch_seconds, Some(1_760_000_100));
+        assert_eq!(row.expires_at_epoch_seconds, Some(1_760_000_190));
         assert_eq!(
             row.target_provider_pubkeys,
             vec!["npub1localprovider".to_string()]

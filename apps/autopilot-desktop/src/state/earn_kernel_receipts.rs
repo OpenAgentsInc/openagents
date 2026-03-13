@@ -976,6 +976,11 @@ impl EarnKernelReceiptState {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_receipt_path_for_tests(receipt_file_path: PathBuf) -> Self {
+        Self::from_receipt_file_path(receipt_file_path)
+    }
+
     pub fn record_ingress_request(
         &mut self,
         request: &JobInboxNetworkRequest,
@@ -1998,6 +2003,32 @@ impl EarnKernelReceiptState {
         .build();
 
         self.append_receipt(receipt, source_tag);
+    }
+
+    pub fn authoritative_job_history_rows(&self) -> Vec<JobHistoryReceiptRow> {
+        let mut receipts = self
+            .receipts
+            .iter()
+            .filter_map(rehydrate_job_history_candidate_from_receipt)
+            .collect::<Vec<_>>();
+        receipts.sort_by(|lhs, rhs| {
+            lhs.completed_at_epoch_seconds
+                .cmp(&rhs.completed_at_epoch_seconds)
+                .then_with(|| lhs.job_id.cmp(&rhs.job_id))
+        });
+
+        let mut rows_by_job = BTreeMap::<String, JobHistoryReceiptRow>::new();
+        for row in receipts {
+            rows_by_job.insert(row.job_id.clone(), row);
+        }
+
+        let mut rows = rows_by_job.into_values().collect::<Vec<_>>();
+        rows.sort_by(|lhs, rhs| {
+            rhs.completed_at_epoch_seconds
+                .cmp(&lhs.completed_at_epoch_seconds)
+                .then_with(|| lhs.job_id.cmp(&rhs.job_id))
+        });
+        rows
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -10483,6 +10514,88 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
     })
 }
 
+fn rehydrate_job_history_candidate_from_receipt(receipt: &Receipt) -> Option<JobHistoryReceiptRow> {
+    let job_id = receipt.trace.work_unit_id.as_deref()?.trim();
+    if job_id.is_empty() || !job_id.starts_with("job-") {
+        return None;
+    }
+
+    let status = match receipt.receipt_type.as_str() {
+        "earn.job.settlement_observed.v1" => JobHistoryStatus::Succeeded,
+        "earn.job.failed.v1" | "earn.job.withheld.v1" => JobHistoryStatus::Failed,
+        _ => return None,
+    };
+
+    let request_id = infer_request_id_from_job_id(job_id);
+    let payment_pointer = wallet_payment_pointer_from_receipt(receipt).unwrap_or_else(|| {
+        if status == JobHistoryStatus::Succeeded {
+            format!("pending:{request_id}")
+        } else {
+            format!("failed:{request_id}")
+        }
+    });
+
+    Some(JobHistoryReceiptRow {
+        job_id: job_id.to_string(),
+        status,
+        demand_source: JobDemandSource::OpenNetwork,
+        completed_at_epoch_seconds: ms_to_epoch_seconds(receipt.created_at_ms),
+        skill_scope_id: None,
+        skl_manifest_a: None,
+        skl_manifest_event_id: None,
+        sa_tick_result_event_id: None,
+        sa_trajectory_session_id: receipt.trace.trajectory_hash.clone(),
+        ac_envelope_event_id: None,
+        ac_settlement_event_id: None,
+        ac_default_event_id: None,
+        delivery_proof_id: None,
+        delivery_metering_rule_id: None,
+        delivery_proof_status_label: None,
+        delivery_metered_quantity: None,
+        delivery_accepted_quantity: None,
+        delivery_variance_reason_label: None,
+        delivery_rejection_reason_label: None,
+        payout_sats: receipt_notional_sats(receipt),
+        result_hash: receipt.canonical_hash.clone(),
+        payment_pointer,
+        failure_reason: receipt.hints.reason_code.clone(),
+        execution_provenance: None,
+    })
+}
+
+fn ms_to_epoch_seconds(created_at_ms: i64) -> u64 {
+    u64::try_from(created_at_ms.max(0))
+        .unwrap_or(0)
+        .saturating_div(1_000)
+}
+
+fn wallet_payment_pointer_from_receipt(receipt: &Receipt) -> Option<String> {
+    receipt.evidence.iter().find_map(|evidence| {
+        if evidence.kind != "wallet_settlement_proof" {
+            return None;
+        }
+        evidence
+            .uri
+            .strip_prefix("oa://wallet/payments/")
+            .map(str::trim)
+            .filter(|pointer| !pointer.is_empty())
+            .map(ToString::to_string)
+    })
+}
+
+fn receipt_notional_sats(receipt: &Receipt) -> u64 {
+    let Some(notional) = receipt.hints.notional.as_ref() else {
+        return 0;
+    };
+    if notional.asset != Asset::Btc {
+        return 0;
+    }
+    match notional.amount {
+        MoneyAmount::AmountSats(amount) => amount,
+        MoneyAmount::AmountMsats(amount) => amount / 1_000,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -10530,6 +10643,8 @@ mod tests {
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             price_sats: 42,
             ttl_seconds: 120,
+            created_at_epoch_seconds: Some(1_762_000_000),
+            expires_at_epoch_seconds: Some(1_762_000_120),
             validation: crate::state::job_inbox::JobInboxValidation::Valid,
         }
     }
@@ -10569,6 +10684,11 @@ mod tests {
             request_id: "req-123".to_string(),
             requester: "npub1abc".to_string(),
             demand_source: JobDemandSource::OpenNetwork,
+            demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
+            demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_note:
+                "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
             request_kind: 5000,
             capability: "text_generation".to_string(),
             execution_input: Some("Generate text for req-123".to_string()),
@@ -10599,8 +10719,13 @@ mod tests {
             delivery_rejection_reason_label: None,
             quoted_price_sats: 42,
             ttl_seconds: 120,
+            request_created_at_epoch_seconds: Some(1_762_000_000),
+            request_expires_at_epoch_seconds: Some(1_762_000_120),
+            accepted_at_epoch_seconds: Some(1_762_000_010),
             stage: JobLifecycleStage::Paid,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: Some(payment_pointer.to_string()),
             failure_reason: None,
             events: Vec::new(),
@@ -11016,6 +11141,50 @@ mod tests {
         assert_eq!(work_unit.tfb_class, FeedbackLatencyClass::Short);
         assert_eq!(work_unit.severity, SeverityClass::Low);
         assert_eq!(work_unit.verification_budget_hint_sats, 100);
+    }
+
+    #[test]
+    fn authoritative_job_history_rows_rehydrate_paid_and_failed_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path.clone());
+
+        let mut paid = fixture_history_row("wallet-payment-1");
+        paid.job_id = "job-paid-001".to_string();
+        paid.completed_at_epoch_seconds = 1_762_000_010;
+        paid.payout_sats = 77;
+        state.record_history_receipt(&paid, paid.completed_at_epoch_seconds, "test.history");
+
+        let mut failed = fixture_history_row("pending:req-failed-001");
+        failed.job_id = "job-failed-001".to_string();
+        failed.status = JobHistoryStatus::Failed;
+        failed.completed_at_epoch_seconds = 1_762_000_020;
+        failed.failure_reason = Some("JOB_FAILED".to_string());
+        failed.payout_sats = 0;
+        state.record_history_receipt(&failed, failed.completed_at_epoch_seconds, "test.history");
+
+        let reloaded = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let rows = reloaded.authoritative_job_history_rows();
+        assert_eq!(rows.len(), 2);
+
+        let paid_row = rows
+            .iter()
+            .find(|row| row.job_id == "job-paid-001")
+            .expect("paid row");
+        assert_eq!(paid_row.status, JobHistoryStatus::Succeeded);
+        assert_eq!(paid_row.payment_pointer, "wallet-payment-1");
+        assert_eq!(paid_row.payout_sats, 77);
+
+        let failed_row = rows
+            .iter()
+            .find(|row| row.job_id == "job-failed-001")
+            .expect("failed row");
+        assert_eq!(failed_row.status, JobHistoryStatus::Failed);
+        assert_eq!(failed_row.payment_pointer, "failed:failed-001");
+        assert_eq!(
+            failed_row.failure_reason.as_deref(),
+            Some(REASON_CODE_JOB_FAILED)
+        );
     }
 
     #[test]
@@ -11928,6 +12097,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -11936,6 +12106,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 75,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_762_000_000),
+            expires_at_epoch_seconds: Some(1_762_000_060),
             validation: crate::state::job_inbox::JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: crate::state::job_inbox::JobInboxDecision::Pending,

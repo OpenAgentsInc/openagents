@@ -1,9 +1,14 @@
 //! Clipboard utilities for copying text to the system clipboard.
 
-#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::io::Write;
-#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::process::{Command, Stdio};
+
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSString;
 
 /// Copy text to the system clipboard.
 ///
@@ -14,11 +19,7 @@ use std::process::{Command, Stdio};
 pub fn copy_to_clipboard(_contents: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        if copy_with_command("pbcopy", &[], _contents).is_ok() {
-            Ok(())
-        } else {
-            copy_with_command("/usr/bin/pbcopy", &[], _contents)
-        }
+        copy_with_pasteboard(_contents)
     }
 
     #[cfg(target_os = "linux")]
@@ -46,7 +47,22 @@ pub fn copy_to_clipboard(_contents: &str) -> Result<(), String> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn copy_with_pasteboard(contents: &str) -> Result<(), String> {
+    let pasteboard = unsafe { NSPasteboard::generalPasteboard() };
+    let text = NSString::from_str(contents);
+    unsafe {
+        pasteboard.clearContents();
+    }
+    let copied = unsafe { pasteboard.setString_forType(&text, NSPasteboardTypeString) };
+    if copied {
+        Ok(())
+    } else {
+        Err("Failed to write to NSPasteboard".to_string())
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn copy_with_command(cmd: &str, args: &[&str], contents: &str) -> Result<(), String> {
     let mut child = Command::new(cmd)
         .args(args)

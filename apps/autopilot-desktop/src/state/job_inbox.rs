@@ -1,6 +1,8 @@
 use crate::app_state::PaneLoadState;
 use crate::state::provider_runtime::ProviderMode;
 
+pub const TARGETED_SAFE_AUTO_MIN_FRESHNESS_SECONDS: u64 = 30;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JobDemandSource {
     OpenNetwork,
@@ -14,6 +16,49 @@ impl JobDemandSource {
             Self::StarterDemand => "starter-demand",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDemandRiskClass {
+    StarterDemand,
+    TargetedOpenNetwork,
+    SpeculativeOpenNetwork,
+    TargetedMismatch,
+}
+
+impl JobDemandRiskClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::StarterDemand => "starter-demand",
+            Self::TargetedOpenNetwork => "targeted-open-network",
+            Self::SpeculativeOpenNetwork => "speculative-open-network",
+            Self::TargetedMismatch => "targeted-mismatch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDemandRiskDisposition {
+    AutoAcceptSafe,
+    ManualReviewOnly,
+    RejectByDefault,
+}
+
+impl JobDemandRiskDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AutoAcceptSafe => "safe-auto",
+            Self::ManualReviewOnly => "manual-only",
+            Self::RejectByDefault => "reject-by-default",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDemandRiskAssessment {
+    pub class: JobDemandRiskClass,
+    pub disposition: JobDemandRiskDisposition,
+    pub note: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +113,7 @@ pub struct JobInboxRequest {
     pub execution_params: Vec<JobExecutionParam>,
     pub requested_model: Option<String>,
     pub requested_output_mime: Option<String>,
+    pub target_provider_pubkeys: Vec<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -76,6 +122,8 @@ pub struct JobInboxRequest {
     pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
+    pub created_at_epoch_seconds: Option<u64>,
+    pub expires_at_epoch_seconds: Option<u64>,
     pub validation: JobInboxValidation,
     pub arrival_seq: u64,
     pub decision: JobInboxDecision,
@@ -86,6 +134,95 @@ impl JobInboxRequest {
         matches!(provider_mode, ProviderMode::Offline)
     }
 
+    pub fn is_targeted(&self) -> bool {
+        !self.target_provider_pubkeys.is_empty()
+    }
+
+    pub fn demand_risk_assessment(&self) -> JobDemandRiskAssessment {
+        match self.demand_source {
+            JobDemandSource::StarterDemand => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::StarterDemand,
+                disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+                note: "hosted starter demand is trusted bootstrap work".to_string(),
+            },
+            JobDemandSource::OpenNetwork if self.is_targeted() => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+                note: "targeted open-network demand explicitly names this provider".to_string(),
+            },
+            JobDemandSource::OpenNetwork => JobDemandRiskAssessment {
+                class: JobDemandRiskClass::SpeculativeOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note: "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
+            },
+        }
+    }
+
+    pub fn demand_risk_assessment_at(&self, now_epoch_seconds: u64) -> JobDemandRiskAssessment {
+        let baseline = self.demand_risk_assessment();
+        if self.demand_source != JobDemandSource::OpenNetwork || !self.is_targeted() {
+            return baseline;
+        }
+
+        let Some(created_at) = self.created_at_epoch_seconds else {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note:
+                    "targeted open-network demand names this provider but lacks freshness metadata"
+                        .to_string(),
+            };
+        };
+        let Some(expires_at) = self.expires_at_epoch_seconds else {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note:
+                    "targeted open-network demand names this provider but lacks freshness metadata"
+                        .to_string(),
+            };
+        };
+        if expires_at <= created_at {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::RejectByDefault,
+                note: "targeted open-network demand has invalid freshness metadata".to_string(),
+            };
+        }
+        if now_epoch_seconds >= expires_at {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::RejectByDefault,
+                note: format!(
+                    "targeted open-network demand expired {}s ago",
+                    now_epoch_seconds.saturating_sub(expires_at)
+                ),
+            };
+        }
+
+        let freshness_remaining_seconds = expires_at.saturating_sub(now_epoch_seconds);
+        if freshness_remaining_seconds < TARGETED_SAFE_AUTO_MIN_FRESHNESS_SECONDS {
+            return JobDemandRiskAssessment {
+                class: JobDemandRiskClass::TargetedOpenNetwork,
+                disposition: JobDemandRiskDisposition::ManualReviewOnly,
+                note: format!(
+                    "targeted open-network demand names this provider but only has {}s remaining",
+                    freshness_remaining_seconds
+                ),
+            };
+        }
+
+        JobDemandRiskAssessment {
+            class: JobDemandRiskClass::TargetedOpenNetwork,
+            disposition: JobDemandRiskDisposition::AutoAcceptSafe,
+            note: format!(
+                "targeted open-network demand explicitly names this provider and remains fresh for {}s",
+                freshness_remaining_seconds
+            ),
+        }
+    }
+
     pub const fn eligibility_label(&self, provider_mode: ProviderMode) -> &'static str {
         if self.preview_only(provider_mode) {
             "preview-only"
@@ -93,6 +230,37 @@ impl JobInboxRequest {
             "claimable"
         }
     }
+
+    pub fn is_expired_at(&self, now_epoch_seconds: u64) -> bool {
+        self.expires_at_epoch_seconds
+            .is_some_and(|expires_at| now_epoch_seconds >= expires_at)
+    }
+
+    pub fn expires_in_seconds(&self, now_epoch_seconds: u64) -> Option<u64> {
+        self.expires_at_epoch_seconds
+            .map(|expires_at| expires_at.saturating_sub(now_epoch_seconds))
+    }
+
+    pub fn expired_for_seconds(&self, now_epoch_seconds: u64) -> Option<u64> {
+        self.expires_at_epoch_seconds
+            .filter(|expires_at| now_epoch_seconds >= *expires_at)
+            .map(|expires_at| now_epoch_seconds.saturating_sub(expires_at))
+    }
+}
+
+pub(crate) fn normalize_provider_keys(values: &[String]) -> Vec<String> {
+    let mut normalized = values
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+pub(crate) fn local_provider_keys(identity: &nostr::NostrIdentity) -> Vec<String> {
+    normalize_provider_keys(&[identity.npub.clone(), identity.public_key_hex.clone()])
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +288,8 @@ pub struct JobInboxNetworkRequest {
     pub ac_envelope_event_id: Option<String>,
     pub price_sats: u64,
     pub ttl_seconds: u64,
+    pub created_at_epoch_seconds: Option<u64>,
+    pub expires_at_epoch_seconds: Option<u64>,
     pub validation: JobInboxValidation,
 }
 
@@ -169,6 +339,7 @@ impl JobInboxState {
             existing.execution_params = request.execution_params;
             existing.requested_model = request.requested_model;
             existing.requested_output_mime = request.requested_output_mime;
+            existing.target_provider_pubkeys = request.target_provider_pubkeys;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -177,6 +348,8 @@ impl JobInboxState {
             existing.ac_envelope_event_id = request.ac_envelope_event_id;
             existing.price_sats = request.price_sats;
             existing.ttl_seconds = request.ttl_seconds;
+            existing.created_at_epoch_seconds = request.created_at_epoch_seconds;
+            existing.expires_at_epoch_seconds = request.expires_at_epoch_seconds;
             existing.validation = request.validation;
             return;
         }
@@ -194,6 +367,7 @@ impl JobInboxState {
             execution_params: request.execution_params,
             requested_model: request.requested_model,
             requested_output_mime: request.requested_output_mime,
+            target_provider_pubkeys: request.target_provider_pubkeys,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -202,6 +376,8 @@ impl JobInboxState {
             ac_envelope_event_id: request.ac_envelope_event_id,
             price_sats: request.price_sats,
             ttl_seconds: request.ttl_seconds,
+            created_at_epoch_seconds: request.created_at_epoch_seconds,
+            expires_at_epoch_seconds: request.expires_at_epoch_seconds,
             validation: request.validation,
             arrival_seq,
             decision: JobInboxDecision::Pending,
@@ -316,6 +492,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -324,6 +501,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 42,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_060),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Pending,

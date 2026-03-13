@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
@@ -10,11 +10,11 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
+use wgpui::components::TextInput;
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
+use wgpui::{theme, Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
@@ -623,8 +623,10 @@ pub struct MissionControlPaneState {
     actions_scroll_offset_px: f32,
     load_funds_scroll_offset_px: f32,
     active_jobs_scroll_offset_px: f32,
-    /// Logical (stream, message) for equality check; display lines include HH:MM:SS prefix.
-    rendered_log_content: Vec<(TerminalStream, String)>,
+    buy_mode_last_blocked_signature: Option<String>,
+    buy_mode_last_blocked_notice_at: Option<Instant>,
+    /// Dedupe keys for already-rendered Mission Control log entries.
+    rendered_log_content: Vec<String>,
     last_mirrored_trace_id: u64,
 }
 
@@ -646,7 +648,7 @@ impl Default for MissionControlPaneState {
                 .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             send_invoice: TextInput::new()
-                .placeholder("Paste Lightning invoice to send")
+                .placeholder("Paste Lightning invoice to withdraw")
                 .font_size(wgpui::theme::font_size::SM - 2.0)
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
@@ -678,6 +680,8 @@ impl Default for MissionControlPaneState {
             actions_scroll_offset_px: 0.0,
             load_funds_scroll_offset_px: 0.0,
             active_jobs_scroll_offset_px: 0.0,
+            buy_mode_last_blocked_signature: None,
+            buy_mode_last_blocked_notice_at: None,
             rendered_log_content: Vec::new(),
             last_mirrored_trace_id: 0,
         }
@@ -708,7 +712,10 @@ impl MissionControlPaneState {
     }
 
     pub fn wallet_refresh_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
-        Self::icon_click_feedback_intensity(self.wallet_refresh_icon_clicked_at_epoch_ms, now_epoch_ms)
+        Self::icon_click_feedback_intensity(
+            self.wallet_refresh_icon_clicked_at_epoch_ms,
+            now_epoch_ms,
+        )
     }
 
     pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
@@ -809,6 +816,7 @@ impl MissionControlPaneState {
 
     pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
         self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
+        self.clear_buy_mode_blocked_notice();
         if self.buy_mode_loop_enabled {
             self.buy_mode_next_dispatch_at = Some(now);
         } else {
@@ -832,6 +840,32 @@ impl MissionControlPaneState {
 
     pub fn schedule_buy_mode_retry(&mut self, now: Instant) {
         self.buy_mode_next_dispatch_at = Some(now + MISSION_CONTROL_BUY_MODE_INTERVAL);
+    }
+
+    pub fn schedule_buy_mode_retry_with_interval(&mut self, now: Instant, interval: Duration) {
+        self.buy_mode_next_dispatch_at = Some(now + interval);
+    }
+
+    pub fn clear_buy_mode_blocked_notice(&mut self) {
+        self.buy_mode_last_blocked_signature = None;
+        self.buy_mode_last_blocked_notice_at = None;
+    }
+
+    pub fn should_emit_buy_mode_blocked_notice(&mut self, now: Instant, signature: &str) -> bool {
+        let should_emit = self
+            .buy_mode_last_blocked_notice_at
+            .zip(self.buy_mode_last_blocked_signature.as_deref())
+            .map(|(last_notice_at, last_signature)| {
+                last_signature != signature
+                    || now.saturating_duration_since(last_notice_at)
+                        >= MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+            })
+            .unwrap_or(true);
+        if should_emit {
+            self.buy_mode_last_blocked_signature = Some(signature.to_string());
+            self.buy_mode_last_blocked_notice_at = Some(now);
+        }
+        should_emit
     }
 
     pub fn buy_mode_next_dispatch_countdown_millis(&self, now: Instant) -> Option<u64> {
@@ -1433,7 +1467,7 @@ fn build_mission_control_log_lines(
     network_requests: &NetworkRequestsState,
     job_inbox: &JobInboxState,
     active_job: &ActiveJobState,
-) -> (Vec<TerminalLine>, Vec<(TerminalStream, String)>) {
+) -> (Vec<TerminalLine>, Vec<String>) {
     let now_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1441,16 +1475,34 @@ fn build_mission_control_log_lines(
     let unsupported_sell_platform_offline = provider_runtime.mode
         == crate::state::provider_runtime::ProviderMode::Offline
         && !mission_control_sell_compute_supported(desktop_shell_mode, local_inference_runtime);
-    type LogEntry = (u64, TerminalStream, String);
+    type LogEntry = (u64, TerminalStream, String, String);
     let mut entries: Vec<LogEntry> = Vec::new();
     let mut seen = HashSet::<String>::new();
-    let mut push_entry = |stream: TerminalStream, text: String, at_epoch: Option<u64>| {
+    let mut push_entry = |stream: TerminalStream,
+                          text: String,
+                          at_epoch: Option<u64>,
+                          dedupe_key: Option<String>| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return;
         }
-        if seen.insert(trimmed.to_string()) {
-            entries.push((at_epoch.unwrap_or(now_epoch), stream, trimmed.to_string()));
+        let key = dedupe_key.unwrap_or_else(|| {
+            format!(
+                "mission_control:live:{}:{}",
+                match stream {
+                    TerminalStream::Stdout => "stdout",
+                    TerminalStream::Stderr => "stderr",
+                },
+                trimmed
+            )
+        });
+        if seen.insert(key.clone()) {
+            entries.push((
+                at_epoch.unwrap_or(now_epoch),
+                stream,
+                trimmed.to_string(),
+                key,
+            ));
         }
     };
     let compute_flow_snapshot = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
@@ -1478,11 +1530,16 @@ fn build_mission_control_log_lines(
             "Provider degraded. Review blockers and wallet or relay health.".to_string()
         }
     };
-    push_entry(TerminalStream::Stdout, mode_line, None);
+    push_entry(TerminalStream::Stdout, mode_line, None, None);
 
     if !unsupported_sell_platform_offline {
         if provider_blockers.is_empty() {
-            push_entry(TerminalStream::Stdout, "Preflight clear.".to_string(), None);
+            push_entry(
+                TerminalStream::Stdout,
+                "Preflight clear.".to_string(),
+                None,
+                None,
+            );
         } else {
             for blocker in provider_blockers.iter().take(3) {
                 push_entry(
@@ -1492,6 +1549,7 @@ fn build_mission_control_log_lines(
                         blocker.code(),
                         blocker.detail()
                     ),
+                    None,
                     None,
                 );
             }
@@ -1558,13 +1616,18 @@ fn build_mission_control_log_lines(
             ),
         }
     };
-    push_entry(model_status_stream, model_status, None);
+    push_entry(model_status_stream, model_status, None, None);
 
     if let Some(action) = mission_action {
-        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None);
+        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None, None);
     }
     if let Some(error) = mission_error {
-        push_entry(TerminalStream::Stderr, format!("UI error: {error}"), None);
+        push_entry(
+            TerminalStream::Stderr,
+            format!("UI error: {error}"),
+            None,
+            None,
+        );
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
         if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
@@ -1572,14 +1635,20 @@ fn build_mission_control_log_lines(
                 TerminalStream::Stdout,
                 result.replacen("Relay preview", "Buyer relays", 1),
                 None,
+                None,
             );
         } else if unsupported_sell_platform_offline
             && (result.starts_with("Buyer relay transport")
                 || result.starts_with("Buyer response relay tracking"))
         {
-            push_entry(TerminalStream::Stdout, result.to_string(), None);
+            push_entry(TerminalStream::Stdout, result.to_string(), None, None);
         } else if !unsupported_sell_platform_offline {
-            push_entry(TerminalStream::Stdout, format!("Provider: {result}"), None);
+            push_entry(
+                TerminalStream::Stdout,
+                format!("Provider: {result}"),
+                None,
+                None,
+            );
         }
     }
     if let Some(error) = provider_runtime.last_error_detail.as_deref() {
@@ -1587,37 +1656,56 @@ fn build_mission_control_log_lines(
             TerminalStream::Stderr,
             format!("Provider error: {error}"),
             None,
+            None,
         );
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inventory: {action}"), None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Inventory: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Inventory error: {error}"),
             None,
+            None,
         );
     }
 
     if let Some(action) = provider_runtime.apple_fm.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Apple FM: {action}"), None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Apple FM: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = provider_runtime.apple_fm.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Apple FM error: {error}"),
             None,
+            None,
         );
     }
 
     if let Some(action) = spark_wallet.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Wallet: {action}"), None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Wallet: {action}"),
+            None,
+            None,
+        );
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Wallet error: {error}"),
+            None,
             None,
         );
     }
@@ -1626,6 +1714,7 @@ fn build_mission_control_log_lines(
         push_entry(
             mission_control_log_stream_for_request_status(request.status),
             request.mission_control_log_line(),
+            None,
             None,
         );
     }
@@ -1641,6 +1730,7 @@ fn build_mission_control_log_lines(
                     "Watching relays for matching jobs.".to_string()
                 },
                 None,
+                None,
             );
         } else {
             let request_count = job_inbox.requests.len();
@@ -1652,11 +1742,17 @@ fn build_mission_control_log_lines(
                     format!("Relay intake: {request_count} observed jobs available.")
                 },
                 None,
+                None,
             );
         }
     }
     if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
-        push_entry(TerminalStream::Stdout, format!("Inbox: {action}"), None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Inbox: {action}"),
+            None,
+            None,
+        );
     }
 
     if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
@@ -1682,12 +1778,18 @@ fn build_mission_control_log_lines(
             line.push_str(" wallet_delta_sats=");
             line.push_str(delta.to_string().as_str());
         }
-        push_entry(mission_control_log_stream_for_stage(job.stage), line, None);
+        push_entry(
+            mission_control_log_stream_for_stage(job.stage),
+            line,
+            None,
+            None,
+        );
     }
     if let Some(action) = active_job.last_action.as_deref() {
         push_entry(
             TerminalStream::Stdout,
             format!("Active job: {action}"),
+            None,
             None,
         );
     }
@@ -1696,16 +1798,19 @@ fn build_mission_control_log_lines(
             TerminalStream::Stderr,
             format!("Active job error: {error}"),
             None,
+            None,
         );
     }
 
     const LOG_STREAM_EARN_WINDOW_SECS: u64 = 900;
     let earn_cutoff = now_epoch.saturating_sub(LOG_STREAM_EARN_WINDOW_SECS);
+    let active_job_id = active_job.job.as_ref().map(|job| job.job_id.as_str());
     for row in earn_job_lifecycle_projection
         .rows
         .iter()
         .rev()
         .filter(|row| row.occurred_at_epoch_seconds >= earn_cutoff)
+        .filter(|row| active_job_id != Some(row.job_id.as_str()))
         .take(8)
     {
         let source = if row.source_tag.to_ascii_lowercase().contains("starter") {
@@ -1716,25 +1821,26 @@ fn build_mission_control_log_lines(
         push_entry(
             mission_control_log_stream_for_stage(row.stage),
             format!(
-                "[{source}] {} {} {}",
+                "[REPLAY/{source}] {} {} {}",
                 row.stage.label(),
                 row.job_id,
                 format_mission_control_amount(row.quoted_price_sats)
             ),
             Some(row.occurred_at_epoch_seconds),
+            Some(format!(
+                "mission_control:projection_replay:{}",
+                row.event_id
+            )),
         );
     }
 
     entries.sort_by_key(|e| e.0);
-    let content: Vec<(TerminalStream, String)> = entries
-        .iter()
-        .map(|(_, stream, text)| (stream.clone(), text.clone()))
-        .collect();
+    let content: Vec<String> = entries.iter().map(|(_, _, _, key)| key.clone()).collect();
     let lines: Vec<TerminalLine> = entries
         .into_iter()
-        .map(|(epoch, stream, text)| {
+        .map(|(epoch, stream, text, key)| {
             let timestamp = mission_control_log_timestamp(epoch);
-            TerminalLine::new(stream, format!("{timestamp}  {text}"))
+            TerminalLine::new(stream, format!("{timestamp}  {text}")).with_key(key)
         })
         .collect();
 
@@ -1745,7 +1851,7 @@ fn build_mission_control_log_lines(
                 TerminalStream::Stdout,
                 format!("{}  {fallback}", mission_control_log_timestamp(now_epoch)),
             )],
-            vec![(TerminalStream::Stdout, fallback.to_string())],
+            vec!["mission_control:fallback".to_string()],
         )
     } else {
         (lines, content)
@@ -1765,6 +1871,9 @@ pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
 pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS: u64 = 100;
 pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL: Duration =
     Duration::from_millis(MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS);
+pub(crate) const MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+pub(crate) const MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL: Duration =
+    Duration::from_secs(10);
 pub(crate) const MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS: u64 = 75;
 
 pub(crate) fn mission_control_buy_mode_interval_label() -> String {
@@ -2144,7 +2253,7 @@ pub struct AutopilotTerminalSession {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct AutopilotTurnMetadata {
+pub(crate) struct AutopilotTurnMetadata {
     pub submission_seq: u64,
     pub thread_id: String,
     pub run_classification: CodexRunClassification,
@@ -2458,10 +2567,10 @@ pub struct AutopilotChatState {
     pub pending_assistant_message_ids: VecDeque<u64>,
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub next_turn_submission_seq: u64,
-    pub pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
+    pub(crate) pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
     pending_steer_submissions: VecDeque<AutopilotPendingSteerSubmission>,
-    pub turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
-    pub last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
+    pub(crate) turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
+    pub(crate) last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
     last_agent_item_ids: std::collections::HashMap<String, String>,
     last_reasoning_item_ids: std::collections::HashMap<String, String>,
     last_agent_delta_signature: Option<AutopilotDeltaSignature>,
@@ -2493,7 +2602,28 @@ pub struct AutopilotChatState {
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
     pub buy_mode_last_targeted_peer_pubkey: Option<String>,
+    autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
+    buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+}
+
+#[derive(Clone)]
+struct AutopilotPeerRosterCacheEntry {
+    projection_revision: u64,
+    now_epoch_seconds: u64,
+    local_pubkey: Option<String>,
+    config: DefaultNip28ChannelConfig,
+    rows: Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow>,
+}
+
+#[derive(Clone)]
+struct AutopilotBuyModeTargetSelectionCacheEntry {
+    projection_revision: u64,
+    now_epoch_seconds: u64,
+    local_pubkey: Option<String>,
+    config: DefaultNip28ChannelConfig,
+    last_targeted_peer_pubkey: Option<String>,
+    selection: crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection,
 }
 
 impl Default for AutopilotChatState {
@@ -2549,7 +2679,7 @@ impl Default for AutopilotChatState {
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
             direct_message_projection: DirectMessageProjectionState::default(),
-            startup_new_thread_bootstrap_pending: true,
+            startup_new_thread_bootstrap_pending: false,
             startup_new_thread_bootstrap_sent: false,
             messages: Vec::new(),
             next_message_id: 1,
@@ -2593,6 +2723,8 @@ impl Default for AutopilotChatState {
             copy_notice: None,
             copy_notice_until: None,
             buy_mode_last_targeted_peer_pubkey: None,
+            autopilot_peer_roster_cache: RefCell::new(None),
+            buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
         }
     }
@@ -4172,10 +4304,32 @@ impl AutopilotChatState {
         &self,
         now_epoch_seconds: u64,
     ) -> Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow> {
-        self.autopilot_peer_roster_with_config(
-            &DefaultNip28ChannelConfig::from_env_or_default(),
+        let config = DefaultNip28ChannelConfig::from_env_or_default();
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let local_pubkey = self.managed_chat_local_pubkey().map(str::to_string);
+        if let Some(cached) = self
+            .autopilot_peer_roster_cache
+            .borrow()
+            .as_ref()
+            .filter(|cached| {
+                cached.projection_revision == projection_revision
+                    && cached.now_epoch_seconds == now_epoch_seconds
+                    && cached.local_pubkey == local_pubkey
+                    && cached.config == config
+            })
+        {
+            return cached.rows.clone();
+        }
+
+        let rows = self.autopilot_peer_roster_with_config(&config, now_epoch_seconds);
+        *self.autopilot_peer_roster_cache.borrow_mut() = Some(AutopilotPeerRosterCacheEntry {
+            projection_revision,
             now_epoch_seconds,
-        )
+            local_pubkey,
+            config,
+            rows: rows.clone(),
+        });
+        rows
     }
 
     pub(crate) fn autopilot_peer_roster_with_config(
@@ -4196,10 +4350,37 @@ impl AutopilotChatState {
         &self,
         now_epoch_seconds: u64,
     ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
-        self.select_autopilot_buy_mode_target_with_config(
-            &DefaultNip28ChannelConfig::from_env_or_default(),
-            now_epoch_seconds,
-        )
+        let config = DefaultNip28ChannelConfig::from_env_or_default();
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let local_pubkey = self.managed_chat_local_pubkey().map(str::to_string);
+        let last_targeted_peer_pubkey = self.buy_mode_last_targeted_peer_pubkey.clone();
+        if let Some(cached) = self
+            .buy_mode_target_selection_cache
+            .borrow()
+            .as_ref()
+            .filter(|cached| {
+                cached.projection_revision == projection_revision
+                    && cached.now_epoch_seconds == now_epoch_seconds
+                    && cached.local_pubkey == local_pubkey
+                    && cached.config == config
+                    && cached.last_targeted_peer_pubkey == last_targeted_peer_pubkey
+            })
+        {
+            return cached.selection.clone();
+        }
+
+        let selection =
+            self.select_autopilot_buy_mode_target_with_config(&config, now_epoch_seconds);
+        *self.buy_mode_target_selection_cache.borrow_mut() =
+            Some(AutopilotBuyModeTargetSelectionCacheEntry {
+                projection_revision,
+                now_epoch_seconds,
+                local_pubkey,
+                config,
+                last_targeted_peer_pubkey,
+                selection: selection.clone(),
+            });
+        selection
     }
 
     pub(crate) fn select_autopilot_buy_mode_target_with_config(
@@ -4947,7 +5128,7 @@ impl AutopilotChatState {
         self.last_error = is_error.then(|| trimmed_response.to_string());
     }
 
-    pub fn record_turn_submission_metadata(
+    pub(crate) fn record_turn_submission_metadata(
         &mut self,
         thread_id: &str,
         run_classification: CodexRunClassification,
@@ -5005,28 +5186,31 @@ impl AutopilotChatState {
         }
     }
 
-    pub fn turn_metadata_for(&self, turn_id: &str) -> Option<&AutopilotTurnMetadata> {
+    pub(crate) fn turn_metadata_for(&self, turn_id: &str) -> Option<&AutopilotTurnMetadata> {
         self.turn_metadata_by_turn_id.get(turn_id)
     }
 
-    pub fn active_turn_metadata(&self) -> Option<&AutopilotTurnMetadata> {
+    pub(crate) fn active_turn_metadata(&self) -> Option<&AutopilotTurnMetadata> {
         self.active_turn_id
             .as_deref()
             .and_then(|turn_id| self.turn_metadata_for(turn_id))
             .or(self.last_submitted_turn_metadata.as_ref())
     }
 
-    pub fn turn_labor_binding_for(&self, turn_id: &str) -> Option<&CodexLaborBinding> {
+    pub(crate) fn turn_labor_binding_for(&self, turn_id: &str) -> Option<&CodexLaborBinding> {
         self.turn_metadata_for(turn_id)
             .and_then(|metadata| metadata.labor_binding.as_ref())
     }
 
-    pub fn turn_labor_submission_for(&self, turn_id: &str) -> Option<&CodexLaborSubmissionState> {
+    pub(crate) fn turn_labor_submission_for(
+        &self,
+        turn_id: &str,
+    ) -> Option<&CodexLaborSubmissionState> {
         self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.submission.as_ref())
     }
 
-    pub fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
+    pub(crate) fn turn_labor_verdict_for(&self, turn_id: &str) -> Option<&CodexLaborVerdictState> {
         self.turn_labor_binding_for(turn_id)
             .and_then(|binding| binding.verdict.as_ref())
     }
@@ -5138,7 +5322,7 @@ impl AutopilotChatState {
         Ok(Some(binding.evidence_payload()))
     }
 
-    pub fn assemble_turn_labor_submission(
+    pub(crate) fn assemble_turn_labor_submission(
         &mut self,
         turn_id: &str,
         created_at_epoch_ms: u64,
@@ -5149,7 +5333,7 @@ impl AutopilotChatState {
         Ok(Some(binding.assemble_submission(created_at_epoch_ms)))
     }
 
-    pub fn finalize_turn_labor_verdict(
+    pub(crate) fn finalize_turn_labor_verdict(
         &mut self,
         turn_id: &str,
         verified_at_epoch_ms: u64,
@@ -5160,7 +5344,7 @@ impl AutopilotChatState {
         binding.finalize_verdict(verified_at_epoch_ms).map(Some)
     }
 
-    pub fn open_turn_labor_claim(
+    pub(crate) fn open_turn_labor_claim(
         &mut self,
         turn_id: &str,
         opened_at_epoch_ms: u64,
@@ -5175,7 +5359,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn review_turn_labor_claim(
+    pub(crate) fn review_turn_labor_claim(
         &mut self,
         turn_id: &str,
         reviewed_at_epoch_ms: u64,
@@ -5189,7 +5373,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn issue_turn_labor_remedy(
+    pub(crate) fn issue_turn_labor_remedy(
         &mut self,
         turn_id: &str,
         issued_at_epoch_ms: u64,
@@ -5204,7 +5388,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn deny_turn_labor_claim(
+    pub(crate) fn deny_turn_labor_claim(
         &mut self,
         turn_id: &str,
         denied_at_epoch_ms: u64,
@@ -5219,7 +5403,7 @@ impl AutopilotChatState {
             .map(Some)
     }
 
-    pub fn resolve_turn_labor_claim(
+    pub(crate) fn resolve_turn_labor_claim(
         &mut self,
         turn_id: &str,
         resolved_at_epoch_ms: u64,
@@ -6491,8 +6675,8 @@ pub use crate::state::{
         AlertDomain, AlertLifecycle, AlertSeverity, AlertsRecoveryState, RecoveryAlertRow,
     },
     job_inbox::{
-        JobDemandSource, JobInboxDecision, JobInboxNetworkRequest, JobInboxRequest, JobInboxState,
-        JobInboxValidation,
+        JobDemandRiskClass, JobDemandRiskDisposition, JobDemandSource, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxRequest, JobInboxState, JobInboxValidation,
     },
 };
 
@@ -7501,6 +7685,9 @@ pub struct ActiveJobRecord {
     pub request_id: String,
     pub requester: String,
     pub demand_source: JobDemandSource,
+    pub demand_risk_class: JobDemandRiskClass,
+    pub demand_risk_disposition: JobDemandRiskDisposition,
+    pub demand_risk_note: String,
     pub request_kind: u16,
     pub capability: String,
     pub execution_input: Option<String>,
@@ -7529,8 +7716,13 @@ pub struct ActiveJobRecord {
     pub delivery_rejection_reason_label: Option<String>,
     pub quoted_price_sats: u64,
     pub ttl_seconds: u64,
+    pub request_created_at_epoch_seconds: Option<u64>,
+    pub request_expires_at_epoch_seconds: Option<u64>,
+    pub accepted_at_epoch_seconds: Option<u64>,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
+    pub settlement_bolt11: Option<String>,
+    pub settlement_payment_hash: Option<String>,
     pub payment_id: Option<String>,
     pub failure_reason: Option<String>,
     pub events: Vec<ActiveJobEvent>,
@@ -7611,12 +7803,26 @@ impl ActiveJobState {
     }
 
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
+        self.start_from_request_with_demand_risk(request, request.demand_risk_assessment());
+    }
+
+    pub fn start_from_request_with_demand_risk(
+        &mut self,
+        request: &JobInboxRequest,
+        demand_risk: crate::state::job_inbox::JobDemandRiskAssessment,
+    ) {
         let job_id = format!("job-{}", request.request_id);
+        let accepted_at_epoch_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs());
         self.job = Some(ActiveJobRecord {
             job_id,
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
             demand_source: request.demand_source,
+            demand_risk_class: demand_risk.class,
+            demand_risk_disposition: demand_risk.disposition,
+            demand_risk_note: demand_risk.note,
             request_kind: request.request_kind,
             capability: request.capability.clone(),
             execution_input: request.execution_input.clone(),
@@ -7645,8 +7851,13 @@ impl ActiveJobState {
             delivery_rejection_reason_label: None,
             quoted_price_sats: request.price_sats,
             ttl_seconds: request.ttl_seconds,
+            request_created_at_epoch_seconds: request.created_at_epoch_seconds,
+            request_expires_at_epoch_seconds: request.expires_at_epoch_seconds,
+            accepted_at_epoch_seconds: Some(accepted_at_epoch_seconds),
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: None,
             failure_reason: None,
             events: Vec::new(),
@@ -7952,12 +8163,45 @@ impl Default for JobHistoryState {
             page: 0,
             page_size: 6,
             search_job_id: String::new(),
-            reference_epoch_seconds: 1_761_920_000,
+            reference_epoch_seconds: current_reference_epoch_seconds(),
         }
     }
 }
 
 impl JobHistoryState {
+    pub fn set_reference_epoch_seconds(&mut self, reference_epoch_seconds: u64) {
+        self.reference_epoch_seconds = reference_epoch_seconds;
+    }
+
+    pub fn replace_rows_from_persisted_receipts(
+        &mut self,
+        rows: Vec<JobHistoryReceiptRow>,
+        reference_epoch_seconds: u64,
+        source_error: Option<&str>,
+    ) {
+        self.reference_epoch_seconds = reference_epoch_seconds;
+        self.rows = rows;
+        self.rows.sort_by(|lhs, rhs| {
+            rhs.completed_at_epoch_seconds
+                .cmp(&lhs.completed_at_epoch_seconds)
+                .then_with(|| lhs.job_id.cmp(&rhs.job_id))
+        });
+        self.page = 0;
+
+        if let Some(error) = source_error {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(error.to_string());
+            self.last_action = Some("Seller history rehydrate degraded".to_string());
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_error = None;
+            self.last_action = Some(format!(
+                "Rehydrated {} seller history rows from persisted receipts",
+                self.rows.len()
+            ));
+        }
+    }
+
     pub fn set_search_job_id(&mut self, value: String) {
         self.search_job_id = value;
         self.page = 0;
@@ -8615,7 +8859,12 @@ impl EarningsScoreboardState {
             });
         }
 
-        if let Some(error) = spark_wallet.last_error.as_deref() {
+        if let Some(error) = job_history.last_error.as_deref() {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(format!("History source error: {error}"));
+            self.last_action =
+                Some("Scoreboard degraded due to history rehydrate error".to_string());
+        } else if let Some(error) = spark_wallet.last_error.as_deref() {
             self.load_state = PaneLoadState::Error;
             self.last_error = Some(format!("Wallet source error: {error}"));
             self.last_action = Some("Scoreboard degraded due to wallet error".to_string());
@@ -8721,6 +8970,13 @@ fn wallet_receipt_is_in_reference_month(
         return false;
     };
     receipt.year() == reference.year() && receipt.month() == reference.month()
+}
+
+pub(crate) fn current_reference_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 pub struct NetworkAggregateCountersState {
@@ -9037,7 +9293,7 @@ pub struct RenderState {
     pub sync_bootstrap_stream_grants: Vec<String>,
     pub hosted_control_base_url: Option<String>,
     pub hosted_control_bearer_token: Option<String>,
-    pub kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
+    pub(crate) kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
     pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
     pub sync_lifecycle_worker_id: String,
     pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,
@@ -9128,8 +9384,17 @@ impl RenderState {
         let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
         let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
         previous.shutdown_async();
-        self.codex_lane = CodexLaneSnapshot::default();
-        self.autopilot_chat.set_connection_status("starting");
+        self.codex_lane = if self.codex_lane_config.connect_on_startup {
+            CodexLaneSnapshot::default()
+        } else {
+            CodexLaneSnapshot::idle()
+        };
+        self.autopilot_chat
+            .set_connection_status(if self.codex_lane_config.connect_on_startup {
+                "starting"
+            } else {
+                "idle"
+            });
         tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
     }
 
@@ -9473,6 +9738,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats,
             ttl_seconds,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_000u64.saturating_add(ttl_seconds)),
             validation,
         }
     }
@@ -9753,27 +10020,24 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("ping".to_string());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Queued)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Queued));
 
         chat.mark_turn_started("turn-1".to_string());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Running)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Running));
 
         chat.append_turn_delta("pong");
         chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.content.contains("pong"))
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.content.contains("pong")));
     }
 
     #[test]
@@ -10700,11 +10964,10 @@ mod tests {
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
-        assert!(
-            chat.threads
-                .iter()
-                .any(|thread_id| thread_id == "thread-active")
-        );
+        assert!(chat
+            .threads
+            .iter()
+            .any(|thread_id| thread_id == "thread-active"));
         assert_eq!(
             chat.thread_metadata
                 .get("thread-active")
@@ -10883,11 +11146,10 @@ mod tests {
                 .map(|artifact| artifact.source_turn_id.as_str()),
             Some("turn-a")
         );
-        assert!(
-            chat.turn_diff
-                .as_deref()
-                .is_some_and(|diff| diff.contains("+new"))
-        );
+        assert!(chat
+            .turn_diff
+            .as_deref()
+            .is_some_and(|diff| diff.contains("+new")));
         let diff = chat.active_diff_artifact().expect("thread-a diff");
         assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
         assert_eq!(diff.project_name.as_deref(), Some("a"));
@@ -11112,12 +11374,10 @@ mod tests {
             metadata.project_name.as_deref(),
             repo.file_name().and_then(|value| value.to_str())
         );
-        assert!(
-            metadata
-                .git_branch
-                .as_deref()
-                .is_some_and(|value| !value.is_empty())
-        );
+        assert!(metadata
+            .git_branch
+            .as_deref()
+            .is_some_and(|value| !value.is_empty()));
         assert_eq!(metadata.git_dirty, Some(true));
 
         let project = chat
@@ -11936,12 +12196,10 @@ mod tests {
             .expect("running->delivered should succeed");
         let paid_transition = active.advance_stage();
         assert!(paid_transition.is_err());
-        assert!(
-            paid_transition
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("payment pointer"))
-        );
+        assert!(paid_transition
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("payment pointer")));
         let job = active.job.as_ref().expect("active job exists");
         assert!(job.payment_id.is_none());
         assert_eq!(job.stage, JobLifecycleStage::Delivered);
@@ -11954,11 +12212,10 @@ mod tests {
             .expect("history row should be recorded");
         assert_eq!(row.status, JobHistoryStatus::Failed);
         assert_eq!(row.payout_sats, 0);
-        assert!(
-            row.failure_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
-        );
+        assert!(row
+            .failure_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("not wallet-confirmed")));
     }
 
     #[test]
@@ -11983,12 +12240,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("running event"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("running event")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Accepted
@@ -12023,12 +12278,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("delivered event"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("delivered event")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Running
@@ -12067,12 +12320,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("payment pointer"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("payment pointer")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Delivered
@@ -12114,6 +12365,152 @@ mod tests {
         assert_eq!(row.payment_pointer, None);
         assert!(!row.settlement_authoritative);
         assert_eq!(row.settlement_authority, "projection.non_authoritative");
+    }
+
+    #[test]
+    fn unpaid_open_network_seller_lifecycle_stays_truthful_through_timeout() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-unpaid-open-network-timeout",
+            "text.generation",
+            2,
+            75,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let selected_request_id = inbox
+            .decide_selected(true, "accepted for deterministic timeout regression")
+            .expect("accept request");
+        assert_eq!(selected_request_id, "req-unpaid-open-network-timeout");
+        let request = inbox
+            .selected_request()
+            .expect("selected request exists")
+            .clone();
+
+        let projection_path = earn_projection_test_path("unpaid-open-network-timeout");
+        let _ = std::fs::remove_file(projection_path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(projection_path);
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("accepted job"),
+            JobLifecycleStage::Accepted,
+            1_762_000_000,
+            "earn.active_job.accepted",
+        );
+
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("accepted->running should succeed"),
+            JobLifecycleStage::Running
+        );
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("running job"),
+            JobLifecycleStage::Running,
+            1_762_000_005,
+            "earn.active_job.running",
+        );
+
+        active.execution_turn_completed = true;
+        active.execution_output = Some("BUY MODE OK".to_string());
+        {
+            let job = active.job.as_mut().expect("active job exists");
+            job.sa_tick_result_event_id = Some("result-unpaid-open-network-001".to_string());
+        }
+        assert_eq!(
+            active
+                .advance_stage()
+                .expect("running->delivered should succeed"),
+            JobLifecycleStage::Delivered
+        );
+        active.pending_bolt11 = Some("lnbc20n1unpaidopennetwork".to_string());
+        active.last_action = Some(
+            "Awaiting buyer Lightning payment after publishing feedback-unpaid-001".to_string(),
+        );
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("delivered job"),
+            JobLifecycleStage::Delivered,
+            1_762_000_030,
+            "earn.active_job.delivered",
+        );
+
+        active
+            .mark_failed(
+                "job delivered but unpaid timed out after 195s while awaiting buyer settlement",
+                "Failed active job",
+            )
+            .expect("unpaid timeout should mark failed");
+        projection.record_active_job_stage(
+            active.job.as_ref().expect("failed job"),
+            JobLifecycleStage::Failed,
+            1_762_000_225,
+            "earn.active_job.timeout",
+        );
+
+        let stages = projection
+            .rows
+            .iter()
+            .rev()
+            .map(|row| row.stage)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stages,
+            vec![
+                JobLifecycleStage::Accepted,
+                JobLifecycleStage::Running,
+                JobLifecycleStage::Delivered,
+                JobLifecycleStage::Failed,
+            ]
+        );
+        let sources = projection
+            .rows
+            .iter()
+            .rev()
+            .map(|row| row.source_tag.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sources,
+            vec![
+                "earn.active_job.accepted",
+                "earn.active_job.running",
+                "earn.active_job.delivered",
+                "earn.active_job.timeout",
+            ]
+        );
+        let timeout_row = projection.rows.first().expect("timeout row");
+        assert_eq!(timeout_row.stage, JobLifecycleStage::Failed);
+        assert_eq!(
+            timeout_row.settlement_authority,
+            "projection.non_authoritative"
+        );
+        assert!(!timeout_row.settlement_authoritative);
+
+        let snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+            &active,
+            &projection,
+            &SparkPaneState::default(),
+        )
+        .expect("snapshot should build");
+        assert_eq!(
+            snapshot.phase,
+            crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+        );
+        assert_eq!(snapshot.next_expected_event, "buyer settlement timed out");
+        assert_eq!(snapshot.continuity_window_seconds, Some(195));
+
+        let clipboard = crate::pane_renderer::active_job_clipboard_text(
+            &active,
+            &projection,
+            &SparkPaneState::default(),
+        );
+        assert!(clipboard.contains("Stage: delivered-unpaid (buyer never paid)"));
+        assert!(clipboard.contains("Next event: buyer settlement timed out"));
+        assert!(clipboard.contains(
+            "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived"
+        ));
+        assert!(clipboard.contains("[x] delivered"));
+        assert!(clipboard.contains("[ ] paid"));
     }
 
     #[test]
@@ -12569,12 +12966,10 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(
-            relays
-                .relays
-                .iter()
-                .all(|row| row.url != "wss://relay.new.example")
-        );
+        assert!(relays
+            .relays
+            .iter()
+            .all(|row| row.url != "wss://relay.new.example"));
     }
 
     #[test]
@@ -12787,6 +13182,11 @@ mod tests {
         assert!(request.provider_observations.is_empty());
         assert_eq!(request.status, NetworkRequestStatus::Submitted);
         assert!(request.last_feedback_event_id.is_none());
+        assert!(!requests.should_process_buyer_response_event(
+            request_id.as_str(),
+            untargeted_provider.as_str(),
+            "feedback-untargeted"
+        ));
     }
 
     #[test]
@@ -12891,6 +13291,208 @@ mod tests {
         assert_eq!(row.payment_sent_at_epoch_seconds, Some(1_762_700_012));
         assert_eq!(row.payment_failed_at_epoch_seconds, None);
         assert_eq!(row.payment_error, None);
+    }
+
+    #[test]
+    fn network_requests_payment_observation_falls_back_to_recorded_pointer() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-watchdog-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 13,
+            })
+            .expect("request should queue");
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "22".repeat(32).as_str(),
+            "feedback-pay-watchdog-001",
+            Some("payment-required"),
+            Some("pay to continue"),
+            Some(10_000),
+            Some("lnbc1paymentwatchdog"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentwatchdog",
+                Some(10_000),
+                1_762_700_020,
+            )
+            .expect("auto-payment should prepare");
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-payment-watchdog-001");
+        requests.pending_auto_payment_request_id = None;
+
+        assert_eq!(
+            requests.active_auto_payment_observation_request_id(),
+            Some(request_id.as_str())
+        );
+    }
+
+    #[test]
+    fn network_requests_buyer_payment_watchdog_retries_until_terminal() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-watchdog-002".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 14,
+            })
+            .expect("request should queue");
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "22".repeat(32).as_str(),
+            "feedback-pay-watchdog-002",
+            Some("payment-required"),
+            Some("pay to continue"),
+            Some(10_000),
+            Some("lnbc1paymentwatchdogtwo"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentwatchdogtwo",
+                Some(10_000),
+                1_762_700_030,
+            )
+            .expect("auto-payment should prepare");
+
+        let now = std::time::Instant::now();
+        assert_eq!(
+            requests.buyer_payment_watchdog_due(now).as_deref(),
+            Some(request_id.as_str())
+        );
+        assert_eq!(
+            requests
+                .buyer_payment_watchdog_due(
+                    now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                        - std::time::Duration::from_millis(1),
+                )
+                .as_deref(),
+            None
+        );
+
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-payment-watchdog-002");
+        requests.pending_auto_payment_request_id = None;
+        assert_eq!(
+            requests
+                .buyer_payment_watchdog_due(
+                    now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                )
+                .as_deref(),
+            Some(request_id.as_str())
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-watchdog-002",
+            1_762_700_032,
+        );
+        assert_eq!(
+            requests
+                .buyer_payment_watchdog_due(
+                    now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                        + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL,
+                )
+                .as_deref(),
+            None
+        );
+    }
+
+    #[test]
+    fn network_requests_buyer_payment_watchdog_stays_active_after_seller_settlement_feedback() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-watchdog-003".to_string()),
+                request_type: crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
+                payload: "BUY MODE OK".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 2,
+                timeout_seconds: 60,
+                authority_command_seq: 15,
+            })
+            .expect("request should queue");
+        let provider_pubkey = "22".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            "request-event-pay-watchdog-003",
+            3,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-pay-watchdog-003",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-pay-watchdog-003",
+            Some("payment-required"),
+            Some("pay to continue"),
+            Some(2_000),
+            Some("lnbc1paymentwatchdogthree"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentwatchdogthree",
+                Some(2_000),
+                1_762_700_040,
+            )
+            .expect("auto-payment should prepare");
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-payment-watchdog-003");
+        requests.pending_auto_payment_request_id = None;
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-seller-success-pay-watchdog-003",
+            Some("success"),
+            Some("wallet-confirmed settlement recorded"),
+            Some(2_000),
+            None,
+        );
+
+        let due_at = std::time::Instant::now()
+            + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL;
+        assert_eq!(
+            requests.buyer_payment_watchdog_due(due_at).as_deref(),
+            Some(request_id.as_str())
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-watchdog-003",
+            1_762_700_045,
+        );
+        assert_eq!(
+            requests
+                .buyer_payment_watchdog_due(
+                    due_at + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                )
+                .as_deref(),
+            None
+        );
     }
 
     fn queue_buy_mode_request_for_tests(
@@ -13171,11 +13773,9 @@ mod tests {
                 && line.text.contains("wallet_status=failed")
                 && line.text.contains("wallet_method=lightning")
         }));
-        assert!(
-            lines
-                .iter()
-                .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") })
-        );
+        assert!(lines
+            .iter()
+            .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") }));
         assert!(lines.iter().any(|line| {
             line.text.contains("destination_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
@@ -13267,16 +13867,12 @@ mod tests {
             summary,
             "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats  //  3 fee sats  //  5 wallet debit sats"
         );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("LIVE BUY MODE REQUESTS"))
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("WALLET-BACKFILL HISTORY"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("LIVE BUY MODE REQUESTS")));
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("WALLET-BACKFILL HISTORY")));
         assert!(lines.iter().any(|line| {
             line.text
                 .contains("request_id=wallet-inferred:6872f65774d7e233")
@@ -13289,11 +13885,9 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
         }));
-        assert!(
-            !lines
-                .iter()
-                .any(|line| { line.text.contains("wallet-payment-non-buy-001") })
-        );
+        assert!(!lines
+            .iter()
+            .any(|line| { line.text.contains("wallet-payment-non-buy-001") }));
     }
 
     #[test]
@@ -13396,7 +13990,7 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should exist after result");
-        assert_eq!(before_payment.status, NetworkRequestStatus::ResultReceived);
+        assert_eq!(before_payment.status, NetworkRequestStatus::PaymentRequired);
         assert!(before_payment.last_payment_pointer.is_none());
         assert!(
             requests.has_in_flight_request_by_type(
@@ -13501,6 +14095,58 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_ignore_missing_invoice_notice_after_valid_invoice_or_pointer() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id =
+            queue_buy_mode_request_for_tests(&mut requests, "req-pay-notice-ignore-001", 28);
+
+        requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1noticeignoreinvoice",
+                Some(crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS * 1000),
+                1_762_700_022,
+            )
+            .expect("valid invoice should prepare");
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_023,
+        );
+
+        let prepared_row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(
+            prepared_row.pending_bolt11.as_deref(),
+            Some("lnbc1noticeignoreinvoice")
+        );
+        assert_eq!(prepared_row.payment_notice, None);
+        assert_eq!(prepared_row.status, NetworkRequestStatus::PaymentRequired);
+
+        requests.record_auto_payment_pointer(request_id.as_str(), "wallet-notice-ignore-001");
+        requests.record_auto_payment_notice(
+            request_id.as_str(),
+            "provider returned payment-required without bolt11 invoice; waiting for a valid invoice event",
+            1_762_700_024,
+        );
+
+        let pending_row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present after pointer assignment");
+        assert_eq!(
+            pending_row.last_payment_pointer.as_deref(),
+            Some("wallet-notice-ignore-001")
+        );
+        assert_eq!(pending_row.payment_notice, None);
+        assert_eq!(pending_row.status, NetworkRequestStatus::PaymentRequired);
+    }
+
+    #[test]
     fn network_requests_auto_payment_accepts_under_budget_bolt11_only_invoice() {
         let mut requests = NetworkRequestsState::default();
         let request_id =
@@ -13602,27 +14248,23 @@ mod tests {
         assert_eq!(row.winning_provider_pubkey, None);
         assert_eq!(row.pending_bolt11, None);
         assert_eq!(row.status, NetworkRequestStatus::ResultReceived);
-        assert!(
-            row.payment_notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2"))
-        );
+        assert!(row
+            .payment_notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2")));
 
         let snapshot = crate::nip90_compute_flow::build_buyer_request_flow_snapshot(
             row,
             &SparkPaneState::default(),
         );
-        assert!(
-            snapshot
-                .payment_blocker_codes
-                .iter()
-                .any(|code| code == "invoice_over_budget")
-        );
-        assert!(
-            snapshot.payment_blocker_summary.as_deref().is_some_and(
-                |summary| summary.contains("requested 25 sats above approved budget 2")
-            )
-        );
+        assert!(snapshot
+            .payment_blocker_codes
+            .iter()
+            .any(|code| code == "invoice_over_budget"));
+        assert!(snapshot
+            .payment_blocker_summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("requested 25 sats above approved budget 2")));
     }
 
     #[test]
@@ -13670,11 +14312,10 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should remain present");
-        assert!(
-            row.payment_notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount"))
-        );
+        assert!(row
+            .payment_notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount")));
     }
 
     #[test]
@@ -14093,11 +14734,9 @@ mod tests {
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
         );
-        assert!(
-            state.agents[0]
-                .credential_key_name
-                .starts_with("BLINK_API_KEY")
-        );
+        assert!(state.agents[0]
+            .credential_key_name
+            .starts_with("BLINK_API_KEY"));
     }
 
     #[test]
@@ -14110,12 +14749,10 @@ mod tests {
         assert_eq!(state.agents[0].btc_balance_sats, 2_000);
         assert_eq!(state.agents[0].usd_balance_cents, 250);
         assert!(!state.transfer_ledger.is_empty());
-        assert!(
-            state
-                .transfer_ledger
-                .iter()
-                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
-        );
+        assert!(state
+            .transfer_ledger
+            .iter()
+            .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:")));
     }
 
     #[test]
@@ -14144,12 +14781,10 @@ mod tests {
             state.agents[0].last_switch_summary,
             "refresh failed: missing secure credential"
         );
-        assert!(
-            state
-                .last_error
-                .as_deref()
-                .is_some_and(|value| value.contains("1 wallet error"))
-        );
+        assert!(state
+            .last_error
+            .as_deref()
+            .is_some_and(|value| value.contains("1 wallet error")));
         assert!(!state.transfer_ledger.is_empty());
     }
 
@@ -14210,12 +14845,10 @@ mod tests {
             .expect("second dispatch check should not error");
         assert!(blocked_by_cap.is_none());
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert!(
-            starter_jobs
-                .last_action
-                .as_deref()
-                .is_some_and(|value| value.contains("max=1"))
-        );
+        assert!(starter_jobs
+            .last_action
+            .as_deref()
+            .is_some_and(|value| value.contains("max=1")));
 
         assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
         assert_eq!(starter_jobs.inflight_jobs(), 0);
@@ -14491,11 +15124,10 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(
-            feed.visible_rows()
-                .into_iter()
-                .all(|row| row.domain == ActivityEventDomain::Wallet)
-        );
+        assert!(feed
+            .visible_rows()
+            .into_iter()
+            .all(|row| row.domain == ActivityEventDomain::Wallet));
 
         feed.upsert_event(fixture_activity_event(
             "cad:event:1",
@@ -14503,11 +15135,10 @@ mod tests {
             1_761_920_260,
         ));
         feed.set_filter(ActivityFeedFilter::Cad);
-        assert!(
-            feed.visible_rows()
-                .into_iter()
-                .all(|row| row.domain == ActivityEventDomain::Cad)
-        );
+        assert!(feed
+            .visible_rows()
+            .into_iter()
+            .all(|row| row.domain == ActivityEventDomain::Cad));
     }
 
     #[test]
@@ -14688,21 +15319,17 @@ mod tests {
             1_761_920_360,
         ));
 
-        assert!(
-            primary
-                .rows
-                .iter()
-                .all(|row| row.event_id != "sync:checkpoint:2")
-        );
+        assert!(primary
+            .rows
+            .iter()
+            .all(|row| row.event_id != "sync:checkpoint:2"));
         primary
             .reload_projection()
             .expect("projection reload should reconcile rows");
-        assert!(
-            primary
-                .rows
-                .iter()
-                .any(|row| row.event_id == "sync:checkpoint:2")
-        );
+        assert!(primary
+            .rows
+            .iter()
+            .any(|row| row.event_id == "sync:checkpoint:2"));
         let _ = std::fs::remove_file(path.as_path());
     }
 
@@ -14972,6 +15599,107 @@ mod tests {
     }
 
     #[test]
+    fn job_history_default_reference_uses_live_current_time() {
+        let history = JobHistoryState::default();
+        let now = super::current_reference_epoch_seconds();
+        assert!(history.reference_epoch_seconds <= now);
+        assert!(now.saturating_sub(history.reference_epoch_seconds) <= 5);
+    }
+
+    #[test]
+    fn restart_preserves_earnings_scoreboard_from_persisted_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let receipt_path = temp_dir.path().join("earn-kernel-receipts.json");
+        let mut receipts =
+            crate::state::earn_kernel_receipts::EarnKernelReceiptState::from_receipt_path_for_tests(
+                receipt_path.clone(),
+            );
+
+        receipts.apply_authoritative_receipt(
+            crate::economy_kernel_receipts::ReceiptBuilder::new(
+                "receipt.restart.001",
+                "earn.job.settlement_observed.v1",
+                1_762_000_120_000,
+                "idemp.restart.001",
+                crate::economy_kernel_receipts::TraceContext {
+                    work_unit_id: Some("job-restart-001".to_string()),
+                    ..crate::economy_kernel_receipts::TraceContext::default()
+                },
+                crate::economy_kernel_receipts::PolicyContext {
+                    policy_bundle_id: "test.bundle".to_string(),
+                    policy_version: "test".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .with_inputs_payload(serde_json::json!({
+                "job_id": "job-restart-001",
+            }))
+            .with_outputs_payload(serde_json::json!({
+                "status": "succeeded",
+            }))
+            .with_evidence(vec![crate::economy_kernel_receipts::EvidenceRef::new(
+                "wallet_settlement_proof",
+                "oa://wallet/payments/wallet-restart-001",
+                "sha256:wallet-restart-001",
+            )])
+            .with_hints(crate::economy_kernel_receipts::ReceiptHints {
+                notional: Some(crate::economy_kernel_receipts::Money {
+                    asset: crate::economy_kernel_receipts::Asset::Btc,
+                    amount: crate::economy_kernel_receipts::MoneyAmount::AmountSats(42),
+                }),
+                ..crate::economy_kernel_receipts::ReceiptHints::default()
+            })
+            .build()
+            .expect("authoritative restart receipt should build"),
+            "test.history.restart",
+        );
+
+        let reloaded =
+            crate::state::earn_kernel_receipts::EarnKernelReceiptState::from_receipt_path_for_tests(
+                receipt_path,
+            );
+        let rebuilt_rows = reloaded.authoritative_job_history_rows();
+        assert_eq!(rebuilt_rows.len(), 1);
+        assert_eq!(rebuilt_rows[0].job_id, "job-restart-001");
+        assert_eq!(rebuilt_rows[0].payment_pointer, "wallet-restart-001");
+        assert_eq!(rebuilt_rows[0].payout_sats, 42);
+
+        let provider = ProviderRuntimeState::default();
+        let mut history = JobHistoryState::default();
+        history.replace_rows_from_persisted_receipts(
+            rebuilt_rows,
+            1_762_000_240,
+            reloaded.last_error.as_deref(),
+        );
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 42,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-restart-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 42,
+                timestamp: 1_762_000_180,
+                ..Default::default()
+            });
+
+        let mut score = EarningsScoreboardState::default();
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(history.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.lifetime_sats, 42);
+        assert_eq!(score.sats_today, 42);
+        assert_eq!(score.jobs_today, 1);
+    }
+
+    #[test]
     fn earnings_scoreboard_ignores_unreconciled_history_rows() {
         let mut score = EarningsScoreboardState::default();
         let provider = ProviderRuntimeState::default();
@@ -15070,6 +15798,77 @@ mod tests {
     }
 
     #[test]
+    fn earnings_scoreboard_today_window_uses_current_reference_day() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let reference = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 15, 8, 0, 0)
+            .single()
+            .expect("valid reference timestamp")
+            .timestamp() as u64;
+        let previous_day = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 13, 7, 59, 0)
+            .single()
+            .expect("valid prior-day timestamp")
+            .timestamp() as u64;
+        let current_day = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 15, 7, 59, 0)
+            .single()
+            .expect("valid current-day timestamp")
+            .timestamp() as u64;
+
+        let mut current_row = fixture_history_row(
+            "job-day-001",
+            JobHistoryStatus::Succeeded,
+            current_day,
+            1_500,
+        );
+        current_row.payment_pointer = "wallet-day-001".to_string();
+        let mut previous_row = fixture_history_row(
+            "job-day-002",
+            JobHistoryStatus::Succeeded,
+            previous_day,
+            900,
+        );
+        previous_row.payment_pointer = "wallet-day-002".to_string();
+        let mut history = seed_job_history(vec![current_row, previous_row]);
+        history.set_reference_epoch_seconds(reference);
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-day-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 1_500,
+                timestamp: current_day,
+                ..Default::default()
+            });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-day-002".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 900,
+                timestamp: previous_day,
+                ..Default::default()
+            });
+
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(score.jobs_today, 1);
+        assert_eq!(score.sats_today, 1_500);
+        assert_eq!(score.lifetime_sats, 2_400);
+    }
+
+    #[test]
     fn earnings_scoreboard_surfaces_wallet_errors() {
         let mut score = EarningsScoreboardState::default();
         let provider = ProviderRuntimeState::default();
@@ -15080,12 +15879,10 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(
-            score
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("wallet backend unavailable"))
-        );
+        assert!(score
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("wallet backend unavailable")));
     }
 
     #[test]
@@ -15202,12 +15999,10 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.stream == TerminalStream::Stdout
-                    && line.text.contains("\u{20BF} 1 000"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.stream == TerminalStream::Stdout
+                && line.text.contains("\u{20BF} 1 000")));
     }
 
     #[test]
@@ -15282,21 +16077,15 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text == "Provider offline. Platform not supported for selling compute."
         }));
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Start Apple FM"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("capability pending"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Preflight blocker"))
-        );
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Start Apple FM")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("capability pending")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Preflight blocker")));
     }
 
     #[test]
@@ -15327,20 +16116,16 @@ mod tests {
         );
 
         if super::mission_control_uses_apple_fm() {
-            assert!(
-                lines
-                    .iter()
-                    .any(|line| line.text.contains("Apple Foundation Models unavailable"))
-            );
+            assert!(lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable")));
         } else {
             assert!(lines.iter().any(|line| {
                 line.text == "Provider offline. Platform not supported for selling compute."
             }));
-            assert!(
-                !lines
-                    .iter()
-                    .any(|line| { line.text.contains("Apple Foundation Models unavailable") })
-            );
+            assert!(!lines
+                .iter()
+                .any(|line| { line.text.contains("Apple Foundation Models unavailable") }));
         }
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }
@@ -15373,16 +16158,12 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("bridge reachable but not ready yet"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("bridge reachable but not ready yet")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Apple Foundation Models unavailable")));
     }
 
     #[test]
@@ -15579,6 +16360,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: None,
             requested_output_mime: None,
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -15587,6 +16369,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 2,
             ttl_seconds: 75,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_075),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Pending,
@@ -15631,6 +16415,123 @@ mod tests {
                 && line.text.contains("settlement_fee_sats=1")
                 && line.text.contains("wallet_delta_sats=2")
         }));
+    }
+
+    #[test]
+    fn mission_control_log_lines_mark_projection_rows_as_replay_history() {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_762_000_000);
+        let provider = ProviderRuntimeState::default();
+        let projection = EarnJobLifecycleProjectionState {
+            load_state: super::PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            stream_id: "stream.earn_job_lifecycle_projection.v1".to_string(),
+            authority: "non-authoritative".to_string(),
+            rows: vec![EarnJobLifecycleProjectionRow {
+                stream_seq: 1,
+                event_id: "earn.lifecycle:job-replay-001:delivered:result".to_string(),
+                job_id: "job-replay-001".to_string(),
+                request_id: "req-replay-001".to_string(),
+                stage: JobLifecycleStage::Delivered,
+                source_tag: "open-network".to_string(),
+                occurred_at_epoch_seconds: now_epoch.saturating_sub(30),
+                quoted_price_sats: 2,
+                payment_pointer: None,
+                settlement_authority: "projection.non_authoritative".to_string(),
+                settlement_authoritative: false,
+            }],
+            projection_file_path: earn_projection_test_path("mission-control-replay-mark"),
+        };
+
+        let (lines, keys) = super::build_mission_control_log_lines(
+            Some("Mission Control ready"),
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") }));
+        assert!(keys.iter().any(|key| {
+            key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
+        }));
+    }
+
+    #[test]
+    fn mission_control_sync_log_stream_keeps_projection_rows_marked_as_replay_after_reopen() {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_762_000_000);
+        let provider = ProviderRuntimeState::default();
+        let projection = EarnJobLifecycleProjectionState {
+            load_state: super::PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            stream_id: "stream.earn_job_lifecycle_projection.v1".to_string(),
+            authority: "non-authoritative".to_string(),
+            rows: vec![EarnJobLifecycleProjectionRow {
+                stream_seq: 1,
+                event_id: "earn.lifecycle:job-replay-002:accepted:req".to_string(),
+                job_id: "job-replay-002".to_string(),
+                request_id: "req-replay-002".to_string(),
+                stage: JobLifecycleStage::Accepted,
+                source_tag: "open-network".to_string(),
+                occurred_at_epoch_seconds: now_epoch.saturating_sub(45),
+                quoted_price_sats: 2,
+                payment_pointer: None,
+                settlement_authority: "projection.non_authoritative".to_string(),
+                settlement_authoritative: false,
+            }],
+            projection_file_path: earn_projection_test_path("mission-control-replay-reopen"),
+        };
+
+        let mut first = MissionControlPaneState::default();
+        first.sync_log_stream(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+        assert!(first
+            .log_stream
+            .recent_lines(32)
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
+
+        let mut reopened = MissionControlPaneState::default();
+        reopened.sync_log_stream(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+        assert!(reopened
+            .log_stream
+            .recent_lines(32)
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
     }
 
     #[test]
@@ -15690,16 +16591,41 @@ mod tests {
             mission_control.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
-        assert!(
-            !mission_control.buy_mode_dispatch_due(
-                now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
-                    .saturating_sub(std::time::Duration::from_millis(1))
-            )
-        );
+        assert!(!mission_control.buy_mode_dispatch_due(
+            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
+                .saturating_sub(std::time::Duration::from_millis(1))
+        ));
 
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);
         assert_eq!(mission_control.buy_mode_next_dispatch_at, None);
+    }
+
+    #[test]
+    fn mission_control_buy_mode_blocked_notice_is_throttled_until_signature_changes() {
+        let mut mission_control = super::MissionControlPaneState::default();
+        let now = std::time::Instant::now();
+
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(now, "no-peers:4:0"));
+        assert!(!mission_control.should_emit_buy_mode_blocked_notice(
+            now + std::time::Duration::from_secs(1),
+            "no-peers:4:0"
+        ));
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL,
+            "no-peers:4:0"
+        ));
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+                + std::time::Duration::from_secs(1),
+            "no-peers:5:0"
+        ));
+        mission_control.clear_buy_mode_blocked_notice();
+        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+            now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
+                + std::time::Duration::from_secs(2),
+            "no-peers:5:0"
+        ));
     }
 
     #[test]
@@ -15827,12 +16753,10 @@ mod tests {
 
         assert_eq!(counters.load_state, super::PaneLoadState::Error);
         assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
-        assert!(
-            counters
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("wallet service unavailable"))
-        );
+        assert!(counters
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("wallet service unavailable")));
     }
 
     #[test]
@@ -15856,12 +16780,10 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.degraded"
         );
-        assert!(
-            counters
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("presence query timeout"))
-        );
+        assert!(counters
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("presence query timeout")));
     }
 
     #[test]
@@ -15884,12 +16806,10 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.stale"
         );
-        assert!(
-            counters
-                .last_action
-                .as_deref()
-                .is_some_and(|action| action.contains("stale"))
-        );
+        assert!(counters
+            .last_action
+            .as_deref()
+            .is_some_and(|action| action.contains("stale")));
     }
 
     #[test]
@@ -16023,18 +16943,14 @@ mod tests {
         assert_eq!(archived.thread_id, "thread-1");
         assert_eq!(archived.turn_id, "turn-1");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
-        assert!(
-            archived
-                .latest_tool_result
-                .as_deref()
-                .is_some_and(|value| value.contains("OA-CAD-INTENT-OK"))
-        );
-        assert!(
-            archived
-                .latest_rebuild_result
-                .as_deref()
-                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
-        );
+        assert!(archived
+            .latest_tool_result
+            .as_deref()
+            .is_some_and(|value| value.contains("OA-CAD-INTENT-OK")));
+        assert!(archived
+            .latest_rebuild_result
+            .as_deref()
+            .is_some_and(|value| value.contains("ai-intent:setmaterial")));
         assert!(!archived.events.is_empty());
     }
 

@@ -530,7 +530,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "autopilot-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "autopilot-spacetime",
@@ -545,7 +545,8 @@ dependencies = [
  "getrandom 0.3.4",
  "hex",
  "keyring",
- "nostr 0.1.0",
+ "lightning-invoice",
+ "nostr 0.1.1",
  "nostr-client",
  "openagents-cad",
  "openagents-kernel-core",
@@ -571,7 +572,7 @@ dependencies = [
 
 [[package]]
 name = "autopilot-spacetime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bitcoin 0.32.8",
  "hex",
@@ -1524,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "codex-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -2113,7 +2114,7 @@ checksum = "f400d0750c0c069e8493f2256cb4da6f604b6d2eeb69a0ca8863acde352f8400"
 
 [[package]]
 name = "deck"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -4884,7 +4885,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-control"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -4905,14 +4906,14 @@ dependencies = [
 
 [[package]]
 name = "nexus-relay"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
  "futures-util",
  "hex",
  "nexus-control",
- "nostr 0.1.0",
+ "nostr 0.1.1",
  "nostr-client",
  "nostr-rs-relay",
  "reqwest",
@@ -4964,7 +4965,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "nostr"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "anyhow",
@@ -5038,11 +5039,11 @@ dependencies = [
 
 [[package]]
 name = "nostr-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
  "hex",
- "nostr 0.1.0",
+ "nostr 0.1.1",
  "rustls 0.23.36",
  "serde",
  "serde_json",
@@ -5542,7 +5543,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openagents-cad"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "robust",
  "serde",
@@ -5553,7 +5554,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-ios-domain"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "openagents-kernel-core"
@@ -5579,7 +5580,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-provider-substrate"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum 0.8.8",
  "reqwest",
@@ -5593,7 +5594,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-spark"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bip39",
  "bitcoin 0.32.8",
@@ -6419,7 +6420,7 @@ checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
 name = "psionic-apple-fm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -6433,7 +6434,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-amd-kfd"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "psionic-backend-cpu",
  "psionic-core",
@@ -6442,7 +6443,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-amd-userspace"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "psionic-backend-cpu",
  "psionic-core",
@@ -6451,7 +6452,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-cpu"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "psionic-compiler",
  "psionic-core",
@@ -6461,7 +6462,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-cuda"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cc",
  "libloading",
@@ -6474,7 +6475,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-metal"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "metal 0.33.0",
  "psionic-backend-cpu",
@@ -6486,7 +6487,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-catalog"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "hex",
  "memmap2",
@@ -6500,7 +6501,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-cluster"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -6516,7 +6517,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-compiler"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "psionic-core",
  "psionic-ir",
@@ -6527,14 +6528,14 @@ dependencies = [
 
 [[package]]
 name = "psionic-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "psionic-ir"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "hex",
  "psionic-core",
@@ -6545,7 +6546,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-models"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fancy-regex 0.16.2",
  "hex",
@@ -6562,7 +6563,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-provider"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -6578,7 +6579,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -6593,7 +6594,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-serve"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum 0.8.8",
  "hex",
@@ -6664,11 +6665,11 @@ dependencies = [
 
 [[package]]
 name = "pylon"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bip39",
- "nostr 0.1.0",
+ "nostr 0.1.1",
  "openagents-provider-substrate",
  "rand 0.9.2",
  "reqwest",
@@ -10330,7 +10331,7 @@ dependencies = [
 
 [[package]]
 name = "wgpui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytemuck",
  "console_error_panic_hook",
@@ -10343,6 +10344,8 @@ dependencies = [
  "insta",
  "js-sys",
  "log",
+ "objc2-app-kit",
+ "objc2-foundation",
  "parking_lot 0.12.4",
  "pollster",
  "pulldown-cmark",
@@ -10365,14 +10368,14 @@ dependencies = [
 
 [[package]]
 name = "wgpui-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytemuck",
 ]
 
 [[package]]
 name = "wgpui-render"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytemuck",
  "log",

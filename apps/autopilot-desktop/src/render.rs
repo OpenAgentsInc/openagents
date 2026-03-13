@@ -192,7 +192,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
-        let codex_lane_config = CodexLaneConfig::default();
+        let mut codex_lane_config = CodexLaneConfig::default();
+        codex_lane_config.connect_on_startup = false;
+        codex_lane_config.bootstrap_thread = false;
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
@@ -299,7 +301,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             desktop_control: crate::app_state::DesktopControlState::default(),
             codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
-            codex_lane: CodexLaneSnapshot::default(),
+            codex_lane: CodexLaneSnapshot::idle(),
             codex_lane_config,
             codex_lane_worker,
             codex_command_responses: Vec::new(),
@@ -391,6 +393,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        rehydrate_startup_earnings_history(&mut state);
         apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
         state.sync_chat_identities();
@@ -401,6 +404,21 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let _ = crate::desktop_control::enable_runtime(&mut state, None);
         Ok(state)
     })
+}
+
+fn rehydrate_startup_earnings_history(state: &mut RenderState) {
+    let reference_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+    let source_error = state.earn_kernel_receipts.last_error.as_deref();
+    let rows = if source_error.is_none() {
+        state.earn_kernel_receipts.authoritative_job_history_rows()
+    } else {
+        Vec::new()
+    };
+    state.job_history.replace_rows_from_persisted_receipts(
+        rows,
+        reference_epoch_seconds,
+        source_error,
+    );
 }
 
 pub(crate) fn sync_project_ops_runtime_contract_state(state: &mut RenderState) {
@@ -627,6 +645,9 @@ fn open_startup_panes(state: &mut RenderState) {
             PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
                 let _ = ensure_mission_control_apple_fm_refresh(state);
+                state
+                    .spark_wallet
+                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }
@@ -637,6 +658,9 @@ fn open_startup_panes(state: &mut RenderState) {
             }
             PaneKind::SparkWallet => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                state
+                    .spark_wallet
+                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }

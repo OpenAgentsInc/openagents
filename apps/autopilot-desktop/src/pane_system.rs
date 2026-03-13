@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use wgpui::components::hud::{PaneFrame, ResizablePane, ResizeEdge};
-use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
+use wgpui::{theme, Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
-    mission_control_show_local_model_button,
+    mission_control_show_local_model_button, ActivityFeedFilter, DesktopPane, PaneDragMode,
+    PaneKind, PanePresentation, RenderState,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -1401,11 +1401,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                         state.mission_control_buy_mode_enabled(),
                         state.mission_control.load_funds_scroll_offset(),
                     )
-                    .contains(point)
-                    || mission_control_withdraw_invoice_input_bounds_for_scroll(
-                        content_bounds,
-                        state.mission_control.actions_scroll_offset(),
-                    )
                     .contains(point))
             {
                 return CursorIcon::Text;
@@ -1544,11 +1539,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                         content_bounds,
                         state.mission_control_buy_mode_enabled(),
                         state.mission_control.load_funds_scroll_offset(),
-                    )
-                    .contains(point)
-                    || mission_control_withdraw_invoice_input_bounds_for_scroll(
-                        content_bounds,
-                        state.mission_control.actions_scroll_offset(),
                     )
                     .contains(point)
                 {
@@ -2147,7 +2137,9 @@ pub fn mission_control_layout_for_mode(
         let target_wallet_height = 146.0;
         let target_actions_height = 190.0;
 
-        let sell_growth = (target_sell_height - sell_height).max(0.0).min(extra_height);
+        let sell_growth = (target_sell_height - sell_height)
+            .max(0.0)
+            .min(extra_height);
         sell_height += sell_growth;
         extra_height -= sell_growth;
 
@@ -5344,7 +5336,7 @@ fn pane_hit_action_for_pane(
                 buy_mode_enabled,
                 state.mission_control.load_funds_scroll_offset(),
             )
-                .contains(point)
+            .contains(point)
                 && lightning_copy_enabled
             {
                 Some(PaneHitAction::MissionControl(
@@ -5355,7 +5347,7 @@ fn pane_hit_action_for_pane(
                 buy_mode_enabled,
                 state.mission_control.load_funds_scroll_offset(),
             )
-                .contains(point)
+            .contains(point)
                 && lightning_send_enabled
             {
                 Some(PaneHitAction::MissionControl(
@@ -5366,7 +5358,7 @@ fn pane_hit_action_for_pane(
                 buy_mode_enabled,
                 state.mission_control.load_funds_scroll_offset(),
             )
-                .contains(point)
+            .contains(point)
                 && seed_copy_enabled
             {
                 Some(PaneHitAction::MissionControl(
@@ -5416,21 +5408,6 @@ fn pane_hit_action_for_pane(
             {
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::RunLocalFmSummaryTest,
-                ))
-            } else if mission_control_withdraw_button_bounds_for_scroll(
-                content_bounds,
-                state.mission_control.actions_scroll_offset(),
-            )
-            .contains(point)
-                && !state
-                    .mission_control
-                    .withdraw_invoice
-                    .get_value()
-                    .trim()
-                    .is_empty()
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::SendWithdrawal,
                 ))
             } else {
                 None
@@ -6472,20 +6449,8 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
             &mut state.event_context,
         )
         .is_handled();
-    let withdraw_handled = state
-        .mission_control
-        .withdraw_invoice
-        .event(
-            event,
-            mission_control_withdraw_invoice_input_bounds_for_scroll(
-                content_bounds,
-                state.mission_control.actions_scroll_offset(),
-            ),
-            &mut state.event_context,
-        )
-        .is_handled();
 
-    amount_handled || send_handled || withdraw_handled
+    amount_handled || send_handled
 }
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -6527,8 +6492,12 @@ pub fn dispatch_mission_control_log_scroll_event(
     );
     if !log_bounds.contains(cursor_position) {
         if let InputEvent::Scroll { dy, .. } = event {
-            let layout = mission_control_layout_for_mode(content_bounds, state.mission_control_buy_mode_enabled());
-            if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position) {
+            let layout = mission_control_layout_for_mode(
+                content_bounds,
+                state.mission_control_buy_mode_enabled(),
+            );
+            if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position)
+            {
                 state.mission_control.scroll_sell_by(*dy);
                 return true;
             }
@@ -6540,7 +6509,9 @@ pub fn dispatch_mission_control_log_scroll_event(
                 state.mission_control.scroll_wallet_by(*dy);
                 return true;
             }
-            if mission_control_actions_scroll_viewport_bounds(content_bounds).contains(cursor_position) {
+            if mission_control_actions_scroll_viewport_bounds(content_bounds)
+                .contains(cursor_position)
+            {
                 state.mission_control.scroll_actions_by(*dy);
                 return true;
             }
@@ -6953,7 +6924,7 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
+        active_job_abort_button_bounds, active_job_advance_button_bounds,
         active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
         activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
         activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
@@ -7051,7 +7022,7 @@ mod tests {
         starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-        trajectory_verify_button_bounds,
+        trajectory_verify_button_bounds, PaneDescriptor,
     };
     use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
@@ -7184,16 +7155,12 @@ mod tests {
 
         assert!(layout.active_jobs_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.amount_input.origin)
-        );
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.send_invoice_input.origin)
-        );
+        assert!(layout
+            .load_funds_panel
+            .contains(load_funds.amount_input.origin));
+        assert!(layout
+            .load_funds_panel
+            .contains(load_funds.send_invoice_input.origin));
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
@@ -7209,16 +7176,12 @@ mod tests {
 
         assert!(layout.buy_mode_panel.max_y() <= layout.load_funds_panel.origin.y);
         assert_eq!(load_funds.panel, layout.load_funds_panel);
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.amount_input.origin)
-        );
-        assert!(
-            layout
-                .load_funds_panel
-                .contains(load_funds.send_invoice_input.origin)
-        );
+        assert!(layout
+            .load_funds_panel
+            .contains(load_funds.amount_input.origin));
+        assert!(layout
+            .load_funds_panel
+            .contains(load_funds.send_invoice_input.origin));
         assert!(load_funds.send_lightning_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_x() <= layout.load_funds_panel.max_x());
         assert!(load_funds.copy_seed_button.max_y() <= layout.load_funds_panel.max_y());
@@ -7233,7 +7196,9 @@ mod tests {
         let compact_layout = super::mission_control_layout_for_mode(compact_bounds, false);
         let tall_layout = super::mission_control_layout_for_mode(tall_bounds, false);
 
-        assert!(tall_layout.load_funds_panel.size.height > compact_layout.load_funds_panel.size.height);
+        assert!(
+            tall_layout.load_funds_panel.size.height > compact_layout.load_funds_panel.size.height
+        );
         assert!(tall_layout.log_stream.size.height >= 153.0);
     }
 

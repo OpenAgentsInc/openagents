@@ -9,7 +9,10 @@ use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, MissionControlPaneAction,
 };
-use crate::spark_wallet::is_settled_wallet_payment_status;
+use crate::spark_wallet::{
+    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    normalize_lightning_invoice_ref,
+};
 use crate::state::job_inbox::JobExecutionParam;
 use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
 
@@ -9153,7 +9156,9 @@ pub(super) fn run_mission_control_action(
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
             } else {
-                state.mission_control.record_action("Queued Lightning send");
+                state
+                    .mission_control
+                    .record_action("Queued Lightning withdrawal");
                 state.mission_control.send_invoice.set_value(String::new());
             }
             true
@@ -9283,7 +9288,6 @@ pub(super) fn run_mission_control_action(
                     crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
                     crate::app_state::mission_control_buy_mode_interval_label()
                 ));
-                let _ = run_mission_control_buy_mode_tick(state, now);
             }
             true
         }
@@ -10127,7 +10131,10 @@ pub(super) fn run_mission_control_buy_mode_tick(
         .autopilot_chat
         .select_autopilot_buy_mode_target(now_epoch_seconds);
     let Some(target_provider_pubkey) = target_selection.selected_peer_pubkey.clone() else {
-        state.mission_control.schedule_buy_mode_retry(now);
+        state.mission_control.schedule_buy_mode_retry_with_interval(
+            now,
+            crate::app_state::MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL,
+        );
         let detail = target_selection.blocked_reason.unwrap_or_else(|| {
             "Buy Mode blocked: no eligible Autopilot peer is available".to_string()
         });
@@ -10135,18 +10142,28 @@ pub(super) fn run_mission_control_buy_mode_tick(
             .blocked_reason_code
             .as_deref()
             .unwrap_or("unknown");
-        state.provider_runtime.last_result = Some(detail.clone());
-        tracing::info!(
-            target: "autopilot_desktop::buy_mode",
-            "Buy Mode dispatch blocked: code={} observed_peers={} eligible_peers={} detail={}",
-            blocked_reason_code,
-            target_selection.observed_peer_count,
-            target_selection.eligible_peer_count,
-            detail
+        let blocked_signature = format!(
+            "{blocked_reason_code}:{}:{}:{detail}",
+            target_selection.observed_peer_count, target_selection.eligible_peer_count
         );
-        state.mission_control.record_action(detail);
+        if state
+            .mission_control
+            .should_emit_buy_mode_blocked_notice(now, blocked_signature.as_str())
+        {
+            state.provider_runtime.last_result = Some(detail.clone());
+            tracing::info!(
+                target: "autopilot_desktop::buy_mode",
+                "Buy Mode dispatch blocked: code={} observed_peers={} eligible_peers={} detail={}",
+                blocked_reason_code,
+                target_selection.observed_peer_count,
+                target_selection.eligible_peer_count,
+                detail
+            );
+            state.mission_control.record_action(detail);
+        }
         return true;
     };
+    state.mission_control.clear_buy_mode_blocked_notice();
 
     match submit_mission_control_buy_mode_request(state, vec![target_provider_pubkey.clone()]) {
         Ok(request_id) => {
@@ -10181,6 +10198,39 @@ pub(super) fn run_mission_control_buy_mode_tick(
             true
         }
     }
+}
+
+pub(super) fn run_pending_buyer_payment_watchdog_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some(request_id) = state.network_requests.buyer_payment_watchdog_due(now) else {
+        return false;
+    };
+
+    let payment_pointer = state
+        .network_requests
+        .submitted
+        .iter()
+        .find(|request| request.request_id == request_id)
+        .and_then(|request| request.last_payment_pointer.clone())
+        .unwrap_or_else(|| "none".to_string());
+
+    queue_spark_command(state, SparkWalletCommand::Refresh);
+    tracing::info!(
+        target: "autopilot_desktop::buyer",
+        "Buyer queued wallet refresh while awaiting payment confirmation request_id={} pointer={} interval_seconds={}",
+        request_id,
+        payment_pointer,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    );
+    state.provider_runtime.last_result = Some(format!(
+        "buyer queued wallet refresh request={} pointer={} interval_seconds={}",
+        request_id,
+        payment_pointer,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    ));
+    true
 }
 
 fn submit_signed_network_request_with_event(
@@ -10304,6 +10354,10 @@ fn submit_signed_network_request_with_event(
                 ac_envelope_event_id: None,
                 price_sats: budget_sats,
                 ttl_seconds: timeout_seconds,
+                created_at_epoch_seconds: Some(current_epoch_seconds()),
+                expires_at_epoch_seconds: Some(
+                    current_epoch_seconds().saturating_add(timeout_seconds),
+                ),
                 validation: JobInboxValidation::Pending,
             });
     }
@@ -10724,6 +10778,8 @@ fn run_hosted_starter_demand_sync(
             ac_envelope_event_id: None,
             price_sats: offer.price_sats,
             ttl_seconds: offer.ttl_seconds,
+            created_at_epoch_seconds: Some(now_epoch_seconds),
+            expires_at_epoch_seconds: Some(now_epoch_seconds.saturating_add(offer.ttl_seconds)),
             validation: JobInboxValidation::Valid,
         };
         let is_new = !state
@@ -11030,6 +11086,8 @@ fn queue_starter_demand_request(
         ac_envelope_event_id: None,
         price_sats: starter_job.payout_sats,
         ttl_seconds: timeout_seconds,
+        created_at_epoch_seconds: Some(now_epoch_seconds),
+        expires_at_epoch_seconds: Some(now_epoch_seconds.saturating_add(timeout_seconds)),
         validation: JobInboxValidation::Valid,
     };
     state
@@ -11704,7 +11762,7 @@ fn note_active_job_waiting_for_payment_evidence(
     request_id: &str,
 ) {
     let waiting_detail = format!(
-        "{} delivered job {} is awaiting wallet-authoritative payment evidence",
+        "{} delivered job {} and is awaiting buyer Lightning payment confirmation",
         demand_source.label(),
         request_id
     );
@@ -11718,7 +11776,7 @@ fn note_active_job_waiting_for_payment_evidence(
     let first_waiting_transition =
         active_job.last_action.as_deref() != Some(waiting_detail.as_str());
     if first_waiting_transition {
-        active_job.append_event("awaiting wallet-authoritative payment evidence");
+        active_job.append_event("result delivered; awaiting buyer Lightning payment");
         crate::nip90_compute_domain_events::emit_provider_delivered_awaiting_settlement(
             request_id,
             active_job.pending_bolt11.is_some(),
@@ -11967,24 +12025,70 @@ fn resolve_wallet_settlement_pointer_for_open_network_job(
     history_rows: &[crate::app_state::JobHistoryReceiptRow],
     recent_payments: &[openagents_spark::PaymentSummary],
 ) -> Option<String> {
+    let _ = settlement_invoice_created_at_epoch_seconds;
     let used_pointers = history_rows
         .iter()
         .map(|row| row.payment_pointer.clone())
         .collect::<std::collections::HashSet<_>>();
-    recent_payments
-        .iter()
+    let expected_invoice = job
+        .settlement_bolt11
+        .as_deref()
+        .and_then(normalize_lightning_invoice_ref);
+    let expected_payment_hash = job
+        .settlement_payment_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .or_else(|| {
+            job.settlement_bolt11
+                .as_deref()
+                .and_then(decode_lightning_invoice_payment_hash)
+        });
+
+    let candidate_payments = recent_payments.iter().filter(|payment| {
+        payment.direction.eq_ignore_ascii_case("receive")
+            && is_settled_wallet_payment_status(payment.status.as_str())
+            && !payment.id.trim().is_empty()
+            && !used_pointers.contains(payment.id.as_str())
+            && !is_synthetic_local_payment_pointer(payment.id.as_str())
+    });
+
+    let exact_identity_match = candidate_payments
+        .clone()
         .filter(|payment| {
-            payment.direction.eq_ignore_ascii_case("receive")
-                && is_settled_wallet_payment_status(payment.status.as_str())
-                && !payment.id.trim().is_empty()
-                && !used_pointers.contains(payment.id.as_str())
-                && !is_synthetic_local_payment_pointer(payment.id.as_str())
-                && (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
-                && settlement_invoice_created_at_epoch_seconds
-                    .is_none_or(|created_at| payment.timestamp >= created_at.saturating_sub(5))
+            expected_invoice.as_deref().is_some_and(|expected_invoice| {
+                payment
+                    .invoice
+                    .as_deref()
+                    .and_then(normalize_lightning_invoice_ref)
+                    .is_some_and(|candidate_invoice| candidate_invoice == expected_invoice)
+            }) || expected_payment_hash
+                .as_deref()
+                .is_some_and(|expected_hash| {
+                    payment
+                        .payment_hash
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_ascii_lowercase)
+                        .is_some_and(|candidate_hash| candidate_hash == expected_hash)
+                })
         })
         .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
-        .map(|payment| payment.id.clone())
+        .map(|payment| payment.id.clone());
+    if exact_identity_match.is_some()
+        || expected_invoice.is_some()
+        || expected_payment_hash.is_some()
+    {
+        return exact_identity_match;
+    }
+
+    // Open-network seller settlement must bind to the actual payout invoice or payment hash.
+    // Falling back to amount/timestamp heuristics can incorrectly reuse an old receive and mark
+    // a new delivered job as paid even when wallet balance did not increase.
+    let _ = candidate_payments;
+    None
 }
 
 pub(super) fn run_activity_feed_action(
@@ -12379,6 +12483,9 @@ pub(super) fn refresh_earnings_scoreboard(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) {
+    state
+        .job_history
+        .set_reference_epoch_seconds(crate::app_state::current_reference_epoch_seconds());
     state.earnings_scoreboard.refresh_from_sources(
         now,
         &state.provider_runtime,
@@ -12686,6 +12793,9 @@ pub(super) fn refresh_network_aggregate_counters(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) {
+    state
+        .job_history
+        .set_reference_epoch_seconds(crate::app_state::current_reference_epoch_seconds());
     state.network_aggregate_counters.refresh_from_sources(
         now,
         &state.spacetime_presence_snapshot,
@@ -13393,6 +13503,11 @@ mod tests {
             request_id: "req-open-network-001".to_string(),
             requester: "11".repeat(32),
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
+            demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
+            demand_risk_note:
+                "untargeted open-network demand stays visible but requires manual review"
+                    .to_string(),
             request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
             capability: "text.generation".to_string(),
             execution_input: Some("Return the generated text result.".to_string()),
@@ -13421,8 +13536,13 @@ mod tests {
             delivery_rejection_reason_label: None,
             quoted_price_sats,
             ttl_seconds: 75,
+            request_created_at_epoch_seconds: Some(1_760_000_000),
+            request_expires_at_epoch_seconds: Some(1_760_000_075),
+            accepted_at_epoch_seconds: Some(1_760_000_010),
             stage: crate::app_state::JobLifecycleStage::Delivered,
             invoice_id: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
             payment_id: None,
             failure_reason: None,
             events: vec![],
@@ -13459,7 +13579,78 @@ mod tests {
     }
 
     #[test]
-    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive_after_invoice() {
+    fn resolves_open_network_wallet_pointer_by_exact_invoice_identity_before_amount_heuristic() {
+        let mut job = fixture_open_network_delivered_job(10);
+        job.settlement_bolt11 = Some("lnbc20n1targetinvoice".to_string());
+        let history_rows = vec![fixture_history_row("wallet-used-001")];
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-newer-wrong-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_050,
+                invoice: Some("lnbc20n1differentinvoice".to_string()),
+                ..Default::default()
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-exact-invoice-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_020,
+                invoice: Some("lightning:lnbc20n1targetinvoice".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            Some(1_762_700_010),
+            history_rows.as_slice(),
+            payments.as_slice(),
+        )
+        .expect("expected exact invoice match");
+        assert_eq!(pointer, "wallet-exact-invoice-001");
+    }
+
+    #[test]
+    fn resolves_open_network_wallet_pointer_by_exact_payment_hash_when_invoice_missing() {
+        let mut job = fixture_open_network_delivered_job(10);
+        job.settlement_payment_hash = Some("hash-settlement-001".to_string());
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-wrong-hash-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_050,
+                payment_hash: Some("hash-other-001".to_string()),
+                ..Default::default()
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-hash-match-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_020,
+                payment_hash: Some("HASH-SETTLEMENT-001".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            Some(1_762_700_010),
+            &[],
+            payments.as_slice(),
+        )
+        .expect("expected payment hash match");
+        assert_eq!(pointer, "wallet-hash-match-001");
+    }
+
+    #[test]
+    fn open_network_wallet_pointer_requires_exact_invoice_or_payment_hash_identity() {
         let job = fixture_open_network_delivered_job(10);
         let history_rows = vec![fixture_history_row("wallet-used-001")];
         let payments = vec![
@@ -13526,9 +13717,8 @@ mod tests {
             Some(1_762_700_010),
             history_rows.as_slice(),
             payments.as_slice(),
-        )
-        .expect("expected wallet pointer candidate");
-        assert_eq!(pointer, "wallet-pointer-002");
+        );
+        assert_eq!(pointer, None);
     }
 
     #[test]
@@ -14467,13 +14657,13 @@ mod tests {
         assert_eq!(
             active_job.last_action.as_deref(),
             Some(
-                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+                "open-network delivered job req-open-network-001 and is awaiting buyer Lightning payment confirmation"
             )
         );
         assert_eq!(
             provider_runtime.last_result.as_deref(),
             Some(
-                "open-network delivered job req-open-network-001 is awaiting wallet-authoritative payment evidence"
+                "open-network delivered job req-open-network-001 and is awaiting buyer Lightning payment confirmation"
             )
         );
         assert_eq!(provider_runtime.last_error_detail, None);

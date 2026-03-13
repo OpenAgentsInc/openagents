@@ -1,6 +1,9 @@
 use crate::app_state::{EarnFailureClass, RenderState};
 use crate::nip90_compute_domain_events;
-use crate::spark_wallet::{is_settled_wallet_payment_status, is_terminal_wallet_payment_status};
+use crate::spark_wallet::{
+    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    is_terminal_wallet_payment_status,
+};
 use openagents_spark::PaymentSummary;
 use qrcode::{QrCode, render::unicode::Dense1x2};
 
@@ -104,8 +107,8 @@ fn reconcile_pending_buyer_payment_confirmation(
 ) {
     let Some(request_id) = state
         .network_requests
-        .pending_auto_payment_request_id
-        .clone()
+        .active_auto_payment_observation_request_id()
+        .map(str::to_string)
     else {
         return;
     };
@@ -130,7 +133,15 @@ fn reconcile_pending_buyer_payment_confirmation(
         return;
     }
 
-    let Some(payment_pointer) = state.spark_wallet.last_payment_id.as_deref() else {
+    let payment_pointer = state.spark_wallet.last_payment_id.clone().or_else(|| {
+        state
+            .network_requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .and_then(|request| request.last_payment_pointer.clone())
+    });
+    let Some(payment_pointer) = payment_pointer.as_deref() else {
         return;
     };
     state
@@ -312,6 +323,10 @@ fn reconcile_provider_settlement_invoice_state(
         active_job.pending_bolt11_created_at_epoch_seconds =
             spark_wallet.last_invoice_created_at_epoch_seconds;
         active_job.pending_bolt11 = Some(invoice.to_string());
+        if let Some(job) = active_job.job.as_mut() {
+            job.settlement_bolt11 = Some(invoice.to_string());
+            job.settlement_payment_hash = decode_lightning_invoice_payment_hash(invoice);
+        }
         active_job.append_event("generated Spark BOLT11 settlement invoice for provider payout");
         provider_runtime.last_result = Some(
             "provider settlement invoice generated; queueing payment-required feedback".to_string(),
@@ -359,6 +374,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: None,
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -367,6 +383,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 2,
             ttl_seconds: 60,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_060),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Accepted {

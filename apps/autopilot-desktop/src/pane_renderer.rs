@@ -1,28 +1,29 @@
+use std::sync::Arc;
+
 use crate::app_state::{
-    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
-    AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
-    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
-    BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
-    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
-    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
-    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
-    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
-    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
-    mission_control_show_local_model_button,
+    mission_control_show_local_model_button, ActiveJobRecord, ActiveJobState, ActivityEventDomain,
+    ActivityFeedFilter, ActivityFeedState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
+    AlertSeverity, AlertsRecoveryState, AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState,
+    AutopilotChatState, BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs,
+    CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
+    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, LocalInferencePaneInputs,
+    LocalInferencePaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
+    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
+    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
-    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
+    active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
@@ -49,23 +50,20 @@ use crate::pane_system::{
     mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
     mission_control_send_invoice_input_bounds_for_scroll,
     mission_control_send_lightning_button_bounds_for_scroll,
-    mission_control_wallet_refresh_button_bounds, mission_control_withdraw_button_bounds_for_scroll,
-    mission_control_withdraw_invoice_input_bounds_for_scroll,
-    mission_control_actions_scroll_viewport_bounds, mission_control_actions_scroll_content_height,
-    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
-    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
-    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
-    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
-    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
-    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-    settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
+    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
+    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+    network_requests_type_input_bounds, network_requests_visible_quote_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
+    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
-    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds, PANE_TITLE_HEIGHT,
 };
 use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
@@ -75,7 +73,8 @@ use crate::panes::{
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
-use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
+use crate::state::job_inbox::JobInboxRequest;
+use wgpui::{theme, Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad};
 
 pub struct PaneRenderer;
 
@@ -728,8 +727,7 @@ fn paint_go_online_pane(
     let wallet_refresh_bounds = mission_control_wallet_refresh_button_bounds(content_bounds);
     let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
     let wallet_refresh_hovered = pointer_in_pane && wallet_refresh_bounds.contains(cursor_position);
-    let wallet_refresh_clicked =
-        mission_control.wallet_refresh_icon_click_feedback(now_epoch_ms);
+    let wallet_refresh_clicked = mission_control.wallet_refresh_icon_click_feedback(now_epoch_ms);
     paint_mission_control_wallet_refresh_icon_button(
         wallet_refresh_bounds,
         mission_control_green_color(),
@@ -784,13 +782,15 @@ fn paint_go_online_pane(
     } else {
         "GO OFFLINE"
     };
-    let sell_optional_rows = usize::from(provider_runtime.mode != crate::app_state::ProviderMode::Offline)
-        + usize::from(sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline)
-        + usize::from(skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown)
-        + usize::from(ac_lane.credit_available);
+    let sell_optional_rows =
+        usize::from(provider_runtime.mode != crate::app_state::ProviderMode::Offline)
+            + usize::from(sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline)
+            + usize::from(skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown)
+            + usize::from(ac_lane.credit_available);
     let sell_content_height = (6.0 * 39.0) + (sell_optional_rows as f32 * 38.0);
     let sell_viewport = mission_control_sell_scroll_viewport_bounds(content_bounds);
-    let sell_max_scroll = mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
+    let sell_max_scroll =
+        mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
     let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
     paint_mission_control_go_online_button(
         toggle_bounds,
@@ -963,7 +963,7 @@ fn paint_go_online_pane(
         layout.earnings_panel.size.width - 24.0,
         true,
     );
-    earnings_y = paint_mission_control_amount_line(
+    let _ = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
         earnings_y,
@@ -973,16 +973,6 @@ fn paint_go_online_pane(
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         false,
-    );
-    paint_first_sats_progress(
-        Bounds::new(
-            layout.earnings_panel.origin.x + 12.0,
-            earnings_y + 6.0,
-            layout.earnings_panel.size.width - 24.0,
-            54.0,
-        ),
-        earnings_scoreboard.lifetime_sats,
-        paint,
     );
     paint.scene.pop_clip();
     paint_mission_control_section_scrollbar(
@@ -1008,7 +998,8 @@ fn paint_go_online_pane(
     let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
     let wallet_content_height = 41.0 + 39.0 + 39.0 + 38.0;
-    let wallet_max_scroll = mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
+    let wallet_max_scroll =
+        mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
     let wallet_scroll = mission_control.clamp_wallet_scroll_offset(wallet_max_scroll);
     let mut wallet_y = mission_control_section_content_y(layout.wallet_panel) - wallet_scroll;
     wallet_y = paint_mission_control_amount_line(
@@ -1118,67 +1109,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    let actions_viewport = mission_control_actions_scroll_viewport_bounds(content_bounds);
-    let actions_content_height = mission_control_actions_scroll_content_height();
-    let actions_max_scroll =
-        mission_control_max_scroll_for_viewport(actions_viewport, actions_content_height);
-    let actions_scroll = mission_control.clamp_actions_scroll_offset(actions_max_scroll);
-    let withdraw_input_bounds =
-        mission_control_withdraw_invoice_input_bounds_for_scroll(content_bounds, actions_scroll);
-    let withdraw_bounds =
-        mission_control_withdraw_button_bounds_for_scroll(content_bounds, actions_scroll);
-    paint.scene.push_clip(actions_viewport);
-    let mut withdraw_label = paint.text.layout_mono(
-        "LIGHTNING WITHDRAW",
-        Point::ZERO,
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    );
-    let withdraw_label_bounds = withdraw_label.bounds();
-    let withdraw_label_bottom = withdraw_input_bounds.origin.y - 10.0;
-    withdraw_label.origin = Point::new(
-        withdraw_input_bounds.origin.x - withdraw_label_bounds.origin.x,
-        withdraw_label_bottom - withdraw_label_bounds.size.height - withdraw_label_bounds.origin.y,
-    );
-    paint.scene.draw_text(withdraw_label);
-    mission_control
-        .withdraw_invoice
-        .set_max_width(withdraw_input_bounds.size.width);
-    mission_control
-        .withdraw_invoice
-        .paint(withdraw_input_bounds, paint);
-
-    if mission_control
-        .withdraw_invoice
-        .get_value()
-        .trim()
-        .is_empty()
-    {
-        paint_mission_control_command_button(
-            withdraw_bounds,
-            "WITHDRAW",
-            mission_control_muted_color(),
-            false,
-            paint,
-        );
-    } else {
-        paint_mission_control_command_button(
-            withdraw_bounds,
-            "WITHDRAW",
-            mission_control_green_color(),
-            true,
-            paint,
-        );
-    }
-    paint.scene.pop_clip();
-    paint_mission_control_scrollbar_for_viewport(
-        layout.actions_panel,
-        actions_viewport,
-        actions_content_height,
-        actions_scroll,
-        paint,
-    );
-
     let load_funds_viewport =
         mission_control_load_funds_scroll_viewport_bounds(content_bounds, buy_mode_enabled);
     let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
@@ -1202,8 +1132,11 @@ fn paint_go_online_pane(
     let load_funds_max_scroll =
         mission_control_max_scroll_for_viewport(load_funds_viewport, load_funds_content_height);
     let load_funds_scroll = mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
-    let load_funds_layout =
-        mission_control_load_funds_layout_with_scroll(content_bounds, buy_mode_enabled, load_funds_scroll);
+    let load_funds_layout = mission_control_load_funds_layout_with_scroll(
+        content_bounds,
+        buy_mode_enabled,
+        load_funds_scroll,
+    );
     let lightning_amount_valid = mission_control
         .load_funds_amount_sats
         .get_value()
@@ -1252,21 +1185,21 @@ fn paint_go_online_pane(
         buy_mode_enabled,
         load_funds_scroll,
     );
-    let mut lightning_send_label = paint.text.layout_mono(
-        "LIGHTNING SEND",
+    let mut lightning_withdraw_label = paint.text.layout_mono(
+        "LIGHTNING WITHDRAW",
         Point::ZERO,
         MISSION_CONTROL_PANEL_FONT_SIZE,
         mission_control_muted_color(),
     );
-    let lightning_send_label_bounds = lightning_send_label.bounds();
-    let lightning_send_label_bottom = send_invoice_bounds.origin.y - 12.0;
-    lightning_send_label.origin = Point::new(
-        send_invoice_bounds.origin.x - lightning_send_label_bounds.origin.x,
-        lightning_send_label_bottom
-            - lightning_send_label_bounds.size.height
-            - lightning_send_label_bounds.origin.y,
+    let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
+    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 12.0;
+    lightning_withdraw_label.origin = Point::new(
+        send_invoice_bounds.origin.x - lightning_withdraw_label_bounds.origin.x,
+        lightning_withdraw_label_bottom
+            - lightning_withdraw_label_bounds.size.height
+            - lightning_withdraw_label_bounds.origin.y,
     );
-    paint.scene.draw_text(lightning_send_label);
+    paint.scene.draw_text(lightning_withdraw_label);
     mission_control
         .send_invoice
         .set_max_width(send_invoice_bounds.size.width);
@@ -1279,7 +1212,7 @@ fn paint_go_online_pane(
             buy_mode_enabled,
             load_funds_scroll,
         ),
-        "LIGHTNING SEND",
+        "LIGHTNING WITHDRAW",
         mission_control_orange_color(),
         !mission_control.send_invoice.get_value().trim().is_empty(),
         paint,
@@ -1379,14 +1312,13 @@ fn paint_go_online_pane(
     let active_content_height = 44.0 + active_panel_state.lines.len() as f32 * 17.0;
     let active_jobs_max_scroll =
         mission_control_section_max_scroll(layout.active_jobs_panel, active_content_height);
-    let active_jobs_scroll = mission_control.clamp_active_jobs_scroll_offset(active_jobs_max_scroll);
-    let active_content_y = mission_control_section_content_y(layout.active_jobs_panel) - active_jobs_scroll;
+    let active_jobs_scroll =
+        mission_control.clamp_active_jobs_scroll_offset(active_jobs_max_scroll);
+    let active_content_y =
+        mission_control_section_content_y(layout.active_jobs_panel) - active_jobs_scroll;
     paint.scene.draw_text(paint.text.layout_mono(
         active_state.0,
-        Point::new(
-            layout.active_jobs_panel.origin.x + 12.0,
-            active_content_y,
-        ),
+        Point::new(layout.active_jobs_panel.origin.x + 12.0, active_content_y),
         22.0,
         active_state.1,
     ));
@@ -1588,7 +1520,8 @@ fn paint_mission_control_buy_mode_panel(
     paint.scene.push_clip(clip);
 
     let primary_button_bounds = mission_control_buy_mode_button_bounds(content_bounds, true);
-    let history_button_bounds = mission_control_buy_mode_history_button_bounds(content_bounds, true);
+    let history_button_bounds =
+        mission_control_buy_mode_history_button_bounds(content_bounds, true);
     let content_y = mission_control_section_content_y(panel_bounds);
     let extra_height = (panel_bounds.size.height - 120.0).max(0.0);
     let summary_to_cells_gap = (14.0 + extra_height * 0.12).clamp(14.0, 30.0);
@@ -1701,13 +1634,29 @@ fn mission_control_active_jobs_panel_state(
     )
     .expect("active job snapshot should exist when job exists");
 
-    let mut lines = vec![
-        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
-        format!(
+    let flow_line = match flow_snapshot.phase {
+        crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
+            "FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => {
+            "FLOW // SELLER SETTLED / BUYER LOCAL WALLET PENDING".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
+            "FLOW // RESULT DELIVERED / PREPARING BUYER INVOICE".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => {
+            "FLOW // RESULT DELIVERED / BUYER NEVER PAID".to_string()
+        }
+        _ => format!(
             "FLOW // {} / {}",
             flow_snapshot.authority.as_str().to_ascii_uppercase(),
             flow_snapshot.phase.as_str().to_ascii_uppercase()
         ),
+    };
+
+    let mut lines = vec![
+        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
+        flow_line,
         format!(
             "NEXT // {}",
             flow_snapshot.next_expected_event.to_ascii_uppercase()
@@ -1743,6 +1692,35 @@ fn mission_control_active_jobs_panel_state(
             );
         }
         lines.push(settlement);
+    } else if flow_snapshot.phase
+        == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+    {
+        let mut settlement = "SETTLE // SELLER SETTLED // BUYER LOCAL WALLET PENDING".to_string();
+        if flow_snapshot.payment_pointer.is_some() {
+            settlement.push_str(" // POINTER READY");
+        }
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
+    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
+        let mut settlement = "SETTLE // AWAITING BUYER PAYMENT".to_string();
+        if flow_snapshot.payment_pointer.is_some() {
+            settlement.push_str(" // POINTER READY");
+        }
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
+    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
+        let mut settlement = "SETTLE // PREPARING BUYER INVOICE".to_string();
+        if let Some(window) = flow_snapshot.continuity_window_seconds {
+            settlement.push_str(" // WINDOW ");
+            settlement.push_str(format!("{window}S").as_str());
+        }
+        lines.push(settlement);
     } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
         let mut settlement = "SETTLE // BUYER NEVER PAID".to_string();
         if flow_snapshot.pending_bolt11.is_some() {
@@ -1759,7 +1737,18 @@ fn mission_control_active_jobs_panel_state(
 
     MissionControlActiveJobsPanelState {
         headline: if flow_snapshot.phase
-            == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+            == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+        {
+            "AWAITING PAYMENT".to_string()
+        } else if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+        {
+            "LOCAL CONFIRM".to_string()
+        } else if flow_snapshot.phase
+            == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+        {
+            "INVOICING".to_string()
+        } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
         {
             "UNPAID".to_string()
         } else if job.stage == JobLifecycleStage::Failed {
@@ -1768,6 +1757,27 @@ fn mission_control_active_jobs_panel_state(
             "ACTIVE".to_string()
         },
         lines,
+    }
+}
+
+fn active_job_stage_display(
+    stage: JobLifecycleStage,
+    phase: crate::nip90_compute_flow::Nip90FlowPhase,
+) -> String {
+    match phase {
+        crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
+            "delivered (awaiting buyer payment)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => {
+            "delivered (seller settled / buyer local wallet pending)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
+            "delivered (preparing buyer invoice)".to_string()
+        }
+        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => {
+            "delivered-unpaid (buyer never paid)".to_string()
+        }
+        _ => stage.label().to_string(),
     }
 }
 
@@ -1790,7 +1800,7 @@ fn mission_control_buy_mode_panel_state(
     mission_control: &MissionControlPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
-    now: std::time::Instant,
+    _now: std::time::Instant,
 ) -> Option<MissionControlBuyModePanelState> {
     if !buy_mode_enabled {
         return None;
@@ -1816,10 +1826,23 @@ fn mission_control_buy_mode_panel_state(
         .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
     {
         "in-flight".to_string()
+    } else if block_reason.is_some() {
+        "blocked".to_string()
+    } else if target_selection.selected_peer_pubkey.is_some() {
+        "dispatch-ready".to_string()
+    } else if let Some(blocked_reason_code) = target_selection.blocked_reason_code.as_deref() {
+        match blocked_reason_code {
+            crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_WAITING_FOR_MAIN_CHANNEL => {
+                "waiting-channel".to_string()
+            }
+            crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_PEERS_OBSERVED
+            | crate::autopilot_peer_roster::AUTOPILOT_BUY_MODE_TARGET_BLOCK_NO_ELIGIBLE_PEERS => {
+                "waiting-peer".to_string()
+            }
+            _ => "blocked".to_string(),
+        }
     } else {
-        mission_control
-            .buy_mode_next_dispatch_countdown_label(now)
-            .unwrap_or_else(|| "now".to_string())
+        "armed".to_string()
     };
     let provider = request_snapshot
         .as_ref()
@@ -2367,7 +2390,9 @@ fn mission_control_section_scroll_viewport_bounds(bounds: Bounds) -> Bounds {
         bounds.origin.x + 8.0,
         mission_control_section_content_y(bounds),
         (bounds.size.width - 16.0).max(0.0),
-        (bounds.size.height - MISSION_CONTROL_SECTION_CONTENT_TOP - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
+        (bounds.size.height
+            - MISSION_CONTROL_SECTION_CONTENT_TOP
+            - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
             .max(0.0),
     )
 }
@@ -2687,90 +2712,6 @@ fn mission_control_go_online_hint(
         None => String::from(
             "Mission Control has no supported local runtime. Apple Foundation Models is required for the release path.",
         ),
-    }
-}
-
-fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
-    const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
-    let next_target = FIRST_SATS_MILESTONES
-        .into_iter()
-        .find(|target| lifetime_sats < *target);
-    let progress_label = match next_target {
-        Some(target) => format!(
-            "Next milestone: {} / {} ({} to go)",
-            format_mission_control_amount(lifetime_sats),
-            format_mission_control_amount(target),
-            format_mission_control_amount(target.saturating_sub(lifetime_sats))
-        ),
-        None => format!(
-            "{} earned. First ladder cleared.",
-            format_mission_control_amount(lifetime_sats)
-        ),
-    };
-    let progress_ratio = next_target.map_or(1.0, |target| {
-        if target == 0 {
-            1.0
-        } else {
-            (lifetime_sats as f32 / target as f32).clamp(0.0, 1.0)
-        }
-    });
-
-    paint.scene.draw_text(paint.text.layout(
-        "First earnings progression",
-        Point::new(bounds.origin.x, bounds.origin.y),
-        11.0,
-        mission_control_muted_color(),
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &progress_label,
-        Point::new(bounds.origin.x, bounds.origin.y + 16.0),
-        10.0,
-        mission_control_text_color(),
-    ));
-
-    let bar_y = bounds.origin.y + 32.0;
-    let gap = 6.0;
-    let segment_width = ((bounds.size.width - gap * 3.0) / 4.0).max(0.0);
-    for (index, target) in FIRST_SATS_MILESTONES.iter().enumerate() {
-        let segment_bounds = Bounds::new(
-            bounds.origin.x + index as f32 * (segment_width + gap),
-            bar_y,
-            segment_width,
-            10.0,
-        );
-        let segment_color = if lifetime_sats >= *target {
-            mission_control_green_color()
-        } else if next_target == Some(*target) {
-            mission_control_amber_color()
-        } else {
-            mission_control_panel_border_color()
-        };
-        paint.scene.draw_quad(
-            Quad::new(segment_bounds)
-                .with_background(segment_color.with_alpha(if lifetime_sats >= *target {
-                    0.72
-                } else {
-                    0.18
-                }))
-                .with_border(segment_color, 1.0),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &target.to_string(),
-            Point::new(segment_bounds.origin.x, segment_bounds.max_y() + 10.0),
-            9.0,
-            mission_control_muted_color(),
-        ));
-    }
-    if progress_ratio > 0.0 {
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                bounds.origin.x,
-                bar_y + 3.0,
-                bounds.size.width * progress_ratio,
-                4.0,
-            ))
-            .with_background(mission_control_amber_color().with_alpha(0.85)),
-        );
     }
 }
 
@@ -5154,8 +5095,10 @@ fn paint_job_inbox_pane(
         return;
     }
 
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
     for row_index in 0..visible_rows {
         let request = &job_inbox.requests[row_index];
+        let demand_risk = request.demand_risk_assessment_at(now_epoch_seconds);
         let row_bounds = job_inbox_row_bounds(content_bounds, row_index);
         let selected =
             job_inbox.selected_request_id.as_deref() == Some(request.request_id.as_str());
@@ -5167,15 +5110,18 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} scope:{} env:{} {} ttl:{}s {} {} eligibility:{}",
+            "#{} {} {} src:{} risk:{}/{} scope:{} env:{} {} ttl:{}s fresh:{} {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
             request.demand_source.label(),
+            demand_risk.class.label(),
+            demand_risk.disposition.label(),
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
             format_sats_amount(request.price_sats),
             request.ttl_seconds,
+            request_freshness_summary(request, now_epoch_seconds),
             request.validation.label(),
             request.decision.label(),
             request.eligibility_label(provider_runtime.mode)
@@ -5193,6 +5139,7 @@ fn paint_job_inbox_pane(
     }
 
     if let Some(selected) = job_inbox.selected_request() {
+        let selected_demand_risk = selected.demand_risk_assessment_at(now_epoch_seconds);
         let details_y =
             job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
         let x = content_bounds.origin.x + 12.0;
@@ -5219,6 +5166,48 @@ fn paint_job_inbox_pane(
             line_y,
             "Demand source",
             selected.demand_source.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request freshness",
+            request_freshness_summary(selected, now_epoch_seconds).as_str(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request created",
+            &format_epoch_seconds_option(selected.created_at_epoch_seconds),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Request expires",
+            &format_epoch_seconds_option(selected.expires_at_epoch_seconds),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Demand risk",
+            selected_demand_risk.class.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Risk policy",
+            selected_demand_risk.disposition.label(),
+        );
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Risk note",
+            selected_demand_risk.note.as_str(),
         );
         line_y = paint_label_line(
             paint,
@@ -5251,6 +5240,41 @@ fn paint_job_inbox_pane(
             "AC envelope",
             selected.ac_envelope_event_id.as_deref().unwrap_or("none"),
         );
+    }
+}
+
+fn format_epoch_seconds_option(epoch_seconds: Option<u64>) -> String {
+    epoch_seconds
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn request_freshness_summary(request: &JobInboxRequest, now_epoch_seconds: u64) -> String {
+    match (
+        request.created_at_epoch_seconds,
+        request.expires_at_epoch_seconds,
+    ) {
+        (Some(created_at), Some(expires_at)) if now_epoch_seconds >= expires_at => format!(
+            "expired {}s ago (created={} expires={})",
+            now_epoch_seconds.saturating_sub(expires_at),
+            created_at,
+            expires_at
+        ),
+        (Some(created_at), Some(expires_at)) => format!(
+            "fresh // {}s left (created={} expires={})",
+            expires_at.saturating_sub(now_epoch_seconds),
+            created_at,
+            expires_at
+        ),
+        (_, Some(expires_at)) => format!(
+            "expires {}",
+            if now_epoch_seconds >= expires_at {
+                format!("{}s ago", now_epoch_seconds.saturating_sub(expires_at))
+            } else {
+                format!("in {}s", expires_at.saturating_sub(now_epoch_seconds))
+            }
+        ),
+        _ => "unknown".to_string(),
     }
 }
 
@@ -5472,6 +5496,44 @@ fn active_job_result_publish_status(active_job: &ActiveJobState) -> String {
     "not queued".to_string()
 }
 
+fn active_job_request_freshness_summary(job: &ActiveJobRecord, now_epoch_seconds: u64) -> String {
+    match (
+        job.accepted_at_epoch_seconds,
+        job.request_created_at_epoch_seconds,
+        job.request_expires_at_epoch_seconds,
+    ) {
+        (Some(accepted_at), Some(created_at), Some(expires_at)) if accepted_at <= expires_at => {
+            format!(
+                "accepted fresh // {}s remaining at accept (created={} accepted={} expires={})",
+                expires_at.saturating_sub(accepted_at),
+                created_at,
+                accepted_at,
+                expires_at
+            )
+        }
+        (Some(accepted_at), Some(created_at), Some(expires_at)) => format!(
+            "accepted stale // {}s after expiry (created={} accepted={} expires={})",
+            accepted_at.saturating_sub(expires_at),
+            created_at,
+            accepted_at,
+            expires_at
+        ),
+        (_, Some(created_at), Some(expires_at)) if now_epoch_seconds >= expires_at => format!(
+            "expired {}s ago (created={} expires={})",
+            now_epoch_seconds.saturating_sub(expires_at),
+            created_at,
+            expires_at
+        ),
+        (_, Some(created_at), Some(expires_at)) => format!(
+            "fresh // {}s left (created={} expires={})",
+            expires_at.saturating_sub(now_epoch_seconds),
+            created_at,
+            expires_at
+        ),
+        _ => "unknown".to_string(),
+    }
+}
+
 fn build_active_job_scroll_lines(
     active_job: &ActiveJobState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
@@ -5534,73 +5596,124 @@ fn build_active_job_scroll_lines(
         spark_wallet,
     )
     .expect("active job snapshot should exist when job exists");
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
 
     let pending_result_event_id = active_job
         .pending_result_publish_event_id
         .as_deref()
         .unwrap_or("n/a");
-    let metadata_rows = [
-        ("Job ID", job.job_id.as_str()),
-        ("Requester", job.requester.as_str()),
-        ("Capability", job.capability.as_str()),
-        ("Demand source", job.demand_source.label()),
-        ("Stage", job.stage.label()),
-        ("Flow authority", flow_snapshot.authority.as_str()),
-        ("Flow phase", flow_snapshot.phase.as_str()),
-        ("Next event", flow_snapshot.next_expected_event.as_str()),
+    let stage_display = active_job_stage_display(job.stage, flow_snapshot.phase);
+    let metadata_rows = vec![
+        ("Job ID", job.job_id.clone()),
+        ("Requester", job.requester.clone()),
+        ("Capability", job.capability.clone()),
+        ("Demand source", job.demand_source.label().to_string()),
+        ("Demand risk", job.demand_risk_class.label().to_string()),
+        (
+            "Risk policy",
+            job.demand_risk_disposition.label().to_string(),
+        ),
+        ("Stage", stage_display),
+        (
+            "Flow authority",
+            flow_snapshot.authority.as_str().to_string(),
+        ),
+        ("Flow phase", flow_snapshot.phase.as_str().to_string()),
+        ("Next event", flow_snapshot.next_expected_event.clone()),
+        (
+            "Request freshness",
+            active_job_request_freshness_summary(job, now_epoch_seconds),
+        ),
+        (
+            "Request created",
+            format_epoch_seconds_option(job.request_created_at_epoch_seconds),
+        ),
+        (
+            "Request expires",
+            format_epoch_seconds_option(job.request_expires_at_epoch_seconds),
+        ),
         (
             "Projection authority",
-            flow_snapshot.projection_authority.as_str(),
+            flow_snapshot.projection_authority.as_str().to_string(),
         ),
         (
             "Skill scope",
-            job.skill_scope_id.as_deref().unwrap_or("none"),
+            job.skill_scope_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SKL manifest",
-            job.skl_manifest_a.as_deref().unwrap_or("none"),
+            job.skl_manifest_a
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SA tick request",
-            job.sa_tick_request_event_id.as_deref().unwrap_or("none"),
+            job.sa_tick_request_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "SA tick result",
-            job.sa_tick_result_event_id.as_deref().unwrap_or("none"),
+            job.sa_tick_result_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "Trajectory session",
-            job.sa_trajectory_session_id.as_deref().unwrap_or("none"),
+            job.sa_trajectory_session_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC envelope",
-            job.ac_envelope_event_id.as_deref().unwrap_or("none"),
+            job.ac_envelope_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC settlement",
-            job.ac_settlement_event_id.as_deref().unwrap_or("none"),
+            job.ac_settlement_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
         (
             "AC default",
-            job.ac_default_event_id.as_deref().unwrap_or("none"),
+            job.ac_default_event_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
         ),
-        ("Invoice ID", job.invoice_id.as_deref().unwrap_or("n/a")),
-        ("Payment ID", job.payment_id.as_deref().unwrap_or("n/a")),
-        ("Result event", pending_result_event_id),
+        (
+            "Invoice ID",
+            job.invoice_id.clone().unwrap_or_else(|| "n/a".to_string()),
+        ),
+        (
+            "Payment ID",
+            job.payment_id.clone().unwrap_or_else(|| "n/a".to_string()),
+        ),
+        ("Result event", pending_result_event_id.to_string()),
         (
             "Result publish",
-            flow_snapshot.result_publish_status.as_str(),
+            flow_snapshot.result_publish_status.clone(),
         ),
     ];
     for (label, value) in metadata_rows {
         push_active_job_wrapped_line(
             &mut lines,
             &format!("{label}: "),
-            value,
+            value.as_str(),
             chunk_len,
             theme::text::PRIMARY,
         );
     }
+    push_active_job_wrapped_line(
+        &mut lines,
+        "Risk note: ",
+        job.demand_risk_note.as_str(),
+        chunk_len,
+        theme::text::PRIMARY,
+    );
     if let Some(window_seconds) = flow_snapshot.continuity_window_seconds {
         push_active_job_wrapped_line(
             &mut lines,
@@ -5622,6 +5735,7 @@ fn build_active_job_scroll_lines(
     } else if matches!(
         flow_snapshot.phase,
         crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
             | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
             | crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
     ) {
@@ -5629,6 +5743,34 @@ fn build_active_job_scroll_lines(
             &mut lines,
             "Settlement invoice: ",
             "none",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "compute completed and the result was delivered; preparing a Lightning invoice for buyer settlement",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "compute completed and the result was delivered; awaiting buyer Lightning payment",
+            chunk_len,
+            theme::text::PRIMARY,
+        );
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+    {
+        push_active_job_wrapped_line(
+            &mut lines,
+            "Settlement outcome: ",
+            "seller settlement appears confirmed, but local buyer wallet confirmation is still pending",
             chunk_len,
             theme::text::PRIMARY,
         );
@@ -6271,7 +6413,9 @@ fn paint_mission_control_wallet_refresh_icon_button(
             .with_corner_radius(6.0),
         );
     }
-    let icon_size = 14.0f32.min(bounds.size.width.max(0.0)).min(bounds.size.height.max(0.0));
+    let icon_size = 14.0f32
+        .min(bounds.size.width.max(0.0))
+        .min(bounds.size.height.max(0.0));
     if icon_size <= 0.0 {
         return;
     }
@@ -6313,7 +6457,9 @@ fn paint_mission_control_log_copy_icon_button(
             .with_corner_radius(6.0),
         );
     }
-    let icon_size = 14.0f32.min(bounds.size.width.max(0.0)).min(bounds.size.height.max(0.0));
+    let icon_size = 14.0f32
+        .min(bounds.size.width.max(0.0))
+        .min(bounds.size.height.max(0.0));
     if icon_size <= 0.0 {
         return;
     }
@@ -6696,7 +6842,9 @@ fn mission_control_now_epoch_seconds_f64() -> f64 {
 fn mission_control_anim_seconds_f64() -> f64 {
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     let start = START.get_or_init(std::time::Instant::now);
-    std::time::Instant::now().duration_since(*start).as_secs_f64()
+    std::time::Instant::now()
+        .duration_since(*start)
+        .as_secs_f64()
 }
 
 fn mission_control_lightning_receive_state_label(state: SparkInvoiceState) -> &'static str {
@@ -6827,7 +6975,8 @@ mod tests {
         mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
         mission_control_local_model_button_label, mission_control_value_chunk_len,
         mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
+        payment_terminal_status, request_freshness_summary, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -6875,6 +7024,16 @@ mod tests {
     ) -> AutopilotChatState {
         let config = crate::app_state::DefaultNip28ChannelConfig::from_env_or_default();
         let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection.relay_events.clear();
+        chat.managed_chat_projection.outbound_messages.clear();
+        chat.managed_chat_projection.local_state =
+            crate::app_state::ManagedChatLocalState::default();
+        chat.managed_chat_projection.snapshot =
+            crate::app_state::ManagedChatProjectionSnapshot::default();
+        chat.managed_chat_projection.projection_revision = chat
+            .managed_chat_projection
+            .projection_revision
+            .saturating_add(1);
         let group_id = "oa-main".to_string();
         let now_epoch_seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -6980,6 +7139,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: None,
             requested_output_mime: Some("text/plain".to_string()),
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -6988,6 +7148,8 @@ mod tests {
             ac_envelope_event_id: None,
             price_sats: 2,
             ttl_seconds: 75,
+            created_at_epoch_seconds: Some(1_760_000_000),
+            expires_at_epoch_seconds: Some(1_760_000_075),
             validation: JobInboxValidation::Valid,
             arrival_seq: 1,
             decision: JobInboxDecision::Accepted {
@@ -7083,6 +7245,13 @@ mod tests {
     }
 
     #[test]
+    fn request_freshness_summary_reports_fresh_and_expired_states() {
+        let request = fixture_active_job_request("req-active-job-freshness");
+        assert!(request_freshness_summary(&request, 1_760_000_010).contains("fresh // 65s left"));
+        assert!(request_freshness_summary(&request, 1_760_000_080).contains("expired 5s ago"));
+    }
+
+    #[test]
     fn failed_active_job_timeline_does_not_mark_paid_without_payment() {
         let request = fixture_active_job_request("req-active-job-failed");
         let mut active_job = ActiveJobState::default();
@@ -7140,21 +7309,15 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Flow phase: delivered-unpaid") })
-        );
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Next event: buyer settlement timed out") })
-        );
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") })
-        );
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Flow phase: delivered-unpaid") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Next event: buyer settlement timed out") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") }));
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived",
@@ -7162,6 +7325,38 @@ mod tests {
         }));
         assert!(texts.contains(&"[x] delivered"));
         assert!(texts.contains(&"[ ] paid"));
+    }
+
+    #[test]
+    fn delivered_active_job_says_awaiting_buyer_payment() {
+        let request = fixture_active_job_request("req-active-job-awaiting-payment");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.pending_bolt11 = Some("lnbc20n1awaitingbuyer".to_string());
+        active_job.job.as_mut().expect("active job").stage = JobLifecycleStage::Delivered;
+
+        let lines = build_active_job_scroll_lines(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            120,
+        );
+        let texts = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Next event: buyer Lightning payment") }));
+        assert!(texts.iter().any(|text| {
+            text.contains(
+                "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment",
+            )
+        }));
     }
 
     #[test]
@@ -7179,6 +7374,40 @@ mod tests {
         assert!(output.starts_with("Active Job"));
         assert!(output.contains("Job ID: job-req-active-job-copy"));
         assert!(output.contains("[x] received"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_demand_risk_truth() {
+        let request = fixture_active_job_request("req-active-job-risk");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(output.contains("Demand risk: speculative-open-network"));
+        assert!(output.contains("Risk policy: manual-only"));
+    }
+
+    #[test]
+    fn active_job_clipboard_text_includes_request_freshness_truth() {
+        let request = fixture_active_job_request("req-active-job-freshness-copy");
+        let mut active_job = ActiveJobState::default();
+        active_job.start_from_request(&request);
+        active_job.job.as_mut().unwrap().accepted_at_epoch_seconds = Some(1_760_000_010);
+
+        let output = active_job_clipboard_text(
+            &active_job,
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(output.contains("Request freshness: accepted fresh"));
+        assert!(output.contains("Request created: 1760000000"));
+        assert!(output.contains("Request expires: 1760000075"));
     }
 
     #[test]
@@ -7496,7 +7725,7 @@ mod tests {
         )
         .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
-        assert_eq!(armed_panel.next, "now");
+        assert_eq!(armed_panel.next, "blocked");
         assert_eq!(armed_panel.work, "blocked");
         assert_eq!(armed_panel.button_label, "STOP BUY MODE");
         assert!(armed_panel.button_enabled);
@@ -7627,6 +7856,7 @@ mod tests {
         )
         .expect("buy mode panel should render selected idle target");
 
+        assert_eq!(panel.next, "dispatch-ready");
         assert_eq!(panel.provider, "666666..6666");
         assert_eq!(panel.work, "1/1");
         assert!(panel.summary.contains("target 666666..6666"));
@@ -7657,13 +7887,12 @@ mod tests {
         )
         .expect("buy mode panel should render target blocker");
 
+        assert_eq!(panel.next, "waiting-peer");
         assert_eq!(panel.provider, "none");
         assert_eq!(panel.work, "blocked");
-        assert!(
-            panel
-                .summary
-                .contains("no eligible Autopilot peers are online for compute")
-        );
+        assert!(panel
+            .summary
+            .contains("no eligible Autopilot peers are online for compute"));
         assert!(panel.summary.contains("provider-offline"));
     }
 
@@ -7764,18 +7993,14 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "ACTIVE");
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") })
-        );
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") }));
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // RESULT SIGNED")
                 && line.contains("RELAY ATTEMPT 4")
@@ -7803,20 +8028,20 @@ mod tests {
             &SparkPaneState::default(),
         );
 
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // WALLET / AWAITING-PAYMENT") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // WALLET SETTLEMENT") })
-        );
+        assert_eq!(panel.headline, "AWAITING PAYMENT");
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") }));
         assert!(panel.lines.iter().any(|line| {
-            line.contains("CONT // WAITING ON SETTLEMENT") && line.contains("WINDOW 195S")
+            line.contains("CONT // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
+        }));
+        assert!(panel.lines.iter().any(|line| {
+            line.contains("SETTLE // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
         }));
     }
 
@@ -7847,18 +8072,14 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "UNPAID");
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // WALLET / DELIVERED-UNPAID") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") })
-        );
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") }));
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // BUYER NEVER SETTLED")
                 && line.contains("RESULT RESULT")
@@ -7906,11 +8127,9 @@ mod tests {
         )
         .expect("buy mode panel should render pending wallet confirmation");
         assert_eq!(pending.payment, "pending");
-        assert!(
-            pending
-                .summary
-                .contains("payment pending Spark confirmation")
-        );
+        assert!(pending
+            .summary
+            .contains("payment pending Spark confirmation"));
 
         let mut wallet = SparkPaneState::default();
         wallet.recent_payments.push(openagents_spark::PaymentSummary {
@@ -7938,15 +8157,84 @@ mod tests {
         )
         .expect("buy mode panel should render failed wallet state");
         assert_eq!(failed.payment, "failed");
-        assert!(
-            failed
-                .summary
-                .contains("lightning send failed before preimage settlement")
-        );
+        assert!(failed
+            .summary
+            .contains("lightning send failed before preimage settlement"));
         assert!(failed.summary.contains("2 sats invoice"));
         assert!(failed.summary.contains("3 sats fee"));
         assert!(failed.summary.contains("5 sats total debit"));
         assert!(failed.summary.contains("wallet delta -5 sats"));
     }
+
+    #[test]
+    fn mission_control_buy_mode_panel_state_distinguishes_seller_settled_local_pending() {
+        let mut mission_control = fixture_mission_control();
+        let autopilot_chat = fixture_autopilot_chat();
+        let now = std::time::Instant::now();
+        mission_control.toggle_buy_mode_loop(now);
+        let mut requests = queue_buy_mode_request_for_tests();
+        let provider_pubkey = "88".repeat(32);
+        requests.apply_nip90_request_publish_outcome(
+            "req-buy-render-001",
+            "event-buy-render-settled",
+            1,
+            0,
+            None,
+        );
+        requests.apply_nip90_buyer_result_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "result-buy-render-settled",
+            Some("success"),
+        );
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-settled-invoice",
+            Some("payment-required"),
+            Some("invoice ready"),
+            Some(2_000),
+            Some("lnbc1buyrendersettled"),
+        );
+        requests
+            .prepare_auto_payment_attempt(
+                "req-buy-render-001",
+                "lnbc1buyrendersettled",
+                Some(2_000),
+                1_762_700_060,
+            )
+            .expect("payment-required invoice should prepare");
+        requests.record_auto_payment_pointer("req-buy-render-001", "wallet-buy-settled-001");
+        requests.apply_nip90_buyer_feedback_event(
+            "req-buy-render-001",
+            provider_pubkey.as_str(),
+            "feedback-buy-render-settled-success",
+            Some("success"),
+            Some("wallet-confirmed settlement recorded"),
+            Some(2_000),
+            None,
+        );
+
+        let panel = mission_control_buy_mode_panel_state(
+            true,
+            &autopilot_chat,
+            &mission_control,
+            &requests,
+            &SparkPaneState::default(),
+            now,
+        )
+        .expect("buy mode panel should render seller-settled pending local wallet state");
+
+        assert_eq!(panel.next, "buyer local wallet confirmation");
+        assert_eq!(panel.provider, "888888..8888");
+        assert_eq!(panel.work, "settled");
+        assert_eq!(panel.payment, "pending");
+        assert!(panel.summary.contains("seller settlement confirmed"));
+        assert!(panel
+            .summary
+            .contains("seller settled; awaiting local wallet confirmation"));
+        assert!(panel
+            .summary
+            .contains("phase seller-settled-pending-wallet"));
+    }
 }
-use std::sync::Arc;

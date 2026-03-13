@@ -1,6 +1,6 @@
 [package]
 name = "autopilot-desktop"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -67,6 +67,7 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 hex = { workspace = true }
 base64 = "0.22"
 bitcoin = { workspace = true }
+lightning-invoice = "0.33.2"
 clap = { version = "4.5", features = ["derive"] }
 getrandom = "0.3"
 futures-util = "0.3"
