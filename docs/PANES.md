@@ -146,6 +146,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows six proof rungs: request observed, result observed, invoice observed, buyer payment pointer assigned, seller settled, and buyer wallet confirmed.
   - Keeps seller-wallet settlement proof distinct from buyer-wallet confirmation proof so adjacent stages do not imply one another.
   - Action: read-only proof visibility.
+- `Key Ledger`
+  - Operator table for NIP-90 payment activity by actor with explicit namespace separation between Nostr keys and Lightning destinations.
+  - Shows sats sent, sats received, jobs won, invoices emitted, settlement failures, average latency, and a tiny recent-activity sparkline for each actor row.
+  - Includes a focus card that summarizes the current top actor and points operators toward atlas/replay drill paths.
+  - Action: read-only actor visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -267,6 +272,7 @@ Current pane badge mapping:
 - `Buy Mode`: `source: buy`
 - `Seller Earnings Timeline`: `source: stream.nip90_payment_facts.v1`
 - `Settlement Ladder`: `source: stream.nip90_payment_facts.v1`
+- `Key Ledger`: `source: stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`
