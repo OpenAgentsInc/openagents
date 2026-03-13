@@ -3216,6 +3216,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_host_accelerator_vendor_missing"
         | "compute_product_host_memory_gb_invalid"
         | "compute_product_ollama_runtime_missing"
+        | "compute_product_gpt_oss_runtime_missing"
         | "compute_product_apple_platform_gates_missing"
         | "compute_product_apple_silicon_requirement_missing"
         | "capacity_lot_window_invalid"
@@ -4041,7 +4042,7 @@ mod tests {
         ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily,
         ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
         ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
@@ -4336,7 +4337,7 @@ mod tests {
                 created_at_ms,
                 taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
                 capability_envelope: Some(ComputeCapabilityEnvelope {
-                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
                     model_policy: Some("text-generation".to_string()),
@@ -4347,7 +4348,7 @@ mod tests {
                         memory_gb: Some(80),
                     }),
                     apple_platform: None,
-                    ollama_runtime: Some(OllamaRuntimeCapability {
+                    gpt_oss_runtime: Some(GptOssRuntimeCapability {
                         runtime_ready: Some(true),
                         model_name: Some("llama3.3".to_string()),
                         quantization: Some("q4_k_m".to_string()),
@@ -4499,14 +4500,14 @@ mod tests {
                 rejection_reason: None,
                 promised_capability_envelope: None,
                 observed_capability_envelope: Some(ComputeCapabilityEnvelope {
-                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
                     model_policy: Some("ollama.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
-                    ollama_runtime: Some(OllamaRuntimeCapability {
+                    gpt_oss_runtime: Some(GptOssRuntimeCapability {
                         runtime_ready: Some(true),
                         model_name: Some("llama3.2:latest".to_string()),
                         quantization: None,
@@ -8106,7 +8107,7 @@ mod tests {
                 apple_intelligence_available: Some(true),
                 minimum_macos_version: Some("15.1".to_string()),
             }),
-            ollama_runtime: None,
+            gpt_oss_runtime: None,
             latency_ms_p50: Some(150),
             throughput_per_minute: Some(600),
             concurrency_limit: Some(1),

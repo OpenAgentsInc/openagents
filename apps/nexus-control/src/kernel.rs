@@ -7758,7 +7758,7 @@ fn backend_family_label(
     value: openagents_kernel_core::compute::ComputeBackendFamily,
 ) -> &'static str {
     match value {
-        openagents_kernel_core::compute::ComputeBackendFamily::Ollama => "ollama",
+        openagents_kernel_core::compute::ComputeBackendFamily::GptOss => "gpt_oss",
         openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels => {
             "apple_foundation_models"
         }
@@ -8073,7 +8073,7 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
         ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        DeliveryRejectionReason, OllamaRuntimeCapability, StructuredCapacityInstrument,
+        DeliveryRejectionReason, GptOssRuntimeCapability, StructuredCapacityInstrument,
         StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
         StructuredCapacityLeg, StructuredCapacityLegRole,
     };
@@ -8121,14 +8121,14 @@ mod tests {
                 created_at_ms,
                 taxonomy_version: Some("compute.launch.v1".to_string()),
                 capability_envelope: Some(ComputeCapabilityEnvelope {
-                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
                     model_policy: Some("ollama.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
-                    ollama_runtime: Some(OllamaRuntimeCapability {
+                    gpt_oss_runtime: Some(GptOssRuntimeCapability {
                         runtime_ready: Some(true),
                         model_name: Some("llama3.2:latest".to_string()),
                         quantization: None,
@@ -8226,14 +8226,14 @@ mod tests {
                 rejection_reason: None,
                 promised_capability_envelope: None,
                 observed_capability_envelope: Some(ComputeCapabilityEnvelope {
-                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    backend_family: Some(ComputeBackendFamily::GptOss),
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
                     model_policy: Some("ollama.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
-                    ollama_runtime: Some(OllamaRuntimeCapability {
+                    gpt_oss_runtime: Some(GptOssRuntimeCapability {
                         runtime_ready: Some(true),
                         model_name: Some("llama3.2:latest".to_string()),
                         quantization: None,
@@ -9249,7 +9249,7 @@ mod tests {
             model_family: Some("apple-foundation-model".to_string()),
             host_capability: None,
             apple_platform: None,
-            ollama_runtime: None,
+            gpt_oss_runtime: None,
             latency_ms_p50: Some(90),
             throughput_per_minute: Some(42),
             concurrency_limit: Some(1),
@@ -9403,7 +9403,7 @@ mod tests {
             .clone();
         let committed: ComputeCapabilityEnvelope =
             serde_json::from_value(committed).expect("decode committed capability");
-        assert_eq!(committed.backend_family, Some(ComputeBackendFamily::Ollama));
+        assert_eq!(committed.backend_family, Some(ComputeBackendFamily::GptOss));
         assert_eq!(committed.compute_family, Some(ComputeFamily::Inference));
         assert_eq!(
             instrument
