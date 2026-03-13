@@ -10271,6 +10271,7 @@ fn submit_signed_network_request_with_event(
             .upsert_network_request(JobInboxNetworkRequest {
                 request_id: request_id.clone(),
                 requester: "network-buyer".to_string(),
+                source_relay_url: None,
                 demand_source: crate::app_state::JobDemandSource::OpenNetwork,
                 request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
                 capability: "local.injected.request".to_string(),
@@ -10698,6 +10699,7 @@ fn run_hosted_starter_demand_sync(
         let request = JobInboxNetworkRequest {
             request_id: offer.request_id.clone(),
             requester: offer.requester.clone(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::StarterDemand,
             request_kind: offer.request_kind,
             capability: offer.capability.clone(),
@@ -11003,6 +11005,7 @@ fn queue_starter_demand_request(
     let starter_request = JobInboxNetworkRequest {
         request_id: request_id.clone(),
         requester: "starter-demand".to_string(),
+        source_relay_url: None,
         demand_source: crate::app_state::JobDemandSource::StarterDemand,
         request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
         capability: "starter.quest.dispatch".to_string(),
@@ -13459,6 +13462,7 @@ mod tests {
             job_id: "job-open-network-001".to_string(),
             request_id: "req-open-network-001".to_string(),
             requester: "11".repeat(32),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
             demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,

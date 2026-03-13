@@ -627,10 +627,11 @@ pub(super) fn apply_buyer_response_event(
     );
     let resolution_action = match event.kind {
         ProviderNip90BuyerResponseKind::Feedback => {
-            state.network_requests.apply_nip90_buyer_feedback_event(
+            state.network_requests.apply_nip90_buyer_feedback_event_with_relay(
                 event.request_id.as_str(),
                 event.provider_pubkey.as_str(),
                 event.event_id.as_str(),
+                event.relay_url.as_deref(),
                 event.status.as_deref(),
                 event.status_extra.as_deref(),
                 event.amount_msats,
@@ -638,10 +639,11 @@ pub(super) fn apply_buyer_response_event(
             )
         }
         ProviderNip90BuyerResponseKind::Result => {
-            state.network_requests.apply_nip90_buyer_result_event(
+            state.network_requests.apply_nip90_buyer_result_event_with_relay(
                 event.request_id.as_str(),
                 event.provider_pubkey.as_str(),
                 event.event_id.as_str(),
+                event.relay_url.as_deref(),
                 event.status.as_deref(),
             )
         }
@@ -673,9 +675,10 @@ pub(super) fn apply_buyer_response_event(
             event.kind.label()
         ),
         detail: format!(
-            "request={} provider_nostr={} event_id={} kind={} status={} status_extra={} amount_msats={} bolt11={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+            "request={} provider_nostr={} relay_url={} event_id={} kind={} status={} status_extra={} amount_msats={} bolt11={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
             event.request_id,
             event.provider_pubkey,
+            event.relay_url.as_deref().unwrap_or("unknown"),
             event.event_id,
             event.kind.label(),
             event.status.as_deref().unwrap_or("none"),
@@ -1121,9 +1124,14 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
     super::apply_active_job_publish_outcome(state, &outcome);
 
     if outcome.role == ProviderNip90PublishRole::Request {
-        state.network_requests.apply_nip90_request_publish_outcome(
+        state
+            .network_requests
+            .apply_nip90_request_publish_outcome_with_relays(
             outcome.request_id.as_str(),
             outcome.event_id.as_str(),
+            outcome.selected_relays.as_slice(),
+            outcome.accepted_relay_urls.as_slice(),
+            outcome.rejected_relay_urls.as_slice(),
             outcome.accepted_relays,
             outcome.rejected_relays,
             outcome.first_error.as_deref(),

@@ -10638,6 +10638,7 @@ mod tests {
         JobInboxNetworkRequest {
             request_id: "req-123".to_string(),
             requester: "npub1abc".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5000,
             capability: "text_generation".to_string(),
@@ -10701,6 +10702,7 @@ mod tests {
             job_id: "job-req-123".to_string(),
             request_id: "req-123".to_string(),
             requester: "npub1abc".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             demand_risk_class: crate::app_state::JobDemandRiskClass::SpeculativeOpenNetwork,
             demand_risk_disposition: crate::app_state::JobDemandRiskDisposition::ManualReviewOnly,
@@ -12119,6 +12121,7 @@ mod tests {
         let request = JobInboxRequest {
             request_id: "req-preflight".to_string(),
             requester: "npub1reject".to_string(),
+            source_relay_url: None,
             demand_source: JobDemandSource::OpenNetwork,
             request_kind: 5000,
             capability: "text_generation".to_string(),

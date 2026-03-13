@@ -82,9 +82,15 @@ pub(crate) struct BuyerRequestFlowSnapshot {
     pub phase: Nip90FlowPhase,
     pub next_expected_event: String,
     pub published_request_event_id: Option<String>,
+    pub request_published_at_epoch_seconds: Option<u64>,
+    pub request_publish_selected_relays: Vec<String>,
+    pub request_publish_accepted_relays: Vec<String>,
+    pub request_publish_rejected_relays: Vec<String>,
     pub selected_provider_pubkey: Option<String>,
     pub result_provider_pubkey: Option<String>,
+    pub result_relay_urls: Vec<String>,
     pub invoice_provider_pubkey: Option<String>,
+    pub invoice_relay_urls: Vec<String>,
     pub payable_provider_pubkey: Option<String>,
     pub payment_blocker_codes: Vec<String>,
     pub payment_blocker_summary: Option<String>,
@@ -743,6 +749,12 @@ pub(crate) fn build_buyer_request_flow_snapshot(
     let result_provider_pubkey = request.result_provider_pubkey.clone();
     let invoice_provider_pubkey = request.invoice_provider_pubkey.clone();
     let payable_provider_pubkey = request.winning_provider_pubkey.clone();
+    let result_relay_urls = observation_by_provider(request, result_provider_pubkey.as_deref())
+        .map(|observation| observation.last_result_relay_urls.clone())
+        .unwrap_or_default();
+    let invoice_relay_urls = observation_by_provider(request, invoice_provider_pubkey.as_deref())
+        .map(|observation| observation.last_feedback_relay_urls.clone())
+        .unwrap_or_default();
     let selected_provider_pubkey = payable_provider_pubkey
         .clone()
         .or_else(|| result_provider_pubkey.clone())
@@ -866,9 +878,15 @@ pub(crate) fn build_buyer_request_flow_snapshot(
         phase,
         next_expected_event,
         published_request_event_id: request.published_request_event_id.clone(),
+        request_published_at_epoch_seconds: request.request_published_at_epoch_seconds,
+        request_publish_selected_relays: request.request_publish_selected_relays.clone(),
+        request_publish_accepted_relays: request.request_publish_accepted_relays.clone(),
+        request_publish_rejected_relays: request.request_publish_rejected_relays.clone(),
         selected_provider_pubkey,
         result_provider_pubkey,
+        result_relay_urls,
         invoice_provider_pubkey,
+        invoice_relay_urls,
         payable_provider_pubkey,
         payment_blocker_codes,
         payment_blocker_summary,
@@ -2329,6 +2347,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-snapshot".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
@@ -2379,6 +2398,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-unpaid-snapshot".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
@@ -2442,6 +2462,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-settlement-snapshot".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
@@ -2504,6 +2525,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-invalid-paid".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
@@ -2553,6 +2575,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-running-feedback".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
@@ -2599,6 +2622,7 @@ mod tests {
         let request = crate::state::job_inbox::JobInboxRequest {
             request_id: "req-active-failed-feedback".to_string(),
             requester: "npub1requester".to_string(),
+            source_relay_url: None,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             request_kind: 5050,
             capability: "text.generation".to_string(),
