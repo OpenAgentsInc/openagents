@@ -666,115 +666,38 @@ impl ProviderControlPaneState {
     }
 }
 
-pub struct MissionControlPaneState {
-    pub log_stream: TerminalPane,
+pub struct BuyModePaneState {
+    pub ledger: TerminalPane,
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
     pub buy_mode_last_dispatch_at: Option<Instant>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
-    log_copy_icon_clicked_at_epoch_ms: u64,
-    actions_scroll_offset_px: f32,
     buy_mode_last_blocked_signature: Option<String>,
     buy_mode_last_blocked_notice_at: Option<Instant>,
-    /// Dedupe keys for already-rendered Mission Control log entries.
-    rendered_log_content: Vec<String>,
-    last_mirrored_trace_id: u64,
+    rendered_rows: Vec<(TerminalStream, String)>,
 }
 
-impl Default for MissionControlPaneState {
+impl Default for BuyModePaneState {
     fn default() -> Self {
         Self {
-            log_stream: TerminalPane::new()
-                .title("\\ LOG STREAM")
+            ledger: TerminalPane::new()
+                .title("\\ BUY MODE")
                 .show_frame(false)
                 .code_block_style(true),
             buy_mode_loop_enabled: false,
             buy_mode_next_dispatch_at: None,
             buy_mode_last_dispatch_at: None,
-            last_action: Some("Mission Control ready".to_string()),
+            last_action: Some("Buy Mode ready".to_string()),
             last_error: None,
-            log_copy_icon_clicked_at_epoch_ms: 0,
-            actions_scroll_offset_px: 0.0,
             buy_mode_last_blocked_signature: None,
             buy_mode_last_blocked_notice_at: None,
-            rendered_log_content: Vec::new(),
-            last_mirrored_trace_id: 0,
+            rendered_rows: Vec::new(),
         }
     }
 }
 
-impl MissionControlPaneState {
-    const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
-
-    fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
-        if clicked_at_epoch_ms == 0 {
-            return 0.0;
-        }
-        let elapsed = now_epoch_ms.saturating_sub(clicked_at_epoch_ms);
-        if elapsed >= Self::ICON_CLICK_FEEDBACK_DURATION_MS {
-            0.0
-        } else {
-            1.0 - (elapsed as f32 / Self::ICON_CLICK_FEEDBACK_DURATION_MS as f32)
-        }
-    }
-
-    pub fn mark_log_copy_icon_clicked(&mut self) {
-        self.log_copy_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
-    }
-
-    pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
-        Self::icon_click_feedback_intensity(self.log_copy_icon_clicked_at_epoch_ms, now_epoch_ms)
-    }
-
-    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
-        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
-        *offset = clamped;
-        clamped
-    }
-
-    pub fn scroll_actions_by(&mut self, dy: f32) {
-        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
-    }
-
-    pub fn actions_scroll_offset(&self) -> f32 {
-        self.actions_scroll_offset_px
-    }
-
-    fn push_persisted_log_line(&mut self, line: TerminalLine) {
-        crate::runtime_log::record_mission_control_line(
-            line.stream.clone(),
-            line.text.clone(),
-            line.key.as_deref(),
-        );
-        self.log_stream.push_line(line);
-    }
-
-    fn build_runtime_terminal_line(
-        &self,
-        stream: TerminalStream,
-        text: impl Into<String>,
-        key: Option<String>,
-    ) -> TerminalLine {
-        let line = TerminalLine::new(
-            stream,
-            format!(
-                "{}  {}",
-                mission_control_log_timestamp(now_epoch_seconds()),
-                text.into()
-            ),
-        );
-        if let Some(key) = key {
-            line.with_key(key)
-        } else {
-            line
-        }
-    }
-
+impl BuyModePaneState {
     pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
         self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
         self.clear_buy_mode_blocked_notice();
@@ -867,6 +790,135 @@ impl MissionControlPaneState {
         self.last_error = Some(error.into());
     }
 
+    pub fn sync_rows(
+        &mut self,
+        network_requests: &crate::state::operations::NetworkRequestsState,
+        spark_wallet: &SparkPaneState,
+    ) {
+        let rows = build_buy_mode_payment_rows(network_requests, spark_wallet);
+        if self.rendered_rows == rows {
+            return;
+        }
+
+        self.ledger.clear();
+        for (stream, text) in &rows {
+            self.ledger
+                .push_line(TerminalLine::new(stream.clone(), text.clone()));
+        }
+        self.rendered_rows = rows;
+    }
+}
+
+pub type BuyModePaymentsPaneState = BuyModePaneState;
+
+pub struct MissionControlPaneState {
+    pub log_stream: TerminalPane,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    log_copy_icon_clicked_at_epoch_ms: u64,
+    actions_scroll_offset_px: f32,
+    /// Dedupe keys for already-rendered Mission Control log entries.
+    rendered_log_content: Vec<String>,
+    last_mirrored_trace_id: u64,
+}
+
+impl Default for MissionControlPaneState {
+    fn default() -> Self {
+        Self {
+            log_stream: TerminalPane::new()
+                .title("\\ LOG STREAM")
+                .show_frame(false)
+                .code_block_style(true),
+            last_action: Some("Mission Control ready".to_string()),
+            last_error: None,
+            log_copy_icon_clicked_at_epoch_ms: 0,
+            actions_scroll_offset_px: 0.0,
+            rendered_log_content: Vec::new(),
+            last_mirrored_trace_id: 0,
+        }
+    }
+}
+
+impl MissionControlPaneState {
+    const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
+
+    fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
+        if clicked_at_epoch_ms == 0 {
+            return 0.0;
+        }
+        let elapsed = now_epoch_ms.saturating_sub(clicked_at_epoch_ms);
+        if elapsed >= Self::ICON_CLICK_FEEDBACK_DURATION_MS {
+            0.0
+        } else {
+            1.0 - (elapsed as f32 / Self::ICON_CLICK_FEEDBACK_DURATION_MS as f32)
+        }
+    }
+
+    pub fn mark_log_copy_icon_clicked(&mut self) {
+        self.log_copy_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
+        Self::icon_click_feedback_intensity(self.log_copy_icon_clicked_at_epoch_ms, now_epoch_ms)
+    }
+
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_actions_by(&mut self, dy: f32) {
+        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
+    }
+
+    pub fn actions_scroll_offset(&self) -> f32 {
+        self.actions_scroll_offset_px
+    }
+
+    fn push_persisted_log_line(&mut self, line: TerminalLine) {
+        crate::runtime_log::record_mission_control_line(
+            line.stream.clone(),
+            line.text.clone(),
+            line.key.as_deref(),
+        );
+        self.log_stream.push_line(line);
+    }
+
+    fn build_runtime_terminal_line(
+        &self,
+        stream: TerminalStream,
+        text: impl Into<String>,
+        key: Option<String>,
+    ) -> TerminalLine {
+        let line = TerminalLine::new(
+            stream,
+            format!(
+                "{}  {}",
+                mission_control_log_timestamp(now_epoch_seconds()),
+                text.into()
+            ),
+        );
+        if let Some(key) = key {
+            line.with_key(key)
+        } else {
+            line
+        }
+    }
+
+    pub fn record_action(&mut self, action: impl Into<String>) {
+        self.last_action = Some(action.into());
+        self.last_error = None;
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.last_error = Some(error.into());
+    }
+
     pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
         self.push_persisted_log_line(self.build_runtime_terminal_line(stream, text, None));
     }
@@ -936,43 +988,6 @@ impl MissionControlPaneState {
             ));
             self.last_mirrored_trace_id = entry.id;
         }
-    }
-}
-
-pub struct BuyModePaymentsPaneState {
-    pub ledger: TerminalPane,
-    rendered_rows: Vec<(TerminalStream, String)>,
-}
-
-impl Default for BuyModePaymentsPaneState {
-    fn default() -> Self {
-        Self {
-            ledger: TerminalPane::new()
-                .title("\\ BUY MODE PAYMENTS")
-                .show_frame(false)
-                .code_block_style(true),
-            rendered_rows: Vec::new(),
-        }
-    }
-}
-
-impl BuyModePaymentsPaneState {
-    pub fn sync_rows(
-        &mut self,
-        network_requests: &crate::state::operations::NetworkRequestsState,
-        spark_wallet: &SparkPaneState,
-    ) {
-        let rows = build_buy_mode_payment_rows(network_requests, spark_wallet);
-        if self.rendered_rows == rows {
-            return;
-        }
-
-        self.ledger.clear();
-        for (stream, text) in &rows {
-            self.ledger
-                .push_line(TerminalLine::new(stream.clone(), text.clone()));
-        }
-        self.rendered_rows = rows;
     }
 }
 
@@ -1249,25 +1264,26 @@ pub(crate) fn buy_mode_payments_summary_text(
 }
 
 pub(crate) fn buy_mode_payments_status_lines(
-    mission_control: &MissionControlPaneState,
+    buy_mode: &BuyModePaneState,
     network_requests: &crate::state::operations::NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
     now: Instant,
 ) -> Vec<String> {
     crate::nip90_compute_flow::buy_mode_payments_status_lines(
-        mission_control,
+        buy_mode,
         network_requests,
-        &SparkPaneState::default(),
+        spark_wallet,
         now,
     )
 }
 
 pub(crate) fn buy_mode_payments_clipboard_text(
-    mission_control: &MissionControlPaneState,
+    buy_mode: &BuyModePaneState,
     network_requests: &crate::state::operations::NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
     crate::nip90_compute_flow::buy_mode_payments_clipboard_text(
-        mission_control,
+        buy_mode,
         network_requests,
         spark_wallet,
     )
@@ -9770,7 +9786,7 @@ impl RenderState {
     }
 
     pub fn mission_control_buy_mode_toggle_enabled(&self) -> bool {
-        self.mission_control.buy_mode_loop_enabled
+        self.buy_mode_payments.buy_mode_loop_enabled
             || mission_control_buy_mode_start_block_reason(&self.spark_wallet).is_none()
     }
 
@@ -10029,6 +10045,7 @@ mod tests {
         EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
         JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        BuyModePaneState,
         MissionControlPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
         NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
         ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
@@ -14249,9 +14266,7 @@ mod tests {
         let lines = pane.ledger.recent_lines(6);
 
         assert!(lines.iter().any(|line| {
-            line.text.contains("status=streaming")
-                && line.text.contains("wallet_status=idle")
-                && line.text.contains("amount=2 sats")
+            line.text.contains("wallet_status=idle") && line.text.contains("invoice=2 sats")
         }));
         assert!(lines.iter().any(|line| {
             line.text.contains(request_id.as_str())
@@ -14353,7 +14368,7 @@ mod tests {
         );
 
         let clipboard = super::buy_mode_payments_clipboard_text(
-            &MissionControlPaneState::default(),
+            &BuyModePaneState::default(),
             &requests,
             &SparkPaneState::default(),
         );
@@ -14378,18 +14393,20 @@ mod tests {
             None,
         );
 
-        let mut mission_control = MissionControlPaneState::default();
-        mission_control.buy_mode_loop_enabled = true;
+        let mut buy_mode = BuyModePaneState::default();
+        buy_mode.buy_mode_loop_enabled = true;
         let lines = super::buy_mode_payments_status_lines(
-            &mission_control,
+            &buy_mode,
             &requests,
+            &SparkPaneState::default(),
             std::time::Instant::now(),
         );
 
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("policy=single-flight"));
         assert!(lines[0].contains("blocked by req-buy-stat"));
-        assert!(lines[0].contains("[streaming]"));
+        assert!(lines[0].contains("phase=submitted"));
+        assert!(lines[0].contains("auth=relay"));
         assert!(lines[1].contains("Recent live request statuses:"));
         assert!(lines[1].contains("req-buy-stat"));
     }
@@ -17286,57 +17303,57 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_loop_toggle_and_schedule_are_deterministic() {
-        let mut mission_control = super::MissionControlPaneState::default();
+        let mut buy_mode = super::BuyModePaneState::default();
         let now = std::time::Instant::now();
 
-        assert!(!mission_control.buy_mode_loop_enabled);
-        assert!(!mission_control.buy_mode_dispatch_due(now));
+        assert!(!buy_mode.buy_mode_loop_enabled);
+        assert!(!buy_mode.buy_mode_dispatch_due(now));
 
-        assert!(mission_control.toggle_buy_mode_loop(now));
-        assert!(mission_control.buy_mode_dispatch_due(now));
+        assert!(buy_mode.toggle_buy_mode_loop(now));
+        assert!(buy_mode.buy_mode_dispatch_due(now));
         assert_eq!(
-            mission_control.buy_mode_next_dispatch_countdown_seconds(now),
+            buy_mode.buy_mode_next_dispatch_countdown_seconds(now),
             Some(0)
         );
 
-        mission_control.schedule_next_buy_mode_dispatch(now);
+        buy_mode.schedule_next_buy_mode_dispatch(now);
         assert_eq!(
-            mission_control.buy_mode_next_dispatch_countdown_millis(now),
+            buy_mode.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
         assert!(
-            !mission_control.buy_mode_dispatch_due(
+            !buy_mode.buy_mode_dispatch_due(
                 now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
                     .saturating_sub(std::time::Duration::from_millis(1))
             )
         );
 
-        assert!(!mission_control.toggle_buy_mode_loop(now));
-        assert!(!mission_control.buy_mode_loop_enabled);
-        assert_eq!(mission_control.buy_mode_next_dispatch_at, None);
+        assert!(!buy_mode.toggle_buy_mode_loop(now));
+        assert!(!buy_mode.buy_mode_loop_enabled);
+        assert_eq!(buy_mode.buy_mode_next_dispatch_at, None);
     }
 
     #[test]
     fn mission_control_buy_mode_blocked_notice_is_throttled_until_signature_changes() {
-        let mut mission_control = super::MissionControlPaneState::default();
+        let mut buy_mode = super::BuyModePaneState::default();
         let now = std::time::Instant::now();
 
-        assert!(mission_control.should_emit_buy_mode_blocked_notice(now, "no-peers:4:0"));
-        assert!(!mission_control.should_emit_buy_mode_blocked_notice(
+        assert!(buy_mode.should_emit_buy_mode_blocked_notice(now, "no-peers:4:0"));
+        assert!(!buy_mode.should_emit_buy_mode_blocked_notice(
             now + std::time::Duration::from_secs(1),
             "no-peers:4:0"
         ));
-        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+        assert!(buy_mode.should_emit_buy_mode_blocked_notice(
             now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL,
             "no-peers:4:0"
         ));
-        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+        assert!(buy_mode.should_emit_buy_mode_blocked_notice(
             now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
                 + std::time::Duration::from_secs(1),
             "no-peers:5:0"
         ));
-        mission_control.clear_buy_mode_blocked_notice();
-        assert!(mission_control.should_emit_buy_mode_blocked_notice(
+        buy_mode.clear_buy_mode_blocked_notice();
+        assert!(buy_mode.should_emit_buy_mode_blocked_notice(
             now + super::MISSION_CONTROL_BUY_MODE_BLOCKED_NOTICE_INTERVAL
                 + std::time::Duration::from_secs(2),
             "no-peers:5:0"

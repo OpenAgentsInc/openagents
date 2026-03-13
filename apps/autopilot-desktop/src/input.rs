@@ -212,6 +212,13 @@ pub(crate) fn desktop_control_run_spark_action(
     actions::run_spark_action(state, action)
 }
 
+pub(crate) fn desktop_control_run_buy_mode_action(
+    state: &mut crate::app_state::RenderState,
+    action: crate::pane_system::BuyModePaymentsPaneAction,
+) -> bool {
+    actions::run_buy_mode_payments_action(state, action)
+}
+
 pub(crate) fn desktop_control_run_pay_invoice_action(
     state: &mut crate::app_state::RenderState,
     action: PayInvoicePaneAction,

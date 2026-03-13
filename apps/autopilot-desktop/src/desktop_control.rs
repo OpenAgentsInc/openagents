@@ -30,7 +30,7 @@ use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
-use crate::pane_system::MissionControlPaneAction;
+use crate::pane_system::{BuyModePaymentsPaneAction, MissionControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
@@ -416,9 +416,6 @@ impl DesktopControlActionRequest {
     fn mission_control_pane_action(&self) -> Option<MissionControlPaneAction> {
         match self {
             Self::RunAppleFmSmokeTest => Some(MissionControlPaneAction::RunLocalFmSummaryTest),
-            Self::StartBuyMode | Self::StopBuyMode => {
-                Some(MissionControlPaneAction::ToggleBuyModeLoop)
-            }
             _ => None,
         }
     }
@@ -1535,10 +1532,20 @@ fn apply_action_request(
         record_command_outcome(state, action.label(), &response);
         return attach_snapshot_metadata(state, response);
     }
-    if let Some(mission_control_action) = action.mission_control_pane_action() {
+    if matches!(
+        action,
+        DesktopControlActionRequest::StartBuyMode | DesktopControlActionRequest::StopBuyMode
+    ) {
         let response = match action {
             DesktopControlActionRequest::StartBuyMode => start_buy_mode_action(state),
             DesktopControlActionRequest::StopBuyMode => stop_buy_mode_action(state),
+            _ => unreachable!("guarded by matches!"),
+        };
+        record_command_outcome(state, action.label(), &response);
+        return attach_snapshot_metadata(state, response);
+    }
+    if let Some(mission_control_action) = action.mission_control_pane_action() {
+        let response = match action {
             DesktopControlActionRequest::RunAppleFmSmokeTest => {
                 run_apple_fm_smoke_test_action(state)
             }
@@ -1976,6 +1983,24 @@ fn mission_control_action_response(
     mission_control_status_response(state, "Mission Control action applied")
 }
 
+fn buy_mode_action_response(
+    state: &mut RenderState,
+    action: BuyModePaymentsPaneAction,
+) -> DesktopControlActionResponse {
+    crate::input::desktop_control_run_buy_mode_action(state, action);
+    if let Some(error) = state.buy_mode_payments.last_error.clone() {
+        DesktopControlActionResponse::error(error)
+    } else {
+        DesktopControlActionResponse::ok(
+            state
+                .buy_mode_payments
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "Buy Mode action applied".to_string()),
+        )
+    }
+}
+
 fn mission_control_status_response(
     state: &RenderState,
     default_message: &str,
@@ -2035,21 +2060,21 @@ fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionRespons
     if !state.mission_control_buy_mode_enabled() {
         return DesktopControlActionResponse::error("Buy Mode is disabled for this session");
     }
-    if state.mission_control.buy_mode_loop_enabled {
+    if state.buy_mode_payments.buy_mode_loop_enabled {
         return DesktopControlActionResponse::ok(format!(
             "Buy Mode already running ({} every {})",
             format_sats_amount(MISSION_CONTROL_BUY_MODE_BUDGET_SATS),
             mission_control_buy_mode_interval_label()
         ));
     }
-    mission_control_action_response(state, MissionControlPaneAction::ToggleBuyModeLoop)
+    buy_mode_action_response(state, BuyModePaymentsPaneAction::ToggleLoop)
 }
 
 fn stop_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse {
-    if !state.mission_control.buy_mode_loop_enabled {
+    if !state.buy_mode_payments.buy_mode_loop_enabled {
         return DesktopControlActionResponse::ok("Buy Mode already stopped");
     }
-    mission_control_action_response(state, MissionControlPaneAction::ToggleBuyModeLoop)
+    buy_mode_action_response(state, BuyModePaymentsPaneAction::ToggleLoop)
 }
 
 fn active_job_payload_response(state: &RenderState) -> DesktopControlActionResponse {
@@ -2193,15 +2218,15 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.spark_wallet.last_error.clone(),
         },
         buy_mode: DesktopControlBuyModeStatus {
-            enabled: state.mission_control.buy_mode_loop_enabled,
+            enabled: state.buy_mode_payments.buy_mode_loop_enabled,
             approved_budget_sats: MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
             cadence_seconds: MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS.saturating_add(999) / 1_000,
             cadence_millis: MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS,
             next_dispatch_countdown_seconds: state
-                .mission_control
+                .buy_mode_payments
                 .buy_mode_next_dispatch_countdown_seconds(now),
             next_dispatch_countdown_millis: state
-                .mission_control
+                .buy_mode_payments
                 .buy_mode_next_dispatch_countdown_millis(now),
             in_flight_request_id: buy_mode_request
                 .as_ref()
@@ -4428,11 +4453,11 @@ mod tests {
         );
         assert_eq!(
             DesktopControlActionRequest::StartBuyMode.mission_control_pane_action(),
-            Some(MissionControlPaneAction::ToggleBuyModeLoop)
+            None
         );
         assert_eq!(
             DesktopControlActionRequest::StopBuyMode.mission_control_pane_action(),
-            Some(MissionControlPaneAction::ToggleBuyModeLoop)
+            None
         );
         assert_eq!(
             DesktopControlActionRequest::Withdraw {

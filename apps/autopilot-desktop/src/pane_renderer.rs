@@ -43,8 +43,7 @@ use crate::pane_system::{
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
-    mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_copy_log_stream_button_bounds,
     mission_control_layout_for_mode, mission_control_local_fm_test_button_bounds,
     mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
     network_requests_accept_button_bounds, network_requests_budget_input_bounds,
@@ -64,7 +63,7 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
-    buy_mode_payments as buy_mode_payments_pane, cad as cad_pane, calculator as calculator_pane,
+    buy_mode as buy_mode_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
@@ -390,10 +389,11 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::BuyModePayments => {
-                    buy_mode_payments_pane::paint(
+                    buy_mode_pane::paint(
                         content_bounds,
+                        buy_mode_enabled,
+                        autopilot_chat,
                         buy_mode_payments,
-                        mission_control,
                         network_requests,
                         spark_wallet,
                         paint,
@@ -601,7 +601,7 @@ fn paint_go_online_pane(
     cursor_position: Point,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
-    autopilot_chat: &AutopilotChatState,
+    _autopilot_chat: &AutopilotChatState,
     _nostr_identity: Option<&nostr::NostrIdentity>,
     provider_control: &mut ProviderControlPaneState,
     mission_control: &mut MissionControlPaneState,
@@ -786,6 +786,14 @@ fn paint_go_online_pane(
             "BUY MODE",
             mission_control_cyan_color(),
             false,
+            paint,
+        );
+        paint_mission_control_section_redirect(
+            layout.buy_mode_panel,
+            &[
+                "Standalone controls moved to Buy Mode.",
+                "OPEN pane.buy_mode_payments FOR TARGETING, CADENCE, AND HISTORY.",
+            ],
             paint,
         );
     }
@@ -1014,19 +1022,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    if buy_mode_enabled {
-        paint_mission_control_buy_mode_panel(
-            content_bounds,
-            layout.buy_mode_panel,
-            autopilot_chat,
-            mission_control,
-            network_requests,
-            spark_wallet,
-            now,
-            paint,
-        );
-    }
-
     paint_mission_control_section_panel(
         layout.log_stream,
         "LOG STREAM",
@@ -1185,93 +1180,6 @@ fn paint_mission_control_section_redirect(
     paint.scene.pop_clip();
 }
 
-fn paint_mission_control_buy_mode_panel(
-    content_bounds: Bounds,
-    panel_bounds: Bounds,
-    autopilot_chat: &AutopilotChatState,
-    mission_control: &MissionControlPaneState,
-    network_requests: &NetworkRequestsState,
-    spark_wallet: &SparkPaneState,
-    now: std::time::Instant,
-    paint: &mut PaintContext,
-) {
-    let Some(panel_state) = mission_control_buy_mode_panel_state(
-        true,
-        autopilot_chat,
-        mission_control,
-        network_requests,
-        spark_wallet,
-        now,
-    ) else {
-        return;
-    };
-    let clip = mission_control_section_clip_bounds(panel_bounds);
-    paint.scene.push_clip(clip);
-
-    let primary_button_bounds = mission_control_buy_mode_button_bounds(content_bounds, true);
-    let history_button_bounds =
-        mission_control_buy_mode_history_button_bounds(content_bounds, true);
-    let content_y = mission_control_section_content_y(panel_bounds);
-    let extra_height = (panel_bounds.size.height - 120.0).max(0.0);
-    let summary_to_cells_gap = (14.0 + extra_height * 0.12).clamp(14.0, 30.0);
-    let cell_height = (34.0 + extra_height * 0.10).clamp(34.0, 44.0);
-    let min_cells_to_buttons_gap = 18.0;
-    let max_cell_y = (primary_button_bounds.origin.y - min_cells_to_buttons_gap - cell_height)
-        .max(content_y + 14.0);
-    paint.scene.draw_text(paint.text.layout_mono(
-        panel_state.summary.as_str(),
-        Point::new(panel_bounds.origin.x + 12.0, content_y),
-        11.0,
-        mission_control_text_color(),
-    ));
-
-    let cell_gap = 8.0;
-    let cell_width = ((panel_bounds.size.width - 24.0 - cell_gap * 4.0) / 5.0).max(0.0);
-    let cell_y = (content_y + summary_to_cells_gap).min(max_cell_y);
-    let values = [
-        ("MODE", panel_state.mode.clone()),
-        ("NEXT", panel_state.next.clone()),
-        ("PROV", panel_state.provider.clone()),
-        ("WORK", panel_state.work.clone()),
-        ("PAY", panel_state.payment.clone()),
-    ];
-    for (index, (label, value)) in values.iter().enumerate() {
-        let x = panel_bounds.origin.x + 12.0 + index as f32 * (cell_width + cell_gap);
-        paint_mission_control_status_cell(
-            Bounds::new(x, cell_y, cell_width, cell_height),
-            label,
-            value.as_str(),
-            mission_control_cyan_color(),
-            12.0,
-            paint,
-        );
-    }
-    paint.scene.pop_clip();
-
-    paint_mission_control_command_button(
-        primary_button_bounds,
-        panel_state.button_label.as_str(),
-        if panel_state.button_enabled {
-            if panel_state.button_active {
-                mission_control_green_color()
-            } else {
-                mission_control_cyan_color()
-            }
-        } else {
-            mission_control_muted_color()
-        },
-        panel_state.button_enabled,
-        paint,
-    );
-    paint_mission_control_command_button(
-        history_button_bounds,
-        "PAYMENT HISTORY",
-        mission_control_cyan_color(),
-        true,
-        paint,
-    );
-}
-
 type MissionControlActiveJobsPanelState = earnings_jobs_pane::MissionControlActiveJobsPanelState;
 
 fn mission_control_active_jobs_panel_state(
@@ -1316,22 +1224,22 @@ fn active_job_stage_display(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MissionControlBuyModePanelState {
-    summary: String,
-    mode: String,
-    next: String,
-    provider: String,
-    work: String,
-    payment: String,
-    button_label: String,
-    button_active: bool,
-    button_enabled: bool,
+pub(crate) struct MissionControlBuyModePanelState {
+    pub(crate) summary: String,
+    pub(crate) mode: String,
+    pub(crate) next: String,
+    pub(crate) provider: String,
+    pub(crate) work: String,
+    pub(crate) payment: String,
+    pub(crate) button_label: String,
+    pub(crate) button_active: bool,
+    pub(crate) button_enabled: bool,
 }
 
-fn mission_control_buy_mode_panel_state(
+pub(crate) fn mission_control_buy_mode_panel_state(
     buy_mode_enabled: bool,
     autopilot_chat: &AutopilotChatState,
-    mission_control: &MissionControlPaneState,
+    buy_mode: &BuyModePaymentsPaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
     _now: std::time::Instant,
@@ -1354,7 +1262,7 @@ fn mission_control_buy_mode_panel_state(
     let blocked_while_idle = request.is_none() && block_reason.is_some();
     let next = if let Some(snapshot) = request_snapshot.as_ref() {
         snapshot.next_expected_event.clone()
-    } else if !mission_control.buy_mode_loop_enabled {
+    } else if !buy_mode.buy_mode_loop_enabled {
         "off".to_string()
     } else if network_requests
         .has_in_flight_request_by_type(crate::app_state::MISSION_CONTROL_BUY_MODE_REQUEST_TYPE)
@@ -1466,7 +1374,7 @@ fn mission_control_buy_mode_panel_state(
             .unwrap_or_else(|| {
                 let mut summary = format!(
                     "{} // 5050 // {} sats // every {} // roster {}/{}",
-                    if mission_control.buy_mode_loop_enabled {
+                    if buy_mode.buy_mode_loop_enabled {
                         "Buy Mode armed"
                     } else {
                         "Buy Mode off"
@@ -1489,7 +1397,7 @@ fn mission_control_buy_mode_panel_state(
                 }
                 summary
             }),
-        mode: if mission_control.buy_mode_loop_enabled {
+        mode: if buy_mode.buy_mode_loop_enabled {
             "on".to_string()
         } else {
             "off".to_string()
@@ -1498,13 +1406,13 @@ fn mission_control_buy_mode_panel_state(
         provider,
         work,
         payment,
-        button_label: if mission_control.buy_mode_loop_enabled {
+        button_label: if buy_mode.buy_mode_loop_enabled {
             "STOP BUY MODE".to_string()
         } else {
             "START BUY MODE".to_string()
         },
-        button_active: mission_control.buy_mode_loop_enabled,
-        button_enabled: mission_control.buy_mode_loop_enabled || block_reason.is_none(),
+        button_active: buy_mode.buy_mode_loop_enabled,
+        button_enabled: buy_mode.buy_mode_loop_enabled || block_reason.is_none(),
     })
 }
 
@@ -6377,9 +6285,10 @@ mod tests {
         scrollbar_thumb_height, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
-        ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
-        JobInboxDecision, JobInboxRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        MissionControlPaneState, PaneLoadState, ProviderControlPaneState,
+        ActiveJobState, AutopilotChatState, BuyModePaymentsPaneState,
+        EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision, JobInboxRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, PaneLoadState,
+        ProviderControlPaneState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
@@ -6408,8 +6317,8 @@ mod tests {
         requests
     }
 
-    fn fixture_mission_control() -> MissionControlPaneState {
-        MissionControlPaneState::default()
+    fn fixture_buy_mode() -> BuyModePaymentsPaneState {
+        BuyModePaymentsPaneState::default()
     }
 
     fn fixture_autopilot_chat() -> AutopilotChatState {
@@ -7290,14 +7199,14 @@ mod tests {
         let requests = NetworkRequestsState::default();
         let wallet = SparkPaneState::default();
         let autopilot_chat = fixture_autopilot_chat();
-        let mission_control = fixture_mission_control();
+        let buy_mode = fixture_buy_mode();
         let now = std::time::Instant::now();
 
         assert_eq!(
             mission_control_buy_mode_panel_state(
                 false,
                 &autopilot_chat,
-                &mission_control,
+                &buy_mode,
                 &requests,
                 &wallet,
                 now,
@@ -7308,7 +7217,7 @@ mod tests {
         let panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &wallet,
             now,
@@ -7317,8 +7226,6 @@ mod tests {
         assert!(panel.summary.contains("Buy Mode blocked"));
         assert_eq!(panel.mode, "off");
         assert_eq!(panel.next, "off");
-        assert_eq!(panel.provider, "none");
-        assert_eq!(panel.work, "blocked");
         assert_eq!(panel.payment, "idle");
         assert_eq!(panel.button_label, "START BUY MODE");
         assert!(!panel.button_enabled);
@@ -7332,19 +7239,18 @@ mod tests {
         let funded_panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &funded_wallet,
             now,
         )
         .expect("funded buy mode should expose panel state");
         assert!(funded_panel.summary.contains("Buy Mode off"));
-        assert_eq!(funded_panel.provider, "none");
-        assert_eq!(funded_panel.work, "blocked");
+        assert_eq!(funded_panel.mode, "off");
         assert_eq!(funded_panel.payment, "idle");
         assert!(funded_panel.button_enabled);
 
-        let mut armed = fixture_mission_control();
+        let mut armed = fixture_buy_mode();
         armed.toggle_buy_mode_loop(now);
         let armed_panel = mission_control_buy_mode_panel_state(
             true,
@@ -7357,17 +7263,16 @@ mod tests {
         .expect("armed buy mode should expose panel state");
         assert_eq!(armed_panel.mode, "on");
         assert_eq!(armed_panel.next, "blocked");
-        assert_eq!(armed_panel.work, "blocked");
         assert_eq!(armed_panel.button_label, "STOP BUY MODE");
         assert!(armed_panel.button_enabled);
     }
 
     #[test]
     fn mission_control_buy_mode_panel_state_requires_payment_settlement() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
         let provider_pubkey = "44".repeat(32);
         requests.apply_nip90_request_publish_outcome(
@@ -7398,7 +7303,7 @@ mod tests {
         let paying = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,
@@ -7424,7 +7329,7 @@ mod tests {
         let before_payment = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,
@@ -7452,7 +7357,7 @@ mod tests {
         let settled = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,
@@ -7466,10 +7371,10 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_panel_state_surfaces_selected_target_when_idle() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat_with_buy_mode_peer(&"66".repeat(32), true);
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut wallet = SparkPaneState::default();
         wallet.balance = Some(openagents_spark::Balance {
             spark_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
@@ -7480,7 +7385,7 @@ mod tests {
         let panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &NetworkRequestsState::default(),
             &wallet,
             now,
@@ -7497,10 +7402,10 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_panel_state_surfaces_target_blocker_when_no_peer_is_eligible() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat_with_buy_mode_peer(&"77".repeat(32), false);
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut wallet = SparkPaneState::default();
         wallet.balance = Some(openagents_spark::Balance {
             spark_sats: crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
@@ -7511,7 +7416,7 @@ mod tests {
         let panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &NetworkRequestsState::default(),
             &wallet,
             now,
@@ -7531,10 +7436,10 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_panel_state_surfaces_payable_winner_and_loser_summary() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
         let payable_provider = "31".repeat(32);
         let losing_provider = "41".repeat(32);
@@ -7580,7 +7485,7 @@ mod tests {
         let panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,
@@ -7737,10 +7642,10 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_panel_state_shows_pending_and_failed_wallet_payment_states() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
         let provider_pubkey = "55".repeat(32);
         requests.apply_nip90_buyer_feedback_event(
@@ -7765,7 +7670,7 @@ mod tests {
         let pending = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,
@@ -7797,7 +7702,7 @@ mod tests {
         let failed = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &wallet,
             now,
@@ -7817,10 +7722,10 @@ mod tests {
 
     #[test]
     fn mission_control_buy_mode_panel_state_distinguishes_seller_settled_local_pending() {
-        let mut mission_control = fixture_mission_control();
+        let mut buy_mode = fixture_buy_mode();
         let autopilot_chat = fixture_autopilot_chat();
         let now = std::time::Instant::now();
-        mission_control.toggle_buy_mode_loop(now);
+        buy_mode.toggle_buy_mode_loop(now);
         let mut requests = queue_buy_mode_request_for_tests();
         let provider_pubkey = "88".repeat(32);
         requests.apply_nip90_request_publish_outcome(
@@ -7867,7 +7772,7 @@ mod tests {
         let panel = mission_control_buy_mode_panel_state(
             true,
             &autopilot_chat,
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             now,

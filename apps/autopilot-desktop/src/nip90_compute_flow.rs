@@ -4,8 +4,8 @@ use chrono::{Local, TimeZone};
 use wgpui::components::sections::TerminalStream;
 
 use crate::app_state::{
-    ActiveJobRecord, ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage,
-    MISSION_CONTROL_BUY_MODE_REQUEST_TYPE, MissionControlPaneState,
+    ActiveJobRecord, ActiveJobState, BuyModePaneState, EarnJobLifecycleProjectionState,
+    JobLifecycleStage, MISSION_CONTROL_BUY_MODE_REQUEST_TYPE,
     mission_control_buy_mode_interval_label,
 };
 use crate::nip90_compute_semantics::analyze_invoice_amount_msats;
@@ -1131,7 +1131,7 @@ pub(crate) fn buy_mode_payments_summary_text(
 }
 
 pub(crate) fn buy_mode_payments_status_lines(
-    mission_control: &MissionControlPaneState,
+    buy_mode: &BuyModePaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
     now: Instant,
@@ -1140,7 +1140,7 @@ pub(crate) fn buy_mode_payments_status_lines(
     let in_flight = snapshots
         .iter()
         .find(|request| !request.status.is_terminal());
-    let loop_line = if !mission_control.buy_mode_loop_enabled {
+    let loop_line = if !buy_mode.buy_mode_loop_enabled {
         format!(
             "Dispatch loop: off // cadence={} // policy=single-flight",
             mission_control_buy_mode_interval_label()
@@ -1156,7 +1156,7 @@ pub(crate) fn buy_mode_payments_status_lines(
             request.next_expected_event,
         )
     } else {
-        let next = mission_control
+        let next = buy_mode
             .buy_mode_next_dispatch_countdown_label(now)
             .unwrap_or_else(|| "now".to_string());
         format!(
@@ -1203,14 +1203,14 @@ pub(crate) fn buy_mode_payments_status_lines(
 }
 
 pub(crate) fn buy_mode_payments_clipboard_text(
-    mission_control: &MissionControlPaneState,
+    buy_mode: &BuyModePaneState,
     network_requests: &NetworkRequestsState,
     spark_wallet: &SparkPaneState,
 ) -> String {
     let mut sections = vec![
         "Buy Mode Payments".to_string(),
         buy_mode_payments_summary_text(network_requests, spark_wallet),
-        buy_mode_payments_status_lines(mission_control, network_requests, spark_wallet, Instant::now())
+        buy_mode_payments_status_lines(buy_mode, network_requests, spark_wallet, Instant::now())
             .join("\n"),
         "Rows are sourced from buy-mode requests plus wallet-backed Spark send history. Live requests stay linked by wallet pointer; older buy-mode sends are backfilled from Spark payment metadata.".to_string(),
         String::new(),
@@ -2122,7 +2122,7 @@ mod tests {
         continuity_window_seconds,
     };
     use crate::app_state::{
-        ActiveJobState, EarnJobLifecycleProjectionState, JobLifecycleStage, MissionControlPaneState,
+        ActiveJobState, BuyModePaneState, EarnJobLifecycleProjectionState, JobLifecycleStage,
     };
     use crate::spark_wallet::SparkPaneState;
     use crate::state::operations::{
@@ -2646,8 +2646,8 @@ mod tests {
 
     #[test]
     fn buy_mode_status_lines_use_snapshot_phase_and_authority() {
-        let mut mission_control = MissionControlPaneState::default();
-        mission_control.buy_mode_loop_enabled = true;
+        let mut buy_mode = BuyModePaneState::default();
+        buy_mode.buy_mode_loop_enabled = true;
 
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
@@ -2673,7 +2673,7 @@ mod tests {
         );
 
         let lines = buy_mode_payments_status_lines(
-            &mission_control,
+            &buy_mode,
             &requests,
             &SparkPaneState::default(),
             Instant::now(),
