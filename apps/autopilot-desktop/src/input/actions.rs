@@ -1256,7 +1256,7 @@ fn run_chat_wallet_action(
             };
             focus_or_create_pane_kind(state, crate::app_state::PaneKind::SparkWallet);
             state.chat_inputs.composer.set_value(String::new());
-            queue_spark_command(state, SparkWalletCommand::Refresh);
+            queue_spark_command(state, SparkWalletCommand::Reload);
             state.autopilot_chat.last_error = None;
             state
                 .autopilot_chat
@@ -9036,7 +9036,7 @@ pub(super) fn run_mission_control_action(
     match action {
         MissionControlPaneAction::RefreshWallet => {
             state.mission_control.mark_wallet_refresh_icon_clicked();
-            queue_spark_command(state, SparkWalletCommand::Refresh);
+            queue_spark_command(state, SparkWalletCommand::Reload);
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
             } else {
@@ -10218,7 +10218,7 @@ pub(super) fn run_pending_buyer_payment_watchdog_tick(
         .and_then(|request| request.last_payment_pointer.clone())
         .unwrap_or_else(|| "none".to_string());
 
-    queue_spark_command(state, SparkWalletCommand::Refresh);
+    queue_spark_command(state, SparkWalletCommand::Reload);
     tracing::info!(
         target: "autopilot_desktop::buyer",
         "Buyer queued wallet refresh while awaiting payment confirmation request_id={} pointer={} interval_seconds={}",
@@ -12179,7 +12179,7 @@ pub(super) fn run_alerts_recovery_action(
                             std::time::Instant::now(),
                             "Identity regenerated. Secrets are hidden by default.".to_string(),
                         );
-                        queue_spark_command(state, SparkWalletCommand::Refresh);
+                        queue_spark_command(state, SparkWalletCommand::Reload);
                         state.sync_chat_identities();
                         let _ = state.sync_provider_nip90_lane_identity();
                         crate::render::apply_spacetime_sync_bootstrap(state);
@@ -12188,7 +12188,7 @@ pub(super) fn run_alerts_recovery_action(
                     Err(error) => Err(format!("Identity recovery failed: {error}")),
                 },
                 AlertDomain::Wallet => {
-                    queue_spark_command(state, SparkWalletCommand::Refresh);
+                    queue_spark_command(state, SparkWalletCommand::Reload);
                     Ok("Wallet refresh queued".to_string())
                 }
                 AlertDomain::Relays => {

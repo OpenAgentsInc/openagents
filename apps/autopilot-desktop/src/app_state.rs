@@ -9490,7 +9490,7 @@ impl RenderState {
                     self.credentials.last_error = Some(error);
                     self.credentials.load_state = PaneLoadState::Error;
                 } else {
-                    let _ = self.spark_worker.enqueue(SparkWalletCommand::Refresh);
+                    let _ = self.spark_worker.enqueue(SparkWalletCommand::Reload);
                 }
             }
             Err(error) => {
