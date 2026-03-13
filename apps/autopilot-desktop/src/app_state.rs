@@ -92,6 +92,7 @@ pub enum PaneKind {
     ProviderControl,
     ProviderStatus,
     LocalInference,
+    PsionicViz,
     AppleFmWorkbench,
     EarningsScoreboard,
     RelayConnections,

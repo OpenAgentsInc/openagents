@@ -63,6 +63,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Inputs: prompt, optional requested model, max tokens, temperature, top-k, and top-p.
   - Actions: refresh runtime, load/warm configured model, unload configured model, run prompt.
   - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Psionic Mesh`
+  - Visualization-first GPT-OSS pane that turns Psionic runtime metrics into a synthetic decode field.
+  - Shows a derived lattice, layer sweep, phase ribbons, and throughput/cache rings built from prompt/eval/load timings plus prompt/output token counts.
+  - Explicitly labels the field as derived telemetry rather than raw tensor taps so the UI stays truthful about what the runtime exposes today.
+  - Action: read-only visualization surface.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
@@ -238,6 +243,7 @@ Current pane badge mapping:
 - `Provider Control`: `source: runtime`
 - `Provider Status`: `source: runtime`
 - `GPT-OSS Workbench`: `source: runtime`
+- `Psionic Mesh`: `source: runtime`
 - `Earnings & Jobs`: `source: runtime+wallet+receipts`
 - `Relay Connections`: `source: runtime`
 - `Sync Health`: `source: spacetime.sync.lifecycle`
@@ -285,6 +291,7 @@ Current pane badge mapping:
   - `Provider Control` -> opens `Provider Control`.
   - `Provider Status` -> opens `Provider Status`.
   - `GPT-OSS Workbench` -> opens `GPT-OSS Workbench`.
+  - `Psionic Mesh` -> opens `Psionic Mesh`.
   - `Earnings & Jobs` -> opens `Earnings & Jobs`.
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
@@ -313,7 +320,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Psionic Mesh, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

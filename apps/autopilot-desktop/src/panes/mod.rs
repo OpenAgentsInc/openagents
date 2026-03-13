@@ -12,6 +12,7 @@ pub mod local_inference;
 pub mod log_stream;
 pub mod project_ops;
 pub mod provider_control;
+pub mod psionic_viz;
 pub mod relay_connections;
 pub mod skill;
 pub mod wallet;

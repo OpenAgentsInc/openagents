@@ -61,7 +61,8 @@ use crate::panes::{
     codex as codex_pane, credit as credit_pane, earnings_jobs as earnings_jobs_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
-    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
+    psionic_viz as psionic_viz_pane, relay_connections as relay_connections_pane,
+    skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -271,6 +272,14 @@ impl PaneRenderer {
                         &capability_surface,
                         local_inference_runtime,
                         local_inference_inputs,
+                        paint,
+                    );
+                }
+                PaneKind::PsionicViz => {
+                    psionic_viz_pane::paint(
+                        content_bounds,
+                        local_inference,
+                        local_inference_runtime,
                         paint,
                     );
                 }

@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 43] = [
+const PANE_SPECS: [PaneSpec; 44] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -283,6 +283,21 @@ const PANE_SPECS: [PaneSpec; 43] = [
             id: "pane.local_inference",
             label: "GPT-OSS Workbench",
             description: "Open the GPT-OSS local inference workbench and runtime controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::PsionicViz,
+        title: "Psionic Mesh",
+        default_width: 980.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.psionic_viz",
+            label: "Psionic Mesh",
+            description: "Open a derived GPT-OSS decode field built from Psionic runtime metrics",
             keybinding: None,
         }),
         hotbar: None,
@@ -864,6 +879,18 @@ mod tests {
             );
             assert!(pane_spec_by_command_id("pane.local_inference").is_some());
         }
+    }
+
+    #[test]
+    fn psionic_mesh_command_is_registered_on_all_platforms() {
+        let spec =
+            pane_spec_by_command_id("pane.psionic_viz").expect("psionic mesh pane should exist");
+        assert_eq!(spec.kind, PaneKind::PsionicViz);
+        assert!(spec.singleton, "psionic mesh pane must be singleton");
+        assert!(
+            !spec.startup,
+            "psionic mesh pane should stay opt-in instead of opening at startup"
+        );
     }
 
     #[test]
