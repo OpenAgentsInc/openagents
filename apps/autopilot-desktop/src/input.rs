@@ -502,10 +502,12 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 state.provider_runtime.mode,
                 ProviderMode::Connecting | ProviderMode::Online
             );
+            let rive_needs_redraw = open_rive_preview_needs_redraw(state);
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
+                || rive_needs_redraw
             {
                 state.window.request_redraw();
             }
@@ -569,25 +571,70 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         state.provider_runtime.mode,
         ProviderMode::Connecting | ProviderMode::Online
     );
-    let should_redraw = changed
-        || state.hotbar.is_flashing()
-        || provider_animating
-        || state.autopilot_chat.has_pending_messages()
-        || any_text_input_focused(state);
+    let rive_needs_redraw = open_rive_preview_needs_redraw(state);
+    let should_redraw = should_request_desktop_redraw(
+        changed,
+        state.hotbar.is_flashing(),
+        provider_animating,
+        state.autopilot_chat.has_pending_messages(),
+        any_text_input_focused(state),
+        rive_needs_redraw,
+    );
     if should_redraw {
         state.window.request_redraw();
     }
 
     // Keep a lightweight cadence so background lane updates (Codex/runtime/spark) are surfaced
     // even when the user is idle and no UI events are incoming.
-    let poll_interval = if state.autopilot_chat.has_pending_messages() {
-        std::time::Duration::from_millis(16)
-    } else {
-        std::time::Duration::from_millis(50)
-    };
+    let poll_interval = background_poll_interval(
+        state.autopilot_chat.has_pending_messages(),
+        rive_needs_redraw,
+    );
     event_loop.set_control_flow(ControlFlow::WaitUntil(
         std::time::Instant::now() + poll_interval,
     ));
+}
+
+fn open_rive_preview_needs_redraw(state: &crate::app_state::RenderState) -> bool {
+    rive_preview_cadence_active(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::RivePreview),
+        state
+            .rive_preview_runtime
+            .surface
+            .as_ref()
+            .is_some_and(|surface| surface.needs_redraw()),
+    )
+}
+
+fn rive_preview_cadence_active(pane_open: bool, surface_needs_redraw: bool) -> bool {
+    pane_open && surface_needs_redraw
+}
+
+fn should_request_desktop_redraw(
+    changed: bool,
+    hotbar_flashing: bool,
+    provider_animating: bool,
+    chat_pending: bool,
+    text_input_focused: bool,
+    rive_needs_redraw: bool,
+) -> bool {
+    changed
+        || hotbar_flashing
+        || provider_animating
+        || chat_pending
+        || text_input_focused
+        || rive_needs_redraw
+}
+
+fn background_poll_interval(chat_pending: bool, rive_needs_redraw: bool) -> std::time::Duration {
+    if chat_pending || rive_needs_redraw {
+        std::time::Duration::from_millis(16)
+    } else {
+        std::time::Duration::from_millis(50)
+    }
 }
 
 fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
@@ -3578,7 +3625,7 @@ where
 mod tests {
     use super::{
         ParsedChatTurnPrompt, TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
-        build_create_invoice_command, build_goal_attempt_audit_receipts,
+        background_poll_interval, build_create_invoice_command, build_goal_attempt_audit_receipts,
         build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
@@ -3586,8 +3633,9 @@ mod tests {
         goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
         is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
         provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
-        should_mirror_provider_preflight_error, should_open_command_palette,
-        terminal_goal_labor_linkage, validate_lightning_payment_request,
+        rive_preview_cadence_active, should_mirror_provider_preflight_error,
+        should_open_command_palette, should_request_desktop_redraw, terminal_goal_labor_linkage,
+        validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
@@ -3608,6 +3656,7 @@ mod tests {
     use openagents_kernel_core::receipts::EvidenceRef;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
+    use std::time::Duration;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
 
@@ -3813,6 +3862,39 @@ mod tests {
         assert!(should_open_command_palette(&key, mods, false, false));
         assert!(!should_open_command_palette(&key, mods, false, true));
         assert!(!should_open_command_palette(&key, mods, true, false));
+    }
+
+    #[test]
+    fn background_poll_interval_stays_fast_for_rive_activity() {
+        assert_eq!(
+            background_poll_interval(false, true),
+            Duration::from_millis(16)
+        );
+        assert_eq!(
+            background_poll_interval(true, false),
+            Duration::from_millis(16)
+        );
+        assert_eq!(
+            background_poll_interval(false, false),
+            Duration::from_millis(50)
+        );
+    }
+
+    #[test]
+    fn desktop_redraw_policy_includes_rive_activity() {
+        assert!(should_request_desktop_redraw(
+            false, false, false, false, false, true
+        ));
+        assert!(!should_request_desktop_redraw(
+            false, false, false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn rive_preview_cadence_requires_an_open_pane() {
+        assert!(rive_preview_cadence_active(true, true));
+        assert!(!rive_preview_cadence_active(false, true));
+        assert!(!rive_preview_cadence_active(true, false));
     }
 
     #[test]

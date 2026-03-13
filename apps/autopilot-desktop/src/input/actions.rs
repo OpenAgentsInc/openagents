@@ -9074,6 +9074,14 @@ pub(super) fn run_rive_preview_action(
         }
         RivePreviewPaneAction::TogglePlayback => {
             state.rive_preview.playing = !state.rive_preview.playing;
+            if let Some(surface) = state.rive_preview_runtime.surface.as_mut() {
+                if state.rive_preview.playing {
+                    surface.controller_mut().play();
+                } else {
+                    surface.controller_mut().pause();
+                }
+                surface.mark_dirty();
+            }
             state.rive_preview.last_action = Some(format!(
                 "Rive preview {}",
                 if state.rive_preview.playing {
@@ -9089,6 +9097,7 @@ pub(super) fn run_rive_preview_action(
             if let Some(surface) = state.rive_preview_runtime.surface.as_mut() {
                 match surface.controller_mut().restart() {
                     Ok(()) => {
+                        surface.mark_dirty();
                         state.rive_preview.load_state = crate::app_state::PaneLoadState::Ready;
                         state.rive_preview.last_error = None;
                         state.rive_preview.last_action =
@@ -9112,6 +9121,10 @@ pub(super) fn run_rive_preview_action(
         }
         RivePreviewPaneAction::SetFitMode(fit_mode) => {
             state.rive_preview.fit_mode = fit_mode;
+            if let Some(surface) = state.rive_preview_runtime.surface.as_mut() {
+                surface.controller_mut().set_fit_mode(fit_mode);
+                surface.mark_dirty();
+            }
             state.rive_preview.last_action = Some(format!(
                 "Rive preview fit {}",
                 match fit_mode {

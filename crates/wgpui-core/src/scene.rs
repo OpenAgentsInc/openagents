@@ -910,6 +910,19 @@ mod tests {
     }
 
     #[test]
+    fn test_scene_draw_vector_batch_preserves_submission_order_within_layer() {
+        let mut scene = Scene::new();
+        scene.set_layer(4);
+        scene.draw_vector_batch(VectorBatch::new(Bounds::new(8.0, 8.0, 24.0, 24.0)));
+        scene.draw_vector_batch(VectorBatch::new(Bounds::new(40.0, 16.0, 12.0, 12.0)));
+
+        let batches = scene.vector_batches_for_layer(4);
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].bounds.origin.x, 8.0);
+        assert_eq!(batches[1].bounds.origin.x, 40.0);
+    }
+
+    #[test]
     fn test_mesh_validation_rejects_out_of_range_indices() {
         let mesh = MeshPrimitive::new(
             vec![
