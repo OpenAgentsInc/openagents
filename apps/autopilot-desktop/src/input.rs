@@ -3725,7 +3725,7 @@ mod tests {
     fn spark_command_builder_routes_actions() {
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
-            Ok(SparkWalletCommand::Reload)
+            Ok(SparkWalletCommand::Refresh)
         ));
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),

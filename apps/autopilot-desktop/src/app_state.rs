@@ -10,11 +10,11 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
-use wgpui::components::TextInput;
 use wgpui::renderer::Renderer;
-use wgpui::{theme, Bounds, EventContext, Modifiers, Point, TextSystem};
+use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
@@ -1864,6 +1864,30 @@ pub(crate) enum MissionControlLocalRuntimeLane {
     NvidiaGptOss,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MissionControlLocalRuntimePolicy {
+    None,
+    AppleFoundationModels,
+    GptOssCuda,
+    GptOssMetal,
+}
+
+impl MissionControlLocalRuntimePolicy {
+    pub(crate) const fn supports_sell_compute(self) -> bool {
+        matches!(self, Self::AppleFoundationModels | Self::GptOssCuda)
+    }
+
+    pub(crate) const fn local_runtime_lane(self) -> Option<MissionControlLocalRuntimeLane> {
+        match self {
+            Self::AppleFoundationModels => {
+                Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
+            }
+            Self::GptOssCuda => Some(MissionControlLocalRuntimeLane::NvidiaGptOss),
+            Self::GptOssMetal | Self::None => None,
+        }
+    }
+}
+
 pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_TYPE: &str = "mission_control.buy_mode.5050";
 pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_KIND: u16 =
     nostr::nip90::KIND_JOB_TEXT_GENERATION;
@@ -1919,27 +1943,69 @@ pub(crate) const fn mission_control_uses_apple_fm() -> bool {
     cfg!(target_os = "macos")
 }
 
-pub(crate) fn mission_control_supports_cuda_gpt_oss(
+fn mission_control_gpt_oss_runtime_policy(
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
-) -> bool {
-    !mission_control_uses_apple_fm()
-        && local_inference_runtime
-            .backend_label
-            .trim()
-            .eq_ignore_ascii_case("cuda")
+) -> MissionControlLocalRuntimePolicy {
+    match local_inference_runtime
+        .backend_label
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "cuda" => MissionControlLocalRuntimePolicy::GptOssCuda,
+        "metal" => MissionControlLocalRuntimePolicy::GptOssMetal,
+        _ => MissionControlLocalRuntimePolicy::None,
+    }
+}
+
+pub(crate) const fn mission_control_default_runtime_policy() -> MissionControlLocalRuntimePolicy {
+    if mission_control_uses_apple_fm() {
+        MissionControlLocalRuntimePolicy::AppleFoundationModels
+    } else {
+        MissionControlLocalRuntimePolicy::None
+    }
+}
+
+fn mission_control_local_runtime_policy_for_platform(
+    platform_default_policy: MissionControlLocalRuntimePolicy,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> MissionControlLocalRuntimePolicy {
+    match platform_default_policy {
+        MissionControlLocalRuntimePolicy::AppleFoundationModels => {
+            MissionControlLocalRuntimePolicy::AppleFoundationModels
+        }
+        MissionControlLocalRuntimePolicy::GptOssCuda
+        | MissionControlLocalRuntimePolicy::GptOssMetal => platform_default_policy,
+        MissionControlLocalRuntimePolicy::None if desktop_shell_mode.is_dev() => {
+            mission_control_gpt_oss_runtime_policy(local_inference_runtime)
+        }
+        MissionControlLocalRuntimePolicy::None => MissionControlLocalRuntimePolicy::None,
+    }
+}
+
+pub(crate) fn mission_control_local_runtime_policy(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> MissionControlLocalRuntimePolicy {
+    mission_control_local_runtime_policy_for_platform(
+        mission_control_default_runtime_policy(),
+        desktop_shell_mode,
+        local_inference_runtime,
+    )
 }
 
 fn mission_control_sell_compute_supported_for_platform(
-    apple_fm_supported: bool,
+    platform_default_policy: MissionControlLocalRuntimePolicy,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> bool {
-    apple_fm_supported
-        || (desktop_shell_mode.is_dev()
-            && local_inference_runtime
-                .backend_label
-                .trim()
-                .eq_ignore_ascii_case("cuda"))
+    mission_control_local_runtime_policy_for_platform(
+        platform_default_policy,
+        desktop_shell_mode,
+        local_inference_runtime,
+    )
+    .supports_sell_compute()
 }
 
 pub(crate) fn mission_control_sell_compute_supported(
@@ -1947,7 +2013,7 @@ pub(crate) fn mission_control_sell_compute_supported(
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> bool {
     mission_control_sell_compute_supported_for_platform(
-        mission_control_uses_apple_fm(),
+        mission_control_default_runtime_policy(),
         desktop_shell_mode,
         local_inference_runtime,
     )
@@ -1957,27 +2023,21 @@ pub(crate) fn mission_control_local_runtime_lane(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> Option<MissionControlLocalRuntimeLane> {
-    mission_control_local_runtime_lane_for_platform(
-        mission_control_uses_apple_fm(),
-        desktop_shell_mode,
-        local_inference_runtime,
-    )
+    mission_control_local_runtime_policy(desktop_shell_mode, local_inference_runtime)
+        .local_runtime_lane()
 }
 
 fn mission_control_local_runtime_lane_for_platform(
-    apple_fm_supported: bool,
+    platform_default_policy: MissionControlLocalRuntimePolicy,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> Option<MissionControlLocalRuntimeLane> {
-    if apple_fm_supported {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
-    } else if desktop_shell_mode.is_dev()
-        && mission_control_supports_cuda_gpt_oss(local_inference_runtime)
-    {
-        Some(MissionControlLocalRuntimeLane::NvidiaGptOss)
-    } else {
-        None
-    }
+    mission_control_local_runtime_policy_for_platform(
+        platform_default_policy,
+        desktop_shell_mode,
+        local_inference_runtime,
+    )
+    .local_runtime_lane()
 }
 
 pub(crate) fn mission_control_local_runtime_is_ready(
@@ -10020,24 +10080,27 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("ping".to_string());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Queued));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Queued)
+        );
 
         chat.mark_turn_started("turn-1".to_string());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Running));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Running)
+        );
 
         chat.append_turn_delta("pong");
         chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.content.contains("pong")));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.content.contains("pong"))
+        );
     }
 
     #[test]
@@ -10964,10 +11027,11 @@ mod tests {
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
-        assert!(chat
-            .threads
-            .iter()
-            .any(|thread_id| thread_id == "thread-active"));
+        assert!(
+            chat.threads
+                .iter()
+                .any(|thread_id| thread_id == "thread-active")
+        );
         assert_eq!(
             chat.thread_metadata
                 .get("thread-active")
@@ -11146,10 +11210,11 @@ mod tests {
                 .map(|artifact| artifact.source_turn_id.as_str()),
             Some("turn-a")
         );
-        assert!(chat
-            .turn_diff
-            .as_deref()
-            .is_some_and(|diff| diff.contains("+new")));
+        assert!(
+            chat.turn_diff
+                .as_deref()
+                .is_some_and(|diff| diff.contains("+new"))
+        );
         let diff = chat.active_diff_artifact().expect("thread-a diff");
         assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
         assert_eq!(diff.project_name.as_deref(), Some("a"));
@@ -11374,10 +11439,12 @@ mod tests {
             metadata.project_name.as_deref(),
             repo.file_name().and_then(|value| value.to_str())
         );
-        assert!(metadata
-            .git_branch
-            .as_deref()
-            .is_some_and(|value| !value.is_empty()));
+        assert!(
+            metadata
+                .git_branch
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        );
         assert_eq!(metadata.git_dirty, Some(true));
 
         let project = chat
@@ -12196,10 +12263,12 @@ mod tests {
             .expect("running->delivered should succeed");
         let paid_transition = active.advance_stage();
         assert!(paid_transition.is_err());
-        assert!(paid_transition
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("payment pointer")));
+        assert!(
+            paid_transition
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
         let job = active.job.as_ref().expect("active job exists");
         assert!(job.payment_id.is_none());
         assert_eq!(job.stage, JobLifecycleStage::Delivered);
@@ -12212,10 +12281,11 @@ mod tests {
             .expect("history row should be recorded");
         assert_eq!(row.status, JobHistoryStatus::Failed);
         assert_eq!(row.payout_sats, 0);
-        assert!(row
-            .failure_reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("not wallet-confirmed")));
+        assert!(
+            row.failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
     }
 
     #[test]
@@ -12240,10 +12310,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("running event")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("running event"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Accepted
@@ -12278,10 +12350,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("delivered event")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("delivered event"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Running
@@ -12320,10 +12394,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("payment pointer")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Delivered
@@ -12966,10 +13042,12 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(relays
-            .relays
-            .iter()
-            .all(|row| row.url != "wss://relay.new.example"));
+        assert!(
+            relays
+                .relays
+                .iter()
+                .all(|row| row.url != "wss://relay.new.example")
+        );
     }
 
     #[test]
@@ -13773,9 +13851,11 @@ mod tests {
                 && line.text.contains("wallet_status=failed")
                 && line.text.contains("wallet_method=lightning")
         }));
-        assert!(lines
-            .iter()
-            .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") })
+        );
         assert!(lines.iter().any(|line| {
             line.text.contains("destination_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
@@ -13867,12 +13947,16 @@ mod tests {
             summary,
             "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats  //  3 fee sats  //  5 wallet debit sats"
         );
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("LIVE BUY MODE REQUESTS")));
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("WALLET-BACKFILL HISTORY")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("LIVE BUY MODE REQUESTS"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("WALLET-BACKFILL HISTORY"))
+        );
         assert!(lines.iter().any(|line| {
             line.text
                 .contains("request_id=wallet-inferred:6872f65774d7e233")
@@ -13885,9 +13969,11 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
         }));
-        assert!(!lines
-            .iter()
-            .any(|line| { line.text.contains("wallet-payment-non-buy-001") }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| { line.text.contains("wallet-payment-non-buy-001") })
+        );
     }
 
     #[test]
@@ -14248,23 +14334,27 @@ mod tests {
         assert_eq!(row.winning_provider_pubkey, None);
         assert_eq!(row.pending_bolt11, None);
         assert_eq!(row.status, NetworkRequestStatus::ResultReceived);
-        assert!(row
-            .payment_notice
-            .as_deref()
-            .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2")));
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2"))
+        );
 
         let snapshot = crate::nip90_compute_flow::build_buyer_request_flow_snapshot(
             row,
             &SparkPaneState::default(),
         );
-        assert!(snapshot
-            .payment_blocker_codes
-            .iter()
-            .any(|code| code == "invoice_over_budget"));
-        assert!(snapshot
-            .payment_blocker_summary
-            .as_deref()
-            .is_some_and(|summary| summary.contains("requested 25 sats above approved budget 2")));
+        assert!(
+            snapshot
+                .payment_blocker_codes
+                .iter()
+                .any(|code| code == "invoice_over_budget")
+        );
+        assert!(
+            snapshot.payment_blocker_summary.as_deref().is_some_and(
+                |summary| summary.contains("requested 25 sats above approved budget 2")
+            )
+        );
     }
 
     #[test]
@@ -14312,10 +14402,11 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should remain present");
-        assert!(row
-            .payment_notice
-            .as_deref()
-            .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount")));
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount"))
+        );
     }
 
     #[test]
@@ -14734,9 +14825,11 @@ mod tests {
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
         );
-        assert!(state.agents[0]
-            .credential_key_name
-            .starts_with("BLINK_API_KEY"));
+        assert!(
+            state.agents[0]
+                .credential_key_name
+                .starts_with("BLINK_API_KEY")
+        );
     }
 
     #[test]
@@ -14749,10 +14842,12 @@ mod tests {
         assert_eq!(state.agents[0].btc_balance_sats, 2_000);
         assert_eq!(state.agents[0].usd_balance_cents, 250);
         assert!(!state.transfer_ledger.is_empty());
-        assert!(state
-            .transfer_ledger
-            .iter()
-            .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:")));
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
+        );
     }
 
     #[test]
@@ -14781,10 +14876,12 @@ mod tests {
             state.agents[0].last_switch_summary,
             "refresh failed: missing secure credential"
         );
-        assert!(state
-            .last_error
-            .as_deref()
-            .is_some_and(|value| value.contains("1 wallet error")));
+        assert!(
+            state
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("1 wallet error"))
+        );
         assert!(!state.transfer_ledger.is_empty());
     }
 
@@ -14845,10 +14942,12 @@ mod tests {
             .expect("second dispatch check should not error");
         assert!(blocked_by_cap.is_none());
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert!(starter_jobs
-            .last_action
-            .as_deref()
-            .is_some_and(|value| value.contains("max=1")));
+        assert!(
+            starter_jobs
+                .last_action
+                .as_deref()
+                .is_some_and(|value| value.contains("max=1"))
+        );
 
         assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
         assert_eq!(starter_jobs.inflight_jobs(), 0);
@@ -15124,10 +15223,11 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(feed
-            .visible_rows()
-            .into_iter()
-            .all(|row| row.domain == ActivityEventDomain::Wallet));
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Wallet)
+        );
 
         feed.upsert_event(fixture_activity_event(
             "cad:event:1",
@@ -15135,10 +15235,11 @@ mod tests {
             1_761_920_260,
         ));
         feed.set_filter(ActivityFeedFilter::Cad);
-        assert!(feed
-            .visible_rows()
-            .into_iter()
-            .all(|row| row.domain == ActivityEventDomain::Cad));
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Cad)
+        );
     }
 
     #[test]
@@ -15319,17 +15420,21 @@ mod tests {
             1_761_920_360,
         ));
 
-        assert!(primary
-            .rows
-            .iter()
-            .all(|row| row.event_id != "sync:checkpoint:2"));
+        assert!(
+            primary
+                .rows
+                .iter()
+                .all(|row| row.event_id != "sync:checkpoint:2")
+        );
         primary
             .reload_projection()
             .expect("projection reload should reconcile rows");
-        assert!(primary
-            .rows
-            .iter()
-            .any(|row| row.event_id == "sync:checkpoint:2"));
+        assert!(
+            primary
+                .rows
+                .iter()
+                .any(|row| row.event_id == "sync:checkpoint:2")
+        );
         let _ = std::fs::remove_file(path.as_path());
     }
 
@@ -15879,10 +15984,12 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(score
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("wallet backend unavailable")));
+        assert!(
+            score
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
     }
 
     #[test]
@@ -15999,10 +16106,12 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| line.stream == TerminalStream::Stdout
-                && line.text.contains("\u{20BF} 1 000")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.stream == TerminalStream::Stdout
+                    && line.text.contains("\u{20BF} 1 000"))
+        );
     }
 
     #[test]
@@ -16016,7 +16125,7 @@ mod tests {
 
         assert_eq!(
             super::mission_control_local_runtime_lane_for_platform(
-                true,
+                super::MissionControlLocalRuntimePolicy::AppleFoundationModels,
                 crate::desktop_shell::DesktopShellMode::Production,
                 &local
             ),
@@ -16035,11 +16144,60 @@ mod tests {
 
         assert_eq!(
             super::mission_control_local_runtime_lane_for_platform(
-                false,
+                super::MissionControlLocalRuntimePolicy::None,
                 crate::desktop_shell::DesktopShellMode::Production,
                 &local
             ),
             None
+        );
+    }
+
+    #[test]
+    fn mission_control_runtime_policy_tracks_apple_cuda_and_metal_candidates() {
+        let cuda_local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+        let metal_local = super::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "metal".to_string(),
+            ..super::LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            super::mission_control_local_runtime_policy_for_platform(
+                super::MissionControlLocalRuntimePolicy::AppleFoundationModels,
+                crate::desktop_shell::DesktopShellMode::Production,
+                &cuda_local,
+            ),
+            super::MissionControlLocalRuntimePolicy::AppleFoundationModels
+        );
+        assert_eq!(
+            super::mission_control_local_runtime_policy_for_platform(
+                super::MissionControlLocalRuntimePolicy::None,
+                crate::desktop_shell::DesktopShellMode::Dev,
+                &cuda_local,
+            ),
+            super::MissionControlLocalRuntimePolicy::GptOssCuda
+        );
+        assert_eq!(
+            super::mission_control_local_runtime_policy_for_platform(
+                super::MissionControlLocalRuntimePolicy::None,
+                crate::desktop_shell::DesktopShellMode::Dev,
+                &metal_local,
+            ),
+            super::MissionControlLocalRuntimePolicy::GptOssMetal
+        );
+        assert_eq!(
+            super::mission_control_local_runtime_policy_for_platform(
+                super::MissionControlLocalRuntimePolicy::None,
+                crate::desktop_shell::DesktopShellMode::Production,
+                &cuda_local,
+            ),
+            super::MissionControlLocalRuntimePolicy::None
         );
     }
 
@@ -16077,15 +16235,21 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text == "Provider offline. Platform not supported for selling compute."
         }));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("Start Apple FM")));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("capability pending")));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("Preflight blocker")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Start Apple FM"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("capability pending"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Preflight blocker"))
+        );
     }
 
     #[test]
@@ -16116,16 +16280,20 @@ mod tests {
         );
 
         if super::mission_control_uses_apple_fm() {
-            assert!(lines
-                .iter()
-                .any(|line| line.text.contains("Apple Foundation Models unavailable")));
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+            );
         } else {
             assert!(lines.iter().any(|line| {
                 line.text == "Provider offline. Platform not supported for selling compute."
             }));
-            assert!(!lines
-                .iter()
-                .any(|line| { line.text.contains("Apple Foundation Models unavailable") }));
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| { line.text.contains("Apple Foundation Models unavailable") })
+            );
         }
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }
@@ -16158,12 +16326,16 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("bridge reachable but not ready yet")));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("Apple Foundation Models unavailable")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("bridge reachable but not ready yet"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
     }
 
     #[test]
@@ -16460,9 +16632,11 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") })
+        );
         assert!(keys.iter().any(|key| {
             key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
         }));
@@ -16509,11 +16683,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(first
-            .log_stream
-            .recent_lines(32)
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
+        assert!(
+            first
+                .log_stream
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
 
         let mut reopened = MissionControlPaneState::default();
         reopened.sync_log_stream(
@@ -16527,11 +16703,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(reopened
-            .log_stream
-            .recent_lines(32)
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
+        assert!(
+            reopened
+                .log_stream
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
     }
 
     #[test]
@@ -16550,22 +16728,22 @@ mod tests {
         };
 
         assert!(super::mission_control_sell_compute_supported_for_platform(
-            true,
+            super::MissionControlLocalRuntimePolicy::AppleFoundationModels,
             crate::desktop_shell::DesktopShellMode::Production,
             &metal_local,
         ));
         assert!(!super::mission_control_sell_compute_supported_for_platform(
-            false,
+            super::MissionControlLocalRuntimePolicy::None,
             crate::desktop_shell::DesktopShellMode::Production,
             &cuda_local,
         ));
         assert!(super::mission_control_sell_compute_supported_for_platform(
-            false,
+            super::MissionControlLocalRuntimePolicy::None,
             crate::desktop_shell::DesktopShellMode::Dev,
             &cuda_local,
         ));
         assert!(!super::mission_control_sell_compute_supported_for_platform(
-            false,
+            super::MissionControlLocalRuntimePolicy::None,
             crate::desktop_shell::DesktopShellMode::Dev,
             &metal_local,
         ));
@@ -16591,10 +16769,12 @@ mod tests {
             mission_control.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
-        assert!(!mission_control.buy_mode_dispatch_due(
-            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
-                .saturating_sub(std::time::Duration::from_millis(1))
-        ));
+        assert!(
+            !mission_control.buy_mode_dispatch_due(
+                now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
+                    .saturating_sub(std::time::Duration::from_millis(1))
+            )
+        );
 
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);
@@ -16753,10 +16933,12 @@ mod tests {
 
         assert_eq!(counters.load_state, super::PaneLoadState::Error);
         assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
-        assert!(counters
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("wallet service unavailable")));
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet service unavailable"))
+        );
     }
 
     #[test]
@@ -16780,10 +16962,12 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.degraded"
         );
-        assert!(counters
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("presence query timeout")));
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("presence query timeout"))
+        );
     }
 
     #[test]
@@ -16806,10 +16990,12 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.stale"
         );
-        assert!(counters
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.contains("stale")));
+        assert!(
+            counters
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("stale"))
+        );
     }
 
     #[test]
@@ -16943,14 +17129,18 @@ mod tests {
         assert_eq!(archived.thread_id, "thread-1");
         assert_eq!(archived.turn_id, "turn-1");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
-        assert!(archived
-            .latest_tool_result
-            .as_deref()
-            .is_some_and(|value| value.contains("OA-CAD-INTENT-OK")));
-        assert!(archived
-            .latest_rebuild_result
-            .as_deref()
-            .is_some_and(|value| value.contains("ai-intent:setmaterial")));
+        assert!(
+            archived
+                .latest_tool_result
+                .as_deref()
+                .is_some_and(|value| value.contains("OA-CAD-INTENT-OK"))
+        );
+        assert!(
+            archived
+                .latest_rebuild_result
+                .as_deref()
+                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
+        );
         assert!(!archived.events.is_empty());
     }
 
