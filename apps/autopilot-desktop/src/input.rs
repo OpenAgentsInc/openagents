@@ -63,11 +63,11 @@ use crate::pane_system::{
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
-    dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_provider_control_scroll_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_log_stream_scroll_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -197,13 +197,6 @@ pub(crate) fn remote_interrupt_codex_turn(
     }
 }
 
-pub(crate) fn desktop_control_run_mission_control_action(
-    state: &mut crate::app_state::RenderState,
-    action: crate::pane_system::MissionControlPaneAction,
-) -> bool {
-    actions::run_mission_control_action(state, action)
-}
-
 pub(crate) fn desktop_control_run_spark_action(
     state: &mut crate::app_state::RenderState,
     action: SparkPaneAction,
@@ -216,6 +209,13 @@ pub(crate) fn desktop_control_run_buy_mode_action(
     action: crate::pane_system::BuyModePaymentsPaneAction,
 ) -> bool {
     actions::run_buy_mode_payments_action(state, action)
+}
+
+pub(crate) fn desktop_control_run_provider_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: crate::pane_system::ProviderControlPaneAction,
+) -> bool {
+    actions::run_provider_control_action(state, action)
 }
 
 pub(crate) fn desktop_control_run_pay_invoice_action(
@@ -2242,7 +2242,7 @@ fn dispatch_mouse_scroll(
         if apply_cad_camera_zoom(state, point, *dy) {
             handled = true;
         } else {
-            handled |= dispatch_mission_control_log_scroll_event(state, point, event);
+            handled |= dispatch_log_stream_scroll_event(state, point, event);
             if !handled {
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
             }
@@ -2541,7 +2541,6 @@ fn finish_chat_transcript_selection_drag(
 
 fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
     let mut handled = dispatch_spark_input_event(state, event);
-    handled |= dispatch_mission_control_input_event(state, event);
     handled |= dispatch_pay_invoice_input_event(state, event);
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
@@ -2694,7 +2693,6 @@ fn dispatch_keyboard_submit_actions(
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
-        || handle_mission_control_keyboard_input(state, logical_key)
         || handle_pay_invoice_keyboard_input(state, logical_key)
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
@@ -2816,7 +2814,6 @@ pub(super) fn run_pane_hit_action(
             "provider toggle",
         ),
         PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
-        PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
         PaneHitAction::LogStream(action) => run_log_stream_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
@@ -3212,14 +3209,6 @@ fn handle_spark_wallet_keyboard_input(
             false
         },
     )
-}
-
-fn handle_mission_control_keyboard_input(
-    state: &mut crate::app_state::RenderState,
-    logical_key: &WinitLogicalKey,
-) -> bool {
-    let _ = (state, logical_key);
-    false
 }
 
 fn handle_pay_invoice_keyboard_input(

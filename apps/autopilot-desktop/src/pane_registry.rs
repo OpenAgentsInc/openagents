@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 44] = [
+const PANE_SPECS: [PaneSpec; 43] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -233,21 +233,6 @@ const PANE_SPECS: [PaneSpec; 44] = [
             id: "pane.codex_diagnostics",
             label: "Codex Diagnostics",
             description: "Open Codex protocol diagnostics, counters, and wire-log controls",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::GoOnline,
-        title: "MISSION CONTROL",
-        default_width: 1040.0,
-        default_height: 620.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.mission_control",
-            label: "Mission Control",
-            description: "Open the earn-first control panel for wallet, jobs, and provider state",
             keybinding: None,
         }),
         hotbar: None,
@@ -926,15 +911,6 @@ mod tests {
         assert!(
             provider_spec.startup,
             "provider control pane should auto-open during startup"
-        );
-
-        let spec = pane_spec_by_command_id("pane.mission_control")
-            .expect("mission control command should resolve to a pane spec");
-        assert_eq!(spec.kind, PaneKind::GoOnline);
-        assert!(spec.singleton, "mission control pane must be singleton");
-        assert!(
-            !spec.startup,
-            "mission control pane should no longer auto-open during startup"
         );
     }
 

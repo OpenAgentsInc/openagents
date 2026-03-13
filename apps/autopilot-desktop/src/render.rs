@@ -644,7 +644,7 @@ fn local_sim_runtime_bootstrap_enabled() -> bool {
 fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
     let _ = PaneController::create_for_kind(state, pane_kind);
     match pane_kind {
-        PaneKind::GoOnline | PaneKind::ProviderControl => {
+        PaneKind::ProviderControl => {
             let _ = ensure_mission_control_local_runtime_preflight(state);
             state
                 .spark_wallet
@@ -1063,7 +1063,6 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.panes,
             Bounds::new(0.0, 0.0, width, height),
             active_pane,
-            state.cursor_position,
             state.desktop_shell_mode,
             buy_mode_enabled,
             state.kernel_projection_worker.uses_remote_authority(),
@@ -1127,7 +1126,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.chat_inputs,
             &mut state.calculator_inputs,
             &mut state.provider_control,
-            &mut state.mission_control,
+            state.mission_control.last_action.as_deref(),
+            state.mission_control.last_error.as_deref(),
             &mut state.log_stream,
             &mut state.buy_mode_payments,
             &mut paint,

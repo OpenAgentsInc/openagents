@@ -11,11 +11,6 @@ pub(super) fn pay_invoice_inputs_focused(state: &crate::app_state::RenderState) 
         || state.pay_invoice_inputs.amount_sats.is_focused()
 }
 
-pub(super) fn mission_control_inputs_focused(state: &crate::app_state::RenderState) -> bool {
-    let _ = state;
-    false
-}
-
 pub(super) fn create_invoice_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.create_invoice_inputs.amount_sats.is_focused()
         || state.create_invoice_inputs.description.is_focused()
@@ -80,7 +75,6 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || state.chat_inputs.thread_search.is_focused()
         || state.calculator_inputs.expression.is_focused()
         || spark_inputs_focused(state)
-        || mission_control_inputs_focused(state)
         || pay_invoice_inputs_focused(state)
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
