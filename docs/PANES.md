@@ -156,6 +156,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Encodes edge thickness from sats volume and edge glow from recency while keeping facts without both sides of identity proof out of the graph and counted as degraded.
   - Includes a focus edge card for the hottest current buyer/provider relationship and its request/payment evidence anchor.
   - Action: read-only graph visibility.
+- `Spark Replay`
+  - Scrubbable replay pane for a single NIP-90 request race from request publication through buyer payment and seller settlement.
+  - Uses persisted request facts plus provider-observation history first, with lower-confidence segments visibly marked when replay steps are derived/backfilled.
+  - Includes `Prev`, `Auto`, and `Next` controls plus per-step evidence detail so the replay is inspectable rather than decorative.
+  - Action: scrub replay steps.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -279,6 +284,7 @@ Current pane badge mapping:
 - `Settlement Ladder`: `source: stream.nip90_payment_facts.v1`
 - `Key Ledger`: `source: stream.nip90_payment_facts.v1`
 - `Settlement Atlas`: `source: stream.nip90_payment_facts.v1`
+- `Spark Replay`: `source: stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`

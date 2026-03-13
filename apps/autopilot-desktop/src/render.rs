@@ -291,6 +291,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             mission_control: crate::app_state::MissionControlPaneState::default(),
             log_stream: crate::app_state::LogStreamPaneState::default(),
             buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
+            spark_replay: crate::app_state::SparkReplayPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
             chat_transcript_selection_drag: None,
@@ -1135,6 +1136,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             state.mission_control.last_error.as_deref(),
             &mut state.log_stream,
             &mut state.buy_mode_payments,
+            &mut state.spark_replay,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);

@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 49] = [
+const PANE_SPECS: [PaneSpec; 50] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -623,6 +623,21 @@ const PANE_SPECS: [PaneSpec; 49] = [
             id: "pane.settlement_atlas",
             label: "Settlement Atlas",
             description: "Open the buyer-to-provider NIP-90 payment constellation",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::SparkReplay,
+        title: "Spark Replay",
+        default_width: 1180.0,
+        default_height: 660.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.spark_replay",
+            label: "Spark Replay",
+            description: "Open the scrubbable NIP-90 request-to-settlement replay field",
             keybinding: None,
         }),
         hotbar: None,
