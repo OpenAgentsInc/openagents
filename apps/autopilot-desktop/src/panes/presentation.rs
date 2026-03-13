@@ -51,7 +51,7 @@ fn ensure_runtime_loaded(
         None,
     ) {
         Ok(mut surface) => {
-            surface.controller_mut().set_fit_mode(RiveFitMode::Cover);
+            surface.controller_mut().set_fit_mode(RiveFitMode::Contain);
             surface.controller_mut().play();
             pane_state.asset_id = asset.id.to_string();
             pane_state.asset_name = asset.file_name.to_string();
@@ -74,7 +74,7 @@ fn sync_runtime_state(runtime: &mut PresentationRuntimeState) {
     let Some(surface) = runtime.surface.as_mut() else {
         return;
     };
-    surface.controller_mut().set_fit_mode(RiveFitMode::Cover);
+    surface.controller_mut().set_fit_mode(RiveFitMode::Contain);
     surface.controller_mut().play();
 }
 
@@ -82,7 +82,7 @@ fn sync_runtime_state(runtime: &mut PresentationRuntimeState) {
 mod tests {
     use super::paint;
     use crate::app_state::{PaneLoadState, PresentationPaneState, PresentationRuntimeState};
-    use wgpui::{Bounds, PaintContext, Scene, TextSystem};
+    use wgpui::{Bounds, PaintContext, RiveFitMode, Scene, TextSystem};
 
     #[test]
     fn presentation_paint_loads_packaged_hud_surface() {
@@ -101,5 +101,14 @@ mod tests {
 
         assert!(runtime.surface.is_some());
         assert_eq!(pane_state.load_state, PaneLoadState::Ready);
+        assert_eq!(
+            runtime
+                .surface
+                .as_ref()
+                .expect("presentation surface")
+                .controller()
+                .fit_mode(),
+            RiveFitMode::Contain
+        );
     }
 }
