@@ -833,6 +833,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the minimum requirement for trustworthy multi-node execution.
 
 10. **Psionic Cluster: graduate discovery candidates into internet-grade admission policy**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3494`.
    - Extend the current discovery-candidate and introduction-envelope machinery into a full admission and revocation flow.
    - Support attestation requirements, trust posture, and explicit refusal reasons for market-facing nodes.
 
