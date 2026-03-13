@@ -392,6 +392,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        rehydrate_startup_earnings_history(&mut state);
         apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
         state.sync_chat_identities();
@@ -402,6 +403,21 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let _ = crate::desktop_control::enable_runtime(&mut state, None);
         Ok(state)
     })
+}
+
+fn rehydrate_startup_earnings_history(state: &mut RenderState) {
+    let reference_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+    let source_error = state.earn_kernel_receipts.last_error.as_deref();
+    let rows = if source_error.is_none() {
+        state.earn_kernel_receipts.authoritative_job_history_rows()
+    } else {
+        Vec::new()
+    };
+    state.job_history.replace_rows_from_persisted_receipts(
+        rows,
+        reference_epoch_seconds,
+        source_error,
+    );
 }
 
 pub(crate) fn sync_project_ops_runtime_contract_state(state: &mut RenderState) {
