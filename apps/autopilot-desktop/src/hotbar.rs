@@ -76,7 +76,7 @@ pub fn activate_hotbar_slot(state: &mut RenderState, slot: u8) {
                 .iter()
                 .any(|pane| pane.kind == crate::app_state::PaneKind::SparkWallet);
             let _ = PaneController::create_for_kind(state, kind);
-            if !was_open && let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload)
+            if !was_open && let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh)
             {
                 state.spark_wallet.last_error = Some(error);
             }

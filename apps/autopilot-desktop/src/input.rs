@@ -848,7 +848,7 @@ fn run_startup_spark_wallet_convergence_tick(state: &mut crate::app_state::Rende
     state
         .spark_wallet
         .note_startup_convergence_refresh_queued(now_epoch_seconds);
-    if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
+    if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
         state.spark_wallet.last_error = Some(error);
         state.spark_wallet.cancel_startup_convergence();
     }
@@ -2011,7 +2011,7 @@ fn dispatch_mouse_down(
         let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
         if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
-            queue_spark_command(state, SparkWalletCommand::Reload);
+            queue_spark_command(state, SparkWalletCommand::Refresh);
             return true;
         }
     }
@@ -3107,7 +3107,7 @@ pub(crate) fn apply_provider_mode_target(
     if wants_online {
         state.provider_runtime.defer_runtime_shutdown_until_idle = false;
         let _ = ensure_mission_control_local_runtime_preflight(state);
-        queue_spark_command(state, SparkWalletCommand::Reload);
+        queue_spark_command(state, SparkWalletCommand::Refresh);
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         if let Err(error) =
@@ -3863,7 +3863,7 @@ mod tests {
     fn spark_command_builder_routes_actions() {
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
-            Ok(SparkWalletCommand::Reload)
+            Ok(SparkWalletCommand::Refresh)
         ));
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),

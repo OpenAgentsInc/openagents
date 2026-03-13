@@ -5276,7 +5276,7 @@ fn execute_provider_control_tool(
         "set_online" | "set_offline" => {
             let online = action == "set_online";
             if online {
-                let _ = state.spark_worker.enqueue(SparkWalletCommand::Reload);
+                let _ = state.spark_worker.enqueue(SparkWalletCommand::Refresh);
             }
             match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline { online }) {
                 Ok(command_seq) => ToolBridgeResultEnvelope::ok(
@@ -5301,7 +5301,7 @@ fn execute_provider_control_tool(
                 ),
             }
         }
-        "refresh_wallet" => match state.spark_worker.enqueue(SparkWalletCommand::Reload) {
+        "refresh_wallet" => match state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
             Ok(()) => ToolBridgeResultEnvelope::ok(
                 "OA-PROVIDER-CONTROL-WALLET-REFRESH-QUEUED",
                 "Queued wallet refresh",
