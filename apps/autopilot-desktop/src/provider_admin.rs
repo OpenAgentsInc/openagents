@@ -264,7 +264,7 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         .as_deref()
         .is_some_and(|rule_id| rule_id == "meter.gpt_oss.embeddings.v1")
     {
-        return Some("gpt_oss.embeddings".to_string());
+        return Some("psionic.local.embeddings.gpt_oss.single_node".to_string());
     }
     match row
         .execution_provenance
@@ -272,10 +272,10 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         .map(|provenance| provenance.backend.as_str())
     {
         Some("apple_foundation_models") => {
-            Some("apple_foundation_models.text_generation".to_string())
+            Some("psionic.local.inference.apple_foundation_models.single_node".to_string())
         }
         Some("gpt_oss") | Some("psionic") | Some("ollama") => {
-            Some("gpt_oss.text_generation".to_string())
+            Some("psionic.local.inference.gpt_oss.single_node".to_string())
         }
         _ => None,
     }
@@ -561,7 +561,7 @@ mod tests {
 
         assert_eq!(
             infer_product_id_for_history_row(&row).as_deref(),
-            Some("gpt_oss.embeddings")
+            Some("psionic.local.embeddings.gpt_oss.single_node")
         );
     }
 

@@ -274,13 +274,23 @@ impl ProviderComputeProduct {
 
     pub const fn product_id(self) -> &'static str {
         match self {
-            Self::GptOssInference => "gpt_oss.text_generation",
-            Self::GptOssEmbeddings => "gpt_oss.embeddings",
-            Self::AppleFoundationModelsInference => "apple_foundation_models.text_generation",
-            Self::SandboxContainerExec => "sandbox.container.exec",
-            Self::SandboxPythonExec => "sandbox.python.exec",
-            Self::SandboxNodeExec => "sandbox.node.exec",
-            Self::SandboxPosixExec => "sandbox.posix.exec",
+            Self::GptOssInference => "psionic.local.inference.gpt_oss.single_node",
+            Self::GptOssEmbeddings => "psionic.local.embeddings.gpt_oss.single_node",
+            Self::AppleFoundationModelsInference => {
+                "psionic.local.inference.apple_foundation_models.single_node"
+            }
+            Self::SandboxContainerExec => {
+                "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
+            }
+            Self::SandboxPythonExec => {
+                "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+            }
+            Self::SandboxNodeExec => {
+                "psionic.remote_sandbox.sandbox_execution.node_exec.sandbox_isolated"
+            }
+            Self::SandboxPosixExec => {
+                "psionic.remote_sandbox.sandbox_execution.posix_exec.sandbox_isolated"
+            }
         }
     }
 
@@ -448,13 +458,24 @@ impl ProviderComputeProduct {
 
     pub fn for_product_id(product_id: &str) -> Option<Self> {
         match product_id.trim() {
-            "ollama.text_generation" | "gpt_oss.text_generation" => Some(Self::GptOssInference),
-            "ollama.embeddings" | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
-            "apple_foundation_models.text_generation" => Some(Self::AppleFoundationModelsInference),
-            "sandbox.container.exec" => Some(Self::SandboxContainerExec),
-            "sandbox.python.exec" => Some(Self::SandboxPythonExec),
-            "sandbox.node.exec" => Some(Self::SandboxNodeExec),
-            "sandbox.posix.exec" => Some(Self::SandboxPosixExec),
+            "psionic.local.inference.gpt_oss.single_node"
+            | "ollama.text_generation"
+            | "gpt_oss.text_generation" => Some(Self::GptOssInference),
+            "psionic.local.embeddings.gpt_oss.single_node"
+            | "ollama.embeddings"
+            | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
+            "psionic.local.inference.apple_foundation_models.single_node"
+            | "apple_foundation_models.text_generation" => {
+                Some(Self::AppleFoundationModelsInference)
+            }
+            "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
+            | "sandbox.container.exec" => Some(Self::SandboxContainerExec),
+            "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+            | "sandbox.python.exec" => Some(Self::SandboxPythonExec),
+            "psionic.remote_sandbox.sandbox_execution.node_exec.sandbox_isolated"
+            | "sandbox.node.exec" => Some(Self::SandboxNodeExec),
+            "psionic.remote_sandbox.sandbox_execution.posix_exec.sandbox_isolated"
+            | "sandbox.posix.exec" => Some(Self::SandboxPosixExec),
             _ => None,
         }
     }
@@ -725,14 +746,22 @@ mod tests {
     #[test]
     fn controls_gate_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
-        assert!(controls.is_product_advertised("gpt_oss.text_generation"));
-        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
-        assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
-        assert!(!controls.is_product_advertised("sandbox.python.exec"));
+        assert!(controls.is_product_advertised("psionic.local.inference.gpt_oss.single_node"));
+        assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
+        assert!(
+            controls.is_product_advertised(
+                "psionic.local.inference.apple_foundation_models.single_node"
+            )
+        );
+        assert!(
+            !controls.is_product_advertised(
+                "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+            )
+        );
 
         let enabled = controls.toggle(ProviderComputeProduct::GptOssEmbeddings);
         assert!(!enabled);
-        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
+        assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
     }
 
     #[test]
@@ -740,15 +769,19 @@ mod tests {
         let inference = ProviderComputeProduct::GptOssInference;
         let descriptor = inference.descriptor();
 
-        assert_eq!(inference.product_id(), "gpt_oss.text_generation");
+        assert_eq!(inference.product_id(), "psionic.local.inference.gpt_oss.single_node");
         assert_eq!(inference.backend_kind(), Some(ProviderBackendKind::GptOss));
         assert_eq!(inference.backend_label(), "gpt_oss");
-        assert_eq!(descriptor.product_id, "gpt_oss.text_generation");
+        assert_eq!(descriptor.product_id, "psionic.local.inference.gpt_oss.single_node");
         assert_eq!(descriptor.compute_family, "inference");
         assert_eq!(descriptor.backend_family, "gpt_oss");
 
         assert_eq!(
             ProviderComputeProduct::for_product_id("gpt_oss.text_generation"),
+            Some(ProviderComputeProduct::GptOssInference)
+        );
+        assert_eq!(
+            ProviderComputeProduct::for_product_id("psionic.local.inference.gpt_oss.single_node"),
             Some(ProviderComputeProduct::GptOssInference)
         );
         assert_eq!(
@@ -758,7 +791,10 @@ mod tests {
 
         let legacy_descriptor =
             describe_provider_product_id("ollama.text_generation").expect("legacy alias");
-        assert_eq!(legacy_descriptor.product_id, "gpt_oss.text_generation");
+        assert_eq!(
+            legacy_descriptor.product_id,
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(legacy_descriptor.backend_family, "gpt_oss");
     }
 
@@ -818,6 +854,10 @@ mod tests {
                 .and_then(|descriptor| descriptor.sandbox_execution_class.as_deref()),
             None
         );
+        assert_eq!(
+            embeddings.as_ref().map(|descriptor| descriptor.product_id.as_str()),
+            Some("psionic.local.embeddings.gpt_oss.single_node")
+        );
 
         let sandbox = describe_provider_product_id("sandbox.python.exec");
         assert_eq!(
@@ -837,6 +877,10 @@ mod tests {
                 .as_ref()
                 .and_then(|descriptor| descriptor.sandbox_execution_class.as_deref()),
             Some("sandbox.python.exec")
+        );
+        assert_eq!(
+            sandbox.as_ref().map(|descriptor| descriptor.product_id.as_str()),
+            Some("psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated")
         );
     }
 

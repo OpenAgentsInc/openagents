@@ -14,6 +14,7 @@ It is a layered system where machine compute, machine data, machine labor, machi
 Supplementary coordination contracts that sit alongside the kernel docs:
 
 - [Nostr Managed Chat Contract](./nostr-managed-chat-contract.md)
+- [Compute Product ID Migration](./compute-product-id-migration.md)
 
 ## Status legend
 

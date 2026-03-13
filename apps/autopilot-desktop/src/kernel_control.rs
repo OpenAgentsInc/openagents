@@ -21,7 +21,8 @@ use openagents_kernel_core::compute::{
     ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
     ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
-    launch_compute_product_spec,
+    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
+    canonical_compute_product_id, launch_compute_product_spec,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -2848,17 +2849,17 @@ fn compute_binding_for_backend_and_capability(
         .replace(['.', '-'], "_");
     match (backend, normalized.as_str()) {
         (LocalInferenceBackend::GptOss, "text_generation") => Some(LaunchComputeBinding {
-            product_id: "gpt_oss.text_generation",
+            product_id: PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
             backend_family: ComputeBackendFamily::GptOss,
             compute_family: ComputeFamily::Inference,
-            model_policy: "gpt_oss.text_generation.launch",
+            model_policy: "psionic.local.inference.gpt_oss.single_node.launch",
         }),
         (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
             Some(LaunchComputeBinding {
-                product_id: "apple_foundation_models.text_generation",
+                product_id: PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
                 backend_family: ComputeBackendFamily::AppleFoundationModels,
                 compute_family: ComputeFamily::Inference,
-                model_policy: "apple_foundation_models.text_generation.launch",
+                model_policy: "psionic.local.inference.apple_foundation_models.single_node.launch",
             })
         }
         _ => None,
@@ -2866,15 +2867,17 @@ fn compute_binding_for_backend_and_capability(
 }
 
 fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBinding> {
-    match product_id.trim() {
-        "gpt_oss.text_generation" => compute_binding_for_backend_and_capability(
+    match canonical_compute_product_id(product_id)? {
+        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID => compute_binding_for_backend_and_capability(
             LocalInferenceBackend::GptOss,
             "text_generation",
         ),
-        "apple_foundation_models.text_generation" => compute_binding_for_backend_and_capability(
-            LocalInferenceBackend::AppleFoundationModels,
-            "text_generation",
-        ),
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => {
+            compute_binding_for_backend_and_capability(
+                LocalInferenceBackend::AppleFoundationModels,
+                "text_generation",
+            )
+        }
         _ => None,
     }
 }
@@ -3335,8 +3338,8 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 }
 
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
-    match product_id {
-        "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
+    match canonical_compute_product_id(product_id).unwrap_or(product_id) {
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => "forward_physical.apple_fm.v1",
         _ => "forward_physical.inference.v1",
     }
 }
@@ -3554,9 +3557,10 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
-            compute_product_id: Some("gpt_oss.text_generation".to_string()),
+            compute_product_id: Some("psionic.local.inference.gpt_oss.single_node".to_string()),
             capacity_lot_id: Some(
-                "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000".to_string(),
+                "lot.online.npub1buyer.psionic.local.inference.gpt_oss.single_node.1762000000000"
+                    .to_string(),
             ),
             capacity_instrument_id: Some("instrument.req-gpt_oss-001".to_string()),
             delivery_proof_id: Some("delivery.req-gpt_oss-001".to_string()),
@@ -3812,7 +3816,7 @@ mod tests {
             "text_generation",
         )
         .expect("inference binding");
-        assert_eq!(inference.product_id, "gpt_oss.text_generation");
+        assert_eq!(inference.product_id, "psionic.local.inference.gpt_oss.single_node");
         assert_eq!(inference.compute_family, ComputeFamily::Inference);
 
         assert!(
@@ -3831,7 +3835,7 @@ mod tests {
         .expect("apple inference binding");
         assert_eq!(
             apple_inference.product_id,
-            "apple_foundation_models.text_generation"
+            "psionic.local.inference.apple_foundation_models.single_node"
         );
         assert_eq!(apple_inference.compute_family, ComputeFamily::Inference);
 
@@ -3852,9 +3856,12 @@ mod tests {
         );
         assert_eq!(
             request.idempotency_key,
-            "desktop.compute_product:gpt_oss.text_generation"
+            "desktop.compute_product:psionic.local.inference.gpt_oss.single_node"
         );
-        assert_eq!(request.product.product_id, "gpt_oss.text_generation");
+        assert_eq!(
+            request.product.product_id,
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(
             request.product.created_at_ms,
             super::LAUNCH_PRODUCT_CREATED_AT_MS
@@ -3874,11 +3881,11 @@ mod tests {
         );
         assert_eq!(
             request.idempotency_key,
-            "desktop.compute_product:apple_foundation_models.text_generation"
+            "desktop.compute_product:psionic.local.inference.apple_foundation_models.single_node"
         );
         assert_eq!(
             request.product.product_id,
-            "apple_foundation_models.text_generation"
+            "psionic.local.inference.apple_foundation_models.single_node"
         );
         assert_eq!(
             request
@@ -3894,12 +3901,12 @@ mod tests {
     fn online_inventory_lot_ids_are_provider_and_session_scoped() {
         let lot_id = online_capacity_lot_id_for_binding(
             "npub1buyer",
-            "gpt_oss.text_generation",
+            "psionic.local.inference.gpt_oss.single_node",
             1_762_000_000_000,
         );
         assert_eq!(
             lot_id,
-            "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000"
+            "lot.online.npub1buyer.psionic.local.inference.gpt_oss.single_node.1762000000000"
         );
     }
 
@@ -3907,12 +3914,12 @@ mod tests {
     fn forward_inventory_lot_ids_are_provider_and_session_scoped() {
         let lot_id = forward_capacity_lot_id_for_binding(
             "npub1buyer",
-            "gpt_oss.text_generation",
+            "psionic.local.inference.gpt_oss.single_node",
             1_762_000_000_000,
         );
         assert_eq!(
             lot_id,
-            "lot.forward.npub1buyer.gpt_oss.text_generation.1762000000000"
+            "lot.forward.npub1buyer.psionic.local.inference.gpt_oss.single_node.1762000000000"
         );
     }
 
@@ -3920,10 +3927,13 @@ mod tests {
     fn compute_linkage_uses_active_job_inventory_and_request_instrument_ids() {
         let linkage = compute_linkage_for_active_job(&fixture_active_job_with_gpt_oss_provenance())
             .expect("linkage");
-        assert_eq!(linkage.product_id, "gpt_oss.text_generation");
+        assert_eq!(
+            linkage.product_id,
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(
             linkage.capacity_lot_id,
-            "lot.online.npub1buyer.gpt_oss.text_generation.1762000000000"
+            "lot.online.npub1buyer.psionic.local.inference.gpt_oss.single_node.1762000000000"
         );
         assert_eq!(linkage.capacity_instrument_id, "instrument.req-gpt_oss-001");
         assert_eq!(

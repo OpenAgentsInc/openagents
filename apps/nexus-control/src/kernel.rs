@@ -29,7 +29,7 @@ use openagents_kernel_core::compute::{
     ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
     StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, validate_launch_compute_product,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -898,9 +898,11 @@ fn infer_non_delivery_reason_from_rejection(
 }
 
 fn forward_remedy_profile(product_id: &str) -> &'static str {
-    match product_id {
-        "ollama.embeddings" => "forward_physical.embeddings.v1",
-        "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
+    match canonical_compute_product_id(product_id).unwrap_or(product_id) {
+        "psionic.local.embeddings.gpt_oss.single_node" => "forward_physical.embeddings.v1",
+        "psionic.local.inference.apple_foundation_models.single_node" => {
+            "forward_physical.apple_fm.v1"
+        }
         _ => "forward_physical.inference.v1",
     }
 }
@@ -3469,12 +3471,17 @@ impl KernelState {
             .transpose()?
             .or_else(|| product.capability_envelope.clone())
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
-        let metering_rule_id = match product.product_id.as_str() {
-            "ollama.text_generation" => "meter.ollama.inference.v1",
-            "ollama.embeddings" => "meter.ollama.embeddings.v1",
-            "apple_foundation_models.text_generation" => "meter.apple_fm.inference.v1",
-            _ => "meter.compute.unknown",
-        };
+        let metering_rule_id =
+            match canonical_compute_product_id(product.product_id.as_str())
+                .unwrap_or(product.product_id.as_str())
+            {
+                "psionic.local.inference.gpt_oss.single_node" => "meter.ollama.inference.v1",
+                "psionic.local.embeddings.gpt_oss.single_node" => "meter.ollama.embeddings.v1",
+                "psionic.local.inference.apple_foundation_models.single_node" => {
+                    "meter.apple_fm.inference.v1"
+                }
+                _ => "meter.compute.unknown",
+            };
         let settlement_class = match spec.compute_family {
             openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
             openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
