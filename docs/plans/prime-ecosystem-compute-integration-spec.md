@@ -799,6 +799,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should include product, lot, instrument, delivery, index, validator, and environment-binding surfaces.
 
 4. **Compute: normalize launch product IDs into a Psionic-owned family tree**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3488`; migration note in `docs/kernel/compute-product-id-migration.md`.
    - Replace the current launch-slice product naming with a forward-compatible product namespace that can represent local, clustered, and sandbox products cleanly.
    - Preserve compatibility shims for current MVP products while introducing the new canonical IDs.
 

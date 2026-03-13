@@ -523,6 +523,48 @@ pub struct LaunchComputeProductSpec {
     pub compute_family: ComputeFamily,
 }
 
+pub const PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID: &str =
+    "psionic.local.inference.gpt_oss.single_node";
+pub const PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID: &str =
+    "psionic.local.embeddings.gpt_oss.single_node";
+pub const PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID: &str =
+    "psionic.local.inference.apple_foundation_models.single_node";
+pub const PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID: &str =
+    "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated";
+pub const PSIONIC_REMOTE_SANDBOX_PYTHON_EXEC_PRODUCT_ID: &str =
+    "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated";
+pub const PSIONIC_REMOTE_SANDBOX_NODE_EXEC_PRODUCT_ID: &str =
+    "psionic.remote_sandbox.sandbox_execution.node_exec.sandbox_isolated";
+pub const PSIONIC_REMOTE_SANDBOX_POSIX_EXEC_PRODUCT_ID: &str =
+    "psionic.remote_sandbox.sandbox_execution.posix_exec.sandbox_isolated";
+
+pub fn canonical_compute_product_id(product_id: &str) -> Option<&'static str> {
+    match product_id.trim() {
+        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID
+        | "ollama.text_generation"
+        | "gpt_oss.text_generation" => Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID),
+        PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID
+        | "ollama.embeddings"
+        | "gpt_oss.embeddings" => Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID),
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID | "apple_foundation_models.text_generation" => {
+            Some(PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID)
+        }
+        PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID | "sandbox.container.exec" => {
+            Some(PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID)
+        }
+        PSIONIC_REMOTE_SANDBOX_PYTHON_EXEC_PRODUCT_ID | "sandbox.python.exec" => {
+            Some(PSIONIC_REMOTE_SANDBOX_PYTHON_EXEC_PRODUCT_ID)
+        }
+        PSIONIC_REMOTE_SANDBOX_NODE_EXEC_PRODUCT_ID | "sandbox.node.exec" => {
+            Some(PSIONIC_REMOTE_SANDBOX_NODE_EXEC_PRODUCT_ID)
+        }
+        PSIONIC_REMOTE_SANDBOX_POSIX_EXEC_PRODUCT_ID | "sandbox.posix.exec" => {
+            Some(PSIONIC_REMOTE_SANDBOX_POSIX_EXEC_PRODUCT_ID)
+        }
+        _ => None,
+    }
+}
+
 pub fn validate_compute_capability_envelope(
     envelope: &ComputeCapabilityEnvelope,
 ) -> Result<(), String> {
@@ -755,15 +797,15 @@ pub struct StructuredCapacityInstrument {
 }
 
 pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProductSpec> {
-    match product_id {
-        "ollama.text_generation" | "gpt_oss.text_generation" => Some(LaunchComputeProductSpec {
-            product_id: "gpt_oss.text_generation",
+    match canonical_compute_product_id(product_id)? {
+        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID => Some(LaunchComputeProductSpec {
+            product_id: PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
             backend_family: ComputeBackendFamily::GptOss,
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
         }),
-        "apple_foundation_models.text_generation" => Some(LaunchComputeProductSpec {
-            product_id: "apple_foundation_models.text_generation",
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => Some(LaunchComputeProductSpec {
+            product_id: PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
             backend_family: ComputeBackendFamily::AppleFoundationModels,
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
@@ -870,6 +912,9 @@ mod tests {
         ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
         ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
         ComputeValidatorRequirements, GptOssRuntimeCapability,
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
+        PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
+        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
         validate_compute_capability_envelope, validate_launch_compute_product,
     };
     use serde_json::json;
@@ -927,18 +972,18 @@ mod tests {
 
     #[test]
     fn validates_launch_gpt_oss_product() {
-        let product = launch_product("gpt_oss.text_generation");
+        let product = launch_product(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID);
         let spec =
             validate_launch_compute_product(&product).expect("launch product should validate");
-        assert_eq!(spec.product_id, "gpt_oss.text_generation");
+        assert_eq!(spec.product_id, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID);
         assert_eq!(spec.backend_family, ComputeBackendFamily::GptOss);
         assert_eq!(spec.compute_family, ComputeFamily::Inference);
     }
 
     #[test]
     fn rejects_gpt_oss_embeddings_product() {
-        let mut product = launch_product("gpt_oss.text_generation");
-        product.product_id = "gpt_oss.embeddings".to_string();
+        let mut product = launch_product(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID);
+        product.product_id = PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID.to_string();
         product.capability_envelope = Some(ComputeCapabilityEnvelope {
             backend_family: Some(ComputeBackendFamily::GptOss),
             execution_kind: Some(ComputeExecutionKind::LocalInference),
@@ -974,7 +1019,7 @@ mod tests {
 
     #[test]
     fn validates_environment_and_checkpoint_bound_launch_product() {
-        let mut product = launch_product("gpt_oss.text_generation");
+        let mut product = launch_product(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID);
         product.capability_envelope = Some(ComputeCapabilityEnvelope {
             backend_family: Some(ComputeBackendFamily::GptOss),
             execution_kind: Some(ComputeExecutionKind::LocalInference),
@@ -1015,6 +1060,26 @@ mod tests {
         });
         validate_launch_compute_product(&product)
             .expect("environment and checkpoint bindings should remain launch-valid");
+    }
+
+    #[test]
+    fn canonical_compute_product_ids_preserve_legacy_aliases() {
+        assert_eq!(
+            canonical_compute_product_id("gpt_oss.text_generation"),
+            Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID)
+        );
+        assert_eq!(
+            canonical_compute_product_id("ollama.text_generation"),
+            Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID)
+        );
+        assert_eq!(
+            canonical_compute_product_id("apple_foundation_models.text_generation"),
+            Some(PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID)
+        );
+        assert_eq!(
+            canonical_compute_product_id("gpt_oss.embeddings"),
+            Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID)
+        );
     }
 
     #[test]
