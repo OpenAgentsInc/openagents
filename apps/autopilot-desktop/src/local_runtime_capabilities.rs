@@ -208,11 +208,67 @@ pub(crate) fn mission_control_local_runtime_workbench_action(
     }
 }
 
+pub(crate) fn mission_control_preflight_workbench_action(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> Option<LocalRuntimeWorkbenchAction> {
+    let surface = active_local_runtime_capability_surface(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    match surface.lane {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            let bridge_starting =
+                provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting");
+            if surface.ready || bridge_starting {
+                None
+            } else {
+                surface.refresh_action
+            }
+        }
+        Some(MissionControlLocalRuntimeLane::GptOss) => {
+            if !surface.supports_sell_compute
+                || surface.ready
+                || local_inference_runtime.busy
+                || local_inference_runtime.configured_model_path.is_none()
+                || !local_inference_runtime.artifact_present
+            {
+                None
+            } else {
+                surface.warm_model_action
+            }
+        }
+        None => None,
+    }
+}
+
+pub(crate) const fn mission_control_preflight_action_label(
+    action: LocalRuntimeWorkbenchAction,
+) -> &'static str {
+    match action {
+        LocalRuntimeWorkbenchAction::AppleFm(
+            crate::pane_system::AppleFmWorkbenchPaneAction::RefreshBridge,
+        ) => "Queued Apple FM bridge refresh",
+        LocalRuntimeWorkbenchAction::AppleFm(
+            crate::pane_system::AppleFmWorkbenchPaneAction::StartBridge,
+        ) => "Queued Apple FM bridge start",
+        LocalRuntimeWorkbenchAction::GptOss(
+            crate::pane_system::LocalInferencePaneAction::WarmModel,
+        ) => "Queued GPT-OSS model warm",
+        LocalRuntimeWorkbenchAction::AppleFm(_) | LocalRuntimeWorkbenchAction::GptOss(_) => {
+            "Queued local runtime preflight action"
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         LocalRuntimeWorkbenchAction, local_runtime_capability_summary,
         local_runtime_capability_surface_for_lane, mission_control_local_runtime_workbench_action,
+        mission_control_preflight_action_label, mission_control_preflight_workbench_action,
     };
 
     #[test]
@@ -301,6 +357,95 @@ mod tests {
                 crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss,
             ),
             surface.warm_model_action
+        );
+    }
+
+    #[test]
+    fn preflight_action_warms_configured_gpt_oss_cuda_lane() {
+        let local = crate::local_inference_runtime::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            backend_label: "cuda".to_string(),
+            artifact_present: true,
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            ..crate::local_inference_runtime::LocalInferenceExecutionSnapshot::default()
+        };
+
+        let action = mission_control_preflight_workbench_action(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &crate::state::provider_runtime::ProviderRuntimeState::default(),
+            &local,
+        );
+
+        assert_eq!(
+            action,
+            Some(LocalRuntimeWorkbenchAction::GptOss(
+                crate::pane_system::LocalInferencePaneAction::WarmModel
+            ))
+        );
+        assert_eq!(
+            mission_control_preflight_action_label(action.expect("warm action")),
+            "Queued GPT-OSS model warm"
+        );
+    }
+
+    #[test]
+    fn preflight_action_skips_ready_or_unsupported_gpt_oss_hosts() {
+        let ready = crate::local_inference_runtime::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            ready_model: Some("gpt-oss-20b".to_string()),
+            backend_label: "cuda".to_string(),
+            artifact_present: true,
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            ..crate::local_inference_runtime::LocalInferenceExecutionSnapshot::default()
+        };
+        assert_eq!(
+            mission_control_preflight_workbench_action(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &crate::state::provider_runtime::ProviderRuntimeState::default(),
+                &ready,
+            ),
+            None
+        );
+
+        let unsupported = crate::local_inference_runtime::LocalInferenceExecutionSnapshot {
+            reachable: true,
+            backend_label: "metal".to_string(),
+            artifact_present: true,
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            ..crate::local_inference_runtime::LocalInferenceExecutionSnapshot::default()
+        };
+        assert_eq!(
+            mission_control_preflight_workbench_action(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &crate::state::provider_runtime::ProviderRuntimeState::default(),
+                &unsupported,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn preflight_action_starts_apple_bridge_when_lane_is_unreachable() {
+        if !cfg!(target_os = "macos") {
+            return;
+        }
+
+        let provider = crate::state::provider_runtime::ProviderRuntimeState::default();
+        let action = mission_control_preflight_workbench_action(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &crate::local_inference_runtime::LocalInferenceExecutionSnapshot::default(),
+        );
+
+        assert_eq!(
+            action,
+            Some(LocalRuntimeWorkbenchAction::AppleFm(
+                crate::pane_system::AppleFmWorkbenchPaneAction::StartBridge
+            ))
+        );
+        assert_eq!(
+            mission_control_preflight_action_label(action.expect("apple action")),
+            "Queued Apple FM bridge start"
         );
     }
 }

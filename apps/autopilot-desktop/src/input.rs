@@ -103,6 +103,7 @@ use actions::*;
 
 pub(crate) use actions::build_mission_control_buy_mode_request_event;
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
+pub(crate) use actions::ensure_mission_control_local_runtime_preflight;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
@@ -2865,13 +2866,8 @@ pub(crate) fn apply_provider_mode_target(
                     duration.as_millis().min(i64::MAX as u128) as i64
                 }),
         );
-        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
-        if state.gpt_oss_execution.is_ready() {
-            let _ = state.queue_local_inference_runtime_command(
-                LocalInferenceRuntimeCommand::WarmConfiguredModel,
-            );
-        }
+        let _ = ensure_mission_control_local_runtime_preflight(state);
         if let Some(reason) = provider_go_online_block_reason(state) {
             state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
             state.provider_runtime.last_error_detail = Some(reason);
@@ -2948,7 +2944,7 @@ pub(crate) fn apply_provider_mode_target(
 
     if wants_online {
         state.provider_runtime.defer_runtime_shutdown_until_idle = false;
-        let _ = ensure_mission_control_apple_fm_refresh(state);
+        let _ = ensure_mission_control_local_runtime_preflight(state);
         queue_spark_command(state, SparkWalletCommand::Reload);
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();

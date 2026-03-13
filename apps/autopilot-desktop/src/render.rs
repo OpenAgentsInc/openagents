@@ -19,9 +19,10 @@ use crate::apple_fm_bridge::{AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
-use crate::input::{bootstrap_startup_cad_mesh, ensure_mission_control_apple_fm_refresh};
+use crate::input::{bootstrap_startup_cad_mesh, ensure_mission_control_local_runtime_preflight};
 use crate::local_inference_runtime::{
-    LocalInferenceExecutionSnapshot, LocalInferenceRuntimeCommand, default_local_inference_runtime,
+    LocalInferenceRuntimeCommand, default_local_inference_runtime,
+    initial_local_inference_runtime_snapshot,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
@@ -318,7 +319,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             nip28_chat_lane_worker,
             apple_fm_execution: AppleFmBridgeSnapshot::default(),
             apple_fm_execution_worker,
-            gpt_oss_execution: LocalInferenceExecutionSnapshot::default(),
+            gpt_oss_execution: initial_local_inference_runtime_snapshot(),
             local_inference_runtime,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
@@ -644,7 +645,7 @@ fn open_startup_panes(state: &mut RenderState) {
         match pane_kind {
             PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
-                let _ = ensure_mission_control_apple_fm_refresh(state);
+                let _ = ensure_mission_control_local_runtime_preflight(state);
                 state
                     .spark_wallet
                     .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());

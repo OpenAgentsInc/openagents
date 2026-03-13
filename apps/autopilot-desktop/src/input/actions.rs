@@ -8,6 +8,7 @@ use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRu
 use crate::local_runtime_capabilities::{
     LocalRuntimeCapabilitySurface, LocalRuntimeWorkbenchAction,
     active_local_runtime_capability_surface, mission_control_local_runtime_workbench_action,
+    mission_control_preflight_action_label, mission_control_preflight_workbench_action,
 };
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
@@ -8976,6 +8977,23 @@ fn run_mission_control_local_runtime_workbench_action(
         state.mission_control.record_action(success_label);
     }
     handled
+}
+
+pub(crate) fn ensure_mission_control_local_runtime_preflight(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(action) = mission_control_preflight_workbench_action(
+        state.desktop_shell_mode,
+        &state.provider_runtime,
+        &state.gpt_oss_execution,
+    ) else {
+        return false;
+    };
+    run_mission_control_local_runtime_workbench_action(
+        state,
+        action,
+        mission_control_preflight_action_label(action),
+    )
 }
 
 /// Queues Apple FM bridge refresh or start when the Mission Control pane is opened.
