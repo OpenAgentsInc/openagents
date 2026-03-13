@@ -2194,8 +2194,13 @@ pub fn mission_control_layout_for_mode(
         actions_height,
     );
 
+    let compact_right_column = buy_mode_enabled && right_column.size.height <= 500.0;
     let active_jobs_height = if buy_mode_enabled {
-        (right_column.size.height * 0.18).clamp(84.0, 104.0)
+        if compact_right_column {
+            72.0
+        } else {
+            (right_column.size.height * 0.18).clamp(84.0, 104.0)
+        }
     } else {
         (128.0 * scale).max(84.0_f32.min(body_height))
     };
@@ -2207,10 +2212,22 @@ pub fn mission_control_layout_for_mode(
     );
     // Reserve enough room for the visible log body to keep at least 100px after
     // the section header/content inset and bottom padding are applied.
-    let min_log_stream_height: f32 = 153.0;
-    let preferred_load_funds_height: f32 = if buy_mode_enabled { 212.0 } else { 228.0 };
-    let target_load_funds_height: f32 = if buy_mode_enabled { 272.0 } else { 292.0 };
-    let min_load_funds_height: f32 = if buy_mode_enabled { 180.0 } else { 176.0 };
+    let min_log_stream_height: f32 = if compact_right_column { 132.0 } else { 153.0 };
+    let preferred_load_funds_height: f32 = if buy_mode_enabled {
+        if compact_right_column { 196.0 } else { 212.0 }
+    } else {
+        228.0
+    };
+    let target_load_funds_height: f32 = if buy_mode_enabled {
+        if compact_right_column { 236.0 } else { 272.0 }
+    } else {
+        292.0
+    };
+    let min_load_funds_height: f32 = if buy_mode_enabled {
+        if compact_right_column { 152.0 } else { 180.0 }
+    } else {
+        176.0
+    };
     let buy_mode_panel = if buy_mode_enabled {
         let top_gaps = panel_gap * 3.0;
         let max_buy_mode_height = (right_column.size.height
@@ -2219,9 +2236,9 @@ pub fn mission_control_layout_for_mode(
             - min_log_stream_height
             - top_gaps)
             .max(0.0);
-        let preferred_buy_mode_height: f32 = 120.0;
-        let target_buy_mode_height: f32 = 152.0;
-        let min_buy_mode_height: f32 = 104.0;
+        let preferred_buy_mode_height: f32 = if compact_right_column { 92.0 } else { 120.0 };
+        let target_buy_mode_height: f32 = if compact_right_column { 124.0 } else { 152.0 };
+        let min_buy_mode_height: f32 = if compact_right_column { 84.0 } else { 104.0 };
         let mut buy_mode_height = if max_buy_mode_height <= 0.0 {
             0.0
         } else if max_buy_mode_height < min_buy_mode_height {
@@ -2339,7 +2356,7 @@ pub fn mission_control_sell_scroll_viewport_bounds(content_bounds: Bounds) -> Bo
 pub fn mission_control_actions_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
     let test_button = mission_control_local_fm_test_button_bounds(content_bounds);
-    let origin_y = test_button.max_y() + 10.0;
+    let origin_y = test_button.max_y() + 6.0;
     Bounds::new(
         panel.origin.x + 8.0,
         origin_y,
@@ -2375,9 +2392,9 @@ pub fn mission_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bo
 
 fn mission_control_top_action_button_bounds(content_bounds: Bounds, row: usize) -> Bounds {
     let panel = mission_control_layout(content_bounds).actions_panel;
-    let top_inset = 20.0;
-    let row_gap = 10.0;
-    let button_height = 20.0;
+    let top_inset = 28.0;
+    let row_gap = 8.0;
+    let button_height = 18.0;
     let clamped_row = row.min(1) as f32;
     let y = panel.origin.y + top_inset + clamped_row * (button_height + row_gap);
     Bounds::new(
@@ -2400,12 +2417,12 @@ fn mission_control_actions_row_bounds_with_scroll(
     let panel = mission_control_layout(content_bounds).actions_panel;
     let viewport = mission_control_actions_scroll_viewport_bounds(content_bounds);
     let label_height = 12.0;
-    let label_bottom_gap = 10.0;
-    let action_gap = 10.0;
-    let input_height = 30.0;
+    let label_bottom_gap = 8.0;
+    let action_gap = 8.0;
+    let input_height = 28.0;
     let input_y = viewport.origin.y + label_height + label_bottom_gap - scroll_offset;
     let button_y = input_y + input_height + action_gap;
-    let button_height = 22.0_f32.min((panel.max_y() - button_y).max(0.0));
+    let button_height = 20.0_f32.min((panel.max_y() - button_y).max(0.0));
     let y = match row.min(3) {
         2 => input_y,
         _ => button_y,
@@ -2488,13 +2505,13 @@ pub fn mission_control_load_funds_layout_with_scroll(
         inner_height,
     );
     let compact_layout = controls_column.size.height < 152.0;
-    let control_gap = if compact_layout { 8.0 } else { 10.0 };
-    let send_section_gap = if compact_layout { 18.0 } else { 42.0 };
-    let control_top_inset = if compact_layout { 10.0 } else { 20.0 };
+    let control_gap = if compact_layout { 6.0 } else { 10.0 };
+    let send_section_gap = if compact_layout { 14.0 } else { 42.0 };
+    let control_top_inset = if compact_layout { 8.0 } else { 20.0 };
     let control_height =
         ((controls_column.size.height - control_top_inset - control_gap * 2.0 - send_section_gap)
             / 4.0)
-            .clamp(20.0, 24.0);
+            .clamp(if compact_layout { 18.0 } else { 20.0 }, 24.0);
     let amount_input = Bounds::new(
         controls_column.origin.x,
         controls_column.origin.y + control_top_inset,
@@ -7118,6 +7135,17 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_action_buttons_clear_section_header() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout(content_bounds);
+        let local_model = mission_control_local_model_button_bounds(content_bounds);
+        let local_fm_test = mission_control_local_fm_test_button_bounds(content_bounds);
+
+        assert!(local_model.origin.y >= layout.actions_panel.origin.y + 28.0);
+        assert!(local_fm_test.origin.y >= local_model.max_y() + 8.0);
+    }
+
+    #[test]
     fn mission_control_actions_panel_grows_with_available_height() {
         let compact_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let tall_bounds = Bounds::new(0.0, 0.0, 1040.0, 840.0);
@@ -7201,6 +7229,17 @@ mod tests {
     }
 
     #[test]
+    fn mission_control_compact_buy_mode_keeps_load_funds_readable() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let layout = super::mission_control_layout_for_mode(content_bounds, true);
+        let viewport = super::mission_control_load_funds_scroll_viewport_bounds(content_bounds, true);
+
+        assert!(layout.load_funds_panel.size.height >= 150.0);
+        assert!(viewport.size.height >= 96.0);
+        assert!(layout.log_stream.size.height >= 132.0);
+    }
+
+    #[test]
     fn mission_control_load_funds_panel_grows_with_available_height() {
         let compact_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let tall_bounds = Bounds::new(0.0, 0.0, 1040.0, 840.0);
@@ -7236,8 +7275,8 @@ mod tests {
         let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
         let load_funds = super::mission_control_load_funds_layout(content_bounds, true);
 
-        assert!(load_funds.amount_input.size.height >= 20.0);
-        assert!(load_funds.send_invoice_input.size.height >= 20.0);
+        assert!(load_funds.amount_input.size.height >= 18.0);
+        assert!(load_funds.send_invoice_input.size.height >= 18.0);
         assert_eq!(
             load_funds.amount_input.size.height,
             load_funds.send_invoice_input.size.height
