@@ -1304,6 +1304,7 @@ fn demo_svg_rendering(
                 bounds: Bounds::new(svg_x + (i as f32 * (size + 8.0)), text_y, size, size),
                 svg_data: Arc::from(*svg_data),
                 tint: None,
+                opacity: 1.0,
             });
         }
         svg_x += 180.0;
@@ -1333,6 +1334,7 @@ fn demo_svg_rendering(
             bounds: Bounds::new(x + 12.0 + (i as f32 * 48.0), text_y, 32.0, 32.0),
             svg_data: Arc::from(star_svg.as_slice()),
             tint: *tint,
+            opacity: 1.0,
         });
     }
 

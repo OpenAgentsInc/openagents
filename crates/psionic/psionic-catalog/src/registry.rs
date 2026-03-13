@@ -25,10 +25,11 @@ const OCI_MANIFEST_ACCEPT: &str = concat!(
 );
 
 /// Transport scheme used for OCI/Docker-registry pull requests.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RegistryScheme {
     /// HTTPS transport.
+    #[default]
     Https,
     /// Plain HTTP transport, intended for explicit local/self-hosted development use.
     Http,
@@ -40,12 +41,6 @@ impl RegistryScheme {
             Self::Https => "https",
             Self::Http => "http",
         }
-    }
-}
-
-impl Default for RegistryScheme {
-    fn default() -> Self {
-        Self::Https
     }
 }
 
@@ -396,6 +391,8 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool, RegistryPullError
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
+
     use std::{
         collections::BTreeMap,
         io::{Read, Write},

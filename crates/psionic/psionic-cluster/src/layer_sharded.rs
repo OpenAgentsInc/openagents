@@ -612,8 +612,8 @@ fn validate_handoff_link<'a>(
         ));
     };
 
-    if !matches!(link.status, ClusterLinkStatus::Healthy)
-        && !(policy.allow_degraded_links && link.status == ClusterLinkStatus::Degraded)
+    if !(matches!(link.status, ClusterLinkStatus::Healthy)
+        || policy.allow_degraded_links && link.status == ClusterLinkStatus::Degraded)
     {
         return Err((
             LayerShardedSchedulingFailureCode::HandoffLinkUnsuitable,
@@ -800,6 +800,7 @@ fn runtime_transport_class(transport: ClusterTransportClass) -> RuntimeClusterTr
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn layer_sharded_failure(
     code: LayerShardedSchedulingFailureCode,
     detail: String,
@@ -869,7 +870,11 @@ const fn link_class_name(link_class: ClusterLinkClass) -> &'static str {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[allow(
+    clippy::bool_assert_comparison,
+    clippy::expect_used,
+    clippy::panic_in_result_fn
+)]
 mod tests {
     use std::io::Error;
 

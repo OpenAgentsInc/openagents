@@ -1249,7 +1249,11 @@ pub enum AppleFmBridgeStreamError {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic)]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn
+    )]
 
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -2446,7 +2450,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     error.recovery_suggestion.as_deref(),
                     Some("Try a safer prompt.")
                 );
-                assert_eq!(error.is_retryable(), false);
+                assert!(!error.is_retryable());
             }
             other => panic!("expected guardrail typed error, got {other:?}"),
         }
@@ -2464,7 +2468,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             AppleFmBridgeClientError::FoundationModels { operation, error } => {
                 assert_eq!(operation, "respond_in_session");
                 assert_eq!(error.kind, AppleFmErrorCode::ExceededContextWindowSize);
-                assert_eq!(error.is_retryable(), false);
+                assert!(!error.is_retryable());
                 assert!(
                     error
                         .debug_description
@@ -2705,11 +2709,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         });
 
         let error = match outcome {
-            Ok(response) => {
-                eprintln!(
-                    "live guardrail/context receipt did not trigger on this host; response length={}",
-                    response.output.len()
-                );
+            Ok(_response) => {
                 return;
             }
             Err(error) => error,

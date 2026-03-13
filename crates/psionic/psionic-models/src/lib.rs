@@ -495,19 +495,14 @@ impl TokenizerBoundary for FixtureWordTokenizer {
 }
 
 /// Explicit overflow posture when a prompt would exceed the available context budget.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextOverflowPolicy {
     /// Refuse the request instead of truncating the prompt.
+    #[default]
     Refuse,
     /// Truncate the oldest prompt tokens while preserving an explicit prefix when requested.
     TruncateOldest,
-}
-
-impl Default for ContextOverflowPolicy {
-    fn default() -> Self {
-        Self::Refuse
-    }
 }
 
 /// Explicit context-window budget for one prompt evaluation.

@@ -6,7 +6,7 @@
 use crate::animation::Easing;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::components::{EventContext, PaintContext};
-use crate::{Bounds, InputEvent, Modifiers, MouseButton, Point, Quad, theme};
+use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -434,6 +434,7 @@ fn format_key_display(key: &crate::Key, modifiers: &crate::Modifiers) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Modifiers;
 
     #[test]
     fn test_click_ripple_progress() {

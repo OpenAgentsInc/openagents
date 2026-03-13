@@ -1,5 +1,21 @@
 //! Served compute product contracts for Psionic.
 
+#![allow(
+    clippy::assigning_clones,
+    clippy::large_enum_variant,
+    clippy::too_many_arguments,
+    clippy::unnecessary_map_or
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::useless_vec
+    )
+)]
+
 mod conformance;
 mod gpt_oss;
 mod openai_http;

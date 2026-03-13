@@ -4,7 +4,7 @@
 
 use crate::testing::runner::TestRunner;
 use crate::testing::step::{ClickTarget, TestStep};
-use crate::{InputEvent, Key, Modifiers, MouseButton, Point};
+use crate::{InputEvent, Key, Modifiers, Point};
 
 /// Records input events into test steps.
 pub struct TestRecorder {
@@ -127,6 +127,7 @@ impl TestRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MouseButton;
     use crate::NamedKey;
 
     #[test]

@@ -562,6 +562,8 @@ pub(crate) fn canonical_ollama_digest(digest: &str) -> Result<String, BlobError>
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
+
     use std::{
         fs,
         io::Write,

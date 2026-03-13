@@ -143,6 +143,8 @@ fn default_transcript_type() -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use serde_json::json;
 
     use super::{

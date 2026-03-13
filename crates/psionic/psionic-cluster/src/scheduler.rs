@@ -1291,7 +1291,7 @@ const fn link_status_name(status: ClusterLinkStatus) -> &'static str {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[allow(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::io::Error;
 

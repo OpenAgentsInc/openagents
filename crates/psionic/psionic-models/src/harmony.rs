@@ -549,7 +549,7 @@ impl std::fmt::Debug for GptOssTokenizer {
             .field("add_bos", &self.add_bos)
             .field("add_eos", &self.add_eos)
             .field("eos_token_ids", &self.eos_token_ids)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -1149,6 +1149,8 @@ fn harmony_message_text(message: &HarmonyMessage) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
+
     use std::path::PathBuf;
 
     use super::{

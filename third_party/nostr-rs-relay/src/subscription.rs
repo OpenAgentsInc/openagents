@@ -302,20 +302,20 @@ impl ReqFilter {
     fn ids_match(&self, event: &Event) -> bool {
         self.ids
             .as_ref()
-            .map_or(true, |vs| prefix_match(vs, &event.id))
+            .is_none_or(|vs| prefix_match(vs, &event.id))
     }
 
     fn authors_match(&self, event: &Event) -> bool {
         self.authors
             .as_ref()
-            .map_or(true, |vs| prefix_match(vs, &event.pubkey))
+            .is_none_or(|vs| prefix_match(vs, &event.pubkey))
     }
 
     fn delegated_authors_match(&self, event: &Event) -> bool {
         if let Some(delegated_pubkey) = &event.delegated_by {
             self.authors
                 .as_ref()
-                .map_or(true, |vs| prefix_match(vs, delegated_pubkey))
+                .is_none_or(|vs| prefix_match(vs, delegated_pubkey))
         } else {
             false
         }
@@ -339,7 +339,7 @@ impl ReqFilter {
 
     /// Check if this filter either matches, or does not care about the kind.
     fn kind_match(&self, kind: u64) -> bool {
-        self.kinds.as_ref().map_or(true, |ks| ks.contains(&kind))
+        self.kinds.as_ref().is_none_or(|ks| ks.contains(&kind))
     }
 
     /// Determine if all populated fields in this filter match the provided event.
@@ -347,8 +347,8 @@ impl ReqFilter {
     pub fn interested_in_event(&self, event: &Event) -> bool {
         //        self.id.as_ref().map(|v| v == &event.id).unwrap_or(true)
         self.ids_match(event)
-            && self.since.map_or(true, |t| event.created_at >= t)
-            && self.until.map_or(true, |t| event.created_at <= t)
+            && self.since.is_none_or(|t| event.created_at >= t)
+            && self.until.is_none_or(|t| event.created_at <= t)
             && self.kind_match(event.kind)
             && (self.authors_match(event) || self.delegated_authors_match(event))
             && self.tag_match(event)
@@ -358,6 +358,8 @@ impl ReqFilter {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic_in_result_fn)]
+
     use super::*;
 
     #[test]
@@ -671,7 +673,7 @@ mod tests {
             assert_eq!(pf.until, Some(20));
             assert_eq!(pf.limit, Some(100));
         } else {
-            assert!(false, "filter could not be parsed");
+            panic!("filter could not be parsed");
         }
         Ok(())
     }

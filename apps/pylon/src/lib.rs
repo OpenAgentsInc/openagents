@@ -1159,8 +1159,8 @@ fn provider_blocker_codes(
     state: &str,
 ) -> Vec<String> {
     let mut codes = Vec::new();
-    if !availability.ollama.ready {
-        codes.push("OLLAMA_UNAVAILABLE".to_string());
+    if !availability.gpt_oss.ready {
+        codes.push("GPT_OSS_UNAVAILABLE".to_string());
     }
     if !availability.apple_foundation_models.ready {
         codes.push("APPLE_FM_UNAVAILABLE".to_string());
@@ -1192,7 +1192,7 @@ fn execution_backend_label(
 
 fn first_backend_error(availability: &ProviderAvailability) -> Option<String> {
     availability
-        .ollama
+        .gpt_oss
         .last_error
         .clone()
         .or_else(|| availability.apple_foundation_models.last_error.clone())
@@ -1359,9 +1359,9 @@ fn backend_entry(
     }
 }
 
-fn ollama_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
-    if !config.inventory_controls.ollama_inference_enabled
-        && !config.inventory_controls.ollama_embeddings_enabled
+fn gpt_oss_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
+    if !config.inventory_controls.gpt_oss_inference_enabled
+        && !config.inventory_controls.gpt_oss_embeddings_enabled
     {
         return "disabled".to_string();
     }
@@ -1530,9 +1530,9 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
         ProviderAvailability::default()
     };
     let products = derive_provider_products(&availability, &config.inventory_controls);
-    let ollama_products = products
+    let gpt_oss_products = products
         .iter()
-        .filter(|product| product.product.backend_label() == "ollama")
+        .filter(|product| product.product.backend_label() == "gpt_oss")
         .cloned()
         .collect::<Vec<_>>();
     let apple_fm_products = products
@@ -1549,11 +1549,11 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
         context: report_context(&status),
         backends: vec![
             backend_entry(
-                "ollama",
-                "Ollama",
-                ollama_health_state(&config, &availability.ollama),
-                &availability.ollama,
-                ollama_products.as_slice(),
+                "gpt_oss",
+                "GPT-OSS",
+                gpt_oss_health_state(&config, &availability.gpt_oss),
+                &availability.gpt_oss,
+                gpt_oss_products.as_slice(),
             ),
             backend_entry(
                 "apple_foundation_models",
@@ -2231,22 +2231,22 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
         .timeout(Duration::from_secs(2))
         .build()
         .context("failed to build pylon health-check client")?;
-    let ollama = detect_ollama(&client, config).await;
+    let gpt_oss = detect_ollama(&client, config).await;
     let apple_foundation_models = detect_apple_fm(&client, config).await;
     let sandbox = detect_sandbox_supply(
         &ProviderSandboxDetectionConfig::default()
             .with_declared_profiles(config.declared_sandbox_profiles.clone()),
     );
     Ok(ProviderAvailability {
-        ollama,
+        gpt_oss,
         apple_foundation_models,
         sandbox,
     })
 }
 
 async fn detect_ollama(client: &reqwest::Client, config: &PylonConfig) -> ProviderBackendHealth {
-    if !config.inventory_controls.ollama_inference_enabled
-        && !config.inventory_controls.ollama_embeddings_enabled
+    if !config.inventory_controls.gpt_oss_inference_enabled
+        && !config.inventory_controls.gpt_oss_embeddings_enabled
     {
         return ProviderBackendHealth {
             last_action: Some("disabled by config".to_string()),
@@ -2273,7 +2273,7 @@ async fn detect_ollama(client: &reqwest::Client, config: &PylonConfig) -> Provid
                 reachable: true,
                 ready: false,
                 last_error: Some(error.to_string()),
-                last_action: Some("invalid ollama health payload".to_string()),
+                last_action: Some("invalid gpt-oss health payload".to_string()),
                 ..ProviderBackendHealth::default()
             };
         }
@@ -2395,11 +2395,11 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(value.to_string())
             };
         }
-        "backend.ollama_inference_enabled" => {
-            config.inventory_controls.ollama_inference_enabled = parse_bool(value)?;
+        "backend.gpt_oss_inference_enabled" | "backend.ollama_inference_enabled" => {
+            config.inventory_controls.gpt_oss_inference_enabled = parse_bool(value)?;
         }
-        "backend.ollama_embeddings_enabled" => {
-            config.inventory_controls.ollama_embeddings_enabled = parse_bool(value)?;
+        "backend.gpt_oss_embeddings_enabled" | "backend.ollama_embeddings_enabled" => {
+            config.inventory_controls.gpt_oss_embeddings_enabled = parse_bool(value)?;
         }
         "backend.apple_fm_inference_enabled" => {
             config.inventory_controls.apple_fm_inference_enabled = parse_bool(value)?;
@@ -2737,7 +2737,7 @@ mod tests {
         save_config(config_path, &config)?;
 
         let availability = ProviderAvailability {
-            ollama: ready_health(
+            gpt_oss: ready_health(
                 "llama3.2:latest",
                 &["llama3.2:latest", "nomic-embed-text:latest"],
                 None,
@@ -2809,9 +2809,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "settled".to_string(),
                 demand_source: "open_network".to_string(),
-                product_id: Some("ollama.embeddings".to_string()),
+                product_id: Some("gpt_oss.embeddings".to_string()),
                 compute_family: Some("embeddings".to_string()),
-                backend_family: Some("ollama".to_string()),
+                backend_family: Some("gpt_oss".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -2848,7 +2848,7 @@ mod tests {
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
                 compute_family: Some("embeddings".to_string()),
-                backend_family: Some("ollama".to_string()),
+                backend_family: Some("gpt_oss".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -2913,18 +2913,18 @@ mod tests {
         let backend_report = load_backend_report(config_path.as_path()).await?;
         let product_report = load_product_report(config_path.as_path()).await?;
 
-        let ollama = backend_report
+        let gpt_oss = backend_report
             .backends
             .iter()
-            .find(|backend| backend.backend_id == "ollama")
-            .ok_or_else(|| std::io::Error::other("missing ollama backend entry"))?;
+            .find(|backend| backend.backend_id == "gpt_oss")
+            .ok_or_else(|| std::io::Error::other("missing gpt_oss backend entry"))?;
         ensure(
-            ollama.launch_product_ids
+            gpt_oss.launch_product_ids
                 == vec![
-                    "ollama.text_generation".to_string(),
-                    "ollama.embeddings".to_string(),
+                    "gpt_oss.text_generation".to_string(),
+                    "gpt_oss.embeddings".to_string(),
                 ],
-            "ollama backend should expose inference and embeddings launch products",
+            "gpt_oss backend should expose inference and embeddings launch products",
         )?;
 
         let apple_fm = backend_report
@@ -2946,7 +2946,7 @@ mod tests {
         )?;
         ensure(
             product_report.products.iter().any(|product| {
-                product.product_id == "ollama.embeddings"
+                product.product_id == "gpt_oss.embeddings"
                     && product.capability_summary.contains("family=embeddings")
             }),
             "product report should preserve capability-envelope qualifiers for embeddings",
@@ -2982,7 +2982,7 @@ mod tests {
             inventory_report
                 .rows
                 .iter()
-                .any(|row| row.target.product_id() == "ollama.embeddings" && row.eligible),
+                .any(|row| row.target.product_id() == "gpt_oss.embeddings" && row.eligible),
             "inventory report should show eligible embedding supply",
         )?;
         ensure(
@@ -2997,7 +2997,7 @@ mod tests {
                 && jobs_report
                     .jobs
                     .iter()
-                    .any(|job| job.product_id.as_deref() == Some("ollama.embeddings")),
+                    .any(|job| job.product_id.as_deref() == Some("gpt_oss.embeddings")),
             "jobs report should surface persisted recent jobs",
         )?;
         let sandbox_job = jobs_report

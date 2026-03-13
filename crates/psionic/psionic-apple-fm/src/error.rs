@@ -79,6 +79,8 @@ impl From<AppleFmErrorDetail> for AppleFmFoundationModelsError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::AppleFmFoundationModelsError;
     use crate::contract::{AppleFmErrorCode, AppleFmErrorDetail};
 

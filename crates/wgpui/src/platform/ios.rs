@@ -1,3 +1,10 @@
+#![allow(
+    clippy::bool_to_int_with_if,
+    clippy::not_unsafe_ptr_arg_deref,
+    clippy::ptr_as_ptr,
+    clippy::ref_as_ptr
+)]
+
 use std::ffi::{c_char, c_void};
 use std::time::Duration;
 

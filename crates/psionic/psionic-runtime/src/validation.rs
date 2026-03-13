@@ -337,6 +337,8 @@ fn product_label(product_id: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{
         MINIMUM_HARDWARE_VALIDATION_MATRIX_ID, ValidationCoverage,
         minimum_hardware_validation_claim, minimum_hardware_validation_claims,

@@ -390,6 +390,8 @@ fn rank_of_index(values: &[f32], target_index: usize) -> Result<usize, ParityChe
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic_in_result_fn)]
+
     use super::*;
 
     #[test]
