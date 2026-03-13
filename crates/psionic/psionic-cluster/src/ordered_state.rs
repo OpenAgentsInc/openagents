@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     net::SocketAddr,
+    path::Path,
 };
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -2906,6 +2908,26 @@ impl ClusterEventLog {
         }
     }
 
+    /// Loads one authoritative event log from stable JSON storage.
+    pub fn load_json(path: impl AsRef<Path>) -> Result<Self, ClusterHistoryError> {
+        let bytes = fs::read(path).map_err(cluster_persistence_io_error)?;
+        let log =
+            serde_json::from_slice::<Self>(&bytes).map_err(cluster_persistence_format_error)?;
+        log.validate_persisted_structure()?;
+        Ok(log)
+    }
+
+    /// Stores one authoritative event log as stable pretty JSON.
+    pub fn store_json(&self, path: impl AsRef<Path>) -> Result<(), ClusterHistoryError> {
+        self.validate_persisted_structure()?;
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(cluster_persistence_io_error)?;
+        }
+        let encoded = serde_json::to_vec_pretty(self).map_err(cluster_persistence_format_error)?;
+        fs::write(path, encoded).map_err(cluster_persistence_io_error)
+    }
+
     /// Returns the ordered authoritative event history retained in the log.
     #[must_use]
     pub fn events(&self) -> &[IndexedClusterEvent] {
@@ -3110,11 +3132,56 @@ impl ClusterEventLog {
         }
         Ok(state)
     }
+
+    fn validate_persisted_structure(&self) -> Result<(), ClusterHistoryError> {
+        if let Some(snapshot) = &self.compacted_snapshot {
+            validate_event_owner(&self.cluster_id, &snapshot.cluster_id)?;
+            if snapshot.schema_version != self.schema_version {
+                return Err(ClusterHistoryError::SnapshotSchemaVersionMismatch {
+                    expected: self.schema_version,
+                    actual: snapshot.schema_version,
+                });
+            }
+        }
+        let mut last_applied_event_index = self
+            .compacted_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.last_applied_event_index);
+        for event in &self.events {
+            validate_event_owner(&self.cluster_id, &event.cluster_id)?;
+            validate_contiguous_index(last_applied_event_index, event.index)?;
+            last_applied_event_index = Some(event.index);
+        }
+        let _ = self.replay()?;
+        Ok(())
+    }
 }
 
 /// Ordered-log and state-apply failures for the first authoritative seam.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ClusterHistoryError {
+    /// Persisted log JSON could not be read or written.
+    #[error("failed to read or write cluster event log ({kind:?}): {message}")]
+    PersistenceIo {
+        /// Coarse I/O failure category.
+        kind: std::io::ErrorKind,
+        /// Stable human-readable error detail.
+        message: String,
+    },
+    /// Persisted log JSON could not be decoded or encoded.
+    #[error(
+        "failed to decode or encode cluster event log JSON ({category} at {line}:{column}): {message}"
+    )]
+    PersistenceFormat {
+        /// Coarse serde-json error category.
+        category: String,
+        /// 1-based line surfaced by serde-json.
+        line: usize,
+        /// 1-based column surfaced by serde-json.
+        column: usize,
+        /// Stable human-readable error detail.
+        message: String,
+    },
     /// Event or request belongs to a different cluster than the owning log/state.
     #[error("cluster event belongs to a different cluster: expected {expected:?}, got {actual:?}")]
     ClusterIdMismatch {
@@ -3122,6 +3189,14 @@ pub enum ClusterHistoryError {
         expected: ClusterId,
         /// Observed cluster identity.
         actual: ClusterId,
+    },
+    /// Compacted snapshot schema version no longer matches the owning log schema.
+    #[error("cluster snapshot schema version mismatch: expected {expected:?}, got {actual:?}")]
+    SnapshotSchemaVersionMismatch {
+        /// Expected schema version carried by the owning log.
+        expected: ClusterSchemaVersion,
+        /// Actual schema version carried by the compacted snapshot.
+        actual: ClusterSchemaVersion,
     },
     /// Event index does not continue contiguously from the current apply point.
     #[error("cluster event index is out of order: expected {expected:?}, got {actual:?}")]
@@ -3178,6 +3253,22 @@ fn validate_contiguous_index(
         });
     }
     Ok(())
+}
+
+fn cluster_persistence_io_error(error: std::io::Error) -> ClusterHistoryError {
+    ClusterHistoryError::PersistenceIo {
+        kind: error.kind(),
+        message: error.to_string(),
+    }
+}
+
+fn cluster_persistence_format_error(error: serde_json::Error) -> ClusterHistoryError {
+    ClusterHistoryError::PersistenceFormat {
+        category: format!("{:?}", error.classify()),
+        line: error.line(),
+        column: error.column(),
+        message: error.to_string(),
+    }
 }
 
 fn next_expected_index(last_applied_event_index: Option<ClusterEventIndex>) -> ClusterEventIndex {
@@ -3329,9 +3420,10 @@ fn artifact_transfer_label(transfer_method: ClusterArtifactTransferMethod) -> &'
 mod tests {
     #![allow(clippy::expect_used, clippy::panic)]
 
-    use std::net::SocketAddr;
+    use std::{fs, net::SocketAddr};
 
     use ed25519_dalek::SigningKey;
+    use tempfile::tempdir;
 
     use crate::{AdmissionToken, ClusterDiscoveryCandidate, ClusterNamespace, NodeEpoch, NodeRole};
 
@@ -5381,6 +5473,169 @@ mod tests {
                 })
             ),
             "replayed recovery should be refused"
+        );
+    }
+
+    #[test]
+    fn authoritative_event_log_round_trips_through_json_and_preserves_catchup() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            5001,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            5002,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: coordinator.clone(),
+        });
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: executor.clone(),
+        });
+        let telemetry_event = log.append_event(ClusterEvent::NodeTelemetryReconciled {
+            telemetry: ClusterNodeTelemetry::new(executor.identity.node_id.clone())
+                .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready)
+                .with_cpu_logical_cores(32),
+        });
+        let _ = log.append_event(ClusterEvent::LeadershipReconciled {
+            leadership: ClusterLeadershipRecord::new(
+                ClusterTerm::initial(),
+                coordinator.identity.node_id.clone(),
+                telemetry_event.index,
+            ),
+        });
+
+        let policy = sample_recovery_policy();
+        let authoritative_digest = log
+            .replay()
+            .expect("authoritative replay should work")
+            .stable_digest();
+        let compacted_snapshot = log
+            .compact(&policy)
+            .expect("compaction should succeed")
+            .expect("compaction should emit a snapshot");
+        let request = ClusterCatchupRequest::new(
+            cluster_id.clone(),
+            executor.identity.node_id.clone(),
+            compacted_snapshot.last_applied_event_index,
+            ClusterSchemaVersion::initial(),
+            8,
+        );
+        let expected_response = log
+            .catchup_response(&request, &policy)
+            .expect("catchup response should build");
+        assert_eq!(
+            expected_response.disposition,
+            ClusterRecoveryDisposition::CatchUp
+        );
+
+        let tempdir = tempdir().expect("tempdir should exist");
+        let path = tempdir.path().join("cluster/state/ordered-state.json");
+        log.store_json(&path)
+            .expect("persisted ordered log should store");
+
+        let encoded = fs::read_to_string(&path).expect("persisted file should be readable");
+        assert!(
+            encoded.contains("\"schema_version\""),
+            "stored log should remain inspectable JSON"
+        );
+
+        let loaded = ClusterEventLog::load_json(&path).expect("persisted log should load");
+        assert_eq!(loaded, log);
+        assert_eq!(
+            loaded
+                .replay()
+                .expect("loaded replay should work")
+                .stable_digest(),
+            authoritative_digest
+        );
+
+        let response_after_restart = loaded
+            .catchup_response(&request, &policy)
+            .expect("catchup after restart should build");
+        assert_eq!(response_after_restart, expected_response);
+
+        match response_after_restart.payload {
+            ClusterCatchupPayload::Events { events } => {
+                let recovered = ClusterState::recover(compacted_snapshot, &events)
+                    .expect("snapshot plus tail should recover current state");
+                assert_eq!(recovered.stable_digest(), authoritative_digest);
+            }
+            payload => panic!("expected events payload, got {payload:?}"),
+        }
+    }
+
+    #[test]
+    fn authoritative_event_log_load_rejects_invalid_json() {
+        let tempdir = tempdir().expect("tempdir should exist");
+        let path = tempdir.path().join("cluster/state/ordered-state.json");
+        fs::create_dir_all(path.parent().expect("fixture path should have a parent"))
+            .expect("fixture parent should exist");
+        fs::write(&path, b"{not valid json").expect("invalid fixture should write");
+
+        let load = ClusterEventLog::load_json(&path);
+        assert!(
+            matches!(
+                load,
+                Err(ClusterHistoryError::PersistenceFormat {
+                    category,
+                    line,
+                    column,
+                    ..
+                }) if category == "Syntax" && line == 1 && column > 0
+            ),
+            "malformed persisted JSON should be surfaced as a stable format error"
+        );
+    }
+
+    #[test]
+    fn authoritative_event_log_load_rejects_snapshot_schema_mismatch() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            5101,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: coordinator,
+        });
+        let mut snapshot = log.snapshot().expect("snapshot should build");
+        snapshot.schema_version = ClusterSchemaVersion::new(9, 0);
+
+        let invalid = ClusterEventLog {
+            cluster_id,
+            schema_version: ClusterSchemaVersion::initial(),
+            compacted_snapshot: Some(snapshot),
+            events: Vec::new(),
+        };
+
+        let tempdir = tempdir().expect("tempdir should exist");
+        let path = tempdir.path().join("cluster/state/ordered-state.json");
+        fs::create_dir_all(path.parent().expect("fixture path should have a parent"))
+            .expect("fixture parent should exist");
+        let encoded =
+            serde_json::to_vec_pretty(&invalid).expect("invalid persisted fixture should encode");
+        fs::write(&path, encoded).expect("invalid fixture should write");
+
+        let load = ClusterEventLog::load_json(&path);
+        assert!(
+            matches!(
+                load,
+                Err(ClusterHistoryError::SnapshotSchemaVersionMismatch { expected, actual })
+                    if expected == ClusterSchemaVersion::initial()
+                        && actual == ClusterSchemaVersion::new(9, 0)
+            ),
+            "persisted snapshots should keep the log schema boundary honest"
         );
     }
 }
