@@ -12,12 +12,14 @@ use crate::authority::{
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-    CapacityNonDeliveryReason, CapacityReserveState, ComputeBackendFamily,
-    ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily,
+    CapacityNonDeliveryReason, CapacityReserveState, ComputeArtifactResidency,
+    ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+    ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
     ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
-    ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+    ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
+    ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
 use crate::receipts::{
@@ -492,11 +494,17 @@ fn compute_execution_kind_to_proto(value: ComputeExecutionKind) -> Result<i32> {
         ComputeExecutionKind::LocalInference => {
             Ok(proto_compute::ComputeExecutionKind::LocalInference as i32)
         }
-        ComputeExecutionKind::ClusteredInference
-        | ComputeExecutionKind::SandboxExecution
-        | ComputeExecutionKind::EvaluationRun
-        | ComputeExecutionKind::TrainingJob => {
-            Err(anyhow!("compute_proto_execution_kind_unsupported"))
+        ComputeExecutionKind::ClusteredInference => {
+            Ok(proto_compute::ComputeExecutionKind::ClusteredInference as i32)
+        }
+        ComputeExecutionKind::SandboxExecution => {
+            Ok(proto_compute::ComputeExecutionKind::SandboxExecution as i32)
+        }
+        ComputeExecutionKind::EvaluationRun => {
+            Ok(proto_compute::ComputeExecutionKind::EvaluationRun as i32)
+        }
+        ComputeExecutionKind::TrainingJob => {
+            Ok(proto_compute::ComputeExecutionKind::TrainingJob as i32)
         }
     }
 }
@@ -508,6 +516,16 @@ fn compute_execution_kind_from_proto(value: i32) -> Result<ComputeExecutionKind>
         proto_compute::ComputeExecutionKind::LocalInference => {
             Ok(ComputeExecutionKind::LocalInference)
         }
+        proto_compute::ComputeExecutionKind::ClusteredInference => {
+            Ok(ComputeExecutionKind::ClusteredInference)
+        }
+        proto_compute::ComputeExecutionKind::SandboxExecution => {
+            Ok(ComputeExecutionKind::SandboxExecution)
+        }
+        proto_compute::ComputeExecutionKind::EvaluationRun => {
+            Ok(ComputeExecutionKind::EvaluationRun)
+        }
+        proto_compute::ComputeExecutionKind::TrainingJob => Ok(ComputeExecutionKind::TrainingJob),
         proto_compute::ComputeExecutionKind::Unspecified => {
             Err(anyhow!("compute_proto_execution_kind_missing"))
         }
@@ -518,10 +536,12 @@ fn compute_family_to_proto(value: ComputeFamily) -> Result<i32> {
     match value {
         ComputeFamily::Inference => Ok(proto_compute::ComputeFamily::Inference as i32),
         ComputeFamily::Embeddings => Ok(proto_compute::ComputeFamily::Embeddings as i32),
-        ComputeFamily::SandboxExecution
-        | ComputeFamily::Evaluation
-        | ComputeFamily::Training
-        | ComputeFamily::AdapterHosting => Err(anyhow!("compute_proto_family_unsupported")),
+        ComputeFamily::SandboxExecution => {
+            Ok(proto_compute::ComputeFamily::SandboxExecution as i32)
+        }
+        ComputeFamily::Evaluation => Ok(proto_compute::ComputeFamily::Evaluation as i32),
+        ComputeFamily::Training => Ok(proto_compute::ComputeFamily::Training as i32),
+        ComputeFamily::AdapterHosting => Ok(proto_compute::ComputeFamily::AdapterHosting as i32),
     }
 }
 
@@ -531,7 +551,142 @@ fn compute_family_from_proto(value: i32) -> Result<ComputeFamily> {
     {
         proto_compute::ComputeFamily::Inference => Ok(ComputeFamily::Inference),
         proto_compute::ComputeFamily::Embeddings => Ok(ComputeFamily::Embeddings),
+        proto_compute::ComputeFamily::SandboxExecution => Ok(ComputeFamily::SandboxExecution),
+        proto_compute::ComputeFamily::Evaluation => Ok(ComputeFamily::Evaluation),
+        proto_compute::ComputeFamily::Training => Ok(ComputeFamily::Training),
+        proto_compute::ComputeFamily::AdapterHosting => Ok(ComputeFamily::AdapterHosting),
         proto_compute::ComputeFamily::Unspecified => Err(anyhow!("compute_proto_family_missing")),
+    }
+}
+
+fn compute_topology_kind_to_proto(value: ComputeTopologyKind) -> i32 {
+    match value {
+        ComputeTopologyKind::SingleNode => proto_compute::ComputeTopologyKind::SingleNode as i32,
+        ComputeTopologyKind::RemoteWholeRequest => {
+            proto_compute::ComputeTopologyKind::RemoteWholeRequest as i32
+        }
+        ComputeTopologyKind::Replicated => proto_compute::ComputeTopologyKind::Replicated as i32,
+        ComputeTopologyKind::PipelineSharded => {
+            proto_compute::ComputeTopologyKind::PipelineSharded as i32
+        }
+        ComputeTopologyKind::LayerSharded => {
+            proto_compute::ComputeTopologyKind::LayerSharded as i32
+        }
+        ComputeTopologyKind::TensorSharded => {
+            proto_compute::ComputeTopologyKind::TensorSharded as i32
+        }
+        ComputeTopologyKind::SandboxIsolated => {
+            proto_compute::ComputeTopologyKind::SandboxIsolated as i32
+        }
+        ComputeTopologyKind::TrainingElastic => {
+            proto_compute::ComputeTopologyKind::TrainingElastic as i32
+        }
+    }
+}
+
+fn compute_topology_kind_from_proto(value: i32) -> Result<ComputeTopologyKind> {
+    match proto_compute::ComputeTopologyKind::try_from(value)
+        .unwrap_or(proto_compute::ComputeTopologyKind::Unspecified)
+    {
+        proto_compute::ComputeTopologyKind::SingleNode => Ok(ComputeTopologyKind::SingleNode),
+        proto_compute::ComputeTopologyKind::RemoteWholeRequest => {
+            Ok(ComputeTopologyKind::RemoteWholeRequest)
+        }
+        proto_compute::ComputeTopologyKind::Replicated => Ok(ComputeTopologyKind::Replicated),
+        proto_compute::ComputeTopologyKind::PipelineSharded => {
+            Ok(ComputeTopologyKind::PipelineSharded)
+        }
+        proto_compute::ComputeTopologyKind::LayerSharded => Ok(ComputeTopologyKind::LayerSharded),
+        proto_compute::ComputeTopologyKind::TensorSharded => Ok(ComputeTopologyKind::TensorSharded),
+        proto_compute::ComputeTopologyKind::SandboxIsolated => {
+            Ok(ComputeTopologyKind::SandboxIsolated)
+        }
+        proto_compute::ComputeTopologyKind::TrainingElastic => {
+            Ok(ComputeTopologyKind::TrainingElastic)
+        }
+        proto_compute::ComputeTopologyKind::Unspecified => {
+            Err(anyhow!("compute_proto_topology_kind_missing"))
+        }
+    }
+}
+
+fn compute_provisioning_kind_to_proto(value: ComputeProvisioningKind) -> i32 {
+    match value {
+        ComputeProvisioningKind::DesktopLocal => {
+            proto_compute::ComputeProvisioningKind::DesktopLocal as i32
+        }
+        ComputeProvisioningKind::ClusterAttached => {
+            proto_compute::ComputeProvisioningKind::ClusterAttached as i32
+        }
+        ComputeProvisioningKind::RemoteSandbox => {
+            proto_compute::ComputeProvisioningKind::RemoteSandbox as i32
+        }
+        ComputeProvisioningKind::ReservedClusterWindow => {
+            proto_compute::ComputeProvisioningKind::ReservedClusterWindow as i32
+        }
+    }
+}
+
+fn compute_provisioning_kind_from_proto(value: i32) -> Result<ComputeProvisioningKind> {
+    match proto_compute::ComputeProvisioningKind::try_from(value)
+        .unwrap_or(proto_compute::ComputeProvisioningKind::Unspecified)
+    {
+        proto_compute::ComputeProvisioningKind::DesktopLocal => {
+            Ok(ComputeProvisioningKind::DesktopLocal)
+        }
+        proto_compute::ComputeProvisioningKind::ClusterAttached => {
+            Ok(ComputeProvisioningKind::ClusterAttached)
+        }
+        proto_compute::ComputeProvisioningKind::RemoteSandbox => {
+            Ok(ComputeProvisioningKind::RemoteSandbox)
+        }
+        proto_compute::ComputeProvisioningKind::ReservedClusterWindow => {
+            Ok(ComputeProvisioningKind::ReservedClusterWindow)
+        }
+        proto_compute::ComputeProvisioningKind::Unspecified => {
+            Err(anyhow!("compute_proto_provisioning_kind_missing"))
+        }
+    }
+}
+
+fn compute_proof_posture_to_proto(value: ComputeProofPosture) -> i32 {
+    match value {
+        ComputeProofPosture::DeliveryProofOnly => {
+            proto_compute::ComputeProofPosture::DeliveryProofOnly as i32
+        }
+        ComputeProofPosture::None => proto_compute::ComputeProofPosture::None as i32,
+        ComputeProofPosture::TopologyAndDelivery => {
+            proto_compute::ComputeProofPosture::TopologyAndDelivery as i32
+        }
+        ComputeProofPosture::ToplocAugmented => {
+            proto_compute::ComputeProofPosture::ToplocAugmented as i32
+        }
+        ComputeProofPosture::ChallengeEligible => {
+            proto_compute::ComputeProofPosture::ChallengeEligible as i32
+        }
+    }
+}
+
+fn compute_proof_posture_from_proto(value: i32) -> Result<ComputeProofPosture> {
+    match proto_compute::ComputeProofPosture::try_from(value)
+        .unwrap_or(proto_compute::ComputeProofPosture::Unspecified)
+    {
+        proto_compute::ComputeProofPosture::DeliveryProofOnly => {
+            Ok(ComputeProofPosture::DeliveryProofOnly)
+        }
+        proto_compute::ComputeProofPosture::None => Ok(ComputeProofPosture::None),
+        proto_compute::ComputeProofPosture::TopologyAndDelivery => {
+            Ok(ComputeProofPosture::TopologyAndDelivery)
+        }
+        proto_compute::ComputeProofPosture::ToplocAugmented => {
+            Ok(ComputeProofPosture::ToplocAugmented)
+        }
+        proto_compute::ComputeProofPosture::ChallengeEligible => {
+            Ok(ComputeProofPosture::ChallengeEligible)
+        }
+        proto_compute::ComputeProofPosture::Unspecified => {
+            Err(anyhow!("compute_proto_proof_posture_missing"))
+        }
     }
 }
 
@@ -1081,6 +1236,51 @@ pub fn compute_capability_envelope_to_proto(
             .map(compute_family_to_proto)
             .transpose()?
             .unwrap_or(proto_compute::ComputeFamily::Unspecified as i32),
+        topology_kind: envelope
+            .topology_kind
+            .map(compute_topology_kind_to_proto)
+            .unwrap_or(proto_compute::ComputeTopologyKind::Unspecified as i32),
+        provisioning_kind: envelope
+            .provisioning_kind
+            .map(compute_provisioning_kind_to_proto)
+            .unwrap_or(proto_compute::ComputeProvisioningKind::Unspecified as i32),
+        proof_posture: envelope
+            .proof_posture
+            .map(compute_proof_posture_to_proto)
+            .unwrap_or(proto_compute::ComputeProofPosture::Unspecified as i32),
+        validator_requirements: envelope
+            .validator_requirements
+            .as_ref()
+            .map(|requirements| proto_compute::ComputeValidatorRequirements {
+                validator_pool_ref: requirements.validator_pool_ref.clone(),
+                policy_ref: requirements.policy_ref.clone(),
+                minimum_validator_count: requirements.minimum_validator_count,
+                challenge_window_ms: requirements.challenge_window_ms,
+            }),
+        artifact_residency: envelope.artifact_residency.as_ref().map(|residency| {
+            proto_compute::ComputeArtifactResidency {
+                residency_class: residency.residency_class.clone(),
+                staging_policy: residency.staging_policy.clone(),
+                artifact_set_digest: residency.artifact_set_digest.clone(),
+                warm: residency.warm,
+            }
+        }),
+        environment_binding: envelope.environment_binding.as_ref().map(|binding| {
+            proto_compute::ComputeEnvironmentBinding {
+                environment_ref: binding.environment_ref.clone(),
+                environment_version: binding.environment_version.clone(),
+                dataset_ref: binding.dataset_ref.clone(),
+                rubric_ref: binding.rubric_ref.clone(),
+                evaluator_policy_ref: binding.evaluator_policy_ref.clone(),
+            }
+        }),
+        checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
+            proto_compute::ComputeCheckpointBinding {
+                checkpoint_family: binding.checkpoint_family.clone(),
+                latest_checkpoint_ref: binding.latest_checkpoint_ref.clone(),
+                recovery_posture: binding.recovery_posture.clone(),
+            }
+        }),
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
         host_capability: envelope.host_capability.as_ref().map(|capability| {
@@ -1127,13 +1327,51 @@ pub fn compute_capability_envelope_from_proto(
             != proto_compute::ComputeFamily::Unspecified as i32)
             .then(|| compute_family_from_proto(envelope.compute_family))
             .transpose()?,
-        topology_kind: None,
-        provisioning_kind: None,
-        proof_posture: None,
-        validator_requirements: None,
-        artifact_residency: None,
-        environment_binding: None,
-        checkpoint_binding: None,
+        topology_kind: (envelope.topology_kind
+            != proto_compute::ComputeTopologyKind::Unspecified as i32)
+            .then(|| compute_topology_kind_from_proto(envelope.topology_kind))
+            .transpose()?,
+        provisioning_kind: (envelope.provisioning_kind
+            != proto_compute::ComputeProvisioningKind::Unspecified as i32)
+            .then(|| compute_provisioning_kind_from_proto(envelope.provisioning_kind))
+            .transpose()?,
+        proof_posture: (envelope.proof_posture
+            != proto_compute::ComputeProofPosture::Unspecified as i32)
+            .then(|| compute_proof_posture_from_proto(envelope.proof_posture))
+            .transpose()?,
+        validator_requirements: envelope
+            .validator_requirements
+            .as_ref()
+            .map(|requirements| ComputeValidatorRequirements {
+                validator_pool_ref: requirements.validator_pool_ref.clone(),
+                policy_ref: requirements.policy_ref.clone(),
+                minimum_validator_count: requirements.minimum_validator_count,
+                challenge_window_ms: requirements.challenge_window_ms,
+            }),
+        artifact_residency: envelope.artifact_residency.as_ref().map(|residency| {
+            ComputeArtifactResidency {
+                residency_class: residency.residency_class.clone(),
+                staging_policy: residency.staging_policy.clone(),
+                artifact_set_digest: residency.artifact_set_digest.clone(),
+                warm: residency.warm,
+            }
+        }),
+        environment_binding: envelope.environment_binding.as_ref().map(|binding| {
+            ComputeEnvironmentBinding {
+                environment_ref: binding.environment_ref.clone(),
+                environment_version: binding.environment_version.clone(),
+                dataset_ref: binding.dataset_ref.clone(),
+                rubric_ref: binding.rubric_ref.clone(),
+                evaluator_policy_ref: binding.evaluator_policy_ref.clone(),
+            }
+        }),
+        checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
+            ComputeCheckpointBinding {
+                checkpoint_family: binding.checkpoint_family.clone(),
+                latest_checkpoint_ref: binding.latest_checkpoint_ref.clone(),
+                recovery_posture: binding.recovery_posture.clone(),
+            }
+        }),
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
         host_capability: envelope.host_capability.as_ref().map(|capability| {
@@ -2488,10 +2726,11 @@ mod tests {
         close_structured_capacity_instrument_request_to_proto,
         close_structured_capacity_instrument_response_from_proto,
         close_structured_capacity_instrument_response_to_proto,
-        compute_capability_envelope_to_proto, compute_index_from_proto, compute_index_to_proto,
-        compute_product_from_proto, compute_product_to_proto,
-        correct_compute_index_request_from_proto, correct_compute_index_request_to_proto,
-        correct_compute_index_response_from_proto, correct_compute_index_response_to_proto,
+        compute_capability_envelope_from_proto, compute_capability_envelope_to_proto,
+        compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
+        compute_product_to_proto, correct_compute_index_request_from_proto,
+        correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
+        correct_compute_index_response_to_proto,
         create_structured_capacity_instrument_request_from_proto,
         create_structured_capacity_instrument_request_to_proto,
         create_structured_capacity_instrument_response_from_proto,
@@ -2513,13 +2752,16 @@ mod tests {
         CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     };
     use crate::compute::{
-        CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
-        CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
-        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
+        CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+        CapacityNonDeliveryReason, CapacityReserveState, ComputeArtifactResidency,
+        ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+        ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind,
+        ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, GptOssRuntimeCapability,
+        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
@@ -2548,9 +2790,9 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
-                topology_kind: None,
-                provisioning_kind: None,
-                proof_posture: None,
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
                 validator_requirements: None,
                 artifact_residency: None,
                 environment_binding: None,
@@ -2635,9 +2877,9 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
-                topology_kind: None,
-                provisioning_kind: None,
-                proof_posture: None,
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
                 validator_requirements: None,
                 artifact_residency: None,
                 environment_binding: None,
@@ -2659,9 +2901,9 @@ mod tests {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
-                topology_kind: None,
-                provisioning_kind: None,
-                proof_posture: None,
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
                 validator_requirements: None,
                 artifact_residency: None,
                 environment_binding: None,
@@ -2732,6 +2974,150 @@ mod tests {
         }
     }
 
+    fn capability_envelope_shapes_fixture() -> Vec<ComputeCapabilityEnvelope> {
+        vec![
+            ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(ComputeFamily::Inference),
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+                validator_requirements: None,
+                artifact_residency: Some(ComputeArtifactResidency {
+                    residency_class: Some("local-cache".to_string()),
+                    staging_policy: Some("prefetch".to_string()),
+                    artifact_set_digest: Some("sha256:local-artifacts".to_string()),
+                    warm: Some(true),
+                }),
+                environment_binding: None,
+                checkpoint_binding: None,
+                model_policy: Some("local.inference".to_string()),
+                model_family: Some("llama3.3".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("llama3.3".to_string()),
+                    quantization: Some("q4_k_m".to_string()),
+                }),
+                latency_ms_p50: Some(120),
+                throughput_per_minute: Some(40),
+                concurrency_limit: Some(1),
+            },
+            ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::ClusteredInference),
+                compute_family: Some(ComputeFamily::Inference),
+                topology_kind: Some(ComputeTopologyKind::TensorSharded),
+                provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+                proof_posture: Some(ComputeProofPosture::TopologyAndDelivery),
+                validator_requirements: None,
+                artifact_residency: Some(ComputeArtifactResidency {
+                    residency_class: Some("cluster-sharded".to_string()),
+                    staging_policy: Some("stage-on-admit".to_string()),
+                    artifact_set_digest: Some("sha256:cluster-shards".to_string()),
+                    warm: Some(false),
+                }),
+                environment_binding: None,
+                checkpoint_binding: Some(ComputeCheckpointBinding {
+                    checkpoint_family: "serve.tensor".to_string(),
+                    latest_checkpoint_ref: Some("checkpoint://cluster/latest".to_string()),
+                    recovery_posture: Some("restart_from_latest".to_string()),
+                }),
+                model_policy: Some("cluster.inference".to_string()),
+                model_family: Some("mixtral-large".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: None,
+                latency_ms_p50: Some(45),
+                throughput_per_minute: Some(2_400),
+                concurrency_limit: Some(8),
+            },
+            ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+                compute_family: Some(ComputeFamily::SandboxExecution),
+                topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+                provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+                proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                validator_requirements: Some(ComputeValidatorRequirements {
+                    validator_pool_ref: Some("validators.sandbox.alpha".to_string()),
+                    policy_ref: Some("policy.validators.sandbox".to_string()),
+                    minimum_validator_count: Some(2),
+                    challenge_window_ms: Some(30_000),
+                }),
+                artifact_residency: Some(ComputeArtifactResidency {
+                    residency_class: Some("sandbox-ephemeral".to_string()),
+                    staging_policy: Some("stage-per-run".to_string()),
+                    artifact_set_digest: Some("sha256:sandbox-runner".to_string()),
+                    warm: Some(false),
+                }),
+                environment_binding: Some(ComputeEnvironmentBinding {
+                    environment_ref: "env://python/3.12".to_string(),
+                    environment_version: Some("2026.03".to_string()),
+                    dataset_ref: Some("dataset://sandbox-tests".to_string()),
+                    rubric_ref: None,
+                    evaluator_policy_ref: Some("policy.exec.sandbox".to_string()),
+                }),
+                checkpoint_binding: None,
+                model_policy: Some("sandbox.exec".to_string()),
+                model_family: None,
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: None,
+                latency_ms_p50: None,
+                throughput_per_minute: None,
+                concurrency_limit: Some(1),
+            },
+            ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
+                execution_kind: Some(ComputeExecutionKind::EvaluationRun),
+                compute_family: Some(ComputeFamily::Evaluation),
+                topology_kind: Some(ComputeTopologyKind::Replicated),
+                provisioning_kind: Some(ComputeProvisioningKind::ReservedClusterWindow),
+                proof_posture: Some(ComputeProofPosture::ToplocAugmented),
+                validator_requirements: Some(ComputeValidatorRequirements {
+                    validator_pool_ref: Some("validators.eval.beta".to_string()),
+                    policy_ref: Some("policy.validators.eval".to_string()),
+                    minimum_validator_count: Some(3),
+                    challenge_window_ms: Some(120_000),
+                }),
+                artifact_residency: Some(ComputeArtifactResidency {
+                    residency_class: Some("eval-bundle".to_string()),
+                    staging_policy: Some("hydrate-before-window".to_string()),
+                    artifact_set_digest: Some("sha256:eval-bundle".to_string()),
+                    warm: Some(true),
+                }),
+                environment_binding: Some(ComputeEnvironmentBinding {
+                    environment_ref: "env://eval/harness".to_string(),
+                    environment_version: Some("v3".to_string()),
+                    dataset_ref: Some("dataset://mmlu".to_string()),
+                    rubric_ref: Some("rubric://mmlu.v2".to_string()),
+                    evaluator_policy_ref: Some("policy.eval.score".to_string()),
+                }),
+                checkpoint_binding: Some(ComputeCheckpointBinding {
+                    checkpoint_family: "eval.rollup".to_string(),
+                    latest_checkpoint_ref: Some("checkpoint://eval/latest".to_string()),
+                    recovery_posture: Some("resume_allowed".to_string()),
+                }),
+                model_policy: Some("eval.run".to_string()),
+                model_family: Some("apple.foundation".to_string()),
+                host_capability: None,
+                apple_platform: Some(ApplePlatformCapability {
+                    apple_silicon_required: true,
+                    apple_intelligence_required: true,
+                    apple_intelligence_available: Some(true),
+                    minimum_macos_version: Some("26.0".to_string()),
+                }),
+                gpt_oss_runtime: None,
+                latency_ms_p50: Some(80),
+                throughput_per_minute: Some(900),
+                concurrency_limit: Some(4),
+            },
+        ]
+    }
+
     #[test]
     fn compute_object_proto_roundtrip_preserves_launch_models() {
         let product = compute_product_fixture();
@@ -2774,37 +3160,14 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_to_proto_rejects_core_only_execution_kind() {
-        let error = compute_capability_envelope_to_proto(&ComputeCapabilityEnvelope {
-            backend_family: Some(ComputeBackendFamily::GptOss),
-            execution_kind: Some(ComputeExecutionKind::SandboxExecution),
-            compute_family: Some(ComputeFamily::Inference),
-            ..ComputeCapabilityEnvelope::default()
-        })
-        .expect_err("unsupported execution kind should fail");
-
-        assert!(
-            error
-                .to_string()
-                .contains("compute_proto_execution_kind_unsupported")
-        );
-    }
-
-    #[test]
-    fn capability_envelope_to_proto_rejects_core_only_compute_family() {
-        let error = compute_capability_envelope_to_proto(&ComputeCapabilityEnvelope {
-            backend_family: Some(ComputeBackendFamily::GptOss),
-            execution_kind: Some(ComputeExecutionKind::LocalInference),
-            compute_family: Some(ComputeFamily::SandboxExecution),
-            ..ComputeCapabilityEnvelope::default()
-        })
-        .expect_err("unsupported compute family should fail");
-
-        assert!(
-            error
-                .to_string()
-                .contains("compute_proto_family_unsupported")
-        );
+    fn capability_envelope_proto_roundtrip_preserves_extended_shapes() {
+        for envelope in capability_envelope_shapes_fixture() {
+            let roundtrip = compute_capability_envelope_from_proto(
+                &compute_capability_envelope_to_proto(&envelope).expect("capability proto"),
+            )
+            .expect("capability roundtrip");
+            assert_eq!(roundtrip, envelope);
+        }
     }
 
     #[test]
