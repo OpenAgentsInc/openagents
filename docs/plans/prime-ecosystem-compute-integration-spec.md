@@ -816,6 +816,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The deliverable is reliable peer connectivity across ordinary public-network conditions.
 
 7. **Psionic Net: persist peer introductions, trust bundles, and candidate history**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3491`.
    - Durable introduction and trust-bundle storage is required if wider-network cluster membership is going to be auditable and restart-safe.
    - This should reuse the existing signed-introduction shape already emerging in `psionic-cluster`.
 

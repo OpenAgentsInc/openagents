@@ -25,7 +25,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-ir`: canonical graph and execution-plan representation.
 - `psionic-compiler`: lowering and scheduling boundaries over IR.
 - `psionic-runtime`: runtime traits for devices, allocation, and execution.
-- `psionic-net`: peer identity, direct/NAT/relay session establishment, relay-backed rendezvous, and transport observations.
+- `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, and transport observations.
 - `psionic-cluster`: ordered-state, scheduling, and topology substrate over `psionic-net`.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.

@@ -76,6 +76,23 @@ pub enum ClusterError {
         "unsupported cluster operator manifest schema version: expected {expected}, found {actual}"
     )]
     ManifestSchemaVersion { expected: u32, actual: u32 },
+    /// The configured network-state file could not be read or written.
+    #[error("failed to read or write cluster network state: {0}")]
+    NetworkStateIo(#[source] std::io::Error),
+    /// The configured network-state file contained invalid data.
+    #[error("failed to parse cluster network state: {0}")]
+    NetworkStateFormat(#[source] serde_json::Error),
+    /// The configured network-state schema version is unsupported.
+    #[error(
+        "unsupported cluster network-state schema version: expected {expected}, found {actual}"
+    )]
+    NetworkStateSchemaVersion { expected: u32, actual: u32 },
+    /// A durable candidate operation required an introduction policy that is not configured.
+    #[error("cluster introduction policy is not configured")]
+    IntroductionPolicyMissing,
+    /// A durable candidate operation referenced a candidate that is not currently tracked.
+    #[error("cluster candidate `{0}` is not tracked")]
+    UnknownCandidate(String),
 }
 
 /// Namespace that scopes one trusted local cluster.
@@ -1484,6 +1501,21 @@ pub enum NodeIdentityPersistence {
     FileBacked { path: PathBuf },
 }
 
+/// Persistence policy for durable wider-network identity and trust state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClusterNetworkStatePersistence {
+    /// Keep candidate and trust state in memory only.
+    Ephemeral,
+    /// Persist candidate and trust state in one local JSON file.
+    FileBacked { path: PathBuf },
+}
+
+impl Default for ClusterNetworkStatePersistence {
+    fn default() -> Self {
+        Self::Ephemeral
+    }
+}
+
 /// Cluster/node identity facts surfaced by the transport.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterNodeIdentity {
@@ -1563,6 +1595,8 @@ pub struct LocalClusterConfig {
     pub role: NodeRole,
     /// Identity persistence policy for this node.
     pub identity_persistence: NodeIdentityPersistence,
+    /// Durable wider-network trust/candidate-state persistence for this node.
+    pub network_state_persistence: ClusterNetworkStatePersistence,
     /// Optional local attestation facts to attach to node identity.
     pub node_attestation: Option<NodeAttestationEvidence>,
     /// Optional operator-managed policy for future wider-network introductions.
@@ -1586,6 +1620,7 @@ impl LocalClusterConfig {
             seed_peers: Vec::new(),
             role,
             identity_persistence: NodeIdentityPersistence::Ephemeral,
+            network_state_persistence: ClusterNetworkStatePersistence::Ephemeral,
             node_attestation: None,
             introduction_policy: None,
             trust_policy: ClusterTrustPolicy::trusted_lan(),
@@ -1603,6 +1638,13 @@ impl LocalClusterConfig {
     #[must_use]
     pub fn with_file_backed_identity(mut self, path: PathBuf) -> Self {
         self.identity_persistence = NodeIdentityPersistence::FileBacked { path };
+        self
+    }
+
+    /// Attaches a file-backed durable network-state store for trust and candidate history.
+    #[must_use]
+    pub fn with_file_backed_network_state(mut self, path: PathBuf) -> Self {
+        self.network_state_persistence = ClusterNetworkStatePersistence::FileBacked { path };
         self
     }
 
@@ -1910,6 +1952,180 @@ pub enum ClusterStreamError {
     },
 }
 
+/// Durable candidate disposition tracked by Psionic Net.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCandidateDisposition {
+    /// Candidate was verified from one signed introduction.
+    Introduced,
+    /// Candidate was refused by local admission or policy logic.
+    Refused,
+    /// Candidate was promoted into a stronger admitted posture.
+    Promoted,
+    /// Candidate was explicitly revoked by operator or policy.
+    Revoked,
+    /// Candidate introduction expired before promotion.
+    Expired,
+}
+
+/// Stable reason code for one durable candidate-history event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCandidateHistoryReasonCode {
+    /// One signed introduction verified under the current introduction policy.
+    VerifiedIntroduction,
+    /// Local policy or admission logic refused the candidate.
+    AdmissionRefused,
+    /// The candidate was promoted for later admission or membership work.
+    Promoted,
+    /// The candidate was explicitly revoked.
+    Revoked,
+    /// The candidate introduction expired.
+    Expired,
+}
+
+/// Durable event in one candidate's history.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCandidateHistoryEvent {
+    /// Inclusive event timestamp.
+    pub occurred_at_ms: u64,
+    /// Resulting candidate disposition.
+    pub disposition: ClusterCandidateDisposition,
+    /// Stable reason code.
+    pub reason_code: ClusterCandidateHistoryReasonCode,
+    /// Stable digest of the trust policy active when the event was recorded.
+    pub trust_policy_digest: String,
+    /// Stable digest of the introduction policy, when one verified introduction backed the event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introduction_policy_digest: Option<String>,
+    /// Stable digest of the introduction payload, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introduction_payload_digest: Option<String>,
+    /// Optional machine-readable detail string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Persisted verified introduction that currently backs one candidate record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedClusterIntroductionRecord {
+    /// Signed introduction envelope.
+    pub envelope: SignedClusterIntroductionEnvelope,
+    /// Stable digest of the introduction policy used to verify the envelope.
+    pub introduction_policy_digest: String,
+    /// Timestamp when local verification accepted the introduction.
+    pub verified_at_ms: u64,
+}
+
+/// Durable record for one wider-network candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCandidateRecord {
+    /// Stable candidate node identity.
+    pub node_id: NodeId,
+    /// Stable digest of the latest candidate descriptor.
+    pub candidate_digest: String,
+    /// Latest candidate descriptor.
+    pub candidate: ClusterDiscoveryCandidate,
+    /// Current durable disposition.
+    pub disposition: ClusterCandidateDisposition,
+    /// Inclusive timestamp of the most recent event.
+    pub last_updated_ms: u64,
+    /// Verified introduction that currently backs the candidate, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_introduction: Option<PersistedClusterIntroductionRecord>,
+    /// Durable event history for the candidate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<ClusterCandidateHistoryEvent>,
+}
+
+/// Durable snapshot of one trust-bundle revision observed by Psionic Net.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTrustBundleRecord {
+    /// Stable digest for the recorded trust policy.
+    pub trust_policy_digest: String,
+    /// Full trust policy snapshot.
+    pub trust_policy: ClusterTrustPolicy,
+    /// Inclusive timestamp when this revision became active locally.
+    pub recorded_at_ms: u64,
+    /// Timestamp when a later revision superseded this one, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub superseded_at_ms: Option<u64>,
+}
+
+/// Durable wider-network identity and trust state owned by Psionic Net.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedClusterNetworkState {
+    /// Explicit schema version for upgrades.
+    pub schema_version: u32,
+    /// Trust bundle history observed for the local node configuration.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trust_bundles: Vec<ClusterTrustBundleRecord>,
+    /// Candidate records keyed by node identity.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub candidates: BTreeMap<NodeId, ClusterCandidateRecord>,
+}
+
+impl Default for PersistedClusterNetworkState {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl PersistedClusterNetworkState {
+    /// Current schema version for durable network state.
+    pub const SCHEMA_VERSION: u32 = 1;
+
+    fn empty() -> Self {
+        Self {
+            schema_version: Self::SCHEMA_VERSION,
+            trust_bundles: Vec::new(),
+            candidates: BTreeMap::new(),
+        }
+    }
+
+    fn load_json(path: impl AsRef<std::path::Path>) -> Result<Self, ClusterError> {
+        let bytes = fs::read(path).map_err(ClusterError::NetworkStateIo)?;
+        let state: Self =
+            serde_json::from_slice(&bytes).map_err(ClusterError::NetworkStateFormat)?;
+        if state.schema_version != Self::SCHEMA_VERSION {
+            return Err(ClusterError::NetworkStateSchemaVersion {
+                expected: Self::SCHEMA_VERSION,
+                actual: state.schema_version,
+            });
+        }
+        Ok(state)
+    }
+
+    fn store_json(&self, path: impl AsRef<std::path::Path>) -> Result<(), ClusterError> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(ClusterError::NetworkStateIo)?;
+        }
+        let encoded = serde_json::to_vec_pretty(self).map_err(ClusterError::NetworkStateFormat)?;
+        fs::write(path, encoded).map_err(ClusterError::NetworkStateIo)
+    }
+
+    fn record_trust_bundle(&mut self, trust_policy: ClusterTrustPolicy, recorded_at_ms: u64) {
+        let trust_policy_digest = trust_policy.stable_digest();
+        if self
+            .trust_bundles
+            .last()
+            .is_some_and(|record| record.trust_policy_digest == trust_policy_digest)
+        {
+            return;
+        }
+        if let Some(previous) = self.trust_bundles.last_mut() {
+            previous.superseded_at_ms = Some(recorded_at_ms);
+        }
+        self.trust_bundles.push(ClusterTrustBundleRecord {
+            trust_policy_digest,
+            trust_policy,
+            recorded_at_ms,
+            superseded_at_ms: None,
+        });
+    }
+}
+
 /// Running local-cluster node for the first hello/ping seam.
 pub struct LocalClusterNode {
     local_addr: SocketAddr,
@@ -1927,6 +2143,10 @@ impl LocalClusterNode {
         let loaded_identity = load_or_create_local_identity(&config)?;
         let local_identity = loaded_identity.identity.clone();
         let transport_config = TransportConfig::from_config(config, loaded_identity);
+        let durable_network_state = load_or_create_network_state(
+            &transport_config.network_state_persistence,
+            &transport_config.trust_policy,
+        )?;
         let trust_policy = transport_config.trust_policy.clone();
         let introduction_policy = transport_config.introduction_policy.clone();
         let socket = Arc::new(
@@ -1938,6 +2158,8 @@ impl LocalClusterNode {
         let state = Arc::new(Mutex::new(SharedState::new(
             transport_config.seed_peers.clone(),
             &transport_config.trust_policy,
+            durable_network_state,
+            transport_config.network_state_persistence.clone(),
         )));
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let task = tokio::spawn(run_transport(
@@ -2011,6 +2233,103 @@ impl LocalClusterNode {
     /// Returns machine-checkable trust-rollout diagnostics observed by this node.
     pub async fn trust_rollout_diagnostics(&self) -> Vec<ClusterTrustRolloutDiagnostic> {
         self.state.lock().await.trust_rollout_diagnostics()
+    }
+
+    /// Returns the full durable wider-network trust and candidate state snapshot.
+    pub async fn durable_network_state(&self) -> PersistedClusterNetworkState {
+        self.state.lock().await.durable_network_state()
+    }
+
+    /// Returns the durable trust-bundle history for this node configuration.
+    pub async fn trust_bundle_history(&self) -> Vec<ClusterTrustBundleRecord> {
+        self.state.lock().await.trust_bundle_history()
+    }
+
+    /// Returns the durable candidate records known to this node.
+    pub async fn candidate_records(&self) -> Vec<ClusterCandidateRecord> {
+        self.state.lock().await.candidate_records()
+    }
+
+    /// Verifies and records one signed candidate introduction in durable state.
+    pub async fn record_verified_candidate_introduction(
+        &self,
+        envelope: SignedClusterIntroductionEnvelope,
+        verified_at_ms: u64,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        let Some(policy) = self.introduction_policy.as_ref() else {
+            return Err(ClusterError::IntroductionPolicyMissing);
+        };
+        envelope
+            .verify(policy)
+            .map_err(|error| ClusterError::Runtime(error.to_string()))?;
+        self.state.lock().await.apply_verified_introduction(
+            envelope,
+            policy,
+            verified_at_ms,
+            &self.trust_policy,
+        )
+    }
+
+    /// Records an explicit refusal outcome for one known candidate.
+    pub async fn record_candidate_refusal(
+        &self,
+        node_id: &NodeId,
+        occurred_at_ms: u64,
+        detail: impl Into<String>,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        self.state.lock().await.record_candidate_disposition(
+            node_id,
+            ClusterCandidateDisposition::Refused,
+            ClusterCandidateHistoryReasonCode::AdmissionRefused,
+            occurred_at_ms,
+            &self.trust_policy,
+            Some(detail.into()),
+        )
+    }
+
+    /// Records an explicit promotion outcome for one known candidate.
+    pub async fn promote_candidate(
+        &self,
+        node_id: &NodeId,
+        occurred_at_ms: u64,
+        detail: impl Into<String>,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        self.state.lock().await.record_candidate_disposition(
+            node_id,
+            ClusterCandidateDisposition::Promoted,
+            ClusterCandidateHistoryReasonCode::Promoted,
+            occurred_at_ms,
+            &self.trust_policy,
+            Some(detail.into()),
+        )
+    }
+
+    /// Records an explicit revocation outcome for one known candidate.
+    pub async fn revoke_candidate(
+        &self,
+        node_id: &NodeId,
+        occurred_at_ms: u64,
+        detail: impl Into<String>,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        self.state.lock().await.record_candidate_disposition(
+            node_id,
+            ClusterCandidateDisposition::Revoked,
+            ClusterCandidateHistoryReasonCode::Revoked,
+            occurred_at_ms,
+            &self.trust_policy,
+            Some(detail.into()),
+        )
+    }
+
+    /// Expires any tracked candidates whose latest verified introduction is no longer valid.
+    pub async fn expire_candidates(
+        &self,
+        now_ms: u64,
+    ) -> Result<Vec<ClusterCandidateRecord>, ClusterError> {
+        self.state
+            .lock()
+            .await
+            .expire_candidates(now_ms, &self.trust_policy)
     }
 
     /// Returns currently reserved logical streams across all connected peers.
@@ -2125,6 +2444,7 @@ struct TransportConfig {
     seed_peers: BTreeSet<SocketAddr>,
     local_identity: ClusterNodeIdentity,
     local_signing_key: SigningKey,
+    network_state_persistence: ClusterNetworkStatePersistence,
     introduction_policy: Option<ClusterIntroductionPolicy>,
     trust_policy: ClusterTrustPolicy,
 }
@@ -2138,6 +2458,7 @@ impl TransportConfig {
             seed_peers: config.seed_peers.into_iter().collect(),
             local_identity: local_identity.identity,
             local_signing_key: local_identity.signing_key,
+            network_state_persistence: config.network_state_persistence,
             introduction_policy: config.introduction_policy,
             trust_policy: config.trust_policy,
         }
@@ -2188,6 +2509,8 @@ struct SharedState {
     peer_replay_windows: BTreeMap<NodeId, PeerReplayWindow>,
     join_refusals: Vec<ClusterJoinRefusal>,
     seed_peers: BTreeSet<SocketAddr>,
+    durable_network_state: PersistedClusterNetworkState,
+    network_state_persistence: ClusterNetworkStatePersistence,
     pending_hello_probes: BTreeMap<NodeId, PendingHelloProbe>,
     nat_introductions: BTreeMap<NodeId, NatIntroductionRecord>,
     active_logical_streams:
@@ -2198,7 +2521,12 @@ struct SharedState {
 }
 
 impl SharedState {
-    fn new(seed_peers: BTreeSet<SocketAddr>, trust_policy: &ClusterTrustPolicy) -> Self {
+    fn new(
+        seed_peers: BTreeSet<SocketAddr>,
+        trust_policy: &ClusterTrustPolicy,
+        durable_network_state: PersistedClusterNetworkState,
+        network_state_persistence: ClusterNetworkStatePersistence,
+    ) -> Self {
         let configured_peers = trust_policy
             .configured_peers
             .iter()
@@ -2222,6 +2550,8 @@ impl SharedState {
             peer_replay_windows: BTreeMap::new(),
             join_refusals: Vec::new(),
             seed_peers,
+            durable_network_state,
+            network_state_persistence,
             pending_hello_probes: BTreeMap::new(),
             nat_introductions: BTreeMap::new(),
             active_logical_streams: BTreeMap::new(),
@@ -2247,6 +2577,22 @@ impl SharedState {
         self.trust_rollout_diagnostics.values().cloned().collect()
     }
 
+    fn durable_network_state(&self) -> PersistedClusterNetworkState {
+        self.durable_network_state.clone()
+    }
+
+    fn trust_bundle_history(&self) -> Vec<ClusterTrustBundleRecord> {
+        self.durable_network_state.trust_bundles.clone()
+    }
+
+    fn candidate_records(&self) -> Vec<ClusterCandidateRecord> {
+        self.durable_network_state
+            .candidates
+            .values()
+            .cloned()
+            .collect()
+    }
+
     fn active_logical_streams(&self) -> Vec<ClusterLogicalStreamLease> {
         self.active_logical_streams
             .iter()
@@ -2260,6 +2606,133 @@ impl SharedState {
                     })
             })
             .collect()
+    }
+
+    fn apply_verified_introduction(
+        &mut self,
+        envelope: SignedClusterIntroductionEnvelope,
+        policy: &ClusterIntroductionPolicy,
+        verified_at_ms: u64,
+        trust_policy: &ClusterTrustPolicy,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        let candidate = envelope.payload.candidate.clone();
+        let candidate_digest = candidate.stable_digest();
+        let introduction_policy_digest = policy.stable_digest();
+        let introduction_payload_digest = envelope.payload.stable_digest();
+        let record = self
+            .durable_network_state
+            .candidates
+            .entry(candidate.node_id.clone())
+            .or_insert_with(|| ClusterCandidateRecord {
+                node_id: candidate.node_id.clone(),
+                candidate_digest: candidate_digest.clone(),
+                candidate: candidate.clone(),
+                disposition: ClusterCandidateDisposition::Introduced,
+                last_updated_ms: verified_at_ms,
+                latest_introduction: None,
+                history: Vec::new(),
+            });
+        record.node_id = candidate.node_id.clone();
+        record.candidate_digest = candidate_digest;
+        record.candidate = candidate.clone();
+        record.disposition = ClusterCandidateDisposition::Introduced;
+        record.last_updated_ms = verified_at_ms;
+        record.latest_introduction = Some(PersistedClusterIntroductionRecord {
+            envelope,
+            introduction_policy_digest: introduction_policy_digest.clone(),
+            verified_at_ms,
+        });
+        record.history.push(ClusterCandidateHistoryEvent {
+            occurred_at_ms: verified_at_ms,
+            disposition: ClusterCandidateDisposition::Introduced,
+            reason_code: ClusterCandidateHistoryReasonCode::VerifiedIntroduction,
+            trust_policy_digest: trust_policy.stable_digest(),
+            introduction_policy_digest: Some(introduction_policy_digest),
+            introduction_payload_digest: Some(introduction_payload_digest),
+            detail: None,
+        });
+        let record = record.clone();
+        self.persist_network_state()?;
+        Ok(record)
+    }
+
+    fn record_candidate_disposition(
+        &mut self,
+        node_id: &NodeId,
+        disposition: ClusterCandidateDisposition,
+        reason_code: ClusterCandidateHistoryReasonCode,
+        occurred_at_ms: u64,
+        trust_policy: &ClusterTrustPolicy,
+        detail: Option<String>,
+    ) -> Result<ClusterCandidateRecord, ClusterError> {
+        let Some(record) = self.durable_network_state.candidates.get_mut(node_id) else {
+            return Err(ClusterError::UnknownCandidate(node_id.as_str().to_owned()));
+        };
+        let (introduction_policy_digest, introduction_payload_digest) = record
+            .latest_introduction
+            .as_ref()
+            .map(|introduction| {
+                (
+                    Some(introduction.introduction_policy_digest.clone()),
+                    Some(introduction.envelope.payload.stable_digest()),
+                )
+            })
+            .unwrap_or((None, None));
+        record.disposition = disposition;
+        record.last_updated_ms = occurred_at_ms;
+        record.history.push(ClusterCandidateHistoryEvent {
+            occurred_at_ms,
+            disposition,
+            reason_code,
+            trust_policy_digest: trust_policy.stable_digest(),
+            introduction_policy_digest,
+            introduction_payload_digest,
+            detail,
+        });
+        let record = record.clone();
+        self.persist_network_state()?;
+        Ok(record)
+    }
+
+    fn expire_candidates(
+        &mut self,
+        now_ms: u64,
+        trust_policy: &ClusterTrustPolicy,
+    ) -> Result<Vec<ClusterCandidateRecord>, ClusterError> {
+        let expiring_node_ids = self
+            .durable_network_state
+            .candidates
+            .iter()
+            .filter_map(|(node_id, record)| {
+                let expires_at_ms = record
+                    .latest_introduction
+                    .as_ref()
+                    .map(|introduction| introduction.envelope.payload.expires_at_ms)?;
+                if expires_at_ms <= now_ms
+                    && matches!(
+                        record.disposition,
+                        ClusterCandidateDisposition::Introduced
+                            | ClusterCandidateDisposition::Refused
+                    )
+                {
+                    Some(node_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut expired = Vec::new();
+        for node_id in expiring_node_ids {
+            expired.push(self.record_candidate_disposition(
+                &node_id,
+                ClusterCandidateDisposition::Expired,
+                ClusterCandidateHistoryReasonCode::Expired,
+                now_ms,
+                trust_policy,
+                Some(String::from("introduction_expired")),
+            )?);
+        }
+        Ok(expired)
     }
 
     fn open_logical_stream(
@@ -2318,6 +2791,14 @@ impl SharedState {
             self.active_logical_streams.remove(&lease.peer_node_id);
         }
         self.refresh_active_stream_count(&lease.peer_node_id);
+        Ok(())
+    }
+
+    fn persist_network_state(&self) -> Result<(), ClusterError> {
+        if let ClusterNetworkStatePersistence::FileBacked { path } = &self.network_state_persistence
+        {
+            self.durable_network_state.store_json(path)?;
+        }
         Ok(())
     }
 
@@ -2940,6 +3421,36 @@ struct PersistedNodeIdentityRecord {
 struct LoadedLocalIdentity {
     identity: ClusterNodeIdentity,
     signing_key: SigningKey,
+}
+
+fn current_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_millis(0))
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn load_or_create_network_state(
+    persistence: &ClusterNetworkStatePersistence,
+    trust_policy: &ClusterTrustPolicy,
+) -> Result<PersistedClusterNetworkState, ClusterError> {
+    let mut state = match persistence {
+        ClusterNetworkStatePersistence::Ephemeral => PersistedClusterNetworkState::empty(),
+        ClusterNetworkStatePersistence::FileBacked { path } => {
+            if path.exists() {
+                PersistedClusterNetworkState::load_json(path)?
+            } else {
+                PersistedClusterNetworkState::empty()
+            }
+        }
+    };
+    state.record_trust_bundle(trust_policy.clone(), current_time_ms());
+    if let ClusterNetworkStatePersistence::FileBacked { path } = persistence {
+        state.store_json(path)?;
+    }
+    Ok(state)
 }
 
 fn load_or_create_local_identity(
@@ -3993,6 +4504,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
 
     use super::*;
+    use tempfile::tempdir;
 
     fn loopback_addr(port: u16) -> SocketAddr {
         SocketAddr::from(([127, 0, 0, 1], port))
@@ -4035,6 +4547,7 @@ mod tests {
             seed_peers: BTreeSet::new(),
             local_identity,
             local_signing_key,
+            network_state_persistence: ClusterNetworkStatePersistence::Ephemeral,
             introduction_policy: None,
             trust_policy,
         }
@@ -4601,7 +5114,12 @@ mod tests {
             7,
         );
 
-        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
         let refusal = authenticate_incoming_envelope(
             &envelope,
             &direct_transport(remote_addr),
@@ -4660,7 +5178,12 @@ mod tests {
             7,
         );
 
-        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
         let refusal = authenticate_incoming_envelope(
             &envelope,
             &direct_transport(remote_addr),
@@ -4728,7 +5251,12 @@ mod tests {
             7,
         );
 
-        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
         let refusal = authenticate_incoming_envelope(
             &envelope,
             &direct_transport(remote_addr),
@@ -4779,7 +5307,12 @@ mod tests {
             message.sequence = 8;
         }
 
-        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
         let refusal = authenticate_incoming_envelope(
             &envelope,
             &direct_transport(remote_addr),
@@ -4803,7 +5336,12 @@ mod tests {
             &remote_signing_key,
         );
         let remote_addr = loopback_addr(31003);
-        let mut state = SharedState::new(BTreeSet::new(), &ClusterTrustPolicy::trusted_lan());
+        let mut state = SharedState::new(
+            BTreeSet::new(),
+            &ClusterTrustPolicy::trusted_lan(),
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
 
         let hello = state.record_hello(
             remote_addr,
@@ -4868,7 +5406,12 @@ mod tests {
             )
             .with_relay_fallback_relays(vec![relay.clone()])]),
         );
-        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
         let envelope = signed_ping_envelope(
             &config.namespace,
             &config.admission_digest,
@@ -4913,7 +5456,12 @@ mod tests {
                 remote_identity.auth_public_key.clone(),
             )
             .with_max_concurrent_streams(2)]);
-        let mut state = SharedState::new(BTreeSet::new(), &trust_policy);
+        let mut state = SharedState::new(
+            BTreeSet::new(),
+            &trust_policy,
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
 
         let hello = state.record_hello(
             remote_addr,
@@ -4951,5 +5499,190 @@ mod tests {
         let active_streams = state.active_logical_streams();
         assert_eq!(active_streams.len(), 1);
         assert_eq!(active_streams[0].kind, ClusterLogicalStreamKind::Serving);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn file_backed_network_state_persists_trust_bundles_and_candidate_history() {
+        let temp = tempdir().unwrap_or_else(|_| unreachable!("tempdir should succeed"));
+        let network_state_path = temp.path().join("network-state.json");
+        let introducer_signing_key = sample_signing_key(61);
+        let introduction_policy = ClusterIntroductionPolicy::new(
+            vec![ClusterIntroductionSource::new(
+                "introducer-a",
+                encode_auth_public_key(&introducer_signing_key.verifying_key()),
+            )],
+            30_000,
+        );
+        let candidate_signing_key = sample_signing_key(62);
+        let candidate = sample_discovery_candidate(
+            &sample_admission(),
+            "candidate-a",
+            NodeRole::ExecutorOnly,
+            &candidate_signing_key,
+            vec![loopback_addr(32041)],
+        );
+        let envelope = SignedClusterIntroductionEnvelope::sign(
+            ClusterIntroductionPayload::new(candidate.clone(), 10_000, 20_000),
+            "introducer-a",
+            &introducer_signing_key,
+        );
+
+        let node = LocalClusterNode::spawn(
+            LocalClusterConfig::new(
+                "lan-alpha",
+                "shared-secret",
+                loopback_addr(0),
+                NodeRole::CoordinatorOnly,
+            )
+            .with_introduction_policy(introduction_policy.clone())
+            .with_file_backed_network_state(network_state_path.clone())
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        NodeId::new("peer-b"),
+                        loopback_addr(32051),
+                        "peer-key-b",
+                    ),
+                ])
+                .with_trust_bundle_version(1),
+            ),
+        )
+        .await;
+        assert!(node.is_ok(), "node should start");
+        let node = node
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+        let initial_bundles = node.trust_bundle_history().await;
+        assert_eq!(initial_bundles.len(), 1);
+        assert_eq!(initial_bundles[0].trust_policy.trust_bundle_version, 1);
+
+        let introduced = node
+            .record_verified_candidate_introduction(envelope.clone(), 15_000)
+            .await;
+        assert!(introduced.is_ok(), "introduction should persist");
+        let refused = node
+            .record_candidate_refusal(&candidate.node_id, 16_000, "policy_refused")
+            .await;
+        assert!(refused.is_ok(), "refusal should persist");
+        let promoted = node
+            .promote_candidate(&candidate.node_id, 17_000, "promoted_for_admission")
+            .await;
+        assert!(promoted.is_ok(), "promotion should persist");
+        let revoked = node
+            .revoke_candidate(&candidate.node_id, 18_000, "operator_revoked")
+            .await;
+        assert!(revoked.is_ok(), "revocation should persist");
+        let reintroduced = node
+            .record_verified_candidate_introduction(envelope.clone(), 19_000)
+            .await;
+        assert!(reintroduced.is_ok(), "re-introduction should persist");
+
+        let shutdown = node.shutdown().await;
+        assert!(shutdown.is_ok(), "node should shut down cleanly");
+
+        let restarted = LocalClusterNode::spawn(
+            LocalClusterConfig::new(
+                "lan-alpha",
+                "shared-secret",
+                loopback_addr(0),
+                NodeRole::CoordinatorOnly,
+            )
+            .with_introduction_policy(introduction_policy.clone())
+            .with_file_backed_network_state(network_state_path.clone())
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        NodeId::new("peer-b"),
+                        loopback_addr(32051),
+                        "peer-key-b",
+                    ),
+                ])
+                .with_trust_bundle_version(2),
+            ),
+        )
+        .await;
+        assert!(restarted.is_ok(), "restarted node should start");
+        let restarted = restarted
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+        let trust_bundles = restarted.trust_bundle_history().await;
+        assert_eq!(trust_bundles.len(), 2);
+        assert_eq!(trust_bundles[0].trust_policy.trust_bundle_version, 1);
+        assert!(trust_bundles[0].superseded_at_ms.is_some());
+        assert_eq!(trust_bundles[1].trust_policy.trust_bundle_version, 2);
+
+        let candidate_records = restarted.candidate_records().await;
+        assert_eq!(candidate_records.len(), 1);
+        let record = &candidate_records[0];
+        assert_eq!(record.node_id, candidate.node_id);
+        assert_eq!(record.disposition, ClusterCandidateDisposition::Introduced);
+        assert_eq!(
+            record
+                .history
+                .iter()
+                .map(|event| event.disposition)
+                .collect::<Vec<_>>(),
+            vec![
+                ClusterCandidateDisposition::Introduced,
+                ClusterCandidateDisposition::Refused,
+                ClusterCandidateDisposition::Promoted,
+                ClusterCandidateDisposition::Revoked,
+                ClusterCandidateDisposition::Introduced,
+            ]
+        );
+
+        let expired = restarted.expire_candidates(25_000).await;
+        assert!(expired.is_ok(), "candidate expiry should persist");
+        let expired = expired
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"));
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].disposition, ClusterCandidateDisposition::Expired);
+
+        let restarted_shutdown = restarted.shutdown().await;
+        assert!(
+            restarted_shutdown.is_ok(),
+            "restarted node should shut down cleanly"
+        );
+
+        let replayed = LocalClusterNode::spawn(
+            LocalClusterConfig::new(
+                "lan-alpha",
+                "shared-secret",
+                loopback_addr(0),
+                NodeRole::CoordinatorOnly,
+            )
+            .with_introduction_policy(introduction_policy)
+            .with_file_backed_network_state(network_state_path)
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        NodeId::new("peer-b"),
+                        loopback_addr(32051),
+                        "peer-key-b",
+                    ),
+                ])
+                .with_trust_bundle_version(2),
+            ),
+        )
+        .await;
+        assert!(replayed.is_ok(), "replayed node should start");
+        let replayed = replayed
+            .ok()
+            .unwrap_or_else(|| unreachable!("assert above ensures success"));
+        let replayed_records = replayed.candidate_records().await;
+        assert_eq!(replayed_records.len(), 1);
+        assert_eq!(
+            replayed_records[0].disposition,
+            ClusterCandidateDisposition::Expired
+        );
+        assert_eq!(replayed_records[0].history.len(), 6);
+        let replayed_shutdown = replayed.shutdown().await;
+        assert!(
+            replayed_shutdown.is_ok(),
+            "replayed node should shut down cleanly"
+        );
     }
 }

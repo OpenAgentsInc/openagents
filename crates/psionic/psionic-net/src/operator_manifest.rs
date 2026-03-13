@@ -133,6 +133,7 @@ impl From<ClusterOperatorManifest> for LocalClusterConfig {
             seed_peers: manifest.seed_peers,
             role: manifest.role,
             identity_persistence: crate::NodeIdentityPersistence::Ephemeral,
+            network_state_persistence: crate::ClusterNetworkStatePersistence::Ephemeral,
             node_attestation: manifest.node_attestation,
             introduction_policy: manifest.introduction_policy,
             trust_policy: manifest.trust_policy,
