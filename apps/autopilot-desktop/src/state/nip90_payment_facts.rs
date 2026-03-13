@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use crate::app_state::{JobHistoryState, NetworkRequestsState, PaneLoadState};
 use crate::nip90_compute_flow::{Nip90FlowPhase, build_buyer_request_flow_snapshot};
@@ -8,6 +10,7 @@ use crate::state::operations::{
     NetworkRequestProviderObservationHistoryEvent, NetworkRequestProviderObservationHistoryKind,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const NIP90_PAYMENT_FACT_SCHEMA_VERSION: u16 = 1;
 const NIP90_PAYMENT_FACT_STREAM_ID: &str = "stream.nip90_payment_facts.v1";
@@ -214,6 +217,31 @@ struct Nip90PaymentFactDocumentV1 {
     relay_hops: Vec<Nip90RelayHop>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SessionLogBackfillCache {
+    signature: Option<String>,
+    facts: Vec<Nip90PaymentFact>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SessionLogBackfillRefresh {
+    changed: bool,
+    fact_count: usize,
+    notice: Option<String>,
+}
+
+impl SessionLogBackfillRefresh {
+    fn decorate_action(&self, action: impl Into<String>) -> String {
+        let action = action.into();
+        let mut detail = format!("{} log-backfill facts cached", self.fact_count);
+        if let Some(notice) = self.notice.as_deref() {
+            detail.push_str("; ");
+            detail.push_str(notice);
+        }
+        format!("{action} ({detail})")
+    }
+}
+
 pub struct Nip90PaymentFactLedgerState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -222,6 +250,7 @@ pub struct Nip90PaymentFactLedgerState {
     pub actors: Vec<Nip90Actor>,
     pub relay_hops: Vec<Nip90RelayHop>,
     ledger_path: PathBuf,
+    log_backfill: SessionLogBackfillCache,
 }
 
 impl Default for Nip90PaymentFactLedgerState {
@@ -259,6 +288,7 @@ impl Nip90PaymentFactLedgerState {
             actors,
             relay_hops,
             ledger_path,
+            log_backfill: SessionLogBackfillCache::default(),
         }
     }
 
@@ -308,11 +338,33 @@ impl Nip90PaymentFactLedgerState {
         spark_wallet: &SparkPaneState,
         local_nostr_pubkey_hex: Option<&str>,
     ) {
+        self.sync_from_current_truth_with_session_log_dir(
+            network_requests,
+            job_history,
+            spark_wallet,
+            local_nostr_pubkey_hex,
+            session_log_backfill_dir().as_path(),
+        );
+    }
+
+    fn sync_from_current_truth_with_session_log_dir(
+        &mut self,
+        network_requests: &NetworkRequestsState,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+        local_nostr_pubkey_hex: Option<&str>,
+        session_log_dir: &Path,
+    ) {
         let local_nostr_pubkey_hex = local_nostr_pubkey_hex
             .map(normalize_pubkey_key)
             .filter(|value| !value.is_empty());
+        let log_backfill_refresh =
+            self.refresh_log_backfill_cache(session_log_dir, local_nostr_pubkey_hex.as_deref());
         let mut facts_by_request = BTreeMap::<String, Nip90PaymentFact>::new();
         for fact in self.facts.iter().cloned() {
+            merge_fact(&mut facts_by_request, fact);
+        }
+        for fact in self.log_backfill.facts.iter().cloned() {
             merge_fact(&mut facts_by_request, fact);
         }
 
@@ -354,6 +406,13 @@ impl Nip90PaymentFactLedgerState {
             if self.load_state == PaneLoadState::Loading {
                 self.load_state = PaneLoadState::Ready;
             }
+            self.last_error = None;
+            if log_backfill_refresh.changed || log_backfill_refresh.notice.is_some() {
+                self.last_action = Some(
+                    log_backfill_refresh
+                        .decorate_action("NIP-90 payment facts unchanged after sync"),
+                );
+            }
             return;
         }
 
@@ -375,10 +434,72 @@ impl Nip90PaymentFactLedgerState {
 
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!(
+        self.last_action = Some(log_backfill_refresh.decorate_action(format!(
             "Rebuilt NIP-90 payment fact ledger ({} facts)",
             fact_count
-        ));
+        )));
+    }
+
+    fn refresh_log_backfill_cache(
+        &mut self,
+        session_log_dir: &Path,
+        local_nostr_pubkey_hex: Option<&str>,
+    ) -> SessionLogBackfillRefresh {
+        let signature = match session_log_directory_signature(session_log_dir) {
+            Ok(signature) => signature,
+            Err(error) => {
+                return SessionLogBackfillRefresh {
+                    changed: false,
+                    fact_count: self.log_backfill.facts.len(),
+                    notice: Some(format!("session-log backfill unavailable: {error}")),
+                };
+            }
+        };
+
+        if self.log_backfill.signature == signature {
+            return SessionLogBackfillRefresh {
+                changed: false,
+                fact_count: self.log_backfill.facts.len(),
+                notice: None,
+            };
+        }
+
+        let previous_had_cache = self.log_backfill.signature.is_some();
+        match signature {
+            None => {
+                self.log_backfill.signature = None;
+                self.log_backfill.facts.clear();
+                SessionLogBackfillRefresh {
+                    changed: previous_had_cache,
+                    fact_count: 0,
+                    notice: if previous_had_cache {
+                        Some("session-log backfill cache cleared".to_string())
+                    } else {
+                        None
+                    },
+                }
+            }
+            Some(signature) => match load_log_backfill_facts_from_session_dir(
+                session_log_dir,
+                local_nostr_pubkey_hex,
+            ) {
+                Ok(facts) => {
+                    let changed = self.log_backfill.facts != facts;
+                    self.log_backfill.signature = Some(signature);
+                    self.log_backfill.facts = facts;
+                    SessionLogBackfillRefresh {
+                        changed,
+                        fact_count: self.log_backfill.facts.len(),
+                        notice: None,
+                    }
+                }
+                Err(error) => SessionLogBackfillRefresh {
+                    changed: false,
+                    fact_count: self.log_backfill.facts.len(),
+                    notice: Some(format!("session-log backfill import failed: {error}")),
+                },
+            },
+        }
     }
 }
 
@@ -388,6 +509,10 @@ fn default_nip90_payment_fact_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
         .join(".openagents")
         .join("autopilot-nip90-payment-facts-v1.json")
+}
+
+fn session_log_backfill_dir() -> PathBuf {
+    crate::runtime_log::autopilot_log_dir().join("sessions")
 }
 
 fn buyer_fact_from_snapshot(
@@ -572,6 +697,471 @@ fn seller_fact_from_history_row(
     }
 }
 
+fn session_log_directory_signature(session_log_dir: &Path) -> Result<Option<String>, String> {
+    let files = session_log_jsonl_files(session_log_dir)?;
+    if files.is_empty() {
+        return Ok(None);
+    }
+
+    let mut signature = Vec::with_capacity(files.len());
+    for path in files {
+        let metadata = fs::metadata(path.as_path())
+            .map_err(|error| format!("read session log metadata {}: {error}", path.display()))?;
+        let modified_ms = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("session.jsonl");
+        signature.push(format!("{file_name}:{}:{modified_ms}", metadata.len()));
+    }
+    Ok(Some(signature.join("|")))
+}
+
+fn session_log_jsonl_files(session_log_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if !session_log_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut files = fs::read_dir(session_log_dir)
+        .map_err(|error| {
+            format!(
+                "read session log directory {}: {error}",
+                session_log_dir.display()
+            )
+        })?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_type()
+                .map(|kind| kind.is_file())
+                .unwrap_or(false)
+                && entry.path().extension().and_then(|ext| ext.to_str()) == Some("jsonl")
+        })
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    files.sort();
+    Ok(files)
+}
+
+fn load_log_backfill_facts_from_session_dir(
+    session_log_dir: &Path,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Result<Vec<Nip90PaymentFact>, String> {
+    let local_nostr_pubkey_hex = local_nostr_pubkey_hex
+        .map(normalize_pubkey_key)
+        .filter(|value| !value.is_empty());
+    let mut facts_by_request = BTreeMap::<String, Nip90PaymentFact>::new();
+    for path in session_log_jsonl_files(session_log_dir)? {
+        let contents = fs::read_to_string(path.as_path())
+            .map_err(|error| format!("read session log {}: {error}", path.display()))?;
+        for (line_idx, line) in contents.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let entry = serde_json::from_str::<Value>(trimmed).map_err(|error| {
+                format!(
+                    "parse session log {}:{}: {error}",
+                    path.display(),
+                    line_idx + 1
+                )
+            })?;
+            if let Some(fact) =
+                log_backfill_fact_from_entry(&entry, local_nostr_pubkey_hex.as_deref())
+            {
+                merge_fact(&mut facts_by_request, fact);
+            }
+        }
+    }
+    Ok(normalize_facts(facts_by_request.into_values().collect()))
+}
+
+fn log_backfill_fact_from_entry(
+    entry: &Value,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Option<Nip90PaymentFact> {
+    let object = entry.as_object()?;
+    if let Some(fact) = log_backfill_fact_from_domain_entry(object, local_nostr_pubkey_hex) {
+        return Some(fact);
+    }
+    log_backfill_fact_from_request_publish_line(object, local_nostr_pubkey_hex)
+}
+
+fn log_backfill_fact_from_domain_entry(
+    object: &serde_json::Map<String, Value>,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Option<Nip90PaymentFact> {
+    let domain = object.get("domain")?.as_object()?;
+    let event = domain_string(domain, "event")?;
+    let request_id = domain_string(domain, "request_id")?;
+    let timestamp_seconds = timestamp_seconds_from_log_entry_map(object)?;
+    let role = if event.starts_with("provider.") {
+        "provider"
+    } else {
+        "buyer"
+    };
+    let mut fact = empty_log_backfill_fact(
+        request_id.as_str(),
+        role,
+        local_nostr_pubkey_hex,
+        timestamp_seconds,
+    );
+    let provider_pubkey = preferred_provider_pubkey(domain, role, local_nostr_pubkey_hex);
+    let invoice_amount_sats = domain_u64(domain, "invoice_amount_sats")
+        .or_else(|| domain_u64(domain, "amount_sats"))
+        .or_else(|| domain_u64(domain, "amount_msats").map(|value| value / 1_000));
+
+    match event.as_str() {
+        "buyer.result_candidate_observed" => {
+            fact.provider_nostr_pubkey = provider_pubkey.clone();
+            fact.result_provider_pubkey = provider_pubkey;
+            fact.result_event_id = domain_string(domain, "result_event_id");
+            fact.result_observed_at = Some(timestamp_seconds);
+            fact.status = Nip90PaymentFactStatus::ResultObserved;
+            if let Some(history) = log_backfill_history_event(
+                request_id.as_str(),
+                domain,
+                timestamp_seconds,
+                NetworkRequestProviderObservationHistoryKind::ResultObserved,
+            ) {
+                fact.provider_observation_history.push(history);
+            }
+        }
+        "buyer.invoice_candidate_observed" | "buyer.invoice_rejected_over_budget" => {
+            fact.provider_nostr_pubkey = provider_pubkey.clone();
+            fact.invoice_provider_pubkey = provider_pubkey;
+            fact.invoice_event_id = domain_string(domain, "feedback_event_id");
+            fact.invoice_observed_at = Some(timestamp_seconds);
+            fact.amount_sats = invoice_amount_sats;
+            fact.status = Nip90PaymentFactStatus::InvoiceObserved;
+            if let Some(mut history) = log_backfill_history_event(
+                request_id.as_str(),
+                domain,
+                timestamp_seconds,
+                NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+            ) {
+                if history.status.is_none() {
+                    history.status = Some("payment-required".to_string());
+                }
+                history.bolt11_present |= domain_bool(domain, "bolt11_present").unwrap_or(false);
+                history.amount_msats = history
+                    .amount_msats
+                    .or_else(|| domain_u64(domain, "amount_msats"));
+                fact.provider_observation_history.push(history);
+            }
+        }
+        "buyer.selected_payable_provider" => {
+            fact.provider_nostr_pubkey = provider_pubkey.clone();
+            fact.result_provider_pubkey = provider_pubkey.clone();
+            fact.invoice_provider_pubkey = provider_pubkey;
+            fact.result_event_id = domain_string(domain, "result_event_id");
+            fact.invoice_event_id = domain_string(domain, "feedback_event_id");
+            fact.amount_sats = invoice_amount_sats;
+            fact.status = if fact.invoice_event_id.is_some() {
+                Nip90PaymentFactStatus::BuyerPaymentPending
+            } else {
+                Nip90PaymentFactStatus::ResultObserved
+            };
+            if let Some(history) = log_backfill_history_event(
+                request_id.as_str(),
+                domain,
+                timestamp_seconds,
+                NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected,
+            ) {
+                fact.provider_observation_history.push(history);
+            }
+        }
+        "buyer.queued_payment" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.invoice_event_id = domain_string(domain, "feedback_event_id");
+            fact.amount_sats = domain_u64(domain, "amount_sats");
+            fact.status = Nip90PaymentFactStatus::BuyerPaymentPending;
+        }
+        "buyer.payment_settled" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.buyer_payment_pointer = domain_string(domain, "payment_pointer");
+            fact.buyer_payment_pointer_at = Some(timestamp_seconds);
+            fact.buyer_wallet_confirmed_at = Some(timestamp_seconds);
+            fact.amount_sats = domain_u64(domain, "amount_sats");
+            fact.fees_sats = domain_u64(domain, "fees_sats");
+            fact.total_debit_sats = domain_u64(domain, "total_debit_sats");
+            fact.status = Nip90PaymentFactStatus::BuyerWalletSettled;
+        }
+        "buyer.seller_settled_pending_wallet_confirmation" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.seller_feedback_event_id = domain_string(domain, "feedback_event_id");
+            fact.buyer_payment_pointer = domain_string(domain, "payment_pointer");
+            fact.seller_settlement_feedback_at = Some(timestamp_seconds);
+            fact.status = Nip90PaymentFactStatus::SellerSettlementObserved;
+            if let Some(mut history) = log_backfill_history_event(
+                request_id.as_str(),
+                domain,
+                timestamp_seconds,
+                NetworkRequestProviderObservationHistoryKind::FeedbackObserved,
+            ) {
+                if history.status.is_none() {
+                    history.status = Some("success".to_string());
+                }
+                fact.provider_observation_history.push(history);
+            }
+        }
+        "buyer.payment_blocked" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.status = Nip90PaymentFactStatus::Failed;
+        }
+        "provider.result_published" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.result_provider_pubkey = fact.provider_nostr_pubkey.clone();
+            fact.result_event_id = domain_string(domain, "event_id");
+            fact.result_observed_at = Some(timestamp_seconds);
+            fact.status = Nip90PaymentFactStatus::ResultObserved;
+        }
+        "provider.payment_requested" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.invoice_provider_pubkey = fact.provider_nostr_pubkey.clone();
+            fact.invoice_event_id = domain_string(domain, "feedback_event_id");
+            fact.invoice_observed_at = Some(timestamp_seconds);
+            fact.amount_sats = domain_u64(domain, "amount_sats");
+            fact.status = Nip90PaymentFactStatus::InvoiceObserved;
+        }
+        "provider.settlement_confirmed" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.seller_feedback_event_id = domain_string(domain, "success_feedback_id");
+            fact.seller_payment_pointer = domain_string(domain, "payment_id");
+            fact.seller_wallet_confirmed_at = Some(timestamp_seconds);
+            fact.amount_sats = domain_u64(domain, "amount_sats");
+            fact.fees_sats = domain_u64(domain, "fees_sats");
+            fact.status = Nip90PaymentFactStatus::SellerWalletSettled;
+            fact.settlement_authority = "runtime.session_log.provider".to_string();
+        }
+        "provider.delivered_unpaid_timeout" => {
+            fact.provider_nostr_pubkey = provider_pubkey;
+            fact.status = Nip90PaymentFactStatus::Failed;
+        }
+        _ => return None,
+    }
+
+    Some(fact)
+}
+
+fn log_backfill_fact_from_request_publish_line(
+    object: &serde_json::Map<String, Value>,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Option<Nip90PaymentFact> {
+    let source = object.get("source")?.as_str()?.trim();
+    let target = object.get("target")?.as_str()?.trim();
+    if source != "tracing" || target != "autopilot_desktop::buyer" {
+        return None;
+    }
+
+    let line = object.get("line")?.as_str()?.trim();
+    let request_id = extract_line_field(line, "request_id")?;
+    let timestamp_seconds = timestamp_seconds_from_log_entry_map(object)?;
+    let mut fact = empty_log_backfill_fact(
+        request_id.as_str(),
+        "buyer",
+        local_nostr_pubkey_hex,
+        timestamp_seconds,
+    );
+    fact.request_type =
+        extract_line_field(line, "request_type").unwrap_or_else(|| "unknown".to_string());
+    fact.request_event_id = extract_line_field(line, "event_id");
+    fact.request_published_at = Some(timestamp_seconds);
+    fact.status = if line.starts_with("Failed NIP-90 request publish") {
+        Nip90PaymentFactStatus::Failed
+    } else if line.starts_with("Published NIP-90 request") {
+        Nip90PaymentFactStatus::RequestPublished
+    } else {
+        return None;
+    };
+    Some(fact)
+}
+
+fn empty_log_backfill_fact(
+    request_id: &str,
+    role: &str,
+    local_nostr_pubkey_hex: Option<&str>,
+    request_published_at: u64,
+) -> Nip90PaymentFact {
+    Nip90PaymentFact {
+        fact_id: payment_fact_id(request_id),
+        request_id: request_id.to_string(),
+        request_type: "unknown".to_string(),
+        request_event_id: None,
+        result_event_id: None,
+        invoice_event_id: None,
+        seller_feedback_event_id: None,
+        buyer_nostr_pubkey: if role == "buyer" {
+            local_nostr_pubkey_hex.map(ToString::to_string)
+        } else {
+            None
+        },
+        provider_nostr_pubkey: if role == "provider" {
+            local_nostr_pubkey_hex.map(ToString::to_string)
+        } else {
+            None
+        },
+        invoice_provider_pubkey: None,
+        result_provider_pubkey: None,
+        invoice_observed_relays: Vec::new(),
+        result_observed_relays: Vec::new(),
+        lightning_destination_pubkey: None,
+        buyer_payment_pointer: None,
+        seller_payment_pointer: None,
+        buyer_payment_hash: None,
+        amount_sats: None,
+        fees_sats: None,
+        total_debit_sats: None,
+        wallet_method: None,
+        status: Nip90PaymentFactStatus::RequestPublished,
+        settlement_authority: "runtime.session_log".to_string(),
+        request_published_at: Some(request_published_at),
+        result_observed_at: None,
+        invoice_observed_at: None,
+        buyer_payment_pointer_at: None,
+        seller_settlement_feedback_at: None,
+        buyer_wallet_confirmed_at: None,
+        seller_wallet_confirmed_at: None,
+        selected_relays: Vec::new(),
+        publish_accepted_relays: Vec::new(),
+        publish_rejected_relays: Vec::new(),
+        provider_observation_history: Vec::new(),
+        source_quality: Nip90PaymentFactSourceQuality::LogBackfill,
+    }
+}
+
+fn log_backfill_history_event(
+    request_id: &str,
+    domain: &serde_json::Map<String, Value>,
+    timestamp_seconds: u64,
+    kind: NetworkRequestProviderObservationHistoryKind,
+) -> Option<NetworkRequestProviderObservationHistoryEvent> {
+    let provider_pubkey = preferred_provider_pubkey(domain, "buyer", None);
+    let observed_event_id = match kind {
+        NetworkRequestProviderObservationHistoryKind::ResultObserved => {
+            domain_string(domain, "result_event_id")
+        }
+        NetworkRequestProviderObservationHistoryKind::FeedbackObserved => {
+            domain_string(domain, "feedback_event_id")
+        }
+        NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+        | NetworkRequestProviderObservationHistoryKind::PayableWinnerCleared => {
+            domain_string(domain, "feedback_event_id")
+                .or_else(|| domain_string(domain, "result_event_id"))
+        }
+    };
+
+    if provider_pubkey.is_none()
+        && observed_event_id.is_none()
+        && kind != NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+    {
+        return None;
+    }
+
+    let event_key = observed_event_id.as_deref().unwrap_or_else(|| kind.label());
+    Some(NetworkRequestProviderObservationHistoryEvent {
+        history_id: format!("log_backfill:{request_id}:{}:{event_key}", kind.label()),
+        observed_order: 0,
+        observed_at_epoch_ms: timestamp_seconds.saturating_mul(1_000),
+        kind,
+        provider_pubkey,
+        relay_urls: Vec::new(),
+        observed_event_id,
+        status: domain_string(domain, "status"),
+        status_extra: domain_string(domain, "status_extra"),
+        amount_msats: domain_u64(domain, "amount_msats"),
+        bolt11_present: domain_bool(domain, "bolt11_present").unwrap_or(false),
+        previous_provider_pubkey: domain_string(domain, "previous_provider_pubkey"),
+        winner_result_event_id: domain_string(domain, "result_event_id"),
+        winner_feedback_event_id: domain_string(domain, "feedback_event_id"),
+        selection_source: domain_string(domain, "selection_source"),
+    })
+}
+
+fn preferred_provider_pubkey(
+    domain: &serde_json::Map<String, Value>,
+    role: &str,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Option<String> {
+    [
+        domain_string(domain, "provider_pubkey"),
+        domain_string(domain, "payable_provider_pubkey"),
+        domain_string(domain, "result_provider_pubkey"),
+        domain_string(domain, "invoice_provider_pubkey"),
+        if role == "provider" {
+            local_nostr_pubkey_hex.map(ToString::to_string)
+        } else {
+            None
+        },
+    ]
+    .into_iter()
+    .flatten()
+    .find(|value| !value.is_empty())
+}
+
+fn domain_string(domain: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
+    let value = domain.get(key)?;
+    match value {
+        Value::String(value) => normalize_optional_string(Some(value.as_str())),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn domain_u64(domain: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
+    let value = domain.get(key)?;
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() || normalized.eq_ignore_ascii_case("none") {
+                None
+            } else {
+                normalized.parse::<u64>().ok()
+            }
+        }
+        _ => None,
+    }
+}
+
+fn domain_bool(domain: &serde_json::Map<String, Value>, key: &str) -> Option<bool> {
+    let value = domain.get(key)?;
+    match value {
+        Value::Bool(value) => Some(*value),
+        Value::String(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn timestamp_seconds_from_log_entry(entry: &Value) -> Option<u64> {
+    timestamp_seconds_from_log_entry_map(entry.as_object()?)
+}
+
+fn timestamp_seconds_from_log_entry_map(object: &serde_json::Map<String, Value>) -> Option<u64> {
+    object
+        .get("timestamp_ms")
+        .and_then(Value::as_u64)
+        .map(|value| value / 1_000)
+}
+
+fn extract_line_field(line: &str, key: &str) -> Option<String> {
+    let needle = format!("{key}=");
+    let start = line.find(needle.as_str())?;
+    let value = &line[start + needle.len()..];
+    let end = value.find(char::is_whitespace).unwrap_or(value.len());
+    normalize_optional_string(Some(&value[..end]))
+}
+
 fn first_provider_history_epoch_seconds(
     history: &[NetworkRequestProviderObservationHistoryEvent],
     predicate: impl Fn(&NetworkRequestProviderObservationHistoryEvent) -> bool,
@@ -607,11 +1197,10 @@ fn provider_history_event_is_seller_settlement(
 
 fn merge_fact(map: &mut BTreeMap<String, Nip90PaymentFact>, mut incoming: Nip90PaymentFact) {
     if let Some(existing) = map.get_mut(incoming.request_id.as_str()) {
-        existing.request_type = merge_string_field(
-            Some(existing.request_type.clone()),
-            Some(incoming.request_type.clone()),
-        )
-        .unwrap_or_else(|| "unknown".to_string());
+        existing.request_type = merge_request_type(
+            existing.request_type.as_str(),
+            incoming.request_type.as_str(),
+        );
         existing.request_event_id = merge_string_field(
             existing.request_event_id.take(),
             incoming.request_event_id.take(),
@@ -1033,6 +1622,18 @@ fn merge_string_field(left: Option<String>, right: Option<String>) -> Option<Str
         .and_then(|value| normalize_optional_string(Some(value.as_str())))
 }
 
+fn merge_request_type(left: &str, right: &str) -> String {
+    let normalized_left =
+        normalize_optional_string(Some(left)).unwrap_or_else(|| "unknown".to_string());
+    let normalized_right =
+        normalize_optional_string(Some(right)).unwrap_or_else(|| "unknown".to_string());
+    if normalized_right.eq_ignore_ascii_case("unknown") && !normalized_left.is_empty() {
+        normalized_left
+    } else {
+        normalized_right
+    }
+}
+
 fn merge_u64_field(left: Option<u64>, right: Option<u64>) -> Option<u64> {
     right.or(left)
 }
@@ -1170,6 +1771,7 @@ mod tests {
         NetworkRequestsState,
     };
     use openagents_spark::PaymentSummary;
+    use serde_json::json;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1179,6 +1781,14 @@ mod tests {
             .expect("time should advance")
             .as_nanos();
         std::env::temp_dir().join(format!("openagents-{label}-{nonce}.json"))
+    }
+
+    fn temp_session_dir(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should advance")
+            .as_nanos();
+        std::env::temp_dir().join(format!("openagents-{label}-{nonce}-sessions"))
     }
 
     fn fixture_send_payment() -> PaymentSummary {
@@ -1605,5 +2215,202 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_log_backfill_facts_from_session_dir_builds_degraded_payment_facts() {
+        let session_dir = temp_session_dir("nip90-log-backfill");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let session_path = session_dir.join("20260313T230000Z-pid777.jsonl");
+        write_session_log(
+            &session_path,
+            &[
+                json!({
+                    "timestamp_ms": 1_762_700_001_000_u64,
+                    "source": "tracing",
+                    "target": "autopilot_desktop::buyer",
+                    "line": "Published NIP-90 request request_id=req-log-001 request_type=text-generation event_id=event-request-001 accepted_relays=2 rejected_relays=0"
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_002_000_u64,
+                    "domain": {
+                        "event": "buyer.result_candidate_observed",
+                        "request_id": "req-log-001",
+                        "provider_pubkey": "provideralpha001",
+                        "result_event_id": "event-result-001",
+                        "status": "success"
+                    }
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_003_000_u64,
+                    "domain": {
+                        "event": "buyer.invoice_candidate_observed",
+                        "request_id": "req-log-001",
+                        "provider_pubkey": "provideralpha001",
+                        "feedback_event_id": "event-feedback-001",
+                        "amount_msats": "2000",
+                        "invoice_amount_sats": "2",
+                        "bolt11_present": true
+                    }
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_004_000_u64,
+                    "domain": {
+                        "event": "buyer.selected_payable_provider",
+                        "request_id": "req-log-001",
+                        "provider_pubkey": "provideralpha001",
+                        "previous_provider_pubkey": "providerbeta002",
+                        "result_event_id": "event-result-001",
+                        "feedback_event_id": "event-feedback-001",
+                        "amount_msats": "2000",
+                        "selection_source": "first_payable"
+                    }
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_005_000_u64,
+                    "domain": {
+                        "event": "buyer.payment_settled",
+                        "request_id": "req-log-001",
+                        "provider_pubkey": "provideralpha001",
+                        "payment_pointer": "wallet-send-009",
+                        "amount_sats": "2",
+                        "fees_sats": "1",
+                        "total_debit_sats": "3"
+                    }
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_006_000_u64,
+                    "domain": {
+                        "event": "buyer.seller_settled_pending_wallet_confirmation",
+                        "request_id": "req-log-001",
+                        "provider_pubkey": "provideralpha001",
+                        "feedback_event_id": "event-feedback-success-001",
+                        "payment_pointer": "wallet-send-009",
+                        "local_wallet_status": "pending_receive"
+                    }
+                }),
+            ],
+        );
+
+        let facts = super::load_log_backfill_facts_from_session_dir(
+            session_dir.as_path(),
+            Some("LOCALBUYERKEY"),
+        )
+        .expect("load log backfill facts");
+        assert_eq!(facts.len(), 1);
+
+        let fact = &facts[0];
+        assert_eq!(fact.request_id, "req-log-001");
+        assert_eq!(fact.request_event_id.as_deref(), Some("event-request-001"));
+        assert_eq!(fact.request_type, "text-generation");
+        assert_eq!(fact.buyer_nostr_pubkey.as_deref(), Some("localbuyerkey"));
+        assert_eq!(
+            fact.provider_nostr_pubkey.as_deref(),
+            Some("provideralpha001")
+        );
+        assert_eq!(fact.invoice_event_id.as_deref(), Some("event-feedback-001"));
+        assert_eq!(
+            fact.seller_feedback_event_id.as_deref(),
+            Some("event-feedback-success-001")
+        );
+        assert_eq!(
+            fact.buyer_payment_pointer.as_deref(),
+            Some("wallet-send-009")
+        );
+        assert_eq!(fact.amount_sats, Some(2));
+        assert_eq!(fact.fees_sats, Some(1));
+        assert_eq!(fact.total_debit_sats, Some(3));
+        assert_eq!(
+            fact.status,
+            Nip90PaymentFactStatus::SellerSettlementObserved
+        );
+        assert_eq!(
+            fact.source_quality,
+            Nip90PaymentFactSourceQuality::LogBackfill
+        );
+        assert!(fact.provider_observation_history.iter().any(|event| {
+            event.kind == NetworkRequestProviderObservationHistoryKind::ResultObserved
+                && event.observed_event_id.as_deref() == Some("event-result-001")
+        }));
+        assert!(fact.provider_observation_history.iter().any(|event| {
+            event.kind == NetworkRequestProviderObservationHistoryKind::PayableWinnerSelected
+                && event.previous_provider_pubkey.as_deref() == Some("providerbeta002")
+        }));
+
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+
+    #[test]
+    fn payment_fact_ledger_sync_imports_session_log_backfill_without_live_state() {
+        let path = temp_path("nip90-payment-log-sync");
+        let session_dir = temp_session_dir("nip90-payment-log-sync");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let session_path = session_dir.join("20260313T231500Z-pid888.jsonl");
+        write_session_log(
+            &session_path,
+            &[
+                json!({
+                    "timestamp_ms": 1_762_700_101_000_u64,
+                    "source": "tracing",
+                    "target": "autopilot_desktop::buyer",
+                    "line": "Published NIP-90 request request_id=req-log-sync-001 request_type=text-generation event_id=event-request-sync-001 accepted_relays=1 rejected_relays=0"
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_102_000_u64,
+                    "domain": {
+                        "event": "buyer.payment_settled",
+                        "request_id": "req-log-sync-001",
+                        "provider_pubkey": "providersync001",
+                        "payment_pointer": "wallet-send-sync-001",
+                        "amount_sats": "2",
+                        "fees_sats": "0",
+                        "total_debit_sats": "2"
+                    }
+                }),
+            ],
+        );
+
+        let mut ledger = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
+        ledger.sync_from_current_truth_with_session_log_dir(
+            &NetworkRequestsState::default(),
+            &JobHistoryState::default(),
+            &SparkPaneState::default(),
+            Some("LOCALBUYERKEY"),
+            session_dir.as_path(),
+        );
+
+        let fact = ledger
+            .fact_for_request("req-log-sync-001")
+            .expect("log-backed fact should be imported");
+        assert_eq!(
+            fact.source_quality,
+            Nip90PaymentFactSourceQuality::LogBackfill
+        );
+        assert_eq!(
+            fact.buyer_payment_pointer.as_deref(),
+            Some("wallet-send-sync-001")
+        );
+        assert_eq!(
+            fact.request_event_id.as_deref(),
+            Some("event-request-sync-001")
+        );
+        assert!(
+            ledger
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("log-backfill facts cached"))
+        );
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+
+    fn write_session_log(path: &std::path::Path, rows: &[serde_json::Value]) {
+        let contents = rows
+            .iter()
+            .map(|row| serde_json::to_string(row).expect("encode session row"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(path, format!("{contents}\n")).expect("write session log");
     }
 }

@@ -43,6 +43,13 @@ The desktop control runtime writes and exposes:
 Those files are the source of truth for programmatic verification because they
 prove the UI, the control plane, and the runtime logs stayed in sync.
 
+For NIP-90 payment history, those JSONL files are audit and backfill inputs,
+not the primary product read model. The desktop imports recoverable payment
+facts from session logs into the app-owned
+`~/.openagents/autopilot-nip90-payment-facts-v1.json` ledger with degraded
+`log-backfill` provenance, and panes query that ledger instead of reparsing raw
+logs on demand.
+
 Useful `autopilotctl` starting points:
 
 ```bash
