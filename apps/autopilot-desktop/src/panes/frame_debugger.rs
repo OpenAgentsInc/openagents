@@ -19,13 +19,13 @@ pub fn paint(
     paint_source_badge(content_bounds, "runtime+render", paint);
     let title_x = content_bounds.origin.x + PANEL_PAD;
     paint.scene.draw_text(paint.text.layout_mono(
-        "FRAME DEBUGGER  //  LIVE CADENCE + REDRAW PRESSURE",
+        "FRAME DEBUGGER  //  LIVE REDRAW CADENCE + PRESSURE",
         Point::new(title_x, content_bounds.origin.y + 16.0),
         12.0,
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Rolling FPS, frame-phase breakdown, and current redraw drivers for the desktop loop.",
+        "Rolling redraw cadence, frame-phase breakdown, and current redraw drivers for the desktop loop.",
         Point::new(title_x, content_bounds.origin.y + 34.0),
         10.0,
         theme::text::MUTED,
@@ -34,7 +34,9 @@ pub fn paint(
     let summary = frame_debugger
         .rolling_fps
         .zip(frame_debugger.rolling_frame_interval_ms)
-        .map(|(fps, interval_ms)| format!("{fps:.1} fps rolling // {interval_ms:.2} ms cadence"))
+        .map(|(fps, interval_ms)| {
+            format!("{fps:.1} redraw fps rolling // {interval_ms:.2} ms cadence")
+        })
         .unwrap_or_else(|| "Waiting for first frame samples".to_string());
     let summary_bottom = paint_state_summary(
         paint,
@@ -98,7 +100,7 @@ pub fn paint(
 
 fn paint_gauges(bounds: Bounds, frame_debugger: &FrameDebuggerPaneState, paint: &mut PaintContext) {
     paint.scene.draw_text(paint.text.layout_mono(
-        "ROLLING CADENCE",
+        "REDRAW CADENCE",
         Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
         10.0,
         theme::accent::PRIMARY,
@@ -264,6 +266,13 @@ fn paint_runtime_snapshot(
         paint,
         bounds.origin.x + 12.0,
         y,
+        "Debugger probe",
+        bool_label(snapshot.debug_probe_active),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
         "Rive Preview",
         snapshot.rive_preview.state_summary().as_str(),
     );
@@ -282,11 +291,12 @@ fn paint_runtime_snapshot(
         y + 10.0,
         "Driver counts",
         &format!(
-            "bg {} hotbar {} provider {} chat {} text {} rive {} present {}",
+            "bg {} hotbar {} provider {} chat {} debug {} text {} rive {} present {}",
             counters.background_changed,
             counters.hotbar_flashing,
             counters.provider_animating,
             counters.chat_pending,
+            counters.debug_probe_active,
             counters.text_input_focused,
             counters.rive_preview,
             counters.presentation
