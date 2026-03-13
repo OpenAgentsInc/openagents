@@ -2434,6 +2434,18 @@ fn mission_control_max_scroll_for_viewport(viewport: Bounds, content_height: f32
     (content_height - viewport.size.height).max(0.0)
 }
 
+fn scrollbar_thumb_height(viewport_height: f32, content_height: f32, min_thumb_height: f32) -> f32 {
+    if !viewport_height.is_finite() || !content_height.is_finite() {
+        return 0.0;
+    }
+    if viewport_height <= 0.0 || content_height <= 0.0 {
+        return 0.0;
+    }
+    let max_thumb_height = viewport_height.max(0.0);
+    let min_thumb_height = min_thumb_height.min(max_thumb_height);
+    ((viewport_height / content_height) * viewport_height).clamp(min_thumb_height, max_thumb_height)
+}
+
 fn paint_mission_control_section_scrollbar(
     bounds: Bounds,
     content_height: f32,
@@ -2469,8 +2481,7 @@ fn paint_mission_control_scrollbar_for_viewport(
         2.0,
         viewport.size.height,
     );
-    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
-        .clamp(16.0, viewport.size.height);
+    let thumb_height = scrollbar_thumb_height(viewport.size.height, content_height, 16.0);
     let thumb_y = viewport.origin.y
         + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
     paint.scene.draw_quad(
@@ -5319,8 +5330,7 @@ fn paint_active_job_pane(
             4.0,
             viewport.size.height,
         );
-        let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
-            .clamp(18.0, viewport.size.height);
+        let thumb_height = scrollbar_thumb_height(viewport.size.height, content_height, 18.0);
         let thumb_y = viewport.origin.y
             + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
         paint
@@ -6956,7 +6966,7 @@ mod tests {
         mission_control_model_load_status, mission_control_primary_model_label,
         mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
         pay_invoice_view_state, payment_terminal_status, request_freshness_summary,
-        spark_wallet_view_state, split_text_for_display,
+        scrollbar_thumb_height, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -6996,6 +7006,18 @@ mod tests {
 
     fn fixture_autopilot_chat() -> AutopilotChatState {
         AutopilotChatState::default()
+    }
+
+    #[test]
+    fn scrollbar_thumb_height_caps_minimum_to_small_viewport() {
+        assert_eq!(scrollbar_thumb_height(6.0, 48.0, 16.0), 6.0);
+        assert_eq!(scrollbar_thumb_height(6.0, 48.0, 18.0), 6.0);
+    }
+
+    #[test]
+    fn scrollbar_thumb_height_keeps_requested_floor_for_normal_viewport() {
+        assert_eq!(scrollbar_thumb_height(80.0, 800.0, 16.0), 16.0);
+        assert_eq!(scrollbar_thumb_height(80.0, 800.0, 18.0), 18.0);
     }
 
     fn fixture_autopilot_chat_with_buy_mode_peer(
