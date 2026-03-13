@@ -57,6 +57,15 @@ require_command() {
 run_release_regression_gates() {
   log "Running deterministic autopilot release gates"
   cargo test -p autopilot-desktop --lib \
+    app_state::tests::restart_preserves_earnings_scoreboard_from_persisted_receipts \
+    -- --exact
+  cargo test -p autopilot-desktop --lib \
+    spark_wallet::tests::startup_convergence_refresh_due_after_interval \
+    -- --exact
+  cargo test -p autopilot-desktop --lib \
+    spark_wallet::tests::startup_convergence_status_reports_reconciling_until_followups_finish \
+    -- --exact
+  cargo test -p autopilot-desktop --lib \
     input::reducers::jobs::tests::auto_accept_policy_skips_expired_targeted_request_even_if_target_matches \
     -- --exact
   cargo test -p autopilot-desktop --lib \
