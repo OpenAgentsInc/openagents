@@ -1461,7 +1461,7 @@ mod tests {
             })
         );
         assert!(commands.iter().any(|command| {
-            command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
+            command.id == "pane.earnings_scoreboard" && command.label == "Earnings & Jobs"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.relay_connections" && command.label == "Relay Connections"

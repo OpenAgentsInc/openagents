@@ -7017,6 +7017,27 @@ pub(super) fn run_earnings_scoreboard_action(
             refresh_earnings_scoreboard(state, std::time::Instant::now());
             true
         }
+        EarningsScoreboardPaneAction::OpenJobInbox => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::JobInbox,
+            );
+            true
+        }
+        EarningsScoreboardPaneAction::OpenActiveJob => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::ActiveJob,
+            );
+            true
+        }
+        EarningsScoreboardPaneAction::OpenJobHistory => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::JobHistory,
+            );
+            true
+        }
     }
 }
 
@@ -9021,13 +9042,13 @@ pub(crate) fn ensure_mission_control_apple_fm_refresh(
                 run_apple_fm_workbench_action(state, AppleFmWorkbenchPaneAction::StartBridge)
             };
             if handled && state.apple_fm_workbench.last_error.is_none() {
-                state
-                    .provider_control
-                    .record_action(if state.provider_runtime.apple_fm.reachable {
+                state.provider_control.record_action(
+                    if state.provider_runtime.apple_fm.reachable {
                         "Queued Apple FM bridge refresh"
                     } else {
                         "Queued Apple FM bridge start"
-                    });
+                    },
+                );
             } else if !handled {
                 state.provider_control.last_action =
                     Some("Apple FM mission control action failed".to_string());

@@ -21,7 +21,7 @@ use crate::app_state::{
     mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
-use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
+use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
 use crate::pane_system::{
@@ -39,26 +39,25 @@ use crate::pane_system::{
     credentials_scope_codex_button_bounds, credentials_scope_global_button_bounds,
     credentials_scope_skills_button_bounds, credentials_scope_spark_button_bounds,
     credentials_toggle_enabled_button_bounds, credentials_value_input_bounds,
-    credentials_visible_row_count, earnings_scoreboard_refresh_button_bounds,
-    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-    job_history_prev_page_button_bounds, job_history_search_input_bounds,
-    job_history_status_button_bounds, job_history_time_button_bounds,
-    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
+    credentials_visible_row_count, go_online_toggle_button_bounds,
+    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+    job_history_search_input_bounds, job_history_status_button_bounds,
+    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
     mission_control_layout_for_mode, mission_control_local_fm_test_button_bounds,
     mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
-    network_requests_accept_button_bounds,
-    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
-    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
-    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-    network_requests_type_input_bounds, network_requests_visible_quote_count,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
-    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
-    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
+    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
+    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
+    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
+    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
+    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
+    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+    settings_provider_queue_input_bounds, settings_relay_input_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -67,9 +66,9 @@ use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
     buy_mode_payments as buy_mode_payments_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    local_inference as local_inference_pane, project_ops as project_ops_pane,
-    provider_control as provider_control_pane, relay_connections as relay_connections_pane,
-    skill as skill_pane, wallet as wallet_pane,
+    earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
+    project_ops as project_ops_pane, provider_control as provider_control_pane,
+    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -251,7 +250,6 @@ impl PaneRenderer {
                         skl_lane,
                         ac_lane,
                         provider_blockers,
-                        earnings_scoreboard,
                         spark_wallet,
                         network_requests,
                         job_inbox,
@@ -315,8 +313,15 @@ impl PaneRenderer {
                 PaneKind::EarningsScoreboard => {
                     paint_earnings_scoreboard_pane(
                         content_bounds,
+                        desktop_shell_mode,
                         earnings_scoreboard,
                         provider_runtime,
+                        local_inference_runtime,
+                        job_inbox,
+                        active_job,
+                        job_history,
+                        earn_job_lifecycle_projection,
+                        spark_wallet,
                         paint,
                     );
                 }
@@ -608,7 +613,6 @@ fn paint_go_online_pane(
     skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
     ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
     provider_blockers: &[ProviderBlocker],
-    earnings_scoreboard: &EarningsScoreboardState,
     spark_wallet: &SparkPaneState,
     network_requests: &NetworkRequestsState,
     job_inbox: &JobInboxState,
@@ -745,7 +749,14 @@ fn paint_go_online_pane(
         false,
         paint,
     );
-    let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
+    paint_mission_control_section_redirect(
+        layout.earnings_panel,
+        &[
+            "Summary moved to Earnings & Jobs.",
+            "OPEN HOTBAR SLOT 6 OR pane.earnings_scoreboard",
+        ],
+        paint,
+    );
     paint_mission_control_section_panel(
         layout.actions_panel,
         "CONTROL",
@@ -760,6 +771,15 @@ fn paint_go_online_pane(
         false,
         paint,
     );
+    paint_mission_control_section_redirect(
+        layout.active_jobs_panel,
+        &[
+            "Active job summary moved to Earnings & Jobs.",
+            "Use Active Job pane for the full execution log.",
+        ],
+        paint,
+    );
+    let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
     if buy_mode_enabled {
         paint_mission_control_section_panel(
             layout.buy_mode_panel,
@@ -936,67 +956,6 @@ fn paint_go_online_pane(
         paint,
     );
 
-    let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
-    paint.scene.push_clip(earnings_clip);
-    const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
-    let earnings_content_height = 41.0 + 41.0 + 40.0 + 6.0 + 54.0;
-    let earnings_max_scroll =
-        mission_control_section_max_scroll(layout.earnings_panel, earnings_content_height);
-    let earnings_scroll = mission_control.clamp_earnings_scroll_offset(earnings_max_scroll);
-    let mut earnings_y = mission_control_section_content_y(layout.earnings_panel) - earnings_scroll;
-    let today_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_mission_control_amount(earnings_scoreboard.sats_today),
-    );
-    let month_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_mission_control_amount(earnings_scoreboard.sats_this_month),
-    );
-    let lifetime_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_mission_control_amount(earnings_scoreboard.lifetime_sats),
-    );
-    earnings_y = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "Today",
-        &today_display,
-        mission_control_green_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        true,
-    );
-    earnings_y = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "This Month",
-        &month_display,
-        mission_control_text_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        true,
-    );
-    let _ = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "All Time",
-        &lifetime_display,
-        mission_control_cyan_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        false,
-    );
-    paint.scene.pop_clip();
-    paint_mission_control_section_scrollbar(
-        layout.earnings_panel,
-        earnings_content_height,
-        earnings_scroll,
-        paint,
-    );
-
     let download_bounds = mission_control_local_model_button_bounds(content_bounds);
     if mission_control_show_local_model_button(
         desktop_shell_mode,
@@ -1055,59 +1014,6 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
-    paint.scene.push_clip(active_clip);
-    let active_panel_state = mission_control_active_jobs_panel_state(
-        desktop_shell_mode,
-        provider_runtime,
-        local_inference_runtime,
-        job_inbox,
-        active_job,
-        earn_job_lifecycle_projection,
-        spark_wallet,
-    );
-    let active_state = match active_panel_state.headline.as_str() {
-        "STANDBY" => ("STANDBY", mission_control_orange_color()),
-        "FAULT" => ("FAULT", mission_control_red_color()),
-        "ACTIVE" => ("ACTIVE", mission_control_green_color()),
-        _ => ("SCANNING", mission_control_cyan_color()),
-    };
-    let active_content_height = 44.0 + active_panel_state.lines.len() as f32 * 17.0;
-    let active_jobs_max_scroll =
-        mission_control_section_max_scroll(layout.active_jobs_panel, active_content_height);
-    let active_jobs_scroll =
-        mission_control.clamp_active_jobs_scroll_offset(active_jobs_max_scroll);
-    let active_content_y =
-        mission_control_section_content_y(layout.active_jobs_panel) - active_jobs_scroll;
-    paint.scene.draw_text(paint.text.layout_mono(
-        active_state.0,
-        Point::new(layout.active_jobs_panel.origin.x + 12.0, active_content_y),
-        22.0,
-        active_state.1,
-    ));
-    for (index, line) in active_panel_state.lines.iter().enumerate() {
-        paint.scene.draw_text(paint.text.layout_mono(
-            line,
-            Point::new(
-                layout.active_jobs_panel.origin.x + 12.0,
-                active_content_y + 30.0 + index as f32 * 17.0,
-            ),
-            10.0,
-            if index == 2 && active_job.job.is_some() {
-                mission_control_green_color()
-            } else {
-                mission_control_text_color()
-            },
-        ));
-    }
-    paint.scene.pop_clip();
-    paint_mission_control_section_scrollbar(
-        layout.active_jobs_panel,
-        active_content_height,
-        active_jobs_scroll,
-        paint,
-    );
-
     if buy_mode_enabled {
         paint_mission_control_buy_mode_panel(
             content_bounds,
@@ -1259,6 +1165,26 @@ fn paint_mission_control_section_panel(
     }
 }
 
+fn paint_mission_control_section_redirect(
+    bounds: Bounds,
+    lines: &[&str],
+    paint: &mut PaintContext,
+) {
+    let clip = mission_control_section_clip_bounds(bounds);
+    paint.scene.push_clip(clip);
+    let mut y = mission_control_section_content_y(bounds);
+    for line in lines {
+        paint.scene.draw_text(paint.text.layout(
+            line,
+            Point::new(bounds.origin.x + 12.0, y),
+            11.0,
+            mission_control_text_color(),
+        ));
+        y += 18.0;
+    }
+    paint.scene.pop_clip();
+}
+
 fn paint_mission_control_buy_mode_panel(
     content_bounds: Bounds,
     panel_bounds: Bounds,
@@ -1346,11 +1272,7 @@ fn paint_mission_control_buy_mode_panel(
     );
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MissionControlActiveJobsPanelState {
-    headline: String,
-    lines: Vec<String>,
-}
+type MissionControlActiveJobsPanelState = earnings_jobs_pane::MissionControlActiveJobsPanelState;
 
 fn mission_control_active_jobs_panel_state(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -1361,166 +1283,15 @@ fn mission_control_active_jobs_panel_state(
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     spark_wallet: &SparkPaneState,
 ) -> MissionControlActiveJobsPanelState {
-    if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-        return MissionControlActiveJobsPanelState {
-            headline: "STANDBY".to_string(),
-            lines: vec![
-                if crate::app_state::mission_control_sell_compute_supported(
-                    desktop_shell_mode,
-                    local_inference_runtime,
-                ) {
-                    "GO ONLINE TO ACCEPT PAID JOBS.".to_string()
-                } else {
-                    "PLATFORM NOT SUPPORTED FOR SELLING COMPUTE.".to_string()
-                },
-                "NEXT // GO ONLINE".to_string(),
-                format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
-            ],
-        };
-    }
-
-    let Some(job) = active_job.job.as_ref() else {
-        return MissionControlActiveJobsPanelState {
-            headline: "SCANNING".to_string(),
-            lines: vec![
-                "WATCHING RELAYS FOR MATCHES.".to_string(),
-                "NEXT // MATCHING REQUEST".to_string(),
-                format!("OBSERVED REQUESTS // {}", job_inbox.requests.len()),
-            ],
-        };
-    };
-
-    let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+    earnings_jobs_pane::active_jobs_panel_state(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        job_inbox,
         active_job,
         earn_job_lifecycle_projection,
         spark_wallet,
     )
-    .expect("active job snapshot should exist when job exists");
-
-    let flow_line = match flow_snapshot.phase {
-        crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment => {
-            "FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT".to_string()
-        }
-        crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet => {
-            "FLOW // SELLER SETTLED / BUYER LOCAL WALLET PENDING".to_string()
-        }
-        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment => {
-            "FLOW // RESULT DELIVERED / PREPARING BUYER INVOICE".to_string()
-        }
-        crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid => {
-            "FLOW // RESULT DELIVERED / BUYER NEVER PAID".to_string()
-        }
-        _ => format!(
-            "FLOW // {} / {}",
-            flow_snapshot.authority.as_str().to_ascii_uppercase(),
-            flow_snapshot.phase.as_str().to_ascii_uppercase()
-        ),
-    };
-
-    let mut lines = vec![
-        format!("CAPABILITY // {}", job.capability.to_ascii_uppercase()),
-        flow_line,
-        format!(
-            "NEXT // {}",
-            flow_snapshot.next_expected_event.to_ascii_uppercase()
-        ),
-    ];
-    if let Some(continuity_summary) = flow_snapshot.mission_control_continuity_summary() {
-        lines.push(format!(
-            "CONT // {}",
-            continuity_summary.to_ascii_uppercase()
-        ));
-    } else {
-        lines.push("CONT // NONE".to_string());
-    }
-    lines.push(format!(
-        "PAYOUT // {}",
-        format_mission_control_amount(job.quoted_price_sats)
-    ));
-    if let Some(amount) = flow_snapshot.settlement_amount_sats {
-        let mut settlement = format!(
-            "SETTLE // RECEIVED {}",
-            format_mission_control_amount(amount)
-        );
-        if let Some(fees) = flow_snapshot.settlement_fees_sats {
-            settlement.push_str(" // FEE ");
-            settlement.push_str(format_mission_control_amount(fees).as_str());
-        }
-        if let Some(delta) = flow_snapshot.settlement_net_wallet_delta_sats {
-            settlement.push_str(" // DELTA ");
-            settlement.push_str(
-                crate::spark_wallet::format_wallet_delta_sats(delta)
-                    .to_ascii_uppercase()
-                    .as_str(),
-            );
-        }
-        lines.push(settlement);
-    } else if flow_snapshot.phase
-        == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
-    {
-        let mut settlement = "SETTLE // SELLER SETTLED // BUYER LOCAL WALLET PENDING".to_string();
-        if flow_snapshot.payment_pointer.is_some() {
-            settlement.push_str(" // POINTER READY");
-        }
-        if let Some(window) = flow_snapshot.continuity_window_seconds {
-            settlement.push_str(" // WINDOW ");
-            settlement.push_str(format!("{window}S").as_str());
-        }
-        lines.push(settlement);
-    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
-        let mut settlement = "SETTLE // AWAITING BUYER PAYMENT".to_string();
-        if flow_snapshot.payment_pointer.is_some() {
-            settlement.push_str(" // POINTER READY");
-        }
-        if let Some(window) = flow_snapshot.continuity_window_seconds {
-            settlement.push_str(" // WINDOW ");
-            settlement.push_str(format!("{window}S").as_str());
-        }
-        lines.push(settlement);
-    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
-        let mut settlement = "SETTLE // PREPARING BUYER INVOICE".to_string();
-        if let Some(window) = flow_snapshot.continuity_window_seconds {
-            settlement.push_str(" // WINDOW ");
-            settlement.push_str(format!("{window}S").as_str());
-        }
-        lines.push(settlement);
-    } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
-        let mut settlement = "SETTLE // BUYER NEVER PAID".to_string();
-        if flow_snapshot.pending_bolt11.is_some() {
-            settlement.push_str(" // INVOICE READY");
-        } else {
-            settlement.push_str(" // INVOICE MISSING");
-        }
-        if let Some(window) = flow_snapshot.continuity_window_seconds {
-            settlement.push_str(" // WINDOW ");
-            settlement.push_str(format!("{window}S").as_str());
-        }
-        lines.push(settlement);
-    }
-
-    MissionControlActiveJobsPanelState {
-        headline: if flow_snapshot.phase
-            == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
-        {
-            "AWAITING PAYMENT".to_string()
-        } else if flow_snapshot.phase
-            == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
-        {
-            "LOCAL CONFIRM".to_string()
-        } else if flow_snapshot.phase
-            == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
-        {
-            "INVOICING".to_string()
-        } else if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
-        {
-            "UNPAID".to_string()
-        } else if job.stage == JobLifecycleStage::Failed {
-            "FAULT".to_string()
-        } else {
-            "ACTIVE".to_string()
-        },
-        lines,
-    }
 }
 
 fn active_job_stage_display(
@@ -2892,162 +2663,43 @@ fn paint_provider_status_pane(
 
 fn paint_earnings_scoreboard_pane(
     content_bounds: Bounds,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     earnings_scoreboard: &EarningsScoreboardState,
     provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+    job_history: &JobHistoryState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime+wallet", paint);
-
-    let refresh_bounds = earnings_scoreboard_refresh_button_bounds(content_bounds);
-    paint_action_button(refresh_bounds, "Refresh metrics", paint);
-
-    let state_color = match earnings_scoreboard.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let stale = earnings_scoreboard.is_stale(std::time::Instant::now());
-    let stale_suffix = if stale { " (stale)" } else { "" };
-    let mut y = refresh_bounds.max_y() + 14.0;
-    paint.scene.draw_text(paint.text.layout(
-        &format!(
-            "State: {}{stale_suffix}",
-            earnings_scoreboard.load_state.label()
-        ),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = earnings_scoreboard.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = earnings_scoreboard.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
-
-    let today_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_sats_amount(earnings_scoreboard.sats_today),
-    );
-    let month_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_sats_amount(earnings_scoreboard.sats_this_month),
-    );
-    let lifetime_display = earnings_scoreboard_amount_display(
-        earnings_scoreboard.load_state,
-        format_sats_amount(earnings_scoreboard.lifetime_sats),
-    );
-    let jobs_today_display = if earnings_scoreboard.load_state == PaneLoadState::Loading {
-        "LOADING".to_string()
-    } else {
-        earnings_scoreboard.jobs_today.to_string()
-    };
-    let last_job_result_display = if earnings_scoreboard.load_state == PaneLoadState::Loading {
-        "LOADING".to_string()
-    } else {
-        earnings_scoreboard.last_job_result.clone()
-    };
-
-    y = paint_label_line(
+    earnings_jobs_pane::paint_earnings_jobs_pane(
+        content_bounds,
+        desktop_shell_mode,
+        earnings_scoreboard,
+        provider_runtime,
+        local_inference_runtime,
+        job_inbox,
+        active_job,
+        job_history,
+        earn_job_lifecycle_projection,
+        spark_wallet,
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Today",
-        &today_display,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "This month",
-        &month_display,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Lifetime",
-        &lifetime_display,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Jobs today",
-        &jobs_today_display,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Last job result",
-        &last_job_result_display,
-    );
-    let _ = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Online uptime (s)",
-        &provider_runtime
-            .uptime_seconds(std::time::Instant::now())
-            .to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "First job latency (s)",
-        &earnings_scoreboard
-            .first_job_latency_seconds
-            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Completion ratio",
-        &format_bps_percent(earnings_scoreboard.completion_ratio_bps),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Payout success ratio",
-        &format_bps_percent(earnings_scoreboard.payout_success_ratio_bps),
-    );
-    let _ = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Wallet confirm latency (avg s)",
-        &earnings_scoreboard
-            .avg_wallet_confirmation_latency_seconds
-            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
 }
 
-fn format_bps_percent(value: Option<u16>) -> String {
+pub(crate) fn format_bps_percent(value: Option<u16>) -> String {
     value.map_or_else(
         || "n/a".to_string(),
         |bps| format!("{:.2}%", (bps as f64) / 100.0),
     )
 }
 
-fn earnings_scoreboard_amount_display(load_state: PaneLoadState, amount: String) -> String {
+pub(crate) fn earnings_scoreboard_amount_display(
+    load_state: PaneLoadState,
+    amount: String,
+) -> String {
     if load_state == PaneLoadState::Loading {
         "LOADING".to_string()
     } else {
@@ -7580,8 +7232,7 @@ mod tests {
             &local,
         ));
 
-        provider_control.local_fm_summary_pending_request_id =
-            Some("mission-control-fm-1".into());
+        provider_control.local_fm_summary_pending_request_id = Some("mission-control-fm-1".into());
         assert_eq!(
             mission_control_local_fm_test_button_label(
                 &provider_control,

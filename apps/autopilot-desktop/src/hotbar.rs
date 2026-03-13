@@ -11,8 +11,8 @@ use crate::pane_system::PaneController;
 use crate::spark_wallet::SparkWalletCommand;
 
 pub use crate::pane_registry::{
-    HOTBAR_SLOT_COMMAND_PALETTE, HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY,
-    HOTBAR_SLOT_SPARK_WALLET,
+    HOTBAR_SLOT_COMMAND_PALETTE, HOTBAR_SLOT_EARNINGS_JOBS, HOTBAR_SLOT_NEW_CHAT,
+    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_PROVIDER_CONTROL, HOTBAR_SLOT_SPARK_WALLET,
 };
 
 pub const HOTBAR_HEIGHT: f32 = 52.0;
@@ -93,6 +93,8 @@ pub fn hotbar_slot_for_key(key: PhysicalKey) -> Option<u8> {
         PhysicalKey::Code(KeyCode::Digit2 | KeyCode::Numpad2) => Some(HOTBAR_SLOT_NOSTR_IDENTITY),
         PhysicalKey::Code(KeyCode::Digit3 | KeyCode::Numpad3) => Some(HOTBAR_SLOT_SPARK_WALLET),
         PhysicalKey::Code(KeyCode::Digit4 | KeyCode::Numpad4) => Some(HOTBAR_SLOT_COMMAND_PALETTE),
+        PhysicalKey::Code(KeyCode::Digit5 | KeyCode::Numpad5) => Some(HOTBAR_SLOT_PROVIDER_CONTROL),
+        PhysicalKey::Code(KeyCode::Digit6 | KeyCode::Numpad6) => Some(HOTBAR_SLOT_EARNINGS_JOBS),
         _ => None,
     }
 }
@@ -138,8 +140,9 @@ fn build_hotbar_items() -> Vec<HotbarSlot> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HOTBAR_SLOT_COMMAND_PALETTE, HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY,
-        HOTBAR_SLOT_SPARK_WALLET, build_hotbar_items, hotbar_slot_for_key,
+        HOTBAR_SLOT_COMMAND_PALETTE, HOTBAR_SLOT_EARNINGS_JOBS, HOTBAR_SLOT_NEW_CHAT,
+        HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_PROVIDER_CONTROL, HOTBAR_SLOT_SPARK_WALLET,
+        build_hotbar_items, hotbar_slot_for_key,
     };
     use crate::pane_registry::{
         HOTBAR_COMMAND_PALETTE_ICON, HOTBAR_COMMAND_PALETTE_SHORTCUT, pane_kind_for_hotbar_slot,
@@ -148,7 +151,7 @@ mod tests {
     use winit::keyboard::{KeyCode, PhysicalKey};
 
     #[test]
-    fn numeric_hotbar_shortcuts_cover_one_through_four() {
+    fn numeric_hotbar_shortcuts_cover_one_through_six() {
         assert_eq!(
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit1)),
             Some(HOTBAR_SLOT_NEW_CHAT)
@@ -168,6 +171,22 @@ mod tests {
         assert_eq!(
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)),
             Some(HOTBAR_SLOT_COMMAND_PALETTE)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit5)),
+            Some(HOTBAR_SLOT_PROVIDER_CONTROL)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad5)),
+            Some(HOTBAR_SLOT_PROVIDER_CONTROL)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit6)),
+            Some(HOTBAR_SLOT_EARNINGS_JOBS)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad6)),
+            Some(HOTBAR_SLOT_EARNINGS_JOBS)
         );
     }
 

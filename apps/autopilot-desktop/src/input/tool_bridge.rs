@@ -2023,11 +2023,9 @@ fn pane_action_to_hit_action(
                     crate::pane_system::MissionControlPaneAction::ToggleBuyModeLoop,
                 ))
             }
-            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => {
-                Ok(PaneHitAction::ProviderControl(
-                    ProviderControlPaneAction::RunLocalFmSummaryTest,
-                ))
-            }
+            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => Ok(
+                PaneHitAction::ProviderControl(ProviderControlPaneAction::RunLocalFmSummaryTest),
+            ),
             "open_local_model" | "open_workbench" | "warm_model" | "download_model" => {
                 Ok(PaneHitAction::ProviderControl(
                     ProviderControlPaneAction::TriggerLocalRuntimeAction,
@@ -2044,17 +2042,14 @@ fn pane_action_to_hit_action(
             | "local_runtime" => Ok(PaneHitAction::ProviderControl(
                 ProviderControlPaneAction::TriggerLocalRuntimeAction,
             )),
-            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => {
-                Ok(PaneHitAction::ProviderControl(
-                    ProviderControlPaneAction::RunLocalFmSummaryTest,
-                ))
-            }
+            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => Ok(
+                PaneHitAction::ProviderControl(ProviderControlPaneAction::RunLocalFmSummaryTest),
+            ),
             "toggle_inventory" | "toggle_inventory_row" | "toggle_product" => {
                 let index = require_index(action)?;
-                let Some(target) =
-                    crate::app_state::ProviderInventoryProductToggleTarget::all()
-                        .get(index)
-                        .copied()
+                let Some(target) = crate::app_state::ProviderInventoryProductToggleTarget::all()
+                    .get(index)
+                    .copied()
                 else {
                     return unsupported();
                 };
@@ -2165,6 +2160,15 @@ fn pane_action_to_hit_action(
         PaneKind::EarningsScoreboard => match action {
             "refresh" => Ok(PaneHitAction::EarningsScoreboard(
                 EarningsScoreboardPaneAction::Refresh,
+            )),
+            "open_job_inbox" | "open_inbox" => Ok(PaneHitAction::EarningsScoreboard(
+                EarningsScoreboardPaneAction::OpenJobInbox,
+            )),
+            "open_active_job" => Ok(PaneHitAction::EarningsScoreboard(
+                EarningsScoreboardPaneAction::OpenActiveJob,
+            )),
+            "open_job_history" | "open_history" => Ok(PaneHitAction::EarningsScoreboard(
+                EarningsScoreboardPaneAction::OpenJobHistory,
             )),
             _ => unsupported(),
         },

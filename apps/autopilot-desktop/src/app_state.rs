@@ -656,7 +656,9 @@ impl ProviderControlPaneState {
         let request_id = request_id.into();
         self.local_fm_summary_pending_request_id = Some(request_id.clone());
         self.local_fm_summary_text.clear();
-        self.record_action(format!("Streaming local FM summary for {detail} ({request_id})"));
+        self.record_action(format!(
+            "Streaming local FM summary for {detail} ({request_id})"
+        ));
     }
 
     pub fn local_fm_summary_is_pending(&self) -> bool {
@@ -672,9 +674,7 @@ pub struct MissionControlPaneState {
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     log_copy_icon_clicked_at_epoch_ms: u64,
-    earnings_scroll_offset_px: f32,
     actions_scroll_offset_px: f32,
-    active_jobs_scroll_offset_px: f32,
     buy_mode_last_blocked_signature: Option<String>,
     buy_mode_last_blocked_notice_at: Option<Instant>,
     /// Dedupe keys for already-rendered Mission Control log entries.
@@ -695,9 +695,7 @@ impl Default for MissionControlPaneState {
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             log_copy_icon_clicked_at_epoch_ms: 0,
-            earnings_scroll_offset_px: 0.0,
             actions_scroll_offset_px: 0.0,
-            active_jobs_scroll_offset_px: 0.0,
             buy_mode_last_blocked_signature: None,
             buy_mode_last_blocked_notice_at: None,
             rendered_log_content: Vec::new(),
@@ -735,28 +733,12 @@ impl MissionControlPaneState {
         clamped
     }
 
-    pub fn scroll_earnings_by(&mut self, dy: f32) {
-        self.earnings_scroll_offset_px = (self.earnings_scroll_offset_px + dy).max(0.0);
-    }
-
     pub fn scroll_actions_by(&mut self, dy: f32) {
         self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
     }
 
-    pub fn scroll_active_jobs_by(&mut self, dy: f32) {
-        self.active_jobs_scroll_offset_px = (self.active_jobs_scroll_offset_px + dy).max(0.0);
-    }
-
-    pub fn clamp_earnings_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.earnings_scroll_offset_px, max_scroll)
-    }
-
     pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
         Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
-    }
-
-    pub fn clamp_active_jobs_scroll_offset(&mut self, max_scroll: f32) -> f32 {
-        Self::clamp_scroll_offset(&mut self.active_jobs_scroll_offset_px, max_scroll)
     }
 
     pub fn actions_scroll_offset(&self) -> f32 {
