@@ -174,8 +174,8 @@ impl ProviderAvailability {
     pub fn product_visible(&self, product: ProviderComputeProduct) -> bool {
         match product {
             ProviderComputeProduct::GptOssInference
-            | ProviderComputeProduct::GptOssEmbeddings
             | ProviderComputeProduct::AppleFoundationModelsInference => true,
+            ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
                 .has_declared_execution_class(ProviderSandboxExecutionClass::ContainerExec),
@@ -193,9 +193,8 @@ impl ProviderAvailability {
 
     pub fn product_backend_ready(&self, product: ProviderComputeProduct) -> bool {
         match product {
-            ProviderComputeProduct::GptOssInference | ProviderComputeProduct::GptOssEmbeddings => {
-                self.gpt_oss.is_ready()
-            }
+            ProviderComputeProduct::GptOssInference => self.gpt_oss.is_ready(),
+            ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_foundation_models.is_ready()
             }
@@ -262,10 +261,9 @@ pub struct ProviderProductDescriptor {
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 7] {
+    pub const fn all() -> [Self; 6] {
         [
             Self::GptOssInference,
-            Self::GptOssEmbeddings,
             Self::AppleFoundationModelsInference,
             Self::SandboxContainerExec,
             Self::SandboxPythonExec,
@@ -348,7 +346,9 @@ impl ProviderComputeProduct {
     pub const fn capability_summary_base(self) -> &'static str {
         match self {
             Self::GptOssInference => "backend=gpt_oss execution=local_inference family=inference",
-            Self::GptOssEmbeddings => "backend=gpt_oss execution=local_inference family=embeddings",
+            Self::GptOssEmbeddings => {
+                "backend=gpt_oss execution=local_inference family=embeddings status=unsupported"
+            }
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
             }
@@ -515,7 +515,7 @@ impl Default for ProviderInventoryControls {
     fn default() -> Self {
         Self {
             gpt_oss_inference_enabled: true,
-            gpt_oss_embeddings_enabled: true,
+            gpt_oss_embeddings_enabled: false,
             apple_fm_inference_enabled: true,
             sandbox_container_exec_enabled: false,
             sandbox_python_exec_enabled: false,
@@ -529,7 +529,7 @@ impl ProviderInventoryControls {
     pub const fn is_advertised(&self, target: ProviderComputeProduct) -> bool {
         match target {
             ProviderComputeProduct::GptOssInference => self.gpt_oss_inference_enabled,
-            ProviderComputeProduct::GptOssEmbeddings => self.gpt_oss_embeddings_enabled,
+            ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
             }
@@ -548,7 +548,6 @@ impl ProviderInventoryControls {
     pub fn toggle(&mut self, target: ProviderComputeProduct) -> bool {
         let enabled = match target {
             ProviderComputeProduct::GptOssInference => &mut self.gpt_oss_inference_enabled,
-            ProviderComputeProduct::GptOssEmbeddings => &mut self.gpt_oss_embeddings_enabled,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
             }
@@ -558,6 +557,10 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::SandboxPythonExec => &mut self.sandbox_python_exec_enabled,
             ProviderComputeProduct::SandboxNodeExec => &mut self.sandbox_node_exec_enabled,
             ProviderComputeProduct::SandboxPosixExec => &mut self.sandbox_posix_exec_enabled,
+            ProviderComputeProduct::GptOssEmbeddings => {
+                self.gpt_oss_embeddings_enabled = false;
+                return false;
+            }
         };
         *enabled = !*enabled;
         *enabled
@@ -721,7 +724,7 @@ mod tests {
     fn controls_gate_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
         assert!(controls.is_product_advertised("gpt_oss.text_generation"));
-        assert!(controls.is_product_advertised("gpt_oss.embeddings"));
+        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
         assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
@@ -750,17 +753,16 @@ mod tests {
         let products =
             derive_provider_products(&availability, &ProviderInventoryControls::default());
 
-        assert_eq!(products.len(), 3);
+        assert_eq!(products.len(), 2);
         assert!(products[0].eligible);
-        assert!(products[1].eligible);
-        assert!(!products[2].eligible);
+        assert!(!products[1].eligible);
         assert!(
             products[0]
                 .capability_summary
                 .contains("latency_ms_p50=140")
         );
         assert!(
-            products[2]
+            products[1]
                 .capability_summary
                 .contains("platform_gate=apple_intelligence_disabled")
         );
