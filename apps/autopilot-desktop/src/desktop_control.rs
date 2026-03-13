@@ -4157,6 +4157,91 @@ mod tests {
     }
 
     #[test]
+    fn runtime_serves_gpt_oss_ready_snapshot_fields() {
+        let token = "token-gpt-oss".to_string();
+        let runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        let mut snapshot = sample_snapshot();
+        snapshot.mission_control.can_go_online = true;
+        snapshot.mission_control.blocker_codes.clear();
+        snapshot.provider.blocker_codes.clear();
+        snapshot.local_runtime = DesktopControlLocalRuntimeStatus {
+            policy: "gpt_oss_cuda".to_string(),
+            lane: Some("gpt_oss".to_string()),
+            runtime_ready: true,
+            go_online_ready: true,
+            supports_sell_compute: true,
+            workbench_label: "GPT-OSS workbench".to_string(),
+            supports_run_text: true,
+            supports_streaming: false,
+            supports_structured: false,
+            supports_model_management: true,
+            supports_sessions: false,
+            show_action_button: true,
+            action: "unload_gpt_oss".to_string(),
+            action_enabled: true,
+            action_label: "UNLOAD GPT-OSS".to_string(),
+            model_label: "gpt-oss-20b".to_string(),
+            backend_label: "GPT-OSS / CUDA".to_string(),
+            load_label: "loaded / artifact present".to_string(),
+            go_online_hint: None,
+            status_stream: "stdout".to_string(),
+            status_line: "GPT-OSS ready via cuda backend (gpt-oss-20b).".to_string(),
+            detail_lines: vec![
+                "GPT-OSS backend: CUDA".to_string(),
+                "GPT-OSS load state: loaded".to_string(),
+            ],
+        };
+        snapshot.gpt_oss = DesktopControlGptOssStatus {
+            detected: true,
+            backend: Some("cuda".to_string()),
+            reachable: true,
+            ready: true,
+            busy: false,
+            supports_sell_compute: true,
+            artifact_present: true,
+            loaded: true,
+            configured_model: Some("gpt-oss-20b".to_string()),
+            ready_model: Some("gpt-oss-20b".to_string()),
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            loaded_models: vec!["gpt-oss-20b".to_string()],
+            last_action: Some("Psionic model 'gpt-oss-20b' warmed".to_string()),
+            last_error: None,
+        };
+        runtime
+            .sync_snapshot(snapshot)
+            .expect("sync gpt-oss snapshot");
+
+        let client = reqwest::blocking::Client::new();
+        let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
+        let served = client
+            .get(snapshot_url.as_str())
+            .bearer_auth(token.as_str())
+            .send()
+            .expect("send authorized")
+            .error_for_status()
+            .expect("authorized status")
+            .json::<DesktopControlSnapshot>()
+            .expect("decode snapshot");
+
+        assert_eq!(served.local_runtime.lane.as_deref(), Some("gpt_oss"));
+        assert_eq!(served.local_runtime.policy, "gpt_oss_cuda");
+        assert_eq!(served.local_runtime.workbench_label, "GPT-OSS workbench");
+        assert!(served.local_runtime.runtime_ready);
+        assert!(served.local_runtime.go_online_ready);
+        assert!(served.local_runtime.supports_model_management);
+        assert!(served.gpt_oss.detected);
+        assert_eq!(served.gpt_oss.backend.as_deref(), Some("cuda"));
+        assert!(served.gpt_oss.ready);
+        assert!(served.gpt_oss.loaded);
+        assert!(served.gpt_oss.artifact_present);
+        assert!(served.mission_control.can_go_online);
+    }
+
+    #[test]
     fn runtime_serves_event_batches_and_long_poll_waits() {
         let token = "token-events".to_string();
         let runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {

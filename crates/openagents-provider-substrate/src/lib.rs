@@ -734,6 +734,33 @@ mod tests {
     }
 
     #[test]
+    fn gpt_oss_product_ids_and_aliases_preserve_truthful_backend_identity() {
+        let inference = ProviderComputeProduct::GptOssInference;
+        let descriptor = inference.descriptor();
+
+        assert_eq!(inference.product_id(), "gpt_oss.text_generation");
+        assert_eq!(inference.backend_kind(), Some(ProviderBackendKind::GptOss));
+        assert_eq!(inference.backend_label(), "gpt_oss");
+        assert_eq!(descriptor.product_id, "gpt_oss.text_generation");
+        assert_eq!(descriptor.compute_family, "inference");
+        assert_eq!(descriptor.backend_family, "gpt_oss");
+
+        assert_eq!(
+            ProviderComputeProduct::for_product_id("gpt_oss.text_generation"),
+            Some(ProviderComputeProduct::GptOssInference)
+        );
+        assert_eq!(
+            ProviderComputeProduct::for_product_id("ollama.text_generation"),
+            Some(ProviderComputeProduct::GptOssInference)
+        );
+
+        let legacy_descriptor =
+            describe_provider_product_id("ollama.text_generation").expect("legacy alias");
+        assert_eq!(legacy_descriptor.product_id, "gpt_oss.text_generation");
+        assert_eq!(legacy_descriptor.backend_family, "gpt_oss");
+    }
+
+    #[test]
     fn derive_provider_products_reflects_backend_health_and_capability_summary() {
         let availability = ProviderAvailability {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
