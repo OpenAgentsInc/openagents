@@ -57,6 +57,19 @@ The bridge is the Swift HTTP sidecar in `swift/foundation-bridge/`. It exposes A
 
 **Shipping (no build on user machines):** Build the bridge once (or in CI), then include `bin/foundation-bridge` in the app bundle: for a macOS .app put it in `YourApp.app/Contents/MacOS/foundation-bridge` or `YourApp.app/Contents/Resources/foundation-bridge`. The app discovers it there. Users then only need Apple Intelligence enabled, not Xcode.
 
+## Linux GPT-OSS bring-up (agent)
+
+When working on autopilot, Mission Control, or seller-mode bring-up on a supported Linux NVIDIA host, run the app with the GPT-OSS env vars set so Mission Control can select the CUDA lane and auto-warm the configured GGUF.
+
+1. **Set the backend**: `export OPENAGENTS_GPT_OSS_BACKEND=cuda`
+2. **Set the model path**: `export OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf`
+3. **Default model path**: if `OPENAGENTS_GPT_OSS_MODEL_PATH` is unset, the runtime looks for `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`
+4. **Run the desktop app**: `cargo autopilot` (or `cargo run -p autopilot-desktop --bin autopilot-desktop --`)
+5. **Verify the local runtime**: `autopilotctl local-runtime status` and `autopilotctl wait local-runtime-ready`
+6. **Then bring the seller lane online**: `autopilotctl provider online`
+
+Mission Control on the Linux GPT-OSS lane now auto-warms the configured model at startup and on go-online preflight when the CUDA backend and GGUF artifact are present. If you change env vars or swap GGUFs during a session, run `autopilotctl local-runtime refresh` and wait for `local-runtime-ready` again.
+
 ## Validation Gates
 
 - Shared dependency hygiene: `scripts/lint/workspace-dependency-drift-check.sh`.

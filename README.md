@@ -170,7 +170,7 @@ Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain
 
 If you are on macOS and using the Apple FM release path, test the bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
 
-If you are on a supported non-macOS NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app and verify with `autopilotctl local-runtime status`, `autopilotctl gpt-oss warm --wait`, and `autopilotctl wait gpt-oss-ready`.
+If you are on a supported Linux NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app. Mission Control now auto-warms the configured GPT-OSS model on startup. Verify with `autopilotctl local-runtime status` and `autopilotctl wait local-runtime-ready`.
 
 See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/headless-compute.md) for the current local-runtime runbooks.
 ```
@@ -198,6 +198,17 @@ cargo autopilot
 
 `cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
 
+**Run on Linux with GPT-OSS/CUDA:**
+```bash
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+export OPENAGENTS_GPT_OSS_BACKEND=cuda
+export OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf
+cargo autopilot
+```
+
+If `OPENAGENTS_GPT_OSS_MODEL_PATH` is unset, the runtime defaults to `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`.
+
 ### Apple FM bridge (macOS, for Go Online)
 
 On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models** via a small Swift HTTP bridge. You need the bridge built and (for the system model to be ready) **Apple Intelligence** enabled: System Settings → Apple Intelligence → turn on.
@@ -206,22 +217,30 @@ On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models*
 - **Test the bridge**: run `./bin/foundation-bridge`, then `curl -s http://127.0.0.1:11435/health` — you should get a JSON response. The desktop app can also start the bridge automatically when you open Mission Control.
 - **Shipping the app** so users don’t build on their machine: build the bridge once, then include `bin/foundation-bridge` in your app bundle (e.g. `YourApp.app/Contents/MacOS/foundation-bridge` or `Contents/Resources/foundation-bridge`). See [swift/foundation-bridge/README.md](swift/foundation-bridge/README.md) for steps and [crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md) for full bridge considerations (architecture, discovery, shipping, user requirements).
 
-### GPT-OSS local runtime (supported NVIDIA/CUDA hosts)
+### GPT-OSS local runtime (supported Linux NVIDIA/CUDA hosts)
 
-On supported non-macOS NVIDIA hosts, Mission Control and `autopilotctl` use the
+On supported Linux NVIDIA hosts, Mission Control and `autopilotctl` use the
 same app-owned local-runtime contract for GPT-OSS.
 
-- Set `OPENAGENTS_GPT_OSS_BACKEND=cuda`
-- Set `OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf`
+- Export `OPENAGENTS_GPT_OSS_BACKEND=cuda`
+- Export `OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf`
 - If the model-path env var is unset, the runtime looks for `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`
-- Launch the app, then verify with:
+- Launch the app with `cargo autopilot`
+- Mission Control should auto-warm the configured GPT-OSS model on startup and clear the preflight blocker once the model is ready
+- Verify with:
 
 ```bash
 autopilotctl local-runtime status
-autopilotctl local-runtime refresh
-autopilotctl gpt-oss warm --wait
 autopilotctl wait local-runtime-ready
 autopilotctl wait gpt-oss-ready
+autopilotctl provider online
+```
+
+If you want to force a new runtime probe after changing env vars or swapping GGUFs:
+
+```bash
+autopilotctl local-runtime refresh
+autopilotctl wait local-runtime-ready
 ```
 
 Repeatable scripted form:
