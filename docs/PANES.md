@@ -73,6 +73,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Controls: reload, previous asset, next asset, play/pause, restart, and fit mode.
   - Shows asset identity, render-path diagnostics, redraw/settled state, pointer capture, and first-frame metrics so new packaged assets can be verified without adding per-asset pane code.
   - Action: swap packaged assets and inspect runtime diagnostics.
+- `Presentation`
+  - Minimal slide-surface pane backed by the packaged `simple_fui_hud` Rive asset.
+  - Fills the entire pane content area with the looping HUD animation using `cover` fit mode and no in-content controls.
+  - Exposes a fullscreen header action next to close; activating it promotes the pane into pane-level fullscreen, and `Esc` returns it to windowed mode.
+  - Action: fullscreen toggle from pane chrome only.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
@@ -255,6 +260,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - Each manifest entry owns the packaged asset id, runtime path, description, and default artboard/scene handles; the renderer/runtime path stays shared in `wgpui`.
 - `Rive Preview` cycles through the manifest with `Prev asset` and `Next asset`; `rive_hud_viewer` accepts `--asset <id>` and `--list-assets`.
 - The current registry includes the primary HUD asset plus a second deterministic fixture file so multi-asset bring-up is proven before a distinct second production asset lands.
+- `Presentation` always uses the primary `simple_fui_hud` packaged asset and does not expose manifest cycling.
 - To add another asset: copy the `.riv` file into `apps/autopilot-desktop/resources/rive/`, add one manifest entry in `apps/autopilot-desktop/src/rive_assets.rs`, and verify it through `Rive Preview` or `cargo run -p autopilot-desktop --bin rive_hud_viewer -- --asset <id>`.
 
 ## Source Badges
@@ -348,6 +354,7 @@ Current pane badge mapping:
   - `Provider Status` -> opens `Provider Status`.
   - `GPT-OSS Workbench` -> opens `GPT-OSS Workbench`.
   - `Psionic Mesh` -> opens `Psionic Mesh`.
+  - `Presentation` -> opens `Presentation`.
   - `Earnings & Jobs` -> opens `Earnings & Jobs`.
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
@@ -376,9 +383,10 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Psionic Mesh, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Psionic Mesh, Rive Preview, Presentation, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
+- Fullscreen pane presentation is reversible: invoking close on a fullscreen pane demotes it back to windowed before a second close removes it.
 
 ## Codex Tool Control
 

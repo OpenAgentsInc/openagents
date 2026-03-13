@@ -94,6 +94,7 @@ pub enum PaneKind {
     LocalInference,
     PsionicViz,
     RivePreview,
+    Presentation,
     AppleFmWorkbench,
     EarningsScoreboard,
     RelayConnections,
@@ -181,6 +182,7 @@ pub struct DesktopPane {
     pub title: String,
     pub kind: PaneKind,
     pub bounds: Bounds,
+    pub windowed_bounds: Bounds,
     pub z_index: i32,
     pub frame: PaneFrame,
     pub presentation: PanePresentation,
@@ -9715,6 +9717,11 @@ pub struct RivePreviewRuntimeState {
     pub surface: Option<RiveSurface>,
 }
 
+#[derive(Default)]
+pub struct PresentationRuntimeState {
+    pub surface: Option<RiveSurface>,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -9793,6 +9800,8 @@ pub struct RenderState {
     pub local_inference: LocalInferencePaneState,
     pub rive_preview: RivePreviewPaneState,
     pub rive_preview_runtime: RivePreviewRuntimeState,
+    pub presentation: PresentationPaneState,
+    pub presentation_runtime: PresentationRuntimeState,
     pub apple_fm_workbench: AppleFmWorkbenchPaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,
     pub provider_admin_listen_addr: Option<String>,

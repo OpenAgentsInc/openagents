@@ -1774,6 +1774,7 @@ fn execute_pane_set_input(
         PaneKind::RelayConnections => apply_relay_connections_input(state, &field, &value),
         PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
         PaneKind::RivePreview => false,
+        PaneKind::Presentation => false,
         PaneKind::AppleFmWorkbench => apply_apple_fm_workbench_input(state, &field, &value),
         PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
         PaneKind::Settings => apply_settings_input(state, &field, &value),
@@ -1949,6 +1950,20 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                     }),
                 );
             }
+            PaneKind::Presentation => {
+                let runtime_surface = state.presentation_runtime.surface.as_ref();
+                map.insert(
+                    "presentation".to_string(),
+                    json!({
+                        "asset_id": state.presentation.asset_id,
+                        "asset_name": state.presentation.asset_name,
+                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()),
+                        "animating": runtime_surface.is_some_and(|surface| surface.is_animating()),
+                        "settled": runtime_surface.map(|surface| surface.is_settled()).unwrap_or(true),
+                        "last_error": state.presentation.last_error,
+                    }),
+                );
+            }
             PaneKind::CadDemo => {
                 let visible_variant_ids = state.cad_demo.visible_variant_ids();
                 map.insert(
@@ -2039,6 +2054,7 @@ fn pane_action_to_hit_action(
     match kind {
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
+        PaneKind::Presentation => unsupported(),
         PaneKind::BuyerRaceMatrix => unsupported(),
         PaneKind::SellerEarningsTimeline => unsupported(),
         PaneKind::SettlementLadder => unsupported(),
@@ -5851,6 +5867,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "decode_field",
         ],
         PaneKind::RivePreview => &["rive", "rive_preview", "hud_preview"],
+        PaneKind::Presentation => &["presentation", "deck", "slides", "present"],
         PaneKind::AppleFmWorkbench => &[
             "apple_fm",
             "apple_fm_workbench",
@@ -5938,6 +5955,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
         PaneKind::RivePreview => "rive_preview",
+        PaneKind::Presentation => "presentation",
         PaneKind::AppleFmWorkbench => "apple_fm_workbench",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",
@@ -6272,6 +6290,14 @@ mod tests {
         assert_eq!(
             resolve_pane_kind_for_runtime("hud_preview"),
             Some(PaneKind::RivePreview)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("presentation"),
+            Some(PaneKind::Presentation)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("deck"),
+            Some(PaneKind::Presentation)
         );
         assert_eq!(
             resolve_pane_kind_for_runtime("foundation_models"),

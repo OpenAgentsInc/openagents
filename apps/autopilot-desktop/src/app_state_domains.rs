@@ -72,6 +72,27 @@ impl Default for RivePreviewPaneState {
     }
 }
 
+pub struct PresentationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub asset_id: String,
+    pub asset_name: String,
+}
+
+impl Default for PresentationPaneState {
+    fn default() -> Self {
+        let asset = crate::rive_assets::simple_fui_hud_asset();
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting to load presentation HUD asset".to_string()),
+            asset_id: asset.id.to_string(),
+            asset_name: asset.file_name.to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AppleFmWorkbenchSamplingMode {
     Auto,

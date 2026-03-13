@@ -28,7 +28,7 @@ pub use frame_clips::{
 pub use heatmap::Heatmap;
 pub use hotbar::{Hotbar, HotbarSlot};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
-pub use pane::PaneFrame;
+pub use pane::{PaneFrame, PaneHeaderAction};
 pub use resizable_pane::{ResizablePane, ResizeEdge};
 pub use reticle::Reticle;
 pub use ring_gauge::RingGauge;

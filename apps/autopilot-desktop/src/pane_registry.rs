@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 52] = [
+const PANE_SPECS: [PaneSpec; 53] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -313,6 +313,21 @@ const PANE_SPECS: [PaneSpec; 52] = [
             id: "pane.rive_preview",
             label: "Rive Preview",
             description: "Open the packaged HUD asset preview pane driven by the shared native Rive path",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::Presentation,
+        title: "Presentation",
+        default_width: 960.0,
+        default_height: 540.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.presentation",
+            label: "Presentation",
+            description: "Open a slide-style HUD presentation surface backed by the packaged Rive HUD asset",
             keybinding: None,
         }),
         hotbar: None,
@@ -1022,6 +1037,18 @@ mod tests {
         assert!(
             !spec.startup,
             "rive preview pane should remain opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn presentation_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.presentation")
+            .expect("presentation command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::Presentation);
+        assert!(spec.singleton, "presentation pane must be singleton");
+        assert!(
+            !spec.startup,
+            "presentation pane should remain opt-in instead of opening at startup"
         );
     }
 

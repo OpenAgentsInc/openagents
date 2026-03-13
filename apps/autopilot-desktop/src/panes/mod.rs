@@ -12,6 +12,7 @@ pub mod earnings_jobs;
 pub mod key_ledger;
 pub mod local_inference;
 pub mod log_stream;
+pub mod presentation;
 pub mod project_ops;
 pub mod provider_control;
 pub mod psionic_viz;
