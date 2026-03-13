@@ -2148,9 +2148,13 @@ pub(super) fn transition_active_job_to_paid(
                 )
             };
         state.active_job.append_event(event);
+        let local_provider_pubkey = state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.as_str());
         state
             .job_history
-            .record_from_active_job(&job, JobHistoryStatus::Succeeded);
+            .record_from_active_job(&job, JobHistoryStatus::Succeeded, local_provider_pubkey);
         record_active_job_stage_transition(state, &job, stage, source);
     }
     sync_provider_publish_continuity(state);
@@ -2265,9 +2269,13 @@ fn fail_active_job_execution(
     sync_provider_runtime_queue_depth(state);
     state.provider_runtime.last_completed_job_at = Some(std::time::Instant::now());
     if let Some(job) = state.active_job.job.as_ref().cloned() {
+        let local_provider_pubkey = state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.as_str());
         state
             .job_history
-            .record_from_active_job(&job, JobHistoryStatus::Failed);
+            .record_from_active_job(&job, JobHistoryStatus::Failed, local_provider_pubkey);
         record_active_job_stage_transition(state, &job, JobLifecycleStage::Failed, source);
     }
     sync_provider_publish_continuity(state);

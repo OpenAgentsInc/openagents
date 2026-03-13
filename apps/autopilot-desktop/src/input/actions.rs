@@ -11582,6 +11582,11 @@ pub(super) fn run_starter_jobs_action(
                                     .job_history
                                     .reference_epoch_seconds
                                     .saturating_add(state.job_history.rows.len() as u64 * 19),
+                                requester_nostr_pubkey: Some("starter-demand".to_string()),
+                                provider_nostr_pubkey: state
+                                    .nostr_identity
+                                    .as_ref()
+                                    .map(|identity| identity.public_key_hex.clone()),
                                 skill_scope_id: state
                                     .network_requests
                                     .submitted
@@ -11945,9 +11950,17 @@ fn fail_hosted_starter_active_job_for_lease_loss(
     state.active_job.execution_thread_start_command_seq = None;
     state.active_job.execution_turn_start_command_seq = None;
     state.active_job.execution_turn_interrupt_command_seq = None;
+    let local_provider_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.public_key_hex.as_str());
     state
         .job_history
-        .record_from_active_job(&job, crate::app_state::JobHistoryStatus::Failed);
+        .record_from_active_job(
+            &job,
+            crate::app_state::JobHistoryStatus::Failed,
+            local_provider_pubkey,
+        );
     state.earn_job_lifecycle_projection.record_active_job_stage(
         &job,
         crate::app_state::JobLifecycleStage::Failed,
@@ -13499,6 +13512,8 @@ mod tests {
             status: crate::app_state::JobHistoryStatus::Succeeded,
             demand_source: crate::app_state::JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: 1_762_700_000,
+            requester_nostr_pubkey: Some("npub1buyer".to_string()),
+            provider_nostr_pubkey: Some("npub1provider".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

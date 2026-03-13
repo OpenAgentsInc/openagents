@@ -3925,7 +3925,7 @@ mod tests {
 
         let terminal_job = active.job.clone().expect("terminal active job");
         let mut history = JobHistoryState::default();
-        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded);
+        history.record_from_active_job(&terminal_job, JobHistoryStatus::Succeeded, None);
         assert_eq!(
             history.rows.len(),
             1,

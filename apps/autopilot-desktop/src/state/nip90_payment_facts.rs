@@ -491,10 +491,13 @@ fn seller_fact_from_history_row(
         result_event_id: normalize_optional_string(row.sa_tick_result_event_id.as_deref()),
         invoice_event_id: None,
         seller_feedback_event_id: None,
-        buyer_nostr_pubkey: None,
-        provider_nostr_pubkey: local_nostr_pubkey_hex.map(ToString::to_string),
-        invoice_provider_pubkey: local_nostr_pubkey_hex.map(ToString::to_string),
-        result_provider_pubkey: local_nostr_pubkey_hex.map(ToString::to_string),
+        buyer_nostr_pubkey: normalize_optional_string(row.requester_nostr_pubkey.as_deref()),
+        provider_nostr_pubkey: normalize_optional_string(row.provider_nostr_pubkey.as_deref())
+            .or_else(|| local_nostr_pubkey_hex.map(ToString::to_string)),
+        invoice_provider_pubkey: normalize_optional_string(row.provider_nostr_pubkey.as_deref())
+            .or_else(|| local_nostr_pubkey_hex.map(ToString::to_string)),
+        result_provider_pubkey: normalize_optional_string(row.provider_nostr_pubkey.as_deref())
+            .or_else(|| local_nostr_pubkey_hex.map(ToString::to_string)),
         lightning_destination_pubkey: None,
         buyer_payment_pointer: None,
         seller_payment_pointer: normalize_optional_string(Some(row.payment_pointer.as_str())),
@@ -1023,6 +1026,8 @@ mod tests {
             status: JobHistoryStatus::Succeeded,
             demand_source: JobDemandSource::OpenNetwork,
             completed_at_epoch_seconds: 1_762_700_850,
+            requester_nostr_pubkey: Some("npub1buyer".to_string()),
+            provider_nostr_pubkey: Some("providerpubkey-local".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

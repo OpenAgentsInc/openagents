@@ -670,9 +670,10 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         ));
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "completed={} pointer={}",
+                "completed={} payer={} payee={}",
                 row.completed_at_epoch_seconds,
-                compact_pointer(row.payment_pointer.as_str())
+                compact_identity(row.requester_nostr_pubkey.as_deref()),
+                compact_identity(row.provider_nostr_pubkey.as_deref())
             ),
             Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
             8.5,
@@ -737,6 +738,17 @@ fn compact_pointer(pointer: &str) -> String {
         return pointer.to_string();
     }
     format!("{}..{}", &pointer[..8], &pointer[pointer.len() - 6..])
+}
+
+fn compact_identity(value: Option<&str>) -> String {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return "unknown".to_string();
+    };
+    if value.len() <= 18 {
+        value.to_string()
+    } else {
+        format!("{}..{}", &value[..10], &value[value.len() - 6..])
+    }
 }
 
 fn current_epoch_seconds() -> u64 {
