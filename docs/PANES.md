@@ -75,7 +75,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Action: swap packaged assets and inspect runtime diagnostics.
 - `Presentation`
   - Minimal slide-surface pane backed by the packaged `simple_fui_hud` Rive asset.
-  - Fills the entire pane content area with the looping HUD animation using `cover` fit mode and no in-content controls.
+  - Fills the pane content area with the looping HUD animation using `contain` fit mode and no in-content controls, so fullscreen preserves the full composition instead of cropping width.
   - Exposes a fullscreen header action next to close; activating it promotes the pane into pane-level fullscreen, and `Esc` returns it to windowed mode.
   - Action: fullscreen toggle from pane chrome only.
 - `Frame Debugger`
