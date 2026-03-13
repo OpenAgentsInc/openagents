@@ -6,14 +6,16 @@ use std::{
 
 use ed25519_dalek::SigningKey;
 use psionic_cluster::{
-    ClusterDiscoveryPosture, ClusterJoinRefusalReason, ClusterNonLanDiscoveryDisposition,
-    ClusterNonLanDiscoveryRefusalReason, ClusterOperatorManifest, ClusterTrustPolicy,
-    ClusterTrustPosture, ClusterTrustRolloutDisposition, ConfiguredClusterPeer,
-    ConfiguredPeerDialPolicy, ConfiguredPeerKeyMatch, ConfiguredPeerReachability,
-    LocalClusterConfig, LocalClusterNode, NodeRole,
+    ClusterDiscoveryPosture, ClusterJoinRefusalReason, ClusterLogicalStreamKind,
+    ClusterNonLanDiscoveryDisposition, ClusterNonLanDiscoveryRefusalReason,
+    ClusterOperatorManifest, ClusterRelayEndpoint, ClusterRelayServer, ClusterStreamError,
+    ClusterTransportPathKind, ClusterTrustPolicy, ClusterTrustPosture,
+    ClusterTrustRolloutDisposition, ConfiguredClusterPeer, ConfiguredPeerDialPolicy,
+    ConfiguredPeerKeyMatch, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
+    NodeRole,
 };
 use tempfile::tempdir;
-use tokio::time::{Instant, sleep, timeout};
+use tokio::time::{sleep, timeout, Instant};
 
 const CLUSTER_NAMESPACE: &str = "lan-alpha";
 const CLUSTER_ADMISSION_TOKEN: &str = "shared-secret";
@@ -530,7 +532,8 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
                 sender_bootstrap.node_id.clone(),
                 sender_addr,
                 sender_bootstrap.auth_public_key.clone(),
-            )]),
+            )
+            .with_max_concurrent_streams(2)]),
     )
     .await;
     assert!(receiver.is_ok(), "receiver should start");
@@ -545,7 +548,8 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
                 receiver_bootstrap.node_id.clone(),
                 receiver_addr,
                 receiver_bootstrap.auth_public_key.clone(),
-            )]),
+            )
+            .with_max_concurrent_streams(2)]),
     )
     .await;
     assert!(sender.is_ok(), "sender should start");
@@ -595,6 +599,58 @@ async fn authenticated_configured_peers_discover_each_other_with_signed_control_
         sender_peer.identity.auth_public_key,
         receiver.local_identity().auth_public_key
     );
+    assert_eq!(
+        receiver_peer.transport.path.kind,
+        ClusterTransportPathKind::DirectDatagram
+    );
+    assert_eq!(
+        sender_peer.transport.path.kind,
+        ClusterTransportPathKind::DirectDatagram
+    );
+    assert_eq!(
+        receiver_peer
+            .transport
+            .multiplex_profile
+            .max_concurrent_streams,
+        2
+    );
+    let first_stream = receiver
+        .open_logical_stream(
+            &sender.local_identity().node_id,
+            ClusterLogicalStreamKind::Serving,
+        )
+        .await;
+    assert!(first_stream.is_ok(), "first logical stream should reserve");
+    let second_stream = receiver
+        .open_logical_stream(
+            &sender.local_identity().node_id,
+            ClusterLogicalStreamKind::Collective,
+        )
+        .await;
+    assert!(
+        second_stream.is_ok(),
+        "second logical stream should reserve"
+    );
+    let third_stream = receiver
+        .open_logical_stream(
+            &sender.local_identity().node_id,
+            ClusterLogicalStreamKind::Artifact,
+        )
+        .await;
+    assert_eq!(
+        third_stream,
+        Err(ClusterStreamError::CapacityExceeded {
+            peer_node_id: sender.local_identity().node_id.clone(),
+            max_concurrent_streams: 2,
+        })
+    );
+    let second_stream = second_stream
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let close = receiver.close_logical_stream(&second_stream).await;
+    assert!(close.is_ok(), "closing a logical stream should succeed");
+    let active_streams = receiver.active_logical_streams().await;
+    assert_eq!(active_streams.len(), 1);
     assert_eq!(
         sender.local_identity().auth_public_key,
         sender_bootstrap.auth_public_key
@@ -759,6 +815,215 @@ async fn authenticated_nodes_can_boot_from_operator_manifest() {
         receiver_shutdown.is_ok(),
         "receiver should shut down cleanly"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nat_rendezvous_relays_surface_nat_traversal_paths() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-nat-identity.json");
+    let sender_identity_path = temp.path().join("sender-nat-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+    let receiver_placeholder_addr = reserve_loopback_addr();
+    let sender_placeholder_addr = reserve_loopback_addr();
+    let relay = ClusterRelayServer::spawn(loopback_addr(0)).await;
+    assert!(relay.is_ok(), "relay should start");
+    let relay = relay
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let relay_endpoint = ClusterRelayEndpoint::new("relay-nat", relay.local_addr(), "pair-nat");
+    let dial_policy = ConfiguredPeerDialPolicy {
+        base_backoff_ticks: 1,
+        max_backoff_ticks: 1,
+        degraded_after_unanswered_hellos: 1,
+        unreachable_after_unanswered_hellos: 4,
+    };
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                sender_bootstrap.node_id.clone(),
+                sender_placeholder_addr,
+                sender_bootstrap.auth_public_key.clone(),
+            )
+            .with_nat_rendezvous_relays(vec![relay_endpoint.clone()])])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                receiver_bootstrap.node_id.clone(),
+                receiver_placeholder_addr,
+                receiver_bootstrap.auth_public_key.clone(),
+            )
+            .with_nat_rendezvous_relays(vec![relay_endpoint.clone()])])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let receiver_peer = wait_for_single_peer(&receiver).await;
+    let sender_peer = wait_for_single_peer(&sender).await;
+
+    assert_eq!(
+        receiver_peer.transport.path.kind,
+        ClusterTransportPathKind::NatTraversalDatagram
+    );
+    assert_eq!(
+        sender_peer.transport.path.kind,
+        ClusterTransportPathKind::NatTraversalDatagram
+    );
+    assert_eq!(receiver_peer.remote_addr, sender.local_addr());
+    assert_eq!(sender_peer.remote_addr, receiver.local_addr());
+    assert_eq!(
+        receiver_peer
+            .transport
+            .path
+            .relay
+            .as_ref()
+            .map(|relay| relay.relay_addr),
+        Some(relay.local_addr())
+    );
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+    let relay_shutdown = relay.shutdown().await;
+    assert!(relay_shutdown.is_ok(), "relay should shut down cleanly");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn relay_fallback_surfaces_relayed_transport_path() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-relay-identity.json");
+    let sender_identity_path = temp.path().join("sender-relay-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+    let receiver_placeholder_addr = reserve_loopback_addr();
+    let sender_placeholder_addr = reserve_loopback_addr();
+    let relay = ClusterRelayServer::spawn(loopback_addr(0)).await;
+    assert!(relay.is_ok(), "relay should start");
+    let relay = relay
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let relay_endpoint =
+        ClusterRelayEndpoint::new("relay-forward", relay.local_addr(), "pair-forward");
+    let dial_policy = ConfiguredPeerDialPolicy {
+        base_backoff_ticks: 1,
+        max_backoff_ticks: 1,
+        degraded_after_unanswered_hellos: 1,
+        unreachable_after_unanswered_hellos: 1,
+    };
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                sender_bootstrap.node_id.clone(),
+                sender_placeholder_addr,
+                sender_bootstrap.auth_public_key.clone(),
+            )
+            .with_relay_fallback_relays(vec![relay_endpoint.clone()])])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                receiver_bootstrap.node_id.clone(),
+                receiver_placeholder_addr,
+                receiver_bootstrap.auth_public_key.clone(),
+            )
+            .with_relay_fallback_relays(vec![relay_endpoint.clone()])])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let receiver_peer = wait_for_single_peer(&receiver).await;
+    let sender_peer = wait_for_single_peer(&sender).await;
+
+    assert_eq!(
+        receiver_peer.transport.path.kind,
+        ClusterTransportPathKind::RelayedDatagram
+    );
+    assert_eq!(
+        sender_peer.transport.path.kind,
+        ClusterTransportPathKind::RelayedDatagram
+    );
+    assert_eq!(receiver_peer.remote_addr, relay.local_addr());
+    assert_eq!(sender_peer.remote_addr, relay.local_addr());
+    assert_eq!(
+        receiver_peer
+            .transport
+            .path
+            .relay
+            .as_ref()
+            .map(|relay| relay.relay_addr),
+        Some(relay.local_addr())
+    );
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+    let relay_shutdown = relay.shutdown().await;
+    assert!(relay_shutdown.is_ok(), "relay should shut down cleanly");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -19,9 +19,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::{
     net::UdpSocket,
-    sync::{Mutex, oneshot},
+    sync::{oneshot, Mutex},
     task::JoinHandle,
-    time::{MissedTickBehavior, interval},
+    time::{interval, MissedTickBehavior},
 };
 
 pub use operator_manifest::*;
@@ -545,6 +545,186 @@ pub enum ClusterIntroductionVerificationError {
 
 /// One explicitly configured peer for the authenticated cluster posture.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterRelayEndpoint {
+    /// Stable operator-facing relay identifier.
+    pub relay_id: String,
+    /// Socket address for the relay service.
+    pub relay_addr: SocketAddr,
+    /// Stable session tag shared by the peers that should rendezvous on this relay.
+    pub session_tag: String,
+}
+
+impl ClusterRelayEndpoint {
+    /// Creates one relay endpoint reference.
+    #[must_use]
+    pub fn new(
+        relay_id: impl Into<String>,
+        relay_addr: SocketAddr,
+        session_tag: impl Into<String>,
+    ) -> Self {
+        Self {
+            relay_id: relay_id.into(),
+            relay_addr,
+            session_tag: session_tag.into(),
+        }
+    }
+}
+
+/// High-level transport path used for one peer session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTransportPathKind {
+    /// The peer was reached directly over one datagram path.
+    DirectDatagram,
+    /// The peer was reached directly after relay-assisted rendezvous / NAT traversal.
+    NatTraversalDatagram,
+    /// The peer was reached through one relay-forwarded datagram path.
+    RelayedDatagram,
+}
+
+/// Machine-checkable transport path selected for one peer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTransportPath {
+    /// High-level selected path kind.
+    pub kind: ClusterTransportPathKind,
+    /// Remote peer address surfaced by the path.
+    pub peer_addr: SocketAddr,
+    /// Relay used by the path, when the path depended on relay infrastructure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relay: Option<ClusterRelayEndpoint>,
+}
+
+impl ClusterTransportPath {
+    fn direct(peer_addr: SocketAddr) -> Self {
+        Self {
+            kind: ClusterTransportPathKind::DirectDatagram,
+            peer_addr,
+            relay: None,
+        }
+    }
+
+    fn nat_traversal(peer_addr: SocketAddr, relay: ClusterRelayEndpoint) -> Self {
+        Self {
+            kind: ClusterTransportPathKind::NatTraversalDatagram,
+            peer_addr,
+            relay: Some(relay),
+        }
+    }
+
+    fn relayed(peer_addr: SocketAddr, relay: ClusterRelayEndpoint) -> Self {
+        Self {
+            kind: ClusterTransportPathKind::RelayedDatagram,
+            peer_addr,
+            relay: Some(relay),
+        }
+    }
+}
+
+const fn default_max_concurrent_transport_streams() -> u16 {
+    4
+}
+
+/// Honest logical stream capacity surfaced for one peer session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSessionMultiplexProfile {
+    /// Maximum concurrently reserved logical streams allowed for the session.
+    pub max_concurrent_streams: u16,
+}
+
+impl ClusterSessionMultiplexProfile {
+    fn new(max_concurrent_streams: u16) -> Self {
+        Self {
+            max_concurrent_streams,
+        }
+    }
+}
+
+impl Default for ClusterSessionMultiplexProfile {
+    fn default() -> Self {
+        Self::new(default_max_concurrent_transport_streams())
+    }
+}
+
+/// Stable failure reason for session-establishment fallback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterSessionFailureReason {
+    /// Direct connection attempts timed out.
+    DirectConnectTimedOut,
+    /// Relay-assisted rendezvous did not yield a usable direct path in time.
+    NatTraversalTimedOut,
+    /// Relay forwarding could not reach the target peer.
+    RelayTargetUnavailable,
+    /// The peer was refused by transport or trust policy.
+    PeerRefused,
+}
+
+/// Machine-checkable failure surfaced while establishing a session.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSessionFailure {
+    /// Path that failed or forced fallback.
+    pub path_kind: ClusterTransportPathKind,
+    /// Stable failure taxonomy.
+    pub reason: ClusterSessionFailureReason,
+    /// Optional operator-facing detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterSessionFailure {
+    fn new(path_kind: ClusterTransportPathKind, reason: ClusterSessionFailureReason) -> Self {
+        Self {
+            path_kind,
+            reason,
+            detail: None,
+        }
+    }
+
+    fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Transport metrics and selected path for one discovered peer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTransportObservation {
+    /// Active transport path for the peer.
+    pub path: ClusterTransportPath,
+    /// Maximum concurrent logical streams supported by the session.
+    pub multiplex_profile: ClusterSessionMultiplexProfile,
+    /// Currently reserved logical stream count.
+    pub active_streams: u16,
+    /// Approximate hello round-trip latency when one could be measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_round_trip_latency_ms: Option<u64>,
+    /// Count of datagrams sent on the observed path.
+    pub messages_sent: u64,
+    /// Count of datagrams received on the observed path.
+    pub messages_received: u64,
+    /// Bytes sent on the observed path.
+    pub bytes_sent: u64,
+    /// Bytes received on the observed path.
+    pub bytes_received: u64,
+}
+
+impl ClusterTransportObservation {
+    fn new(path: ClusterTransportPath, multiplex_profile: ClusterSessionMultiplexProfile) -> Self {
+        Self {
+            path,
+            multiplex_profile,
+            active_streams: 0,
+            last_round_trip_latency_ms: None,
+            messages_sent: 0,
+            messages_received: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+        }
+    }
+}
+
+/// One explicitly configured peer for the authenticated cluster posture.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfiguredClusterPeer {
     /// Stable node identity expected at the remote address.
     pub node_id: NodeId,
@@ -558,6 +738,15 @@ pub struct ConfiguredClusterPeer {
     /// Required attestation facts for this peer when attested admission is active.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_requirement: Option<NodeAttestationRequirement>,
+    /// Relay endpoints that may assist in NAT-aware rendezvous for this peer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nat_rendezvous_relays: Vec<ClusterRelayEndpoint>,
+    /// Relay endpoints that may carry the session when direct paths fail.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_fallback_relays: Vec<ClusterRelayEndpoint>,
+    /// Honest logical stream capacity surfaced for this peer.
+    #[serde(default = "default_max_concurrent_transport_streams")]
+    pub max_concurrent_streams: u16,
 }
 
 impl ConfiguredClusterPeer {
@@ -574,6 +763,9 @@ impl ConfiguredClusterPeer {
             auth_public_key: auth_public_key.into(),
             previous_auth_public_keys: Vec::new(),
             attestation_requirement: None,
+            nat_rendezvous_relays: Vec::new(),
+            relay_fallback_relays: Vec::new(),
+            max_concurrent_streams: default_max_concurrent_transport_streams(),
         }
     }
 
@@ -595,6 +787,37 @@ impl ConfiguredClusterPeer {
     ) -> Self {
         self.attestation_requirement = Some(attestation_requirement);
         self
+    }
+
+    /// Attaches relay-assisted rendezvous endpoints for NAT-aware establishment.
+    #[must_use]
+    pub fn with_nat_rendezvous_relays(
+        mut self,
+        nat_rendezvous_relays: Vec<ClusterRelayEndpoint>,
+    ) -> Self {
+        self.nat_rendezvous_relays = nat_rendezvous_relays;
+        self
+    }
+
+    /// Attaches relay-forwarding fallback endpoints for this peer.
+    #[must_use]
+    pub fn with_relay_fallback_relays(
+        mut self,
+        relay_fallback_relays: Vec<ClusterRelayEndpoint>,
+    ) -> Self {
+        self.relay_fallback_relays = relay_fallback_relays;
+        self
+    }
+
+    /// Overrides the logical stream capacity surfaced for this peer.
+    #[must_use]
+    pub fn with_max_concurrent_streams(mut self, max_concurrent_streams: u16) -> Self {
+        self.max_concurrent_streams = max_concurrent_streams.max(1);
+        self
+    }
+
+    fn multiplex_profile(&self) -> ClusterSessionMultiplexProfile {
+        ClusterSessionMultiplexProfile::new(self.max_concurrent_streams.max(1))
     }
 
     fn key_match(&self, auth_public_key: &str) -> Option<ConfiguredPeerKeyMatch> {
@@ -683,6 +906,27 @@ pub struct ConfiguredPeerHealthSnapshot {
     pub remaining_backoff_ticks: u32,
     /// Count of successful hello/ping handshakes observed.
     pub successful_handshakes: u32,
+    /// Transport path currently carrying the session, when one is established.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_transport: Option<ClusterTransportPath>,
+    /// Honest logical stream capacity exposed for the peer.
+    pub multiplex_profile: ClusterSessionMultiplexProfile,
+    /// Currently reserved logical stream count.
+    pub active_streams: u16,
+    /// Approximate hello round-trip latency when one was measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_round_trip_latency_ms: Option<u64>,
+    /// Count of datagrams sent while trying or maintaining the session.
+    pub messages_sent: u64,
+    /// Count of datagrams received while trying or maintaining the session.
+    pub messages_received: u64,
+    /// Bytes sent while trying or maintaining the session.
+    pub bytes_sent: u64,
+    /// Bytes received while trying or maintaining the session.
+    pub bytes_received: u64,
+    /// Most recent machine-checkable establishment failure, when one was observed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_establishment_failure: Option<ClusterSessionFailure>,
 }
 
 impl ConfiguredPeerHealthSnapshot {
@@ -694,6 +938,15 @@ impl ConfiguredPeerHealthSnapshot {
             unanswered_hello_attempts: 0,
             remaining_backoff_ticks: 0,
             successful_handshakes: 0,
+            active_transport: None,
+            multiplex_profile: peer.multiplex_profile(),
+            active_streams: 0,
+            last_round_trip_latency_ms: None,
+            messages_sent: 0,
+            messages_received: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+            last_establishment_failure: None,
         }
     }
 }
@@ -966,6 +1219,8 @@ impl ClusterTrustPolicy {
             hasher.update(peer.remote_addr.to_string().as_bytes());
             hasher.update(b"|");
             hasher.update(peer.auth_public_key.as_bytes());
+            hasher.update(b"|max_streams|");
+            hasher.update(peer.max_concurrent_streams.to_string().as_bytes());
             for previous_key in &peer.previous_auth_public_keys {
                 hasher.update(b"|previous_key|");
                 hasher.update(previous_key.as_bytes());
@@ -981,6 +1236,22 @@ impl ClusterTrustPolicy {
                     hasher.update(b"|device_identity_digest|");
                     hasher.update(device_identity_digest.as_bytes());
                 }
+            }
+            for relay in &peer.nat_rendezvous_relays {
+                hasher.update(b"|nat_relay|");
+                hasher.update(relay.relay_id.as_bytes());
+                hasher.update(b"|");
+                hasher.update(relay.relay_addr.to_string().as_bytes());
+                hasher.update(b"|");
+                hasher.update(relay.session_tag.as_bytes());
+            }
+            for relay in &peer.relay_fallback_relays {
+                hasher.update(b"|relay_fallback|");
+                hasher.update(relay.relay_id.as_bytes());
+                hasher.update(b"|");
+                hasher.update(relay.relay_addr.to_string().as_bytes());
+                hasher.update(b"|");
+                hasher.update(relay.session_tag.as_bytes());
             }
         }
         hasher.update(b"|dial_policy|");
@@ -1571,6 +1842,72 @@ pub struct PeerSnapshot {
     pub identity: ClusterNodeIdentity,
     /// Hello/ping handshake facts observed so far.
     pub handshake: PeerHandshakeState,
+    /// Selected path and observed transport metrics for the peer.
+    pub transport: ClusterTransportObservation,
+}
+
+/// Stable logical-stream purpose carried over one peer session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterLogicalStreamKind {
+    /// Control-plane RPC or metadata stream.
+    Control,
+    /// Serving or request/response payload stream.
+    Serving,
+    /// Collective or synchronization stream.
+    Collective,
+    /// Artifact or checkpoint transfer stream.
+    Artifact,
+}
+
+/// Stable logical-stream identifier reserved on one peer session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterLogicalStreamId(u64);
+
+impl ClusterLogicalStreamId {
+    fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// Reserved logical stream on one established peer session.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterLogicalStreamLease {
+    /// Peer that owns the session.
+    pub peer_node_id: NodeId,
+    /// Stable logical stream identifier.
+    pub stream_id: ClusterLogicalStreamId,
+    /// Declared purpose for the stream.
+    pub kind: ClusterLogicalStreamKind,
+}
+
+/// Failure returned when reserving or releasing one logical stream.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterStreamError {
+    /// The requested peer is not currently connected.
+    #[error("peer {peer_node_id:?} is not connected")]
+    PeerNotConnected {
+        /// Peer that was requested.
+        peer_node_id: NodeId,
+    },
+    /// The session has no remaining logical-stream capacity.
+    #[error(
+        "peer {peer_node_id:?} reached its logical-stream capacity ({max_concurrent_streams})"
+    )]
+    CapacityExceeded {
+        /// Peer that hit the limit.
+        peer_node_id: NodeId,
+        /// Maximum allowed logical streams.
+        max_concurrent_streams: u16,
+    },
+    /// The supplied logical stream was not active.
+    #[error("logical stream {stream_id:?} is not active for peer {peer_node_id:?}")]
+    StreamNotActive {
+        /// Peer that was addressed.
+        peer_node_id: NodeId,
+        /// Stream that could not be found.
+        stream_id: ClusterLogicalStreamId,
+    },
 }
 
 /// Running local-cluster node for the first hello/ping seam.
@@ -1676,6 +2013,31 @@ impl LocalClusterNode {
         self.state.lock().await.trust_rollout_diagnostics()
     }
 
+    /// Returns currently reserved logical streams across all connected peers.
+    pub async fn active_logical_streams(&self) -> Vec<ClusterLogicalStreamLease> {
+        self.state.lock().await.active_logical_streams()
+    }
+
+    /// Reserves one logical stream on an established peer session.
+    pub async fn open_logical_stream(
+        &self,
+        peer_node_id: &NodeId,
+        kind: ClusterLogicalStreamKind,
+    ) -> Result<ClusterLogicalStreamLease, ClusterStreamError> {
+        self.state
+            .lock()
+            .await
+            .open_logical_stream(peer_node_id, kind)
+    }
+
+    /// Releases one previously reserved logical stream.
+    pub async fn close_logical_stream(
+        &self,
+        lease: &ClusterLogicalStreamLease,
+    ) -> Result<(), ClusterStreamError> {
+        self.state.lock().await.close_logical_stream(lease)
+    }
+
     /// Shuts the local-cluster node down and waits for the background task.
     pub async fn shutdown(mut self) -> Result<(), ClusterError> {
         if let Some(shutdown_tx) = self.shutdown_tx.take() {
@@ -1690,6 +2052,61 @@ impl LocalClusterNode {
 }
 
 impl Drop for LocalClusterNode {
+    fn drop(&mut self) {
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            let _ = shutdown_tx.send(());
+        }
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+/// Minimal UDP relay server used for rendezvous and relay-forward fallback.
+pub struct ClusterRelayServer {
+    local_addr: SocketAddr,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+    task: Option<JoinHandle<Result<(), String>>>,
+}
+
+impl ClusterRelayServer {
+    /// Starts one relay server on the supplied bind address.
+    pub async fn spawn(bind_addr: SocketAddr) -> Result<Self, ClusterError> {
+        let socket = Arc::new(
+            UdpSocket::bind(bind_addr)
+                .await
+                .map_err(ClusterError::Bind)?,
+        );
+        let local_addr = socket.local_addr().map_err(ClusterError::LocalAddr)?;
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let task = tokio::spawn(run_relay_server(socket, shutdown_rx));
+        Ok(Self {
+            local_addr,
+            shutdown_tx: Some(shutdown_tx),
+            task: Some(task),
+        })
+    }
+
+    /// Returns the bound relay address.
+    #[must_use]
+    pub const fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    /// Shuts the relay server down and waits for its background task.
+    pub async fn shutdown(mut self) -> Result<(), ClusterError> {
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            let _ = shutdown_tx.send(());
+        }
+        if let Some(task) = self.task.take() {
+            let outcome = task.await?;
+            return outcome.map_err(ClusterError::Runtime);
+        }
+        Ok(())
+    }
+}
+
+impl Drop for ClusterRelayServer {
     fn drop(&mut self) {
         if let Some(shutdown_tx) = self.shutdown_tx.take() {
             let _ = shutdown_tx.send(());
@@ -1727,20 +2144,66 @@ impl TransportConfig {
     }
 }
 
+#[derive(Clone, Copy)]
+enum RelayRegistrationMode {
+    NatTraversal,
+    RelayForward,
+}
+
+#[derive(Clone)]
+enum ConfiguredPeerDialAction {
+    DirectHello {
+        peer_node_id: NodeId,
+        remote_addr: SocketAddr,
+        path: ClusterTransportPath,
+    },
+    RelayRegister {
+        relay: ClusterRelayEndpoint,
+        peer_node_id: NodeId,
+        mode: RelayRegistrationMode,
+    },
+    RelayHello {
+        peer_node_id: NodeId,
+        relay: ClusterRelayEndpoint,
+        path: ClusterTransportPath,
+    },
+}
+
+struct PendingHelloProbe {
+    started_at: tokio::time::Instant,
+}
+
+#[derive(Clone)]
+struct NatIntroductionRecord {
+    peer_addr: SocketAddr,
+    relay: ClusterRelayEndpoint,
+}
+
 #[derive(Default)]
 struct SharedState {
     peers: BTreeMap<NodeId, PeerSnapshot>,
+    configured_peers: BTreeMap<NodeId, ConfiguredClusterPeer>,
     configured_peer_health: BTreeMap<NodeId, ConfiguredPeerHealthSnapshot>,
     trust_rollout_diagnostics: BTreeMap<NodeId, ClusterTrustRolloutDiagnostic>,
     peer_replay_windows: BTreeMap<NodeId, PeerReplayWindow>,
     join_refusals: Vec<ClusterJoinRefusal>,
     seed_peers: BTreeSet<SocketAddr>,
+    pending_hello_probes: BTreeMap<NodeId, PendingHelloProbe>,
+    nat_introductions: BTreeMap<NodeId, NatIntroductionRecord>,
+    active_logical_streams:
+        BTreeMap<NodeId, BTreeMap<ClusterLogicalStreamId, ClusterLogicalStreamKind>>,
     next_ping_sequence: u64,
     next_authenticated_message_counter: u64,
+    next_logical_stream_id: u64,
 }
 
 impl SharedState {
     fn new(seed_peers: BTreeSet<SocketAddr>, trust_policy: &ClusterTrustPolicy) -> Self {
+        let configured_peers = trust_policy
+            .configured_peers
+            .iter()
+            .map(|peer| (peer.node_id.clone(), peer.clone()))
+            .collect::<BTreeMap<_, _>>();
         let configured_peer_health = trust_policy
             .configured_peers
             .iter()
@@ -1753,13 +2216,18 @@ impl SharedState {
             .collect();
         Self {
             peers: BTreeMap::new(),
+            configured_peers,
             configured_peer_health,
             trust_rollout_diagnostics: BTreeMap::new(),
             peer_replay_windows: BTreeMap::new(),
             join_refusals: Vec::new(),
             seed_peers,
+            pending_hello_probes: BTreeMap::new(),
+            nat_introductions: BTreeMap::new(),
+            active_logical_streams: BTreeMap::new(),
             next_ping_sequence: 0,
             next_authenticated_message_counter: 1,
+            next_logical_stream_id: 1,
         }
     }
 
@@ -1779,7 +2247,96 @@ impl SharedState {
         self.trust_rollout_diagnostics.values().cloned().collect()
     }
 
+    fn active_logical_streams(&self) -> Vec<ClusterLogicalStreamLease> {
+        self.active_logical_streams
+            .iter()
+            .flat_map(|(peer_node_id, streams)| {
+                streams
+                    .iter()
+                    .map(|(stream_id, kind)| ClusterLogicalStreamLease {
+                        peer_node_id: peer_node_id.clone(),
+                        stream_id: *stream_id,
+                        kind: *kind,
+                    })
+            })
+            .collect()
+    }
+
+    fn open_logical_stream(
+        &mut self,
+        peer_node_id: &NodeId,
+        kind: ClusterLogicalStreamKind,
+    ) -> Result<ClusterLogicalStreamLease, ClusterStreamError> {
+        if !self.peers.contains_key(peer_node_id) {
+            return Err(ClusterStreamError::PeerNotConnected {
+                peer_node_id: peer_node_id.clone(),
+            });
+        }
+        let capacity = self
+            .peers
+            .get(peer_node_id)
+            .map(|peer| peer.transport.multiplex_profile.max_concurrent_streams)
+            .unwrap_or_else(default_max_concurrent_transport_streams);
+        let streams = self
+            .active_logical_streams
+            .entry(peer_node_id.clone())
+            .or_default();
+        if streams.len() >= usize::from(capacity) {
+            return Err(ClusterStreamError::CapacityExceeded {
+                peer_node_id: peer_node_id.clone(),
+                max_concurrent_streams: capacity,
+            });
+        }
+        let stream_id = ClusterLogicalStreamId::new(self.next_logical_stream_id);
+        self.next_logical_stream_id = self.next_logical_stream_id.saturating_add(1);
+        streams.insert(stream_id, kind);
+        self.refresh_active_stream_count(peer_node_id);
+        Ok(ClusterLogicalStreamLease {
+            peer_node_id: peer_node_id.clone(),
+            stream_id,
+            kind,
+        })
+    }
+
+    fn close_logical_stream(
+        &mut self,
+        lease: &ClusterLogicalStreamLease,
+    ) -> Result<(), ClusterStreamError> {
+        let Some(streams) = self.active_logical_streams.get_mut(&lease.peer_node_id) else {
+            return Err(ClusterStreamError::StreamNotActive {
+                peer_node_id: lease.peer_node_id.clone(),
+                stream_id: lease.stream_id,
+            });
+        };
+        if streams.remove(&lease.stream_id).is_none() {
+            return Err(ClusterStreamError::StreamNotActive {
+                peer_node_id: lease.peer_node_id.clone(),
+                stream_id: lease.stream_id,
+            });
+        }
+        if streams.is_empty() {
+            self.active_logical_streams.remove(&lease.peer_node_id);
+        }
+        self.refresh_active_stream_count(&lease.peer_node_id);
+        Ok(())
+    }
+
     fn push_join_refusal(&mut self, refusal: ClusterJoinRefusal) {
+        if let Some(node_id) = refusal.remote_node_id.as_ref() {
+            if let Some(health) = self.configured_peer_health.get_mut(node_id) {
+                health.last_establishment_failure = Some(
+                    ClusterSessionFailure::new(
+                        health
+                            .active_transport
+                            .as_ref()
+                            .map(|path| path.kind)
+                            .unwrap_or(ClusterTransportPathKind::DirectDatagram),
+                        ClusterSessionFailureReason::PeerRefused,
+                    )
+                    .with_detail(format!("{:?}", refusal.reason)),
+                );
+            }
+        }
         self.join_refusals.push(refusal);
     }
 
@@ -1812,11 +2369,11 @@ impl SharedState {
     fn configured_peers_due_for_dial(
         &mut self,
         trust_policy: &ClusterTrustPolicy,
-    ) -> Vec<SocketAddr> {
-        let mut due_peers = Vec::new();
+    ) -> Vec<ConfiguredPeerDialAction> {
+        let mut actions = Vec::new();
         for peer in &trust_policy.configured_peers {
             if self.peers.contains_key(&peer.node_id) {
-                self.mark_configured_peer_reachable(&peer.node_id);
+                self.mark_configured_peer_reachable(&peer.node_id, None, None);
                 continue;
             }
             let Some(health) = self.configured_peer_health.get_mut(&peer.node_id) else {
@@ -1835,19 +2392,175 @@ impl SharedState {
                 health.unanswered_hello_attempts,
                 trust_policy.configured_peer_dial_policy,
             );
-            due_peers.push(peer.remote_addr);
+
+            actions.push(ConfiguredPeerDialAction::DirectHello {
+                peer_node_id: peer.node_id.clone(),
+                remote_addr: peer.remote_addr,
+                path: ClusterTransportPath::direct(peer.remote_addr),
+            });
+
+            if health.unanswered_hello_attempts
+                == trust_policy
+                    .configured_peer_dial_policy
+                    .degraded_after_unanswered_hellos
+            {
+                health.last_establishment_failure = Some(
+                    ClusterSessionFailure::new(
+                        ClusterTransportPathKind::DirectDatagram,
+                        ClusterSessionFailureReason::DirectConnectTimedOut,
+                    )
+                    .with_detail(format!(
+                        "no hello reply from {} after {} attempts",
+                        peer.remote_addr, health.unanswered_hello_attempts
+                    )),
+                );
+            }
+
+            if health.unanswered_hello_attempts
+                >= trust_policy
+                    .configured_peer_dial_policy
+                    .degraded_after_unanswered_hellos
+            {
+                for relay in &peer.nat_rendezvous_relays {
+                    actions.push(ConfiguredPeerDialAction::RelayRegister {
+                        relay: relay.clone(),
+                        peer_node_id: peer.node_id.clone(),
+                        mode: RelayRegistrationMode::NatTraversal,
+                    });
+                }
+                if let Some(introduction) = self.nat_introductions.get(&peer.node_id) {
+                    actions.push(ConfiguredPeerDialAction::DirectHello {
+                        peer_node_id: peer.node_id.clone(),
+                        remote_addr: introduction.peer_addr,
+                        path: ClusterTransportPath::nat_traversal(
+                            introduction.peer_addr,
+                            introduction.relay.clone(),
+                        ),
+                    });
+                }
+            }
+
+            if health.unanswered_hello_attempts
+                >= trust_policy
+                    .configured_peer_dial_policy
+                    .unreachable_after_unanswered_hellos
+            {
+                if !peer.nat_rendezvous_relays.is_empty()
+                    && !self.nat_introductions.contains_key(&peer.node_id)
+                {
+                    health.last_establishment_failure = Some(
+                        ClusterSessionFailure::new(
+                            ClusterTransportPathKind::NatTraversalDatagram,
+                            ClusterSessionFailureReason::NatTraversalTimedOut,
+                        )
+                        .with_detail(String::from(
+                            "relay-assisted rendezvous did not surface a direct candidate",
+                        )),
+                    );
+                }
+                for relay in &peer.relay_fallback_relays {
+                    actions.push(ConfiguredPeerDialAction::RelayRegister {
+                        relay: relay.clone(),
+                        peer_node_id: peer.node_id.clone(),
+                        mode: RelayRegistrationMode::RelayForward,
+                    });
+                    actions.push(ConfiguredPeerDialAction::RelayHello {
+                        peer_node_id: peer.node_id.clone(),
+                        relay: relay.clone(),
+                        path: ClusterTransportPath::relayed(peer.remote_addr, relay.clone()),
+                    });
+                }
+            }
         }
-        due_peers
+        actions
     }
 
-    fn discovered_peer_addrs(&self) -> Vec<SocketAddr> {
-        self.peers.values().map(|peer| peer.remote_addr).collect()
+    fn discovered_peer_paths(&self) -> Vec<(NodeId, SocketAddr, ClusterTransportPath)> {
+        self.peers
+            .values()
+            .map(|peer| {
+                (
+                    peer.identity.node_id.clone(),
+                    peer.remote_addr,
+                    peer.transport.path.clone(),
+                )
+            })
+            .collect()
+    }
+
+    fn configured_peer_relay_endpoint(
+        &self,
+        node_id: &NodeId,
+        relay_id: &str,
+        relay_addr: SocketAddr,
+        session_tag: &str,
+        allow_nat: bool,
+    ) -> Option<ClusterRelayEndpoint> {
+        let peer = self.configured_peers.get(node_id)?;
+        peer.relay_fallback_relays
+            .iter()
+            .chain(
+                allow_nat
+                    .then_some(peer.nat_rendezvous_relays.iter())
+                    .into_iter()
+                    .flatten(),
+            )
+            .find(|relay| {
+                relay.relay_id == relay_id
+                    && relay.relay_addr == relay_addr
+                    && relay.session_tag == session_tag
+            })
+            .cloned()
+    }
+
+    fn record_nat_introduction(
+        &mut self,
+        peer_node_id: NodeId,
+        peer_addr: SocketAddr,
+        relay: ClusterRelayEndpoint,
+    ) {
+        self.nat_introductions.insert(
+            peer_node_id.clone(),
+            NatIntroductionRecord { peer_addr, relay },
+        );
+        if let Some(health) = self.configured_peer_health.get_mut(&peer_node_id) {
+            health.last_establishment_failure = None;
+        }
+    }
+
+    fn record_outbound_message(
+        &mut self,
+        peer_node_id: &NodeId,
+        path: &ClusterTransportPath,
+        bytes: usize,
+        is_hello: bool,
+    ) {
+        if let Some(health) = self.configured_peer_health.get_mut(peer_node_id) {
+            health.active_transport = Some(path.clone());
+            health.messages_sent = health.messages_sent.saturating_add(1);
+            health.bytes_sent = health.bytes_sent.saturating_add(bytes as u64);
+        }
+        if let Some(peer) = self.peers.get_mut(peer_node_id) {
+            peer.transport.path = path.clone();
+            peer.transport.messages_sent = peer.transport.messages_sent.saturating_add(1);
+            peer.transport.bytes_sent = peer.transport.bytes_sent.saturating_add(bytes as u64);
+        }
+        if is_hello {
+            self.pending_hello_probes.insert(
+                peer_node_id.clone(),
+                PendingHelloProbe {
+                    started_at: tokio::time::Instant::now(),
+                },
+            );
+        }
     }
 
     fn record_hello(
         &mut self,
         remote_addr: SocketAddr,
         identity: ClusterNodeIdentity,
+        path: ClusterTransportPath,
+        message_bytes: usize,
         authenticated_counter: Option<u64>,
         replay_window_size: u64,
     ) -> Result<bool, Box<ClusterJoinRefusal>> {
@@ -1855,9 +2568,30 @@ impl SharedState {
         if let Some(counter) = authenticated_counter {
             self.record_authenticated_counter(remote_addr, &identity, counter, replay_window_size)?;
         }
-        self.mark_configured_peer_reachable(&identity.node_id);
-        let snapshot = self.ensure_peer_snapshot(remote_addr, identity);
+        let last_round_trip_latency_ms = self.take_hello_latency_ms(&identity.node_id);
+        self.mark_configured_peer_reachable(
+            &identity.node_id,
+            Some(path.clone()),
+            last_round_trip_latency_ms,
+        );
+        if let Some(health) = self.configured_peer_health.get_mut(&identity.node_id) {
+            health.messages_received = health.messages_received.saturating_add(1);
+            health.bytes_received = health.bytes_received.saturating_add(message_bytes as u64);
+            if let Some(latency_ms) = last_round_trip_latency_ms {
+                health.last_round_trip_latency_ms = Some(latency_ms);
+            }
+        }
+        let snapshot = self.ensure_peer_snapshot(remote_addr, identity, path);
         snapshot.handshake.saw_hello = true;
+        snapshot.transport.messages_received =
+            snapshot.transport.messages_received.saturating_add(1);
+        snapshot.transport.bytes_received = snapshot
+            .transport
+            .bytes_received
+            .saturating_add(message_bytes as u64);
+        if let Some(latency_ms) = last_round_trip_latency_ms {
+            snapshot.transport.last_round_trip_latency_ms = Some(latency_ms);
+        }
         Ok(outcome.should_reply_hello)
     }
 
@@ -1865,6 +2599,8 @@ impl SharedState {
         &mut self,
         remote_addr: SocketAddr,
         identity: ClusterNodeIdentity,
+        path: ClusterTransportPath,
+        message_bytes: usize,
         sequence: u64,
         authenticated_counter: Option<u64>,
         replay_window_size: u64,
@@ -1873,9 +2609,19 @@ impl SharedState {
         if let Some(counter) = authenticated_counter {
             self.record_authenticated_counter(remote_addr, &identity, counter, replay_window_size)?;
         }
-        self.mark_configured_peer_reachable(&identity.node_id);
-        let snapshot = self.ensure_peer_snapshot(remote_addr, identity);
+        self.mark_configured_peer_reachable(&identity.node_id, Some(path.clone()), None);
+        if let Some(health) = self.configured_peer_health.get_mut(&identity.node_id) {
+            health.messages_received = health.messages_received.saturating_add(1);
+            health.bytes_received = health.bytes_received.saturating_add(message_bytes as u64);
+        }
+        let snapshot = self.ensure_peer_snapshot(remote_addr, identity, path);
         snapshot.handshake.last_ping_sequence = Some(sequence);
+        snapshot.transport.messages_received =
+            snapshot.transport.messages_received.saturating_add(1);
+        snapshot.transport.bytes_received = snapshot
+            .transport
+            .bytes_received
+            .saturating_add(message_bytes as u64);
         Ok(())
     }
 
@@ -1883,7 +2629,10 @@ impl SharedState {
         &mut self,
         remote_addr: SocketAddr,
         identity: ClusterNodeIdentity,
+        path: ClusterTransportPath,
     ) -> &mut PeerSnapshot {
+        let multiplex_profile = self.configured_peer_multiplex_profile(&identity.node_id);
+        let active_streams = self.active_stream_count(&identity.node_id);
         let entry = self
             .peers
             .entry(identity.node_id.clone())
@@ -1894,25 +2643,44 @@ impl SharedState {
                     saw_hello: false,
                     last_ping_sequence: None,
                 },
+                transport: ClusterTransportObservation::new(path.clone(), multiplex_profile),
             });
         if identity.node_epoch > entry.identity.node_epoch {
             entry.handshake = PeerHandshakeState {
                 saw_hello: false,
                 last_ping_sequence: None,
             };
+            entry.transport = ClusterTransportObservation::new(path.clone(), multiplex_profile);
         }
         entry.remote_addr = remote_addr;
-        entry.identity = identity;
+        entry.identity = identity.clone();
+        entry.transport.path = path;
+        entry.transport.multiplex_profile = multiplex_profile;
+        entry.transport.active_streams = active_streams;
         entry
     }
 
-    fn mark_configured_peer_reachable(&mut self, node_id: &NodeId) {
+    fn mark_configured_peer_reachable(
+        &mut self,
+        node_id: &NodeId,
+        active_transport: Option<ClusterTransportPath>,
+        last_round_trip_latency_ms: Option<u64>,
+    ) {
+        let active_streams = self.active_stream_count(node_id);
         if let Some(health) = self.configured_peer_health.get_mut(node_id) {
             let was_reachable =
                 matches!(health.reachability, ConfiguredPeerReachability::Reachable);
             health.reachability = ConfiguredPeerReachability::Reachable;
             health.unanswered_hello_attempts = 0;
             health.remaining_backoff_ticks = 0;
+            if let Some(active_transport) = active_transport {
+                health.active_transport = Some(active_transport);
+            }
+            if let Some(last_round_trip_latency_ms) = last_round_trip_latency_ms {
+                health.last_round_trip_latency_ms = Some(last_round_trip_latency_ms);
+            }
+            health.last_establishment_failure = None;
+            health.active_streams = active_streams;
             if !was_reachable {
                 health.successful_handshakes = health.successful_handshakes.saturating_add(1);
             }
@@ -1971,6 +2739,44 @@ impl SharedState {
                     reason,
                 })
             })
+    }
+
+    fn take_hello_latency_ms(&mut self, node_id: &NodeId) -> Option<u64> {
+        self.pending_hello_probes.remove(node_id).map(|probe| {
+            probe
+                .started_at
+                .elapsed()
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX)
+        })
+    }
+
+    fn configured_peer_multiplex_profile(
+        &self,
+        node_id: &NodeId,
+    ) -> ClusterSessionMultiplexProfile {
+        self.configured_peers
+            .get(node_id)
+            .map(ConfiguredClusterPeer::multiplex_profile)
+            .unwrap_or_default()
+    }
+
+    fn active_stream_count(&self, node_id: &NodeId) -> u16 {
+        self.active_logical_streams
+            .get(node_id)
+            .map(|streams| streams.len().min(usize::from(u16::MAX)) as u16)
+            .unwrap_or(0)
+    }
+
+    fn refresh_active_stream_count(&mut self, node_id: &NodeId) {
+        let active_streams = self.active_stream_count(node_id);
+        if let Some(peer) = self.peers.get_mut(node_id) {
+            peer.transport.active_streams = active_streams;
+        }
+        if let Some(health) = self.configured_peer_health.get_mut(node_id) {
+            health.active_streams = active_streams;
+        }
     }
 }
 
@@ -2055,6 +2861,69 @@ struct WireEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     signature_hex: Option<String>,
     message: WireMessage,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RelayDatagramMode {
+    NatTraversal,
+    RelayForward,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum TransportDatagram {
+    Direct {
+        envelope: WireEnvelope,
+    },
+    RelayRegister {
+        relay_id: String,
+        session_tag: String,
+        sender_node_id: NodeId,
+        target_node_id: NodeId,
+        mode: RelayDatagramMode,
+    },
+    RelayForward {
+        relay_id: String,
+        session_tag: String,
+        source_node_id: NodeId,
+        target_node_id: NodeId,
+        envelope: WireEnvelope,
+    },
+    RelayDelivery {
+        relay_id: String,
+        session_tag: String,
+        source_addr: SocketAddr,
+        source_node_id: NodeId,
+        envelope: WireEnvelope,
+    },
+    NatIntroduction {
+        relay_id: String,
+        session_tag: String,
+        peer_node_id: NodeId,
+        peer_addr: SocketAddr,
+    },
+    RelayTargetUnavailable {
+        relay_id: String,
+        session_tag: String,
+        target_node_id: NodeId,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct RelaySessionKey {
+    relay_id: String,
+    session_tag: String,
+}
+
+#[derive(Clone)]
+struct RelayRegistration {
+    remote_addr: SocketAddr,
+}
+
+#[derive(Default)]
+struct RelayServerState {
+    registrations: BTreeMap<RelaySessionKey, BTreeMap<NodeId, RelayRegistration>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2242,32 +3111,107 @@ async fn run_transport(
     }
 }
 
+#[derive(Clone)]
+struct InboundTransportContext {
+    socket_remote_addr: SocketAddr,
+    path: ClusterTransportPath,
+}
+
 async fn send_hello_to_seed_peers(
     socket: &Arc<UdpSocket>,
     config: &TransportConfig,
     state: &Arc<Mutex<SharedState>>,
 ) -> Result<(), String> {
-    let remote_addrs = {
+    let configured_actions = {
         let mut guard = state.lock().await;
         if matches!(
             config.trust_policy.posture,
             ClusterTrustPosture::AuthenticatedConfiguredPeers
+                | ClusterTrustPosture::AttestedConfiguredPeers
         ) {
-            guard.configured_peers_due_for_dial(&config.trust_policy)
+            Some(guard.configured_peers_due_for_dial(&config.trust_policy))
         } else {
-            guard.undiscovered_seed_peers()
+            None
         }
     };
+    if let Some(actions) = configured_actions {
+        for action in actions {
+            match action {
+                ConfiguredPeerDialAction::DirectHello {
+                    peer_node_id,
+                    remote_addr,
+                    path,
+                } => {
+                    send_wire_message_to_path(
+                        socket,
+                        state,
+                        config,
+                        Some(&peer_node_id),
+                        &path,
+                        remote_addr,
+                        WireMessage::Hello(HelloMessage {
+                            sender: config.local_identity.clone(),
+                        }),
+                        true,
+                    )
+                    .await?;
+                }
+                ConfiguredPeerDialAction::RelayRegister {
+                    relay,
+                    peer_node_id,
+                    mode,
+                } => {
+                    let datagram = TransportDatagram::RelayRegister {
+                        relay_id: relay.relay_id.clone(),
+                        session_tag: relay.session_tag.clone(),
+                        sender_node_id: config.local_identity.node_id.clone(),
+                        target_node_id: peer_node_id,
+                        mode: match mode {
+                            RelayRegistrationMode::NatTraversal => RelayDatagramMode::NatTraversal,
+                            RelayRegistrationMode::RelayForward => RelayDatagramMode::RelayForward,
+                        },
+                    };
+                    send_transport_datagram(socket, relay.relay_addr, &datagram).await?;
+                }
+                ConfiguredPeerDialAction::RelayHello {
+                    peer_node_id,
+                    relay,
+                    path,
+                } => {
+                    send_wire_message_to_path(
+                        socket,
+                        state,
+                        config,
+                        Some(&peer_node_id),
+                        &path,
+                        relay.relay_addr,
+                        WireMessage::Hello(HelloMessage {
+                            sender: config.local_identity.clone(),
+                        }),
+                        true,
+                    )
+                    .await?;
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    let remote_addrs = { state.lock().await.undiscovered_seed_peers() };
     for remote_addr in remote_addrs {
-        let envelope = outbound_envelope(
+        send_wire_message_to_path(
+            socket,
             state,
             config,
+            None,
+            &ClusterTransportPath::direct(remote_addr),
+            remote_addr,
             WireMessage::Hello(HelloMessage {
                 sender: config.local_identity.clone(),
             }),
+            true,
         )
         .await?;
-        send_message(socket, remote_addr, &envelope).await?;
     }
     Ok(())
 }
@@ -2277,21 +3221,25 @@ async fn send_ping_to_discovered_peers(
     config: &TransportConfig,
     state: &Arc<Mutex<SharedState>>,
 ) -> Result<(), String> {
-    let (peer_addrs, sequence) = {
+    let (peer_paths, sequence) = {
         let mut guard = state.lock().await;
-        (guard.discovered_peer_addrs(), guard.next_ping_sequence())
+        (guard.discovered_peer_paths(), guard.next_ping_sequence())
     };
-    for remote_addr in peer_addrs {
-        let envelope = outbound_envelope(
+    for (peer_node_id, remote_addr, path) in peer_paths {
+        send_wire_message_to_path(
+            socket,
             state,
             config,
+            Some(&peer_node_id),
+            &path,
+            remote_addr,
             WireMessage::Ping(PingMessage {
                 sender: config.local_identity.clone(),
                 sequence,
             }),
+            false,
         )
         .await?;
-        send_message(socket, remote_addr, &envelope).await?;
     }
     Ok(())
 }
@@ -2303,14 +3251,148 @@ async fn handle_incoming_message(
     remote_addr: SocketAddr,
     payload: &[u8],
 ) -> Result<(), String> {
-    let envelope = match serde_json::from_slice::<WireEnvelope>(payload) {
-        Ok(envelope) => envelope,
-        Err(_) => return Ok(()),
+    let datagram = match serde_json::from_slice::<TransportDatagram>(payload) {
+        Ok(datagram) => datagram,
+        Err(_) => match serde_json::from_slice::<WireEnvelope>(payload) {
+            Ok(envelope) => TransportDatagram::Direct { envelope },
+            Err(_) => return Ok(()),
+        },
     };
 
+    match datagram {
+        TransportDatagram::Direct { envelope } => {
+            let path = {
+                let guard = state.lock().await;
+                guard
+                    .nat_introductions
+                    .get(&envelope.message.sender().node_id)
+                    .filter(|introduction| introduction.peer_addr == remote_addr)
+                    .map(|introduction| {
+                        ClusterTransportPath::nat_traversal(remote_addr, introduction.relay.clone())
+                    })
+                    .unwrap_or_else(|| ClusterTransportPath::direct(remote_addr))
+            };
+            handle_wire_envelope(
+                socket,
+                state,
+                config,
+                InboundTransportContext {
+                    socket_remote_addr: remote_addr,
+                    path,
+                },
+                envelope,
+                payload.len(),
+            )
+            .await
+        }
+        TransportDatagram::RelayDelivery {
+            relay_id,
+            session_tag,
+            source_addr,
+            source_node_id,
+            envelope,
+        } => {
+            let relay = ClusterRelayEndpoint::new(relay_id, remote_addr, session_tag);
+            let _ = source_node_id;
+            handle_wire_envelope(
+                socket,
+                state,
+                config,
+                InboundTransportContext {
+                    socket_remote_addr: remote_addr,
+                    path: ClusterTransportPath::relayed(source_addr, relay),
+                },
+                envelope,
+                payload.len(),
+            )
+            .await
+        }
+        TransportDatagram::NatIntroduction {
+            relay_id,
+            session_tag,
+            peer_node_id,
+            peer_addr,
+        } => {
+            let relay = {
+                let guard = state.lock().await;
+                guard.configured_peer_relay_endpoint(
+                    &peer_node_id,
+                    &relay_id,
+                    remote_addr,
+                    &session_tag,
+                    true,
+                )
+            };
+            let Some(relay) = relay else {
+                return Ok(());
+            };
+            state.lock().await.record_nat_introduction(
+                peer_node_id.clone(),
+                peer_addr,
+                relay.clone(),
+            );
+            send_wire_message_to_path(
+                socket,
+                state,
+                config,
+                Some(&peer_node_id),
+                &ClusterTransportPath::nat_traversal(peer_addr, relay),
+                peer_addr,
+                WireMessage::Hello(HelloMessage {
+                    sender: config.local_identity.clone(),
+                }),
+                true,
+            )
+            .await
+        }
+        TransportDatagram::RelayTargetUnavailable {
+            relay_id,
+            session_tag,
+            target_node_id,
+        } => {
+            let relay = {
+                let guard = state.lock().await;
+                guard.configured_peer_relay_endpoint(
+                    &target_node_id,
+                    &relay_id,
+                    remote_addr,
+                    &session_tag,
+                    false,
+                )
+            };
+            if let Some(relay) = relay {
+                let mut guard = state.lock().await;
+                if let Some(health) = guard.configured_peer_health.get_mut(&target_node_id) {
+                    health.active_transport =
+                        Some(ClusterTransportPath::relayed(health.remote_addr, relay));
+                    health.last_establishment_failure = Some(
+                        ClusterSessionFailure::new(
+                            ClusterTransportPathKind::RelayedDatagram,
+                            ClusterSessionFailureReason::RelayTargetUnavailable,
+                        )
+                        .with_detail(String::from(
+                            "relay has not observed the target peer registration yet",
+                        )),
+                    );
+                }
+            }
+            Ok(())
+        }
+        TransportDatagram::RelayRegister { .. } | TransportDatagram::RelayForward { .. } => Ok(()),
+    }
+}
+
+async fn handle_wire_envelope(
+    socket: &Arc<UdpSocket>,
+    state: &Arc<Mutex<SharedState>>,
+    config: &TransportConfig,
+    transport: InboundTransportContext,
+    envelope: WireEnvelope,
+    message_bytes: usize,
+) -> Result<(), String> {
     if envelope.namespace != config.namespace {
         state.lock().await.push_join_refusal(ClusterJoinRefusal {
-            remote_addr,
+            remote_addr: transport.socket_remote_addr,
             remote_node_id: Some(envelope.message.sender().node_id.clone()),
             remote_cluster_id: Some(envelope.message.sender().cluster_id.clone()),
             remote_node_epoch: Some(envelope.message.sender().node_epoch),
@@ -2323,7 +3405,7 @@ async fn handle_incoming_message(
     }
     if envelope.admission_digest != config.admission_digest {
         state.lock().await.push_join_refusal(ClusterJoinRefusal {
-            remote_addr,
+            remote_addr: transport.socket_remote_addr,
             remote_node_id: Some(envelope.message.sender().node_id.clone()),
             remote_cluster_id: Some(envelope.message.sender().cluster_id.clone()),
             remote_node_epoch: Some(envelope.message.sender().node_epoch),
@@ -2332,18 +3414,24 @@ async fn handle_incoming_message(
         return Ok(());
     }
 
-    let trust_rollout_diagnostic =
-        match authenticate_incoming_envelope(&envelope, remote_addr, config) {
+    let trust_rollout_diagnostic = {
+        let guard = state.lock().await;
+        match authenticate_incoming_envelope(&envelope, &transport, config, &guard) {
             Ok(trust_rollout_diagnostic) => trust_rollout_diagnostic,
             Err(reason) => {
-                let rollout_diagnostic =
-                    trust_rollout_diagnostic_from_refusal(&envelope, remote_addr, &reason, config);
+                let rollout_diagnostic = trust_rollout_diagnostic_from_refusal(
+                    &envelope,
+                    transport.socket_remote_addr,
+                    &reason,
+                    config,
+                );
+                drop(guard);
                 let mut guard = state.lock().await;
                 if let Some(rollout_diagnostic) = rollout_diagnostic {
                     guard.push_trust_rollout_diagnostic(rollout_diagnostic);
                 }
                 guard.push_join_refusal(ClusterJoinRefusal {
-                    remote_addr,
+                    remote_addr: transport.socket_remote_addr,
                     remote_node_id: Some(envelope.message.sender().node_id.clone()),
                     remote_cluster_id: Some(envelope.message.sender().cluster_id.clone()),
                     remote_node_epoch: Some(envelope.message.sender().node_epoch),
@@ -2351,7 +3439,8 @@ async fn handle_incoming_message(
                 });
                 return Ok(());
             }
-        };
+        }
+    };
     if let Some(trust_rollout_diagnostic) = trust_rollout_diagnostic {
         state
             .lock()
@@ -2366,7 +3455,7 @@ async fn handle_incoming_message(
             }
             if hello.sender.cluster_id != config.local_identity.cluster_id {
                 state.lock().await.push_join_refusal(ClusterJoinRefusal {
-                    remote_addr,
+                    remote_addr: transport.socket_remote_addr,
                     remote_node_id: Some(hello.sender.node_id),
                     remote_cluster_id: Some(hello.sender.cluster_id.clone()),
                     remote_node_epoch: Some(hello.sender.node_epoch),
@@ -2381,8 +3470,10 @@ async fn handle_incoming_message(
             let should_reply_hello = {
                 let mut guard = state.lock().await;
                 match guard.record_hello(
-                    remote_addr,
-                    hello.sender,
+                    transport.socket_remote_addr,
+                    hello.sender.clone(),
+                    transport.path.clone(),
+                    message_bytes,
                     envelope.authenticated_counter,
                     config.trust_policy.replay_window_size,
                 ) {
@@ -2395,28 +3486,36 @@ async fn handle_incoming_message(
             };
 
             if should_reply_hello {
-                let envelope = outbound_envelope(
+                send_wire_message_to_path(
+                    socket,
                     state,
                     config,
+                    Some(&hello.sender.node_id),
+                    &transport.path,
+                    transport.path.peer_addr,
                     WireMessage::Hello(HelloMessage {
                         sender: config.local_identity.clone(),
                     }),
+                    true,
                 )
                 .await?;
-                send_message(socket, remote_addr, &envelope).await?;
             }
 
             let sequence = state.lock().await.next_ping_sequence();
-            let envelope = outbound_envelope(
+            send_wire_message_to_path(
+                socket,
                 state,
                 config,
+                Some(&hello.sender.node_id),
+                &transport.path,
+                transport.path.peer_addr,
                 WireMessage::Ping(PingMessage {
                     sender: config.local_identity.clone(),
                     sequence,
                 }),
+                false,
             )
             .await?;
-            send_message(socket, remote_addr, &envelope).await?;
         }
         WireMessage::Ping(ping) => {
             if ping.sender.node_id == config.local_identity.node_id {
@@ -2424,7 +3523,7 @@ async fn handle_incoming_message(
             }
             if ping.sender.cluster_id != config.local_identity.cluster_id {
                 state.lock().await.push_join_refusal(ClusterJoinRefusal {
-                    remote_addr,
+                    remote_addr: transport.socket_remote_addr,
                     remote_node_id: Some(ping.sender.node_id),
                     remote_cluster_id: Some(ping.sender.cluster_id.clone()),
                     remote_node_epoch: Some(ping.sender.node_epoch),
@@ -2438,8 +3537,10 @@ async fn handle_incoming_message(
 
             let mut guard = state.lock().await;
             if let Err(refusal) = guard.record_ping(
-                remote_addr,
+                transport.socket_remote_addr,
                 ping.sender,
+                transport.path,
+                message_bytes,
                 ping.sequence,
                 envelope.authenticated_counter,
                 config.trust_policy.replay_window_size,
@@ -2481,10 +3582,62 @@ async fn outbound_envelope(
     Ok(envelope)
 }
 
+async fn send_wire_message_to_path(
+    socket: &Arc<UdpSocket>,
+    state: &Arc<Mutex<SharedState>>,
+    config: &TransportConfig,
+    peer_node_id: Option<&NodeId>,
+    path: &ClusterTransportPath,
+    _remote_addr: SocketAddr,
+    message: WireMessage,
+    is_hello: bool,
+) -> Result<(), String> {
+    let envelope = outbound_envelope(state, config, message).await?;
+    let datagram = match path.kind {
+        ClusterTransportPathKind::DirectDatagram
+        | ClusterTransportPathKind::NatTraversalDatagram => TransportDatagram::Direct { envelope },
+        ClusterTransportPathKind::RelayedDatagram => {
+            let relay = path
+                .relay
+                .as_ref()
+                .ok_or_else(|| String::from("relayed transport path requires relay metadata"))?;
+            let target_node_id = peer_node_id
+                .cloned()
+                .ok_or_else(|| String::from("relayed transport path requires a peer node id"))?;
+            TransportDatagram::RelayForward {
+                relay_id: relay.relay_id.clone(),
+                session_tag: relay.session_tag.clone(),
+                source_node_id: config.local_identity.node_id.clone(),
+                target_node_id,
+                envelope,
+            }
+        }
+    };
+    let encoded = encode_transport_datagram(&datagram)?;
+    if let Some(peer_node_id) = peer_node_id {
+        state
+            .lock()
+            .await
+            .record_outbound_message(peer_node_id, path, encoded.len(), is_hello);
+    }
+    let outbound_addr = match path.kind {
+        ClusterTransportPathKind::DirectDatagram
+        | ClusterTransportPathKind::NatTraversalDatagram => path.peer_addr,
+        ClusterTransportPathKind::RelayedDatagram => {
+            path.relay
+                .as_ref()
+                .ok_or_else(|| String::from("relayed transport path requires relay metadata"))?
+                .relay_addr
+        }
+    };
+    send_encoded_datagram(socket, outbound_addr, &encoded).await
+}
+
 fn authenticate_incoming_envelope(
     envelope: &WireEnvelope,
-    remote_addr: SocketAddr,
+    transport: &InboundTransportContext,
     config: &TransportConfig,
+    state: &SharedState,
 ) -> Result<Option<ClusterTrustRolloutDiagnostic>, ClusterJoinRefusalReason> {
     let mut trust_rollout_diagnostic = None;
     if matches!(
@@ -2498,11 +3651,55 @@ fn authenticate_incoming_envelope(
         else {
             return Err(ClusterJoinRefusalReason::ConfiguredPeerUnknown);
         };
-        if configured_peer.remote_addr != remote_addr {
-            return Err(ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
-                expected: configured_peer.remote_addr,
-                actual: remote_addr,
-            });
+        match transport.path.kind {
+            ClusterTransportPathKind::DirectDatagram => {
+                if configured_peer.remote_addr != transport.path.peer_addr {
+                    return Err(ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
+                        expected: configured_peer.remote_addr,
+                        actual: transport.path.peer_addr,
+                    });
+                }
+            }
+            ClusterTransportPathKind::NatTraversalDatagram => {
+                let Some(introduction) = state
+                    .nat_introductions
+                    .get(&envelope.message.sender().node_id)
+                else {
+                    return Err(ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
+                        expected: configured_peer.remote_addr,
+                        actual: transport.path.peer_addr,
+                    });
+                };
+                if introduction.peer_addr != transport.path.peer_addr {
+                    return Err(ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
+                        expected: introduction.peer_addr,
+                        actual: transport.path.peer_addr,
+                    });
+                }
+            }
+            ClusterTransportPathKind::RelayedDatagram => {
+                let relay = transport.path.relay.as_ref().ok_or(
+                    ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
+                        expected: configured_peer.remote_addr,
+                        actual: transport.socket_remote_addr,
+                    },
+                )?;
+                if state
+                    .configured_peer_relay_endpoint(
+                        &envelope.message.sender().node_id,
+                        &relay.relay_id,
+                        relay.relay_addr,
+                        &relay.session_tag,
+                        false,
+                    )
+                    .is_none()
+                {
+                    return Err(ClusterJoinRefusalReason::ConfiguredPeerAddressMismatch {
+                        expected: configured_peer.remote_addr,
+                        actual: transport.socket_remote_addr,
+                    });
+                }
+            }
         }
         let key_match = configured_peer.key_match(&envelope.message.sender().auth_public_key);
         let Some(key_match) = key_match else {
@@ -2534,7 +3731,7 @@ fn authenticate_incoming_envelope(
         {
             trust_rollout_diagnostic = Some(ClusterTrustRolloutDiagnostic {
                 remote_node_id: envelope.message.sender().node_id.clone(),
-                remote_addr,
+                remote_addr: transport.socket_remote_addr,
                 expected_trust_bundle_version: config.trust_policy.trust_bundle_version,
                 actual_trust_bundle_version: Some(actual_trust_bundle_version),
                 key_match: Some(key_match),
@@ -2585,14 +3782,139 @@ fn authenticate_incoming_envelope(
     Ok(trust_rollout_diagnostic)
 }
 
-async fn send_message(
+async fn run_relay_server(
+    socket: Arc<UdpSocket>,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    let mut state = RelayServerState::default();
+    let mut recv_buf = vec![0_u8; MAX_DATAGRAM_BYTES];
+    loop {
+        tokio::select! {
+            _ = &mut shutdown_rx => return Ok(()),
+            received = socket.recv_from(&mut recv_buf) => {
+                let (len, remote_addr) = received.map_err(|error| error.to_string())?;
+                let datagram = match serde_json::from_slice::<TransportDatagram>(&recv_buf[..len]) {
+                    Ok(datagram) => datagram,
+                    Err(_) => continue,
+                };
+                match datagram {
+                    TransportDatagram::RelayRegister {
+                        relay_id,
+                        session_tag,
+                        sender_node_id,
+                        target_node_id,
+                        mode,
+                    } => {
+                        let session_key = RelaySessionKey { relay_id: relay_id.clone(), session_tag: session_tag.clone() };
+                        state
+                            .registrations
+                            .entry(session_key.clone())
+                            .or_default()
+                            .insert(sender_node_id.clone(), RelayRegistration { remote_addr });
+                        if matches!(mode, RelayDatagramMode::NatTraversal) {
+                            if let Some(target) = state
+                                .registrations
+                                .get(&session_key)
+                                .and_then(|registrations| registrations.get(&target_node_id))
+                            {
+                                send_transport_datagram(
+                                    &socket,
+                                    remote_addr,
+                                    &TransportDatagram::NatIntroduction {
+                                        relay_id: relay_id.clone(),
+                                        session_tag: session_tag.clone(),
+                                        peer_node_id: target_node_id.clone(),
+                                        peer_addr: target.remote_addr,
+                                    },
+                                )
+                                .await?;
+                                send_transport_datagram(
+                                    &socket,
+                                    target.remote_addr,
+                                    &TransportDatagram::NatIntroduction {
+                                        relay_id,
+                                        session_tag,
+                                        peer_node_id: sender_node_id,
+                                        peer_addr: remote_addr,
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
+                    }
+                    TransportDatagram::RelayForward {
+                        relay_id,
+                        session_tag,
+                        source_node_id,
+                        target_node_id,
+                        envelope,
+                    } => {
+                        let session_key = RelaySessionKey { relay_id: relay_id.clone(), session_tag: session_tag.clone() };
+                        state
+                            .registrations
+                            .entry(session_key.clone())
+                            .or_default()
+                            .insert(source_node_id.clone(), RelayRegistration { remote_addr });
+                        if let Some(target) = state
+                            .registrations
+                            .get(&session_key)
+                            .and_then(|registrations| registrations.get(&target_node_id))
+                        {
+                            send_transport_datagram(
+                                &socket,
+                                target.remote_addr,
+                                &TransportDatagram::RelayDelivery {
+                                    relay_id,
+                                    session_tag,
+                                    source_addr: remote_addr,
+                                    source_node_id,
+                                    envelope,
+                                },
+                            )
+                            .await?;
+                        } else {
+                            send_transport_datagram(
+                                &socket,
+                                remote_addr,
+                                &TransportDatagram::RelayTargetUnavailable {
+                                    relay_id,
+                                    session_tag,
+                                    target_node_id,
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                    TransportDatagram::Direct { .. }
+                    | TransportDatagram::RelayDelivery { .. }
+                    | TransportDatagram::NatIntroduction { .. }
+                    | TransportDatagram::RelayTargetUnavailable { .. } => {}
+                }
+            }
+        }
+    }
+}
+
+fn encode_transport_datagram(datagram: &TransportDatagram) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(datagram).map_err(|error| error.to_string())
+}
+
+async fn send_transport_datagram(
     socket: &Arc<UdpSocket>,
     remote_addr: SocketAddr,
-    envelope: &WireEnvelope,
+    datagram: &TransportDatagram,
 ) -> Result<(), String> {
-    let encoded = serde_json::to_vec(envelope).map_err(|error| error.to_string())?;
+    let encoded = encode_transport_datagram(datagram)?;
+    send_encoded_datagram(socket, remote_addr, &encoded).await
+}
+
+async fn send_encoded_datagram(
+    socket: &Arc<UdpSocket>,
+    remote_addr: SocketAddr,
+    payload: &[u8],
+) -> Result<(), String> {
     socket
-        .send_to(&encoded, remote_addr)
+        .send_to(payload, remote_addr)
         .await
         .map(|_| ())
         .map_err(|error| error.to_string())
@@ -2718,6 +4040,13 @@ mod tests {
         }
     }
 
+    fn direct_transport(remote_addr: SocketAddr) -> InboundTransportContext {
+        InboundTransportContext {
+            socket_remote_addr: remote_addr,
+            path: ClusterTransportPath::direct(remote_addr),
+        }
+    }
+
     fn sample_discovery_candidate(
         admission: &ClusterAdmissionConfig,
         node_id: &str,
@@ -2769,13 +4098,16 @@ mod tests {
                 loopback_addr(31001),
                 "peer-key-a",
             )]);
-        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
-            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31001), "peer-key-a")
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                        .with_device_identity_digest("device-b"),
-                ),
-        ]);
+        let attested =
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                NodeId::new("node-b"),
+                loopback_addr(31001),
+                "peer-key-a",
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                    .with_device_identity_digest("device-b"),
+            )]);
         let configured_other_version = configured.clone().with_trust_bundle_version(2);
         let configured_other_policy =
             configured
@@ -2864,15 +4196,18 @@ mod tests {
 
     #[test]
     fn explicit_wider_network_discovery_request_is_bounded_until_implemented() {
-        let assessment = ClusterTrustPolicy::attested_configured_peers(vec![
-            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                        .with_device_identity_digest("device-b"),
-                ),
-        ])
-        .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
-        .non_lan_discovery_assessment();
+        let assessment =
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                NodeId::new("node-b"),
+                loopback_addr(31003),
+                "peer-key-a",
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                    .with_device_identity_digest("device-b"),
+            )])
+            .with_discovery_posture(ClusterDiscoveryPosture::ExplicitWiderNetworkRequested)
+            .non_lan_discovery_assessment();
 
         assert_eq!(
             assessment.discovery_posture,
@@ -3103,13 +4438,16 @@ mod tests {
 
     #[test]
     fn compute_market_assessment_for_attested_peers_only_waits_on_non_lan_discovery() {
-        let attested = ClusterTrustPolicy::attested_configured_peers(vec![
-            ConfiguredClusterPeer::new(NodeId::new("node-b"), loopback_addr(31003), "peer-key-a")
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-b", "attestation-b")
-                        .with_device_identity_digest("device-b"),
-                ),
-        ]);
+        let attested =
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                NodeId::new("node-b"),
+                loopback_addr(31003),
+                "peer-key-a",
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-b", "attestation-b")
+                    .with_device_identity_digest("device-b"),
+            )]);
 
         let assessment = attested.compute_market_trust_assessment();
 
@@ -3243,17 +4581,15 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![
-                ConfiguredClusterPeer::new(
-                    remote_identity.node_id.clone(),
-                    remote_addr,
-                    remote_identity.auth_public_key.clone(),
-                )
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                        .with_device_identity_digest("device-remote"),
-                ),
-            ]),
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                    .with_device_identity_digest("device-remote"),
+            )]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -3265,7 +4601,13 @@ mod tests {
             7,
         );
 
-        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let refusal = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        );
 
         assert_eq!(
             refusal,
@@ -3298,17 +4640,15 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![
-                ConfiguredClusterPeer::new(
-                    remote_identity.node_id.clone(),
-                    remote_addr,
-                    remote_identity.auth_public_key.clone(),
-                )
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                        .with_device_identity_digest("device-remote"),
-                ),
-            ]),
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                    .with_device_identity_digest("device-remote"),
+            )]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -3320,7 +4660,13 @@ mod tests {
             7,
         );
 
-        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let refusal = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        );
 
         assert_eq!(
             refusal,
@@ -3362,17 +4708,15 @@ mod tests {
         let config = sample_transport_config(
             local_identity,
             local_signing_key,
-            ClusterTrustPolicy::attested_configured_peers(vec![
-                ConfiguredClusterPeer::new(
-                    remote_identity.node_id.clone(),
-                    remote_addr,
-                    remote_identity.auth_public_key.clone(),
-                )
-                .with_attestation_requirement(
-                    NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
-                        .with_device_identity_digest("device-remote"),
-                ),
-            ]),
+            ClusterTrustPolicy::attested_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )
+            .with_attestation_requirement(
+                NodeAttestationRequirement::new("issuer-remote", "attestation-remote")
+                    .with_device_identity_digest("device-remote"),
+            )]),
         );
         let envelope = signed_ping_envelope(
             &config.namespace,
@@ -3384,7 +4728,13 @@ mod tests {
             7,
         );
 
-        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let refusal = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        );
 
         assert!(refusal.is_ok(), "matching attestation should be accepted");
     }
@@ -3429,7 +4779,13 @@ mod tests {
             message.sequence = 8;
         }
 
-        let refusal = authenticate_incoming_envelope(&envelope, remote_addr, &config);
+        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let refusal = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        );
         assert_eq!(
             refusal,
             Err(ClusterJoinRefusalReason::MessageAuthenticationFailed)
@@ -3449,13 +4805,28 @@ mod tests {
         let remote_addr = loopback_addr(31003);
         let mut state = SharedState::new(BTreeSet::new(), &ClusterTrustPolicy::trusted_lan());
 
-        let hello = state.record_hello(remote_addr, remote_identity.clone(), Some(12), 8);
+        let hello = state.record_hello(
+            remote_addr,
+            remote_identity.clone(),
+            ClusterTransportPath::direct(remote_addr),
+            64,
+            Some(12),
+            8,
+        );
         assert!(
             hello.is_ok(),
             "first authenticated hello should be accepted"
         );
 
-        let refusal = state.record_ping(remote_addr, remote_identity, 0, Some(12), 8);
+        let refusal = state.record_ping(
+            remote_addr,
+            remote_identity,
+            ClusterTransportPath::direct(remote_addr),
+            64,
+            0,
+            Some(12),
+            8,
+        );
         assert!(refusal.is_err(), "duplicate counter should be refused");
         let refusal = refusal
             .err()
@@ -3467,5 +4838,118 @@ mod tests {
                 attempted: 12,
             }
         );
+    }
+
+    #[test]
+    fn authenticated_configured_peers_accept_relay_fallback_path_when_relay_is_configured() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(41);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(42);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let relay = ClusterRelayEndpoint::new("relay-a", loopback_addr(32021), "pair-a");
+        let config = sample_transport_config(
+            local_identity,
+            local_signing_key,
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                loopback_addr(32022),
+                remote_identity.auth_public_key.clone(),
+            )
+            .with_relay_fallback_relays(vec![relay.clone()])]),
+        );
+        let state = SharedState::new(BTreeSet::new(), &config.trust_policy);
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            9,
+        );
+
+        let outcome = authenticate_incoming_envelope(
+            &envelope,
+            &InboundTransportContext {
+                socket_remote_addr: relay.relay_addr,
+                path: ClusterTransportPath::relayed(loopback_addr(32023), relay),
+            },
+            &config,
+            &state,
+        );
+
+        assert!(
+            outcome.is_ok(),
+            "configured relay fallback should authenticate"
+        );
+    }
+
+    #[test]
+    fn logical_stream_reservation_respects_peer_capacity() {
+        let admission = sample_admission();
+        let remote_signing_key = sample_signing_key(51);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let remote_addr = loopback_addr(32031);
+        let trust_policy =
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )
+            .with_max_concurrent_streams(2)]);
+        let mut state = SharedState::new(BTreeSet::new(), &trust_policy);
+
+        let hello = state.record_hello(
+            remote_addr,
+            remote_identity.clone(),
+            ClusterTransportPath::direct(remote_addr),
+            64,
+            Some(1),
+            8,
+        );
+        assert!(
+            hello.is_ok(),
+            "peer should be established before opening streams"
+        );
+
+        let first =
+            state.open_logical_stream(&remote_identity.node_id, ClusterLogicalStreamKind::Serving);
+        assert!(first.is_ok(), "first stream should open");
+        let second = state.open_logical_stream(
+            &remote_identity.node_id,
+            ClusterLogicalStreamKind::Collective,
+        );
+        assert!(second.is_ok(), "second stream should open");
+        let third =
+            state.open_logical_stream(&remote_identity.node_id, ClusterLogicalStreamKind::Artifact);
+        assert_eq!(
+            third,
+            Err(ClusterStreamError::CapacityExceeded {
+                peer_node_id: remote_identity.node_id.clone(),
+                max_concurrent_streams: 2,
+            })
+        );
+        let second = second.unwrap_or_else(|_| unreachable!("assert above ensures success"));
+        let close = state.close_logical_stream(&second);
+        assert!(close.is_ok(), "closing an active stream should succeed");
+        let active_streams = state.active_logical_streams();
+        assert_eq!(active_streams.len(), 1);
+        assert_eq!(active_streams[0].kind, ClusterLogicalStreamKind::Serving);
     }
 }
