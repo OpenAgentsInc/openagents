@@ -12,7 +12,8 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
-    LocalInferencePaneAction, MissionControlPaneAction, ProviderControlPaneAction,
+    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
+    ProviderControlPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9229,32 +9230,6 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
-        MissionControlPaneAction::CopyLogStream => {
-            state.mission_control.mark_log_copy_icon_clicked();
-            let output = state
-                .mission_control
-                .log_stream
-                .recent_lines(2000)
-                .iter()
-                .map(|line| line.text.clone())
-                .collect::<Vec<_>>()
-                .join("\n");
-            let notice = if output.trim().is_empty() {
-                "Mission Control log stream is empty".to_string()
-            } else {
-                match copy_to_clipboard(&output) {
-                    Ok(()) => "Copied Mission Control log stream to clipboard".to_string(),
-                    Err(error) => format!("Failed to copy Mission Control log stream: {error}"),
-                }
-            };
-
-            if notice.starts_with("Copied") {
-                state.mission_control.record_action(notice);
-            } else {
-                state.mission_control.record_error(notice);
-            }
-            true
-        }
         MissionControlPaneAction::OpenLocalModelWorkbench => {
             let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
                 state.desktop_shell_mode,
@@ -9338,6 +9313,40 @@ pub(super) fn run_mission_control_action(
                         Some("Documentation open failed".to_string());
                     state.mission_control.last_error = Some(error);
                 }
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_log_stream_action(
+    state: &mut crate::app_state::RenderState,
+    action: LogStreamPaneAction,
+) -> bool {
+    match action {
+        LogStreamPaneAction::CopyAll => {
+            state.log_stream.mark_copy_button_clicked();
+            let output = state
+                .log_stream
+                .terminal
+                .recent_lines(2000)
+                .iter()
+                .map(|line| line.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let notice = if output.trim().is_empty() {
+                "Runtime log stream is empty".to_string()
+            } else {
+                match copy_to_clipboard(&output) {
+                    Ok(()) => "Copied runtime log stream to clipboard".to_string(),
+                    Err(error) => format!("Failed to copy runtime log stream: {error}"),
+                }
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
             }
             true
         }
@@ -9604,8 +9613,8 @@ fn build_mission_control_local_fm_summary_prompt(state: &crate::app_state::Rende
     }
 
     let recent_log_lines = state
-        .mission_control
         .log_stream
+        .terminal
         .recent_lines(8)
         .iter()
         .filter_map(|line| {

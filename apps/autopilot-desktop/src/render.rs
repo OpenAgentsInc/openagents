@@ -290,6 +290,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
             provider_control: crate::app_state::ProviderControlPaneState::default(),
             mission_control: crate::app_state::MissionControlPaneState::default(),
+            log_stream: crate::app_state::LogStreamPaneState::default(),
             buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
@@ -1094,6 +1095,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.calculator_inputs,
             &mut state.provider_control,
             &mut state.mission_control,
+            &mut state.log_stream,
             &mut state.buy_mode_payments,
             &mut paint,
         );

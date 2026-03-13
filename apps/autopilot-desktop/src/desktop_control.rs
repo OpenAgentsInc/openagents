@@ -905,7 +905,7 @@ fn mirror_control_event_to_mission_control(
         wgpui::components::sections::TerminalStream::Stdout
     };
     state
-        .mission_control
+        .log_stream
         .push_runtime_log_line(stream, format!("Control: {}", event.summary));
 }
 
@@ -2173,8 +2173,8 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             can_go_online: state.mission_control_go_online_enabled(),
             blocker_codes: blocker_codes.clone(),
             log_line_count: state
-                .mission_control
                 .log_stream
+                .terminal
                 .recent_lines(usize::MAX)
                 .len(),
         },
@@ -2543,8 +2543,8 @@ fn active_job_stage_label(
 
 fn mission_control_recent_lines(state: &RenderState, limit: usize) -> Vec<String> {
     state
-        .mission_control
         .log_stream
+        .terminal
         .recent_lines(limit.max(1))
         .into_iter()
         .map(|line| line.text.clone())

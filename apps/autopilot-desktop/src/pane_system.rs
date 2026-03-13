@@ -330,10 +330,14 @@ pub enum EarningsScoreboardPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
-    CopyLogStream,
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
     OpenDocumentation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LogStreamPaneAction {
+    CopyAll,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -867,6 +871,7 @@ pub enum PaneHitAction {
     GoOnlineToggle,
     ProviderControl(ProviderControlPaneAction),
     MissionControl(MissionControlPaneAction),
+    LogStream(LogStreamPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
@@ -1014,6 +1019,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ActivityFeed | PaneKind::AlertsRecovery | PaneKind::JobHistory => {
             pane_size_for_content(900.0, 460.0)
         }
+        PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
         PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
         PaneKind::TrajectoryAudit
@@ -1526,6 +1532,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ReciprocalLoop
             | PaneKind::ActivityFeed
             | PaneKind::AlertsRecovery
+            | PaneKind::LogStream
             | PaneKind::BuyModePayments
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
@@ -2713,6 +2720,24 @@ pub fn mission_control_copy_log_stream_button_bounds(
         log_stream.origin.y + 7.0,
         size,
         size,
+    )
+}
+
+pub fn log_stream_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - 120.0,
+        content_bounds.origin.y + 8.0,
+        108.0,
+        22.0,
+    )
+}
+
+pub fn log_stream_terminal_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 44.0,
+        (content_bounds.size.width - 24.0).max(0.0),
+        (content_bounds.size.height - 56.0).max(0.0),
     )
 }
 
@@ -5350,7 +5375,6 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::Calculator => None,
         PaneKind::GoOnline => {
-            let buy_mode_enabled = state.mission_control_buy_mode_enabled();
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 if matches!(
                     state.provider_runtime.mode,
@@ -5361,15 +5385,6 @@ fn pane_hit_action_for_pane(
                     return None;
                 }
                 Some(PaneHitAction::GoOnlineToggle)
-            } else if mission_control_copy_log_stream_button_bounds(
-                content_bounds,
-                buy_mode_enabled,
-            )
-            .contains(point)
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::CopyLogStream,
-                ))
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
@@ -5396,6 +5411,13 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::ProviderControl(
                     ProviderControlPaneAction::RunLocalFmSummaryTest,
                 ))
+            } else {
+                None
+            }
+        }
+        PaneKind::LogStream => {
+            if log_stream_copy_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::LogStream(LogStreamPaneAction::CopyAll))
             } else {
                 None
             }
@@ -6501,37 +6523,36 @@ pub fn dispatch_mission_control_log_scroll_event(
         return false;
     };
     let pane = &state.panes[pane_idx];
+    if pane.kind == PaneKind::LogStream {
+        let content_bounds = pane_content_bounds_for_pane(pane);
+        let terminal_bounds = log_stream_terminal_bounds(content_bounds);
+        if !terminal_bounds.contains(cursor_position) {
+            return false;
+        }
+        return state
+            .log_stream
+            .terminal
+            .event(event, terminal_bounds, &mut state.event_context)
+            .is_handled();
+    }
+
     if pane.kind != PaneKind::GoOnline {
         return false;
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
-    let log_bounds = mission_control_log_stream_bounds_for_mode(
-        content_bounds,
-        state.mission_control_buy_mode_enabled(),
-    );
-    if !log_bounds.contains(cursor_position) {
-        if let InputEvent::Scroll { dy, .. } = event {
-            if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position)
-            {
-                state.provider_control.scroll_by(*dy);
-                return true;
-            }
-            if mission_control_actions_scroll_viewport_bounds(content_bounds)
-                .contains(cursor_position)
-            {
-                state.mission_control.scroll_actions_by(*dy);
-                return true;
-            }
+    if let InputEvent::Scroll { dy, .. } = event {
+        if mission_control_sell_scroll_viewport_bounds(content_bounds).contains(cursor_position) {
+            state.provider_control.scroll_by(*dy);
+            return true;
         }
-        return false;
+        if mission_control_actions_scroll_viewport_bounds(content_bounds).contains(cursor_position)
+        {
+            state.mission_control.scroll_actions_by(*dy);
+            return true;
+        }
     }
-
-    state
-        .mission_control
-        .log_stream
-        .event(event, log_bounds, &mut state.event_context)
-        .is_handled()
+    false
 }
 
 pub fn dispatch_provider_control_scroll_event(
@@ -7235,6 +7256,18 @@ mod tests {
         assert!(button.origin.y >= content_bounds.origin.y);
         assert!(button.max_x() <= content_bounds.max_x());
         assert!(button.max_y() <= ledger.origin.y);
+    }
+
+    #[test]
+    fn log_stream_copy_button_sits_above_terminal() {
+        let content_bounds = Bounds::new(0.0, 0.0, 980.0, 560.0);
+        let button = super::log_stream_copy_button_bounds(content_bounds);
+        let terminal = super::log_stream_terminal_bounds(content_bounds);
+
+        assert!(button.origin.x >= content_bounds.origin.x);
+        assert!(button.origin.y >= content_bounds.origin.y);
+        assert!(button.max_x() <= content_bounds.max_x());
+        assert!(button.max_y() <= terminal.origin.y);
     }
 
     #[test]
