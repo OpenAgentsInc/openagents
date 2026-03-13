@@ -20,6 +20,7 @@ pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
 const STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS: u64 = 2;
 const STARTUP_CONVERGENCE_REFRESH_ATTEMPTS: u8 = 3;
+const REFRESH_THROTTLE_INTERVAL: Duration = Duration::from_secs(3);
 // MVP release fallback so Spark boots on first run without requiring shell env injection.
 const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
 
@@ -176,6 +177,7 @@ pub struct SparkPaneState {
     startup_convergence_refreshes_remaining: u8,
     startup_convergence_next_refresh_epoch_seconds: Option<u64>,
     env_overrides: HashMap<String, String>,
+    last_refresh_started_at: Option<std::time::Instant>,
 }
 
 impl Clone for SparkPaneState {
@@ -203,6 +205,7 @@ impl Clone for SparkPaneState {
             startup_convergence_next_refresh_epoch_seconds: self
                 .startup_convergence_next_refresh_epoch_seconds,
             env_overrides: self.env_overrides.clone(),
+            last_refresh_started_at: self.last_refresh_started_at,
         }
     }
 }
@@ -235,6 +238,7 @@ impl SparkPaneState {
             startup_convergence_refreshes_remaining: 0,
             startup_convergence_next_refresh_epoch_seconds: None,
             env_overrides: HashMap::new(),
+            last_refresh_started_at: None,
         }
     }
 
@@ -394,6 +398,10 @@ impl SparkPaneState {
     }
 
     fn refresh(&mut self, runtime: &Runtime) {
+        if self.should_throttle_refresh() {
+            return;
+        }
+        self.last_refresh_started_at = Some(std::time::Instant::now());
         self.last_error = None;
 
         if let Err(error) = self.ensure_wallet(runtime) {
@@ -433,6 +441,7 @@ impl SparkPaneState {
     }
 
     fn reload(&mut self, runtime: &Runtime) {
+        self.last_refresh_started_at = None;
         self.wallet = None;
         self.network_status = None;
         self.refresh(runtime);
@@ -456,6 +465,19 @@ impl SparkPaneState {
                 .network_status
                 .as_ref()
                 .is_some_and(|status| status.status == NetworkStatus::Connected)
+    }
+
+    fn should_throttle_refresh(&self) -> bool {
+        let Some(last_refresh_started_at) = self.last_refresh_started_at else {
+            return false;
+        };
+        if self.pending_balance_confirmation_payment_id.is_some() || self.last_error.is_some() {
+            return false;
+        }
+        if self.startup_convergence_active && !self.startup_convergence_satisfied() {
+            return false;
+        }
+        last_refresh_started_at.elapsed() < REFRESH_THROTTLE_INTERVAL
     }
 
     fn request_spark_address(&mut self, runtime: &Runtime) {
@@ -1395,6 +1417,32 @@ mod tests {
 
         assert!(!state.startup_convergence_active);
         assert_eq!(state.network_status_label(), "connected");
+    }
+
+    #[test]
+    fn refresh_throttle_blocks_recent_healthy_duplicate_refreshes() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        state.network_status = Some(NetworkStatusReport {
+            status: NetworkStatus::Connected,
+            detail: None,
+        });
+        state.balance = Some(Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        state.last_refresh_started_at = Some(std::time::Instant::now());
+
+        assert!(state.should_throttle_refresh());
+    }
+
+    #[test]
+    fn refresh_throttle_does_not_block_startup_convergence_retries() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+        state.begin_startup_convergence(100);
+        state.last_refresh_started_at = Some(std::time::Instant::now());
+
+        assert!(!state.should_throttle_refresh());
     }
 
     #[test]
