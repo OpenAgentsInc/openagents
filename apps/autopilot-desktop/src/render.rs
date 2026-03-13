@@ -743,6 +743,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let width = logical.width;
     let height = logical.height;
     let active_pane = PaneController::active(state);
+    let fullscreen_pane_active = pane_fullscreen_active(state);
 
     let mut scene = Scene::new();
     scene
@@ -1153,45 +1154,49 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
         );
         paint.scene.set_layer(hotbar_layer);
 
-        let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
-        let wallet_chip_label = state
-            .spark_wallet
-            .balance
-            .as_ref()
-            .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
-            .unwrap_or_else(|| "LOADING".to_string());
-        let wallet_label_font_size = 11.0;
-        let icon_text_gap = 8.0;
-        let label_width = paint
-            .text
-            .measure(&wallet_chip_label, wallet_label_font_size);
-        let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
-        let group_x = wallet_chip_bounds.origin.x + 6.0;
-        let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
-        let wallet_icon_bounds = Bounds::new(
-            group_x,
-            center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
-            OPENAGENTS_BRAND_ICON_SIZE,
-            OPENAGENTS_BRAND_ICON_SIZE,
-        );
-        paint.scene.draw_svg(
-            SvgQuad::new(
-                wallet_icon_bounds,
-                std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
-            )
-            .with_tint(theme::accent::PRIMARY),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &wallet_chip_label,
-            Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
-            wallet_label_font_size,
-            theme::text::PRIMARY,
-        ));
+        if fullscreen_pane_active {
+            state.hotbar_bounds = Bounds::ZERO;
+        } else {
+            let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
+            let wallet_chip_label = state
+                .spark_wallet
+                .balance
+                .as_ref()
+                .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
+                .unwrap_or_else(|| "LOADING".to_string());
+            let wallet_label_font_size = 11.0;
+            let icon_text_gap = 8.0;
+            let label_width = paint
+                .text
+                .measure(&wallet_chip_label, wallet_label_font_size);
+            let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
+            let group_x = wallet_chip_bounds.origin.x + 6.0;
+            let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
+            let wallet_icon_bounds = Bounds::new(
+                group_x,
+                center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
+                OPENAGENTS_BRAND_ICON_SIZE,
+                OPENAGENTS_BRAND_ICON_SIZE,
+            );
+            paint.scene.draw_svg(
+                SvgQuad::new(
+                    wallet_icon_bounds,
+                    std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+                )
+                .with_tint(theme::accent::PRIMARY),
+            );
+            paint.scene.draw_text(paint.text.layout_mono(
+                &wallet_chip_label,
+                Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
+                wallet_label_font_size,
+                theme::text::PRIMARY,
+            ));
 
-        let bar_bounds = hotbar_bounds(logical);
-        state.hotbar_bounds = bar_bounds;
-        configure_hotbar(&mut state.hotbar);
-        state.hotbar.paint(bar_bounds, &mut paint);
+            let bar_bounds = hotbar_bounds(logical);
+            state.hotbar_bounds = bar_bounds;
+            configure_hotbar(&mut state.hotbar);
+            state.hotbar.paint(bar_bounds, &mut paint);
+        }
 
         state
             .command_palette
@@ -1340,6 +1345,16 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
     Size::new(config.width as f32 / scale, config.height as f32 / scale)
 }
 
+fn pane_fullscreen_active_for_panes(panes: &[crate::app_state::DesktopPane]) -> bool {
+    panes
+        .iter()
+        .any(|pane| !pane.presentation.uses_window_chrome())
+}
+
+pub fn pane_fullscreen_active(state: &RenderState) -> bool {
+    pane_fullscreen_active_for_panes(&state.panes)
+}
+
 pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
     let available_width = (logical.width - WALLET_BALANCE_CHIP_MARGIN * 2.0).max(0.0);
     let width = available_width
@@ -1355,10 +1370,16 @@ pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
 }
 
 pub fn wallet_balance_chip_bounds(state: &RenderState) -> Bounds {
+    if pane_fullscreen_active(state) {
+        return Bounds::ZERO;
+    }
     wallet_balance_chip_bounds_for_logical(logical_size(&state.config, state.scale_factor))
 }
 
 pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
+    if pane_fullscreen_active(state) {
+        return Bounds::ZERO;
+    }
     let logical = logical_size(&state.config, state.scale_factor);
     let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
     let wallet_chip_label = state
@@ -1473,12 +1494,14 @@ fn command_registry() -> Vec<Command> {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_registry, wallet_balance_chip_bounds_for_logical};
-    use crate::app_state::PaneKind;
+    use super::{
+        command_registry, pane_fullscreen_active_for_panes, wallet_balance_chip_bounds_for_logical,
+    };
+    use crate::app_state::{DesktopPane, PaneKind, PanePresentation};
     use crate::pane_registry::{enabled_pane_specs, pane_spec_by_command_id, startup_pane_kinds};
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
-    use wgpui::Size;
+    use wgpui::{Bounds, Size};
 
     #[test]
     fn command_registry_matches_pane_specs() {
@@ -1628,5 +1651,38 @@ mod tests {
         assert!(bounds.max_y() >= 784.0);
         assert!(bounds.size.width >= 140.0);
         assert!(bounds.size.height >= 24.0);
+    }
+
+    #[test]
+    fn pane_fullscreen_active_detects_fullscreen_panes() {
+        let windowed_pane = DesktopPane {
+            id: 1,
+            title: "Windowed".to_string(),
+            kind: PaneKind::AutopilotChat,
+            bounds: Bounds::ZERO,
+            windowed_bounds: Bounds::ZERO,
+            z_index: 1,
+            frame: wgpui::components::hud::PaneFrame::default(),
+            presentation: PanePresentation::Windowed,
+        };
+        let fullscreen_pane = DesktopPane {
+            presentation: PanePresentation::Fullscreen,
+            ..DesktopPane {
+                id: 2,
+                title: "Fullscreen".to_string(),
+                kind: PaneKind::Presentation,
+                bounds: Bounds::ZERO,
+                windowed_bounds: Bounds::ZERO,
+                z_index: 2,
+                frame: wgpui::components::hud::PaneFrame::default(),
+                presentation: PanePresentation::Windowed,
+            }
+        };
+
+        let mut panes = vec![windowed_pane];
+        assert!(!pane_fullscreen_active_for_panes(&panes));
+
+        panes.push(fullscreen_pane);
+        assert!(pane_fullscreen_active_for_panes(&panes));
     }
 }
