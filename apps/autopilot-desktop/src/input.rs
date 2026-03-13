@@ -2913,7 +2913,6 @@ pub(crate) fn apply_provider_mode_target(
         if state.active_job.inflight_job_count() == 0 {
             state.provider_runtime.inventory_session_started_at_ms = None;
             state.provider_runtime.defer_runtime_shutdown_until_idle = false;
-            let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
             let _ = state.queue_local_inference_runtime_command(
                 LocalInferenceRuntimeCommand::UnloadConfiguredModel,
             );
@@ -3726,7 +3725,7 @@ mod tests {
     fn spark_command_builder_routes_actions() {
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
-            Ok(SparkWalletCommand::Refresh)
+            Ok(SparkWalletCommand::Reload)
         ));
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),

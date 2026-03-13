@@ -805,15 +805,14 @@ fn finalize_deferred_provider_runtime_shutdown_if_idle(state: &mut RenderState) 
     }
     state.provider_runtime.defer_runtime_shutdown_until_idle = false;
     state.provider_runtime.inventory_session_started_at_ms = None;
-    let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
     let _ = state
         .queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::UnloadConfiguredModel);
-    state
-        .active_job
-        .append_event("provider runtime drain complete; shutting down local execution runtimes");
+    state.active_job.append_event(
+        "provider runtime drain complete; unloading local execution runtimes that require teardown",
+    );
     tracing::info!(
         target: "autopilot_desktop::provider",
-        "Provider runtime drain complete; stopped local execution runtimes after offline request"
+        "Provider runtime drain complete; unloaded local execution runtimes that require teardown after offline request"
     );
 }
 
