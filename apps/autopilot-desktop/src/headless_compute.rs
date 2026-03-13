@@ -728,7 +728,7 @@ pub fn run_headless_buyer(config: HeadlessBuyerConfig) -> Result<()> {
                     settled_requests = settled_requests.saturating_add(1);
                     info!(
                         target: "autopilot_desktop::headless_buyer",
-                        "buyer settled request_id={} provider={} result={}",
+                        "buyer settled request_id={} provider_nostr={} result={}",
                         request.request_id,
                         request
                             .provider_pubkey
@@ -1081,7 +1081,7 @@ fn handle_buyer_response_event(
             let status = event.status.as_deref().unwrap_or("unknown").to_string();
             info!(
                 target: "autopilot_desktop::headless_buyer",
-                "buyer feedback request_id={} provider={} status={} event_id={}",
+                "buyer feedback request_id={} provider_nostr={} status={} event_id={}",
                 event.request_id,
                 event.provider_pubkey,
                 status,
@@ -1091,7 +1091,7 @@ fn handle_buyer_response_event(
                 if event.bolt11.as_deref().is_none() {
                     warn!(
                         target: "autopilot_desktop::headless_buyer",
-                        "buyer payment-required feedback missing bolt11 request_id={} provider={} event_id={}; awaiting matching result with a valid invoice",
+                        "buyer payment-required feedback missing bolt11 request_id={} provider_nostr={} event_id={}; awaiting matching result with a valid invoice",
                         event.request_id,
                         event.provider_pubkey,
                         event.event_id
@@ -1105,7 +1105,7 @@ fn handle_buyer_response_event(
                 .unwrap_or_else(|| "no result content".to_string());
             info!(
                 target: "autopilot_desktop::headless_buyer",
-                "buyer result observed request_id={} provider={} event_id={} result={}",
+                "buyer result observed request_id={} provider_nostr={} event_id={} result={}",
                 event.request_id,
                 event.provider_pubkey,
                 event.event_id,
@@ -1125,7 +1125,7 @@ fn handle_buyer_response_event(
             .map_err(|error| anyhow!("failed to queue buyer Spark payment: {error}"))?;
         info!(
             target: "autopilot_desktop::headless_buyer",
-            "buyer queued Spark payment request_id={} provider={} amount_sats={} bolt11_present=true",
+            "buyer queued Spark payment request_id={} provider_nostr={} amount_sats={} bolt11_present=true",
             event.request_id,
             dispatch.provider_pubkey,
             dispatch

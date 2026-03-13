@@ -1090,12 +1090,19 @@ mod tests {
         );
         assert_eq!(
             seller_fact.provider_nostr_pubkey.as_deref(),
-            Some("localpubkey001")
+            Some("providerpubkey-local")
         );
         assert_eq!(seller_fact.seller_payment_pointer.as_deref(), Some("wallet-recv-001"));
 
         let buyer_actor_facts = ledger.facts_for_actor(Nip90ActorNamespace::Nostr, "localpubkey001");
-        assert_eq!(buyer_actor_facts.len(), 2);
+        assert_eq!(buyer_actor_facts.len(), 1);
+        let seller_actor_facts =
+            ledger.facts_for_actor(Nip90ActorNamespace::Nostr, "providerpubkey-local");
+        assert_eq!(seller_actor_facts.len(), 1);
+        let lightning_actor_facts =
+            ledger.facts_for_actor(Nip90ActorNamespace::LightningDestination, "02buyerdest");
+        assert_eq!(lightning_actor_facts.len(), 1);
+        assert_eq!(lightning_actor_facts[0].request_id, "req-buy-001");
 
         let reloaded = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
         assert_eq!(reloaded.facts, ledger.facts);

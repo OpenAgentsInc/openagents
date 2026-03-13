@@ -670,7 +670,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         ));
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "completed={} payer={} payee={}",
+                "completed={} payer_nostr={} payee_nostr={}",
                 row.completed_at_epoch_seconds,
                 compact_identity(row.requester_nostr_pubkey.as_deref()),
                 compact_identity(row.provider_nostr_pubkey.as_deref())

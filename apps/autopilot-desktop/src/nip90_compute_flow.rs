@@ -460,7 +460,7 @@ impl BuyerRequestFlowSnapshot {
 
     pub(crate) fn mission_control_log_line(&self) -> String {
         let mut line = format!(
-            "Buyer {} [{}] {} {} auth={} phase={} next={} provider={} work={} payment={}",
+            "Buyer {} [{}] {} {} auth={} phase={} next={} provider_nostr={} work={} payment={}",
             mission_control_log_short_id(self.request_id.as_str()),
             self.request_type,
             self.status.label(),
@@ -494,15 +494,15 @@ impl BuyerRequestFlowSnapshot {
             line.push_str(mission_control_log_short_id(feedback_event_id).as_str());
         }
         if let Some(result_provider) = self.result_provider_pubkey() {
-            line.push_str(" result_provider=");
+            line.push_str(" result_provider_nostr=");
             line.push_str(mission_control_log_short_id(result_provider).as_str());
         }
         if let Some(invoice_provider) = self.invoice_provider_pubkey() {
-            line.push_str(" invoice_provider=");
+            line.push_str(" invoice_provider_nostr=");
             line.push_str(mission_control_log_short_id(invoice_provider).as_str());
         }
         if let Some(payable) = self.payable_provider_pubkey.as_deref() {
-            line.push_str(" payable_provider=");
+            line.push_str(" payable_provider_nostr=");
             line.push_str(mission_control_log_short_id(payable).as_str());
         }
         if let Some(blocker_codes) = self.payment_blocker_codes_label() {
@@ -1303,7 +1303,7 @@ struct BuyModePaymentLedgerEntry {
     net_wallet_delta_sats: Option<i64>,
     wallet_status: String,
     wallet_method: String,
-    provider_pubkey: String,
+    provider_nostr_pubkey: String,
     request_id: String,
     request_type: String,
     authority: Nip90FlowAuthority,
@@ -1321,7 +1321,7 @@ struct BuyModePaymentLedgerEntry {
     request_event_id: String,
     result_event_id: String,
     payment_hash: String,
-    destination_pubkey: String,
+    lightning_destination_pubkey: String,
     htlc_status: String,
     htlc_expiry_epoch_seconds: Option<u64>,
     wallet_detail: Option<String>,
@@ -1445,7 +1445,7 @@ fn buy_mode_request_ledger_entry(
         net_wallet_delta_sats: request.net_wallet_delta_sats,
         wallet_status: request.wallet_status.clone(),
         wallet_method: request.wallet_method.clone(),
-        provider_pubkey: request.provider_pubkey().unwrap_or("-").to_string(),
+        provider_nostr_pubkey: request.provider_pubkey().unwrap_or("-").to_string(),
         request_id: request.request_id.clone(),
         request_type: request.request_type.clone(),
         authority: request.authority,
@@ -1488,7 +1488,7 @@ fn buy_mode_request_ledger_entry(
             .payment_hash
             .clone()
             .unwrap_or_else(|| "-".to_string()),
-        destination_pubkey: request
+        lightning_destination_pubkey: request
             .destination_pubkey
             .clone()
             .unwrap_or_else(|| "-".to_string()),
@@ -1542,10 +1542,7 @@ fn buy_mode_wallet_backfill_entry(
         net_wallet_delta_sats: Some(wallet_payment_net_delta_sats(payment)),
         wallet_status,
         wallet_method: payment.method.clone(),
-        provider_pubkey: payment
-            .destination_pubkey
-            .clone()
-            .unwrap_or_else(|| "-".to_string()),
+        provider_nostr_pubkey: "-".to_string(),
         request_id: request_hint,
         request_type: MISSION_CONTROL_BUY_MODE_REQUEST_TYPE.to_string(),
         authority: Nip90FlowAuthority::Wallet,
@@ -1580,7 +1577,7 @@ fn buy_mode_wallet_backfill_entry(
             .payment_hash
             .clone()
             .unwrap_or_else(|| "-".to_string()),
-        destination_pubkey: payment
+        lightning_destination_pubkey: payment
             .destination_pubkey
             .clone()
             .unwrap_or_else(|| "-".to_string()),
@@ -1606,7 +1603,7 @@ fn push_buy_mode_payment_entry_rows(
     rows.push((
         entry.stream.clone(),
         format!(
-            "{}  status={}  invoice={} sats  fee={}  total_debit={}  wallet_delta={}  wallet_status={}  wallet_method={}  provider_pubkey={}",
+            "{}  status={}  invoice={} sats  fee={}  total_debit={}  wallet_delta={}  wallet_status={}  wallet_method={}  provider_nostr_pubkey={}",
             buy_mode_payment_timestamp_label(entry.timestamp),
             entry.status,
             entry.amount_sats,
@@ -1615,7 +1612,7 @@ fn push_buy_mode_payment_entry_rows(
             buy_mode_optional_signed_sats_label(entry.net_wallet_delta_sats),
             entry.wallet_status,
             entry.wallet_method,
-            entry.provider_pubkey,
+            entry.provider_nostr_pubkey,
         ),
     ));
     rows.push((
@@ -1639,7 +1636,7 @@ fn push_buy_mode_payment_entry_rows(
         rows.push((
             entry.stream.clone(),
             format!(
-                "selected_provider={}  result_provider={}  invoice_provider={}  payable_provider={}  blockers={}  losers={}  loser_summary={}",
+                "selected_provider_nostr_pubkey={}  result_provider_nostr_pubkey={}  invoice_provider_nostr_pubkey={}  payable_provider_nostr_pubkey={}  blockers={}  losers={}  loser_summary={}",
                 entry.selected_provider_pubkey,
                 entry.result_provider_pubkey,
                 entry.invoice_provider_pubkey,
@@ -1654,15 +1651,15 @@ fn push_buy_mode_payment_entry_rows(
             ),
         ));
     }
-    if entry.destination_pubkey != "-"
+    if entry.lightning_destination_pubkey != "-"
         || entry.htlc_status != "-"
         || entry.htlc_expiry_epoch_seconds.is_some()
     {
         rows.push((
             entry.stream.clone(),
             format!(
-                "destination_pubkey={}  htlc_status={}  htlc_expiry={}",
-                entry.destination_pubkey,
+                "lightning_destination_pubkey={}  htlc_status={}  htlc_expiry={}",
+                entry.lightning_destination_pubkey,
                 entry.htlc_status,
                 buy_mode_payment_timestamp_label(entry.htlc_expiry_epoch_seconds),
             ),

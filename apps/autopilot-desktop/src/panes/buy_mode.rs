@@ -60,7 +60,7 @@ pub fn paint(
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Fixed smoke-test lane: kind 5050, 2 sats budget, one in-flight request, app-owned targeting state.",
+        "Fixed smoke-test lane: kind 5050, 2 sats budget, one in-flight request, and namespace-labeled Nostr provider vs Lightning destination identities.",
         Point::new(content_bounds.origin.x + 12.0, content_bounds.origin.y + 58.0),
         10.0,
         theme::text::MUTED,

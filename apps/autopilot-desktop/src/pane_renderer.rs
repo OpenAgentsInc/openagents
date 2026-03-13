@@ -4428,7 +4428,7 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} payer:{} payee:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
+            "{} {} src:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
