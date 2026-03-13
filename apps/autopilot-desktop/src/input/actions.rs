@@ -9326,44 +9326,6 @@ pub(super) fn run_mission_control_action(
         MissionControlPaneAction::RunLocalFmSummaryTest => {
             run_mission_control_local_fm_summary_test(state)
         }
-        MissionControlPaneAction::ToggleBuyModeLoop => {
-            if !state.mission_control_buy_mode_enabled() {
-                state
-                    .mission_control
-                    .record_error("Buy Mode is disabled for this session");
-                return true;
-            }
-
-            let now = std::time::Instant::now();
-            if state.mission_control.buy_mode_loop_enabled {
-                state.mission_control.toggle_buy_mode_loop(now);
-                state
-                    .mission_control
-                    .record_action("Buy Mode stopped".to_string());
-            } else if let Some(reason) =
-                crate::app_state::mission_control_buy_mode_start_block_reason(&state.spark_wallet)
-            {
-                state.mission_control.record_error(reason.clone());
-                state.provider_runtime.last_error_detail = Some(reason);
-            } else if state.mission_control.toggle_buy_mode_loop(now) {
-                state.mission_control.record_action(format!(
-                    "Buy Mode armed // 5050 // {} sats // every {}",
-                    crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
-                    crate::app_state::mission_control_buy_mode_interval_label()
-                ));
-            }
-            true
-        }
-        MissionControlPaneAction::OpenBuyModePayments => {
-            crate::pane_system::PaneController::create_for_kind(
-                state,
-                crate::app_state::PaneKind::BuyModePayments,
-            );
-            state
-                .mission_control
-                .record_action("Opened Buy Mode payment history");
-            true
-        }
         MissionControlPaneAction::OpenDocumentation => {
             match open_mission_control_documentation() {
                 Ok(path) => {
@@ -9387,9 +9349,40 @@ pub(super) fn run_buy_mode_payments_action(
     action: BuyModePaymentsPaneAction,
 ) -> bool {
     match action {
+        BuyModePaymentsPaneAction::ToggleLoop => {
+            if !state.mission_control_buy_mode_enabled() {
+                state.buy_mode_payments.record_error("Buy Mode is disabled for this session");
+                state
+                    .mission_control
+                    .record_error("Buy Mode is disabled for this session");
+                return true;
+            }
+
+            let now = std::time::Instant::now();
+            if state.buy_mode_payments.buy_mode_loop_enabled {
+                state.buy_mode_payments.toggle_buy_mode_loop(now);
+                state.buy_mode_payments.record_action("Buy Mode stopped");
+                state.mission_control.record_action("Buy Mode stopped");
+            } else if let Some(reason) =
+                crate::app_state::mission_control_buy_mode_start_block_reason(&state.spark_wallet)
+            {
+                state.buy_mode_payments.record_error(reason.clone());
+                state.mission_control.record_error(reason.clone());
+                state.provider_runtime.last_error_detail = Some(reason);
+            } else if state.buy_mode_payments.toggle_buy_mode_loop(now) {
+                let notice = format!(
+                    "Buy Mode armed // 5050 // {} sats // every {}",
+                    crate::app_state::MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+                    crate::app_state::mission_control_buy_mode_interval_label()
+                );
+                state.buy_mode_payments.record_action(notice.clone());
+                state.mission_control.record_action(notice);
+            }
+            true
+        }
         BuyModePaymentsPaneAction::CopyAll => {
             let output = crate::app_state::buy_mode_payments_clipboard_text(
-                &state.mission_control,
+                &state.buy_mode_payments,
                 &state.network_requests,
                 &state.spark_wallet,
             );
@@ -9398,8 +9391,10 @@ pub(super) fn run_buy_mode_payments_action(
                 Err(error) => format!("Failed to copy Buy Mode payment history: {error}"),
             };
             if notice.starts_with("Failed") {
+                state.buy_mode_payments.record_error(notice.clone());
                 state.mission_control.record_error(notice);
             } else {
+                state.buy_mode_payments.record_action(notice.clone());
                 state.mission_control.record_action(notice);
             }
             true
@@ -10142,18 +10137,20 @@ pub(super) fn run_mission_control_buy_mode_tick(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) -> bool {
-    if !state.mission_control_buy_mode_enabled() || !state.mission_control.buy_mode_loop_enabled {
+    if !state.mission_control_buy_mode_enabled() || !state.buy_mode_payments.buy_mode_loop_enabled
+    {
         return false;
     }
     if let Some(reason) =
         crate::app_state::mission_control_buy_mode_start_block_reason(&state.spark_wallet)
     {
-        state.mission_control.toggle_buy_mode_loop(now);
+        state.buy_mode_payments.toggle_buy_mode_loop(now);
+        state.buy_mode_payments.record_error(reason.clone());
         state.provider_runtime.last_error_detail = Some(reason.clone());
         state.mission_control.record_error(reason);
         return true;
     }
-    if !state.mission_control.buy_mode_dispatch_due(now) {
+    if !state.buy_mode_payments.buy_mode_dispatch_due(now) {
         return false;
     }
     if state
@@ -10168,7 +10165,7 @@ pub(super) fn run_mission_control_buy_mode_tick(
         .autopilot_chat
         .select_autopilot_buy_mode_target(now_epoch_seconds);
     let Some(target_provider_pubkey) = target_selection.selected_peer_pubkey.clone() else {
-        state.mission_control.schedule_buy_mode_retry_with_interval(
+        state.buy_mode_payments.schedule_buy_mode_retry_with_interval(
             now,
             crate::app_state::MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL,
         );
@@ -10184,7 +10181,7 @@ pub(super) fn run_mission_control_buy_mode_tick(
             target_selection.observed_peer_count, target_selection.eligible_peer_count
         );
         if state
-            .mission_control
+            .buy_mode_payments
             .should_emit_buy_mode_blocked_notice(now, blocked_signature.as_str())
         {
             state.provider_runtime.last_result = Some(detail.clone());
@@ -10196,18 +10193,19 @@ pub(super) fn run_mission_control_buy_mode_tick(
                 target_selection.eligible_peer_count,
                 detail
             );
+            state.buy_mode_payments.record_action(detail.clone());
             state.mission_control.record_action(detail);
         }
         return true;
     };
-    state.mission_control.clear_buy_mode_blocked_notice();
+    state.buy_mode_payments.clear_buy_mode_blocked_notice();
 
     match submit_mission_control_buy_mode_request(state, vec![target_provider_pubkey.clone()]) {
         Ok(request_id) => {
             state
                 .autopilot_chat
                 .note_buy_mode_target_dispatch(target_provider_pubkey.as_str());
-            state.mission_control.schedule_next_buy_mode_dispatch(now);
+            state.buy_mode_payments.schedule_next_buy_mode_dispatch(now);
             tracing::info!(
                 target: "autopilot_desktop::buy_mode",
                 "Buy Mode dispatched request_id={} budget_sats={} timeout_seconds={} target_provider={}",
@@ -10216,13 +10214,19 @@ pub(super) fn run_mission_control_buy_mode_tick(
                 crate::app_state::MISSION_CONTROL_BUY_MODE_TIMEOUT_SECONDS,
                 target_provider_pubkey
             );
+            state.buy_mode_payments.record_action(format!(
+                "Buy Mode dispatched {request_id} -> {target_provider_pubkey}"
+            ));
             state.mission_control.record_action(format!(
                 "Buy Mode dispatched {request_id} -> {target_provider_pubkey}"
             ));
             true
         }
         Err(error) => {
-            state.mission_control.schedule_buy_mode_retry(now);
+            state.buy_mode_payments.schedule_buy_mode_retry(now);
+            state
+                .buy_mode_payments
+                .record_error(format!("Buy Mode dispatch failed: {error}"));
             state.provider_runtime.last_error_detail = Some(error.clone());
             tracing::error!(
                 target: "autopilot_desktop::buy_mode",

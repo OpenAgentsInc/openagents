@@ -524,15 +524,16 @@ const PANE_SPECS: [PaneSpec; 43] = [
     },
     PaneSpec {
         kind: PaneKind::BuyModePayments,
-        title: "Buy Mode Payments",
-        default_width: 920.0,
-        default_height: 500.0,
+        title: "Buy Mode",
+        default_width: 980.0,
+        default_height: 560.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.buy_mode_payments",
-            label: "Buy Mode Payments",
-            description: "Open buyer-side payment history with request IDs, pubkeys, and wallet pointers",
+            label: "Buy Mode",
+            description:
+                "Open the buyer smoke-test loop, targeting state, and payment history surface",
             keybinding: None,
         }),
         hotbar: None,

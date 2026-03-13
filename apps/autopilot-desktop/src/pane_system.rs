@@ -333,8 +333,6 @@ pub enum MissionControlPaneAction {
     CopyLogStream,
     OpenLocalModelWorkbench,
     RunLocalFmSummaryTest,
-    ToggleBuyModeLoop,
-    OpenBuyModePayments,
     OpenDocumentation,
 }
 
@@ -347,6 +345,7 @@ pub enum ProviderControlPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BuyModePaymentsPaneAction {
+    ToggleLoop,
     CopyAll,
 }
 
@@ -1012,10 +1011,10 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ReciprocalLoop | PaneKind::AgentProfileState | PaneKind::AgentScheduleTick => {
             pane_size_for_content(860.0, 440.0)
         }
-        PaneKind::ActivityFeed
-        | PaneKind::AlertsRecovery
-        | PaneKind::JobHistory
-        | PaneKind::BuyModePayments => pane_size_for_content(900.0, 460.0),
+        PaneKind::ActivityFeed | PaneKind::AlertsRecovery | PaneKind::JobHistory => {
+            pane_size_for_content(900.0, 460.0)
+        }
+        PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
         PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
         PaneKind::TrajectoryAudit
         | PaneKind::CastControl
@@ -2745,10 +2744,15 @@ pub fn mission_control_buy_mode_history_button_bounds(
 }
 
 pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle = buy_mode_payments_toggle_button_bounds(content_bounds);
+    Bounds::new(toggle.origin.x - 116.0, toggle.origin.y, 108.0, 22.0)
+}
+
+pub fn buy_mode_payments_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
-        content_bounds.origin.x + 12.0,
+        content_bounds.max_x() - 152.0,
         content_bounds.origin.y + 8.0,
-        96.0,
+        140.0,
         22.0,
     )
 }
@@ -2756,9 +2760,9 @@ pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn buy_mode_payments_ledger_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 90.0,
+        content_bounds.origin.y + 176.0,
         (content_bounds.size.width - 24.0).max(0.0),
-        (content_bounds.size.height - 102.0).max(0.0),
+        (content_bounds.size.height - 188.0).max(0.0),
     )
 }
 
@@ -5366,20 +5370,6 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLogStream,
                 ))
-            } else if state.mission_control_buy_mode_enabled()
-                && mission_control_buy_mode_button_bounds(content_bounds, true).contains(point)
-                && state.mission_control_buy_mode_toggle_enabled()
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::ToggleBuyModeLoop,
-                ))
-            } else if state.mission_control_buy_mode_enabled()
-                && mission_control_buy_mode_history_button_bounds(content_bounds, true)
-                    .contains(point)
-            {
-                Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenBuyModePayments,
-                ))
             } else if mission_control_show_local_model_button(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
@@ -6450,7 +6440,11 @@ fn pane_hit_action_for_pane(
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
         PaneKind::BuyModePayments => {
-            if buy_mode_payments_copy_button_bounds(content_bounds).contains(point) {
+            if buy_mode_payments_toggle_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::BuyModePayments(
+                    BuyModePaymentsPaneAction::ToggleLoop,
+                ))
+            } else if buy_mode_payments_copy_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(
                     BuyModePaymentsPaneAction::CopyAll,
                 ))
