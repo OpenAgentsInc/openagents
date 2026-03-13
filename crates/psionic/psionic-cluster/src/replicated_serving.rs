@@ -531,11 +531,16 @@ const fn replica_warm_state_label(warm_state: ClusterReplicaWarmState) -> &'stat
 mod tests {
     use std::io::Error;
 
-    use psionic_runtime::{ClusterExecutionCapabilityProfile, ClusterExecutionLane};
+    use psionic_runtime::{
+        ClusterAdmissionFactKind, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
+        ClusterPolicyDigestKind,
+    };
 
     use crate::{
         AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyRecord,
-        ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus, ClusterLink,
+        ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
+        ClusterCommandAuthorityScope, ClusterCommandAuthorization,
+        ClusterDiscoveredCandidateRecord, ClusterDiscoveredCandidateStatus, ClusterLink,
         ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace,
         ClusterNodeIdentity, ClusterNodeTelemetry, ClusterServingDecisionDisposition,
         ClusterServingWorkClass, ClusterSnapshot, ClusterTransportClass, NodeEpoch, NodeRole,
@@ -622,6 +627,45 @@ mod tests {
             )
     }
 
+    fn sample_command_authorization(
+        submitter_node_id: &str,
+        authority_scope: ClusterCommandAuthorityScope,
+        command_digest: &str,
+    ) -> ClusterCommandAuthorization {
+        ClusterCommandAuthorization {
+            command_digest: String::from(command_digest),
+            authorization_policy_digest: String::from("command-authorization-policy"),
+            authority_scope,
+            submitter_node_id: NodeId::new(submitter_node_id),
+            submitter_role: NodeRole::Mixed,
+            submitter_membership_status: ClusterMembershipStatus::Ready,
+            coordinator_authority: None,
+        }
+    }
+
+    fn accepted_discovery_candidate(node_id: &str) -> ClusterDiscoveredCandidateRecord {
+        ClusterDiscoveredCandidateRecord {
+            candidate: crate::ClusterDiscoveryCandidate::new(
+                sample_cluster_id(),
+                ClusterNamespace::new("cluster-lan"),
+                NodeId::new(node_id),
+                NodeRole::ExecutorOnly,
+                String::new(),
+                Vec::new(),
+            ),
+            introduced_by_source_id: String::from("operator-source"),
+            introduction_policy_digest: String::from("introduction-policy-digest"),
+            introduction_payload_digest: format!("introduction-payload-{node_id}"),
+            introduced_at_ms: 10_000,
+            expires_at_ms: 20_000,
+            observed_trust_bundle_version: None,
+            status: ClusterDiscoveredCandidateStatus::Accepted,
+            last_policy_decision: None,
+            revocation: None,
+            detail: Some(String::from("admitted_into_membership")),
+        }
+    }
+
     fn replica_state() -> ClusterState {
         let cluster_id = sample_cluster_id();
         let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
@@ -668,6 +712,106 @@ mod tests {
                 ClusterArtifactResidencyStatus::Resident,
             ),
         );
+        ClusterState::from_snapshot(snapshot)
+    }
+
+    fn replica_state_with_authority_and_candidate_truth() -> ClusterState {
+        let cluster_id = sample_cluster_id();
+        let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
+        snapshot
+            .memberships
+            .insert(NodeId::new("scheduler"), scheduler_membership(&cluster_id));
+        snapshot.memberships.insert(
+            NodeId::new("worker-a"),
+            ready_membership(&cluster_id, "worker-a"),
+        );
+        snapshot.memberships.insert(
+            NodeId::new("worker-b"),
+            ready_membership(&cluster_id, "worker-b"),
+        );
+        snapshot.telemetry.insert(
+            NodeId::new("worker-a"),
+            ready_cuda_telemetry("worker-a", 48 * 1024 * 1024 * 1024),
+        );
+        snapshot.telemetry.insert(
+            NodeId::new("worker-b"),
+            ready_cuda_telemetry("worker-b", 32 * 1024 * 1024 * 1024),
+        );
+        snapshot.links.insert(
+            crate::ClusterLinkKey::new(NodeId::new("scheduler"), NodeId::new("worker-a")),
+            healthy_link("scheduler", "worker-a", 300),
+        );
+        snapshot.links.insert(
+            crate::ClusterLinkKey::new(NodeId::new("scheduler"), NodeId::new("worker-b")),
+            healthy_link("scheduler", "worker-b", 900),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(NodeId::new("worker-a"), "artifact-1"),
+            ClusterArtifactResidencyRecord::new(
+                NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(NodeId::new("worker-b"), "artifact-1"),
+            ClusterArtifactResidencyRecord::new(
+                NodeId::new("worker-b"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.membership_provenance.insert(
+            NodeId::new("scheduler"),
+            sample_command_authorization(
+                "scheduler",
+                ClusterCommandAuthorityScope::SelfNode,
+                "scheduler-membership-command",
+            ),
+        );
+        snapshot.membership_provenance.insert(
+            NodeId::new("worker-a"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-membership-command",
+            ),
+        );
+        snapshot.discovery_candidates.insert(
+            NodeId::new("worker-a"),
+            accepted_discovery_candidate("worker-a"),
+        );
+        snapshot.discovery_candidate_provenance.insert(
+            NodeId::new("worker-a"),
+            sample_command_authorization(
+                "scheduler",
+                ClusterCommandAuthorityScope::CoordinatorOnly,
+                "worker-a-candidate-admission",
+            ),
+        );
+        snapshot.artifact_residency_provenance.insert(
+            crate::ClusterArtifactResidencyKey::new(NodeId::new("worker-a"), "artifact-1"),
+            sample_command_authorization(
+                "worker-a",
+                ClusterCommandAuthorityScope::SelfNode,
+                "worker-a-artifact-command",
+            ),
+        );
+        snapshot.admission_policy_provenance = Some(sample_command_authorization(
+            "scheduler",
+            ClusterCommandAuthorityScope::CoordinatorOnly,
+            "admission-policy-command",
+        ));
+        snapshot.leadership_provenance = Some(sample_command_authorization(
+            "scheduler",
+            ClusterCommandAuthorityScope::ProposedLeader,
+            "leadership-command",
+        ));
+        snapshot.leadership = Some(crate::ClusterLeadershipRecord::new(
+            crate::ClusterTerm::initial(),
+            NodeId::new("scheduler"),
+            crate::ClusterEventIndex::initial(),
+        ));
         ClusterState::from_snapshot(snapshot)
     }
 
@@ -824,6 +968,90 @@ mod tests {
                     replica.node.node_id == "worker-a"
                         && replica.routing == ClusterReplicaRoutingDisposition::WarmStandby
                 })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn replicated_serving_preserves_admission_and_replication_evidence()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let state = replica_state_with_authority_and_candidate_truth();
+        let replica_snapshot =
+            ClusterReplicaSnapshot::new(state.cluster_id().clone(), replica_lane())
+                .with_replica(ClusterReplicaRecord::new(
+                    replica_lane(),
+                    NodeId::new("worker-a"),
+                    ClusterReplicaWarmState::Warm,
+                ))
+                .with_replica(ClusterReplicaRecord::new(
+                    replica_lane(),
+                    NodeId::new("worker-b"),
+                    ClusterReplicaWarmState::Warm,
+                ));
+        let load_snapshot = ClusterServingLoadSnapshot::new(state.cluster_id().clone())
+            .with_node_load(crate::ClusterNodeServiceLoad::new(NodeId::new("worker-a")))
+            .with_node_load(crate::ClusterNodeServiceLoad::new(NodeId::new("worker-b")));
+
+        let decision = plan_replicated_serving(
+            &state,
+            &load_snapshot,
+            &replica_snapshot,
+            &ClusterReplicaLifecyclePolicy::replicated_lane(),
+            &ClusterServingPolicy::direct_caller_latency_first(),
+            &ClusterServingRequest::new("req-replica-4", ClusterServingWorkClass::Decode),
+            &scheduling_request(),
+        )
+        .map_err(|err| fixture_error(&format!("replicated serving should succeed: {err:?}")))?;
+
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Admission),
+            "replica-routed execution should retain admission-policy truth"
+        );
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Serving),
+            "replica-routed execution should retain serving-policy truth"
+        );
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Replication),
+            "replica-routed execution should retain replication-policy truth"
+        );
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .command_provenance
+                .iter()
+                .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::AdmissionPolicy),
+            "replica-routed execution should carry admission-policy provenance"
+        );
+        assert!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .command_provenance
+                .iter()
+                .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::SelectedCandidateAdmission),
+            "replica-routed execution should carry selected-candidate provenance"
         );
         Ok(())
     }
