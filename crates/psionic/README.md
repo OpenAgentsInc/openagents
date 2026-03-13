@@ -54,8 +54,9 @@ for direct/NAT/relay connectivity, durable ordered-state persistence, policy-
 driven wider-network candidate admission, truthful remote whole-request
 scheduling, replica-routed clustered serving with explicit replica evidence,
 layer-sharded clustered serving with explicit handoff evidence, and restart-safe
-catch-up in `psionic-cluster`, plus explicit AMD discovery/readiness
-groundwork. AMD execution support is still future work.
+catch-up in `psionic-cluster`, tensor-sharded clustered serving with explicit
+collective evidence, plus explicit AMD discovery/readiness groundwork. AMD
+execution support is still future work.
 
 ## Docs
 

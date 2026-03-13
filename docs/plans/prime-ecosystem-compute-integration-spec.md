@@ -853,6 +853,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the first meaningful step toward larger-than-one-node inference products.
 
 14. **Psionic Cluster: productize tensor-sharded serving and collective planning**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3498`.
    - Turn the current tensor-sharded planner into an execution-backed product that depends on explicit collective eligibility and topology proof.
    - This is where clustered inference begins to converge with later training-class transport needs.
 
