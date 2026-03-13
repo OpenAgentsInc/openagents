@@ -64,6 +64,72 @@ autopilotctl apple-fm refresh --wait
 autopilotctl apple-fm smoke-test
 ```
 
+## Supported local-runtime hosts
+
+The app now exposes one app-owned `local_runtime` contract across Mission
+Control, desktop control, and `autopilotctl`, but the supported host stories
+are still lane-specific:
+
+- macOS Apple Silicon: Apple FM via `foundation-bridge`
+- supported non-macOS NVIDIA hosts: GPT-OSS via the in-process Psionic CUDA lane
+- retained GPT-OSS Metal/CPU backends can still appear in status/readiness
+  views, but `Go Online` currently unlocks sell-compute only for CUDA
+
+Mission Control now renders the active local-runtime lane inline. On supported
+NVIDIA/CUDA hosts that means the local-runtime area can show GPT-OSS readiness,
+artifact state, load state, model path, and `REFRESH` / `WARM` / `UNLOAD`
+actions directly, while the separate GPT-OSS workbench remains the prompt
+playground and detailed model-management pane.
+
+## GPT-OSS host bring-up
+
+Use this on a supported non-macOS NVIDIA/CUDA host.
+
+The GPT-OSS runtime reads:
+
+- `OPENAGENTS_GPT_OSS_BACKEND=auto|cuda|metal|cpu`
+- `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`
+
+If `OPENAGENTS_GPT_OSS_MODEL_PATH` is unset, the runtime defaults to:
+
+```text
+~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
+```
+
+Recommended bring-up flow:
+
+```bash
+export OPENAGENTS_GPT_OSS_BACKEND=cuda
+export OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf
+
+cargo install --path .
+cargo autopilot
+
+autopilotctl local-runtime status
+autopilotctl local-runtime refresh --wait
+autopilotctl gpt-oss status
+autopilotctl gpt-oss warm --wait
+autopilotctl wait gpt-oss-ready
+autopilotctl provider online
+```
+
+Useful follow-up checks:
+
+```bash
+autopilotctl gpt-oss unload --wait
+autopilotctl logs --tail 100
+```
+
+Operational notes:
+
+- `local-runtime refresh` always targets the active Mission Control lane
+- `gpt-oss warm` and `gpt-oss unload` act directly on the configured GGUF model
+- `provider online` will still block if the backend is not `cuda`, the GGUF is
+  missing, or the configured model is not loaded
+- on retained Metal/CPU GPT-OSS hosts, Mission Control and `autopilotctl` stay
+  truthful about runtime state but currently point you back to the GPT-OSS
+  workbench instead of unlocking sell-compute
+
 ## Local smoke run
 
 This uses the current default buyer wallet and creates a fresh provider account under `target/headless-compute-smoke/provider`:
@@ -151,6 +217,11 @@ Useful env overrides:
 The packaged smoke script is intentionally app-owned verification, not a library-only harness.
 It proves the production shell, desktop control runtime, and file-backed logs stay in sync
 through the v0.1 paid compute loop.
+
+The packaged `.app` verification flow is still the macOS Apple FM release path.
+There is not yet a separate packaged GPT-OSS bundle check in this repo. For the
+supported NVIDIA/CUDA lane, current operator verification is the running desktop
+app plus `autopilotctl`, desktop-control snapshots, and the session JSONL logs.
 
 ## Packaged app buyer + seller + chat roundtrip
 
