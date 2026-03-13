@@ -1,19 +1,13 @@
 use std::{fs, str::FromStr};
 
 use async_trait::async_trait;
-use cln_rpc::{
-    model::{
-        requests::InvoiceRequest,
-        responses::{InvoiceResponse, ListinvoicesInvoicesStatus, ListinvoicesResponse},
-    },
-    primitives::{Amount, AmountOrAny},
-};
 use config::ConfigError;
 use http::{header::CONTENT_TYPE, HeaderValue, Uri};
 use hyper::{client::HttpConnector, Client};
 use hyper_rustls::HttpsConnector;
 use nostr::Keys;
 use rand::random;
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{
     config::Settings,
@@ -21,6 +15,67 @@ use crate::{
 };
 
 use super::{InvoiceInfo, InvoiceStatus, PaymentProcessor};
+
+#[derive(Clone, Debug, Serialize)]
+struct ClnInvoiceRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cltv: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deschashonly: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expiry: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exposeprivatechannels: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fallbacks: Option<Vec<String>>,
+    amount_msat: ClnAmount,
+    description: String,
+    label: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ClnInvoiceResponse {
+    bolt11: String,
+    payment_hash: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ClnListInvoicesResponse {
+    invoices: Vec<ClnListInvoice>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ClnListInvoice {
+    status: ClnInvoiceStatus,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum ClnInvoiceStatus {
+    Unpaid,
+    Paid,
+    Expired,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ClnAmount(u64);
+
+impl ClnAmount {
+    fn from_sat(sat: u64) -> Self {
+        Self(sat.saturating_mul(1_000))
+    }
+}
+
+impl Serialize for ClnAmount {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format!("{}msat", self.0))
+    }
+}
 
 #[derive(Clone)]
 pub struct ClnRestPaymentProcessor {
@@ -63,14 +118,14 @@ impl PaymentProcessor for ClnRestPaymentProcessor {
         let random_number: u16 = random();
         let memo = format!("{}: {}", random_number, key.public_key());
 
-        let body = InvoiceRequest {
+        let body = ClnInvoiceRequest {
             cltv: None,
             deschashonly: None,
             expiry: None,
             preimage: None,
             exposeprivatechannels: None,
             fallbacks: None,
-            amount_msat: AmountOrAny::Amount(Amount::from_sat(amount)),
+            amount_msat: ClnAmount::from_sat(amount),
             description: memo.clone(),
             label: "Nostr".to_string(),
         };
@@ -91,11 +146,11 @@ impl PaymentProcessor for ClnRestPaymentProcessor {
         let res = self.client.request(req).await?;
 
         let body = hyper::body::to_bytes(res.into_body()).await?;
-        let invoice_response: InvoiceResponse = serde_json::from_slice(&body)?;
+        let invoice_response: ClnInvoiceResponse = serde_json::from_slice(&body)?;
 
         Ok(InvoiceInfo {
             pubkey: key.public_key().to_string(),
-            payment_hash: invoice_response.payment_hash.to_string(),
+            payment_hash: invoice_response.payment_hash,
             bolt11: invoice_response.bolt11,
             amount,
             memo,
@@ -122,16 +177,47 @@ impl PaymentProcessor for ClnRestPaymentProcessor {
         let res = self.client.request(req).await?;
 
         let body = hyper::body::to_bytes(res.into_body()).await?;
-        let invoice_response: ListinvoicesResponse = serde_json::from_slice(&body)?;
+        let invoice_response: ClnListInvoicesResponse = serde_json::from_slice(&body)?;
         let invoice = invoice_response
             .invoices
             .first()
             .ok_or(Error::CustomError("Invoice not found".to_string()))?;
         let status = match invoice.status {
-            ListinvoicesInvoicesStatus::PAID => InvoiceStatus::Paid,
-            ListinvoicesInvoicesStatus::UNPAID => InvoiceStatus::Unpaid,
-            ListinvoicesInvoicesStatus::EXPIRED => InvoiceStatus::Expired,
+            ClnInvoiceStatus::Paid => InvoiceStatus::Paid,
+            ClnInvoiceStatus::Unpaid => InvoiceStatus::Unpaid,
+            ClnInvoiceStatus::Expired => InvoiceStatus::Expired,
         };
         Ok(status)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClnAmount, ClnInvoiceRequest, ClnInvoiceStatus, ClnListInvoicesResponse};
+
+    #[test]
+    fn invoice_request_serializes_amount_in_msat() {
+        let request = ClnInvoiceRequest {
+            cltv: None,
+            deschashonly: None,
+            expiry: None,
+            preimage: None,
+            exposeprivatechannels: None,
+            fallbacks: None,
+            amount_msat: ClnAmount::from_sat(42),
+            description: "memo".to_string(),
+            label: "label".to_string(),
+        };
+
+        let json = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(json["amount_msat"], "42000msat");
+    }
+
+    #[test]
+    fn list_invoices_status_deserializes_lowercase_values() {
+        let response: ClnListInvoicesResponse =
+            serde_json::from_str(r#"{"invoices":[{"status":"paid"}]}"#)
+                .expect("response should deserialize");
+        assert_eq!(response.invoices[0].status, ClnInvoiceStatus::Paid);
     }
 }
