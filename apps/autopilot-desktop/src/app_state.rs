@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
@@ -8049,12 +8049,45 @@ impl Default for JobHistoryState {
             page: 0,
             page_size: 6,
             search_job_id: String::new(),
-            reference_epoch_seconds: 1_761_920_000,
+            reference_epoch_seconds: current_reference_epoch_seconds(),
         }
     }
 }
 
 impl JobHistoryState {
+    pub fn set_reference_epoch_seconds(&mut self, reference_epoch_seconds: u64) {
+        self.reference_epoch_seconds = reference_epoch_seconds;
+    }
+
+    pub fn replace_rows_from_persisted_receipts(
+        &mut self,
+        rows: Vec<JobHistoryReceiptRow>,
+        reference_epoch_seconds: u64,
+        source_error: Option<&str>,
+    ) {
+        self.reference_epoch_seconds = reference_epoch_seconds;
+        self.rows = rows;
+        self.rows.sort_by(|lhs, rhs| {
+            rhs.completed_at_epoch_seconds
+                .cmp(&lhs.completed_at_epoch_seconds)
+                .then_with(|| lhs.job_id.cmp(&rhs.job_id))
+        });
+        self.page = 0;
+
+        if let Some(error) = source_error {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(error.to_string());
+            self.last_action = Some("Seller history rehydrate degraded".to_string());
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_error = None;
+            self.last_action = Some(format!(
+                "Rehydrated {} seller history rows from persisted receipts",
+                self.rows.len()
+            ));
+        }
+    }
+
     pub fn set_search_job_id(&mut self, value: String) {
         self.search_job_id = value;
         self.page = 0;
@@ -8712,7 +8745,12 @@ impl EarningsScoreboardState {
             });
         }
 
-        if let Some(error) = spark_wallet.last_error.as_deref() {
+        if let Some(error) = job_history.last_error.as_deref() {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(format!("History source error: {error}"));
+            self.last_action =
+                Some("Scoreboard degraded due to history rehydrate error".to_string());
+        } else if let Some(error) = spark_wallet.last_error.as_deref() {
             self.load_state = PaneLoadState::Error;
             self.last_error = Some(format!("Wallet source error: {error}"));
             self.last_action = Some("Scoreboard degraded due to wallet error".to_string());
@@ -8818,6 +8856,13 @@ fn wallet_receipt_is_in_reference_month(
         return false;
     };
     receipt.year() == reference.year() && receipt.month() == reference.month()
+}
+
+pub(crate) fn current_reference_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 pub struct NetworkAggregateCountersState {
@@ -15481,6 +15526,99 @@ mod tests {
         assert_eq!(score.sats_today, 2100);
         assert_eq!(score.sats_this_month, 2100);
         assert!(!score.is_stale(now));
+    }
+
+    #[test]
+    fn restart_preserves_earnings_scoreboard_from_persisted_receipts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let receipt_path = temp_dir.path().join("earn-kernel-receipts.json");
+        let mut receipts =
+            crate::state::earn_kernel_receipts::EarnKernelReceiptState::from_receipt_path_for_tests(
+                receipt_path.clone(),
+            );
+
+        receipts.apply_authoritative_receipt(
+            crate::economy_kernel_receipts::ReceiptBuilder::new(
+                "receipt.restart.001",
+                "earn.job.settlement_observed.v1",
+                1_762_000_120_000,
+                "idemp.restart.001",
+                crate::economy_kernel_receipts::TraceContext {
+                    work_unit_id: Some("job-restart-001".to_string()),
+                    ..crate::economy_kernel_receipts::TraceContext::default()
+                },
+                crate::economy_kernel_receipts::PolicyContext {
+                    policy_bundle_id: "test.bundle".to_string(),
+                    policy_version: "test".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .with_inputs_payload(serde_json::json!({
+                "job_id": "job-restart-001",
+            }))
+            .with_outputs_payload(serde_json::json!({
+                "status": "succeeded",
+            }))
+            .with_evidence(vec![crate::economy_kernel_receipts::EvidenceRef::new(
+                "wallet_settlement_proof",
+                "oa://wallet/payments/wallet-restart-001",
+                "sha256:wallet-restart-001",
+            )])
+            .with_hints(crate::economy_kernel_receipts::ReceiptHints {
+                notional: Some(crate::economy_kernel_receipts::Money {
+                    asset: crate::economy_kernel_receipts::Asset::Btc,
+                    amount: crate::economy_kernel_receipts::MoneyAmount::AmountSats(42),
+                }),
+                ..crate::economy_kernel_receipts::ReceiptHints::default()
+            })
+            .build()
+            .expect("authoritative restart receipt should build"),
+            "test.history.restart",
+        );
+
+        let reloaded =
+            crate::state::earn_kernel_receipts::EarnKernelReceiptState::from_receipt_path_for_tests(
+                receipt_path,
+            );
+        let rebuilt_rows = reloaded.authoritative_job_history_rows();
+        assert_eq!(rebuilt_rows.len(), 1);
+        assert_eq!(rebuilt_rows[0].job_id, "job-restart-001");
+        assert_eq!(rebuilt_rows[0].payment_pointer, "wallet-restart-001");
+        assert_eq!(rebuilt_rows[0].payout_sats, 42);
+
+        let provider = ProviderRuntimeState::default();
+        let mut history = JobHistoryState::default();
+        history.replace_rows_from_persisted_receipts(
+            rebuilt_rows,
+            1_762_000_240,
+            reloaded.last_error.as_deref(),
+        );
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 42,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-restart-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 42,
+                timestamp: 1_762_000_180,
+                ..Default::default()
+            });
+
+        let mut score = EarningsScoreboardState::default();
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(history.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.lifetime_sats, 42);
+        assert_eq!(score.sats_today, 42);
+        assert_eq!(score.jobs_today, 1);
     }
 
     #[test]
