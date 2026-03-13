@@ -262,9 +262,9 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
     if row
         .delivery_metering_rule_id
         .as_deref()
-        .is_some_and(|rule_id| rule_id == "meter.ollama.embeddings.v1")
+        .is_some_and(|rule_id| rule_id == "meter.gpt_oss.embeddings.v1")
     {
-        return Some("ollama.embeddings".to_string());
+        return Some("gpt_oss.embeddings".to_string());
     }
     match row
         .execution_provenance
@@ -274,7 +274,9 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         Some("apple_foundation_models") => {
             Some("apple_foundation_models.text_generation".to_string())
         }
-        Some("psionic") | Some("ollama") => Some("ollama.text_generation".to_string()),
+        Some("gpt_oss") | Some("psionic") | Some("ollama") => {
+            Some("gpt_oss.text_generation".to_string())
+        }
         _ => None,
     }
 }
@@ -390,14 +392,14 @@ fn health_events_for_state(state: &RenderState, captured_at_ms: i64) -> Vec<Prov
         });
     }
 
-    if let Some(error) = state.provider_runtime.ollama.last_error.as_deref() {
+    if let Some(error) = state.provider_runtime.gpt_oss.last_error.as_deref() {
         events.push(ProviderHealthEvent {
             event_id: "local_inference_runtime_error".to_string(),
             occurred_at_ms: captured_at_ms,
             severity: "warn".to_string(),
             code: "LOCAL_INFERENCE_RUNTIME_ERROR".to_string(),
             detail: error.to_string(),
-            source: "psionic".to_string(),
+            source: "gpt_oss".to_string(),
         });
     }
 
@@ -529,7 +531,7 @@ mod tests {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             delivery_proof_id: None,
-            delivery_metering_rule_id: Some("meter.ollama.embeddings.v1".to_string()),
+            delivery_metering_rule_id: Some("meter.gpt_oss.embeddings.v1".to_string()),
             delivery_proof_status_label: None,
             delivery_metered_quantity: None,
             delivery_accepted_quantity: None,
@@ -540,7 +542,7 @@ mod tests {
             payment_pointer: "pending:req-1".to_string(),
             failure_reason: None,
             execution_provenance: Some(LocalInferenceExecutionProvenance {
-                backend: "ollama".to_string(),
+                backend: "gpt_oss".to_string(),
                 requested_model: Some("nomic-embed-text".to_string()),
                 served_model: "nomic-embed-text".to_string(),
                 normalized_prompt_digest: "sha256:prompt".to_string(),
@@ -557,7 +559,7 @@ mod tests {
 
         assert_eq!(
             infer_product_id_for_history_row(&row).as_deref(),
-            Some("ollama.embeddings")
+            Some("gpt_oss.embeddings")
         );
     }
 

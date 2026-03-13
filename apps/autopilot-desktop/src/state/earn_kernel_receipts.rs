@@ -1576,7 +1576,7 @@ impl EarnKernelReceiptState {
                 .as_ref()
                 .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         };
-        let receipt_tags = ollama_execution_receipt_tags(job.execution_provenance.as_ref());
+        let receipt_tags = gpt_oss_execution_receipt_tags(job.execution_provenance.as_ref());
 
         let receipt = ReceiptBuilder::new(
             receipt_id,
@@ -1839,7 +1839,7 @@ impl EarnKernelReceiptState {
         };
         let link_candidates =
             history_row_link_candidate_receipt_ids(row, stage, request_id.as_str());
-        let receipt_tags = ollama_execution_receipt_tags(row.execution_provenance.as_ref());
+        let receipt_tags = gpt_oss_execution_receipt_tags(row.execution_provenance.as_ref());
 
         let receipt = ReceiptBuilder::new(
             lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key.as_str()),
@@ -7097,7 +7097,7 @@ fn append_provenance_evidence_for_job_stage(
         digest_for_text(job.capability.as_str()),
     ));
     if let Some(provenance) = job.execution_provenance.as_ref() {
-        append_ollama_execution_provenance_evidence(evidence, job.job_id.as_str(), provenance);
+        append_gpt_oss_execution_provenance_evidence(evidence, job.job_id.as_str(), provenance);
     } else {
         evidence.push(EvidenceRef::new(
             "attestation:model_version",
@@ -7153,7 +7153,7 @@ fn append_provenance_evidence_for_history(
         digest_for_text("history_projection"),
     ));
     if let Some(provenance) = row.execution_provenance.as_ref() {
-        append_ollama_execution_provenance_evidence(evidence, row.job_id.as_str(), provenance);
+        append_gpt_oss_execution_provenance_evidence(evidence, row.job_id.as_str(), provenance);
     } else {
         evidence.push(EvidenceRef::new(
             "attestation:model_version",
@@ -7176,7 +7176,7 @@ fn append_provenance_evidence_for_history(
     }
 }
 
-fn append_ollama_execution_provenance_evidence(
+fn append_gpt_oss_execution_provenance_evidence(
     evidence: &mut Vec<EvidenceRef>,
     job_id: &str,
     provenance: &crate::local_inference_runtime::LocalInferenceExecutionProvenance,
@@ -7215,7 +7215,7 @@ fn append_ollama_execution_provenance_evidence(
     }
 }
 
-fn ollama_execution_receipt_tags(
+fn gpt_oss_execution_receipt_tags(
     provenance: Option<&crate::local_inference_runtime::LocalInferenceExecutionProvenance>,
 ) -> BTreeMap<String, String> {
     let Some(provenance) = provenance else {
@@ -10600,10 +10600,10 @@ fn receipt_notional_sats(receipt: &Receipt) -> u64 {
 mod tests {
     use super::*;
 
-    fn fixture_ollama_provenance()
+    fn fixture_gpt_oss_provenance()
     -> crate::local_inference_runtime::LocalInferenceExecutionProvenance {
         crate::local_inference_runtime::LocalInferenceExecutionProvenance {
-            backend: "ollama".to_string(),
+            backend: "gpt_oss".to_string(),
             requested_model: Some("llama3.2:latest".to_string()),
             served_model: "llama3.2:latest".to_string(),
             normalized_prompt_digest: "sha256:prompt".to_string(),
@@ -10664,7 +10664,7 @@ mod tests {
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
             delivery_proof_id: Some("delivery.req-123".to_string()),
-            delivery_metering_rule_id: Some("meter.ollama.inference.v1".to_string()),
+            delivery_metering_rule_id: Some("meter.gpt_oss.inference.v1".to_string()),
             delivery_proof_status_label: Some("accepted".to_string()),
             delivery_metered_quantity: Some(1),
             delivery_accepted_quantity: Some(1),
@@ -10674,7 +10674,7 @@ mod tests {
             result_hash: "sha256:abc".to_string(),
             payment_pointer: payment_pointer.to_string(),
             failure_reason: None,
-            execution_provenance: Some(fixture_ollama_provenance()),
+            execution_provenance: Some(fixture_gpt_oss_provenance()),
         }
     }
 
@@ -10695,7 +10695,7 @@ mod tests {
             execution_prompt: Some("Generate text for req-123".to_string()),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
-            execution_provenance: Some(fixture_ollama_provenance()),
+            execution_provenance: Some(fixture_gpt_oss_provenance()),
             skill_scope_id: Some("skill.scope".to_string()),
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -10705,13 +10705,13 @@ mod tests {
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
-            compute_product_id: Some("ollama.text_generation".to_string()),
+            compute_product_id: Some("gpt_oss.text_generation".to_string()),
             capacity_lot_id: Some(
-                "lot.online.npub1abc.ollama.text_generation.1762000000000".to_string(),
+                "lot.online.npub1abc.gpt_oss.text_generation.1762000000000".to_string(),
             ),
             capacity_instrument_id: Some("instrument.req-123".to_string()),
             delivery_proof_id: Some("delivery.req-123".to_string()),
-            delivery_metering_rule_id: Some("meter.ollama.inference.v1".to_string()),
+            delivery_metering_rule_id: Some("meter.gpt_oss.inference.v1".to_string()),
             delivery_proof_status_label: Some("accepted".to_string()),
             delivery_metered_quantity: Some(1),
             delivery_accepted_quantity: Some(1),
@@ -12021,11 +12021,11 @@ mod tests {
     }
 
     #[test]
-    fn settlement_receipt_carries_ollama_execution_tags_and_evidence() {
+    fn settlement_receipt_carries_gpt_oss_execution_tags_and_evidence() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let state_path = temp_dir.path().join("receipts.json");
         let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
-        let job = fixture_active_job("wallet-payment-ollama");
+        let job = fixture_active_job("wallet-payment-gpt_oss");
 
         state.record_active_job_stage(&job, JobLifecycleStage::Paid, 1_762_000_050, "test.paid");
 
@@ -12039,7 +12039,7 @@ mod tests {
                 .tags
                 .get("execution.backend")
                 .map(String::as_str),
-            Some("ollama")
+            Some("gpt_oss")
         );
         assert_eq!(
             settlement_receipt

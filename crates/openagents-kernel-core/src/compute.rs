@@ -209,7 +209,8 @@ impl StructuredCapacityLegRole {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeBackendFamily {
-    Ollama,
+    #[serde(alias = "ollama")]
+    GptOss,
     AppleFoundationModels,
 }
 
@@ -336,7 +337,7 @@ pub struct ApplePlatformCapability {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct OllamaRuntimeCapability {
+pub struct GptOssRuntimeCapability {
     #[serde(default)]
     pub runtime_ready: Option<bool>,
     #[serde(default)]
@@ -361,8 +362,8 @@ pub struct ComputeCapabilityEnvelope {
     pub host_capability: Option<ComputeHostCapability>,
     #[serde(default)]
     pub apple_platform: Option<ApplePlatformCapability>,
-    #[serde(default)]
-    pub ollama_runtime: Option<OllamaRuntimeCapability>,
+    #[serde(default, alias = "ollama_runtime")]
+    pub gpt_oss_runtime: Option<GptOssRuntimeCapability>,
     #[serde(default)]
     pub latency_ms_p50: Option<u32>,
     #[serde(default)]
@@ -562,15 +563,15 @@ pub struct StructuredCapacityInstrument {
 
 pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProductSpec> {
     match product_id {
-        "ollama.text_generation" => Some(LaunchComputeProductSpec {
-            product_id: "ollama.text_generation",
-            backend_family: ComputeBackendFamily::Ollama,
+        "ollama.text_generation" | "gpt_oss.text_generation" => Some(LaunchComputeProductSpec {
+            product_id: "gpt_oss.text_generation",
+            backend_family: ComputeBackendFamily::GptOss,
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
         }),
-        "ollama.embeddings" => Some(LaunchComputeProductSpec {
-            product_id: "ollama.embeddings",
-            backend_family: ComputeBackendFamily::Ollama,
+        "ollama.embeddings" | "gpt_oss.embeddings" => Some(LaunchComputeProductSpec {
+            product_id: "gpt_oss.embeddings",
+            backend_family: ComputeBackendFamily::GptOss,
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Embeddings,
         }),
@@ -654,9 +655,9 @@ pub fn validate_launch_compute_product(
     }
 
     match spec.backend_family {
-        ComputeBackendFamily::Ollama => {
-            if envelope.ollama_runtime.is_none() {
-                return Err("compute_product_ollama_runtime_missing".to_string());
+        ComputeBackendFamily::GptOss => {
+            if envelope.gpt_oss_runtime.is_none() {
+                return Err("compute_product_gpt_oss_runtime_missing".to_string());
             }
         }
         ComputeBackendFamily::AppleFoundationModels => {
@@ -677,7 +678,7 @@ mod tests {
     use super::{
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily,
         ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, OllamaRuntimeCapability,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, GptOssRuntimeCapability,
         validate_launch_compute_product,
     };
     use serde_json::json;
@@ -700,7 +701,7 @@ mod tests {
             created_at_ms: 1_700_000_000_000,
             taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
             capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(ComputeFamily::Inference),
                 model_policy: Some("text-generation".to_string()),
@@ -711,7 +712,7 @@ mod tests {
                     memory_gb: Some(80),
                 }),
                 apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
                     runtime_ready: Some(true),
                     model_name: Some("llama3.3".to_string()),
                     quantization: Some("q4_k_m".to_string()),
@@ -727,12 +728,12 @@ mod tests {
     }
 
     #[test]
-    fn validates_launch_ollama_product() {
-        let product = launch_product("ollama.text_generation");
+    fn validates_launch_gpt_oss_product() {
+        let product = launch_product("gpt_oss.text_generation");
         let spec =
             validate_launch_compute_product(&product).expect("launch product should validate");
-        assert_eq!(spec.product_id, "ollama.text_generation");
-        assert_eq!(spec.backend_family, ComputeBackendFamily::Ollama);
+        assert_eq!(spec.product_id, "gpt_oss.text_generation");
+        assert_eq!(spec.backend_family, ComputeBackendFamily::GptOss);
         assert_eq!(spec.compute_family, ComputeFamily::Inference);
     }
 
@@ -757,7 +758,7 @@ mod tests {
                 apple_intelligence_available: Some(true),
                 minimum_macos_version: Some("15.1".to_string()),
             }),
-            ollama_runtime: None,
+            gpt_oss_runtime: None,
             latency_ms_p50: Some(150),
             throughput_per_minute: Some(600),
             concurrency_limit: Some(1),

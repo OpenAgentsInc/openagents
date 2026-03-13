@@ -20,7 +20,7 @@ enum ComputeProductStatus {
 
 enum ComputeBackendFamily {
   COMPUTE_BACKEND_FAMILY_UNSPECIFIED = 0;
-  COMPUTE_BACKEND_FAMILY_OLLAMA = 1;
+  COMPUTE_BACKEND_FAMILY_GPT_OSS = 1;
   COMPUTE_BACKEND_FAMILY_APPLE_FOUNDATION_MODELS = 2;
 }
 
@@ -48,7 +48,7 @@ message ApplePlatformCapability {
   optional string minimum_macos_version = 4;
 }
 
-message OllamaRuntimeCapability {
+message GptOssRuntimeCapability {
   optional bool runtime_ready = 1;
   optional string model_name = 2;
   optional string quantization = 3;
@@ -62,7 +62,7 @@ message ComputeCapabilityEnvelope {
   optional string model_family = 5;
   optional ComputeHostCapability host_capability = 6;
   optional ApplePlatformCapability apple_platform = 7;
-  optional OllamaRuntimeCapability ollama_runtime = 8;
+  optional GptOssRuntimeCapability gpt_oss_runtime = 8;
   optional uint32 latency_ms_p50 = 9;
   optional uint32 throughput_per_minute = 10;
   optional uint32 concurrency_limit = 11;

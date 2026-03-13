@@ -18,14 +18,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderBackendKind {
-    Ollama,
+    #[serde(alias = "ollama")]
+    GptOss,
     AppleFoundationModels,
 }
 
 impl ProviderBackendKind {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Ollama => "local Ollama runtime",
+            Self::GptOss => "local GPT-OSS runtime",
             Self::AppleFoundationModels => "Apple Foundation Models bridge",
         }
     }
@@ -68,8 +69,8 @@ pub enum ProviderBlocker {
     WalletError,
     SkillTrustUnavailable,
     CreditLaneUnavailable,
-    OllamaUnavailable,
-    OllamaModelUnavailable,
+    GptOssUnavailable,
+    GptOssModelUnavailable,
     AppleFoundationModelsUnavailable,
     AppleFoundationModelsModelUnavailable,
 }
@@ -81,8 +82,8 @@ impl ProviderBlocker {
             Self::WalletError => "WALLET_ERROR",
             Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
             Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
-            Self::OllamaUnavailable => "OLLAMA_UNAVAILABLE",
-            Self::OllamaModelUnavailable => "OLLAMA_MODEL_UNAVAILABLE",
+            Self::GptOssUnavailable => "GPT_OSS_UNAVAILABLE",
+            Self::GptOssModelUnavailable => "GPT_OSS_MODEL_UNAVAILABLE",
             Self::AppleFoundationModelsUnavailable => "APPLE_FM_UNAVAILABLE",
             Self::AppleFoundationModelsModelUnavailable => "APPLE_FM_MODEL_UNAVAILABLE",
         }
@@ -94,8 +95,8 @@ impl ProviderBlocker {
             Self::WalletError => "Spark wallet reports an error",
             Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
             Self::CreditLaneUnavailable => "AC credit lane is not available",
-            Self::OllamaUnavailable => "Local Ollama backend is unavailable",
-            Self::OllamaModelUnavailable => "No local Ollama serving model is ready",
+            Self::GptOssUnavailable => "Local GPT-OSS backend is unavailable",
+            Self::GptOssModelUnavailable => "No local GPT-OSS serving model is ready",
             Self::AppleFoundationModelsUnavailable => {
                 "Apple Foundation Models backend is unavailable"
             }
@@ -147,7 +148,8 @@ impl ProviderBackendHealth {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
-    pub ollama: ProviderBackendHealth,
+    #[serde(alias = "ollama")]
+    pub gpt_oss: ProviderBackendHealth,
     pub apple_foundation_models: ProviderBackendHealth,
     pub sandbox: ProviderSandboxAvailability,
 }
@@ -156,8 +158,8 @@ impl ProviderAvailability {
     pub fn active_inference_backend(&self) -> Option<ProviderBackendKind> {
         if self.apple_foundation_models.is_ready() {
             Some(ProviderBackendKind::AppleFoundationModels)
-        } else if self.ollama.is_ready() {
-            Some(ProviderBackendKind::Ollama)
+        } else if self.gpt_oss.is_ready() {
+            Some(ProviderBackendKind::GptOss)
         } else {
             None
         }
@@ -171,8 +173,8 @@ impl ProviderAvailability {
 
     pub fn product_visible(&self, product: ProviderComputeProduct) -> bool {
         match product {
-            ProviderComputeProduct::OllamaInference
-            | ProviderComputeProduct::OllamaEmbeddings
+            ProviderComputeProduct::GptOssInference
+            | ProviderComputeProduct::GptOssEmbeddings
             | ProviderComputeProduct::AppleFoundationModelsInference => true,
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
@@ -191,8 +193,8 @@ impl ProviderAvailability {
 
     pub fn product_backend_ready(&self, product: ProviderComputeProduct) -> bool {
         match product {
-            ProviderComputeProduct::OllamaInference | ProviderComputeProduct::OllamaEmbeddings => {
-                self.ollama.is_ready()
+            ProviderComputeProduct::GptOssInference | ProviderComputeProduct::GptOssEmbeddings => {
+                self.gpt_oss.is_ready()
             }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_foundation_models.is_ready()
@@ -230,8 +232,8 @@ impl ProviderAvailability {
                 .sandbox
                 .capability_summary_for_class(ProviderSandboxExecutionClass::PosixExec)
                 .unwrap_or_else(|| product.capability_summary_base().to_string()),
-            ProviderComputeProduct::OllamaInference
-            | ProviderComputeProduct::OllamaEmbeddings
+            ProviderComputeProduct::GptOssInference
+            | ProviderComputeProduct::GptOssEmbeddings
             | ProviderComputeProduct::AppleFoundationModelsInference => {
                 product.capability_summary(self)
             }
@@ -242,8 +244,8 @@ impl ProviderAvailability {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderComputeProduct {
-    OllamaInference,
-    OllamaEmbeddings,
+    GptOssInference,
+    GptOssEmbeddings,
     AppleFoundationModelsInference,
     SandboxContainerExec,
     SandboxPythonExec,
@@ -262,8 +264,8 @@ pub struct ProviderProductDescriptor {
 impl ProviderComputeProduct {
     pub const fn all() -> [Self; 7] {
         [
-            Self::OllamaInference,
-            Self::OllamaEmbeddings,
+            Self::GptOssInference,
+            Self::GptOssEmbeddings,
             Self::AppleFoundationModelsInference,
             Self::SandboxContainerExec,
             Self::SandboxPythonExec,
@@ -274,8 +276,8 @@ impl ProviderComputeProduct {
 
     pub const fn product_id(self) -> &'static str {
         match self {
-            Self::OllamaInference => "ollama.text_generation",
-            Self::OllamaEmbeddings => "ollama.embeddings",
+            Self::GptOssInference => "gpt_oss.text_generation",
+            Self::GptOssEmbeddings => "gpt_oss.embeddings",
             Self::AppleFoundationModelsInference => "apple_foundation_models.text_generation",
             Self::SandboxContainerExec => "sandbox.container.exec",
             Self::SandboxPythonExec => "sandbox.python.exec",
@@ -286,8 +288,8 @@ impl ProviderComputeProduct {
 
     pub const fn display_label(self) -> &'static str {
         match self {
-            Self::OllamaInference => "Ollama inference",
-            Self::OllamaEmbeddings => "Ollama embeddings",
+            Self::GptOssInference => "GPT-OSS inference",
+            Self::GptOssEmbeddings => "GPT-OSS embeddings",
             Self::AppleFoundationModelsInference => "Apple FM inference",
             Self::SandboxContainerExec => "Sandbox container exec",
             Self::SandboxPythonExec => "Sandbox python exec",
@@ -298,7 +300,7 @@ impl ProviderComputeProduct {
 
     pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => Some(ProviderBackendKind::Ollama),
+            Self::GptOssInference | Self::GptOssEmbeddings => Some(ProviderBackendKind::GptOss),
             Self::AppleFoundationModelsInference => {
                 Some(ProviderBackendKind::AppleFoundationModels)
             }
@@ -311,7 +313,7 @@ impl ProviderComputeProduct {
 
     pub const fn backend_label(self) -> &'static str {
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => "ollama",
+            Self::GptOssInference | Self::GptOssEmbeddings => "gpt_oss",
             Self::AppleFoundationModelsInference => "apple_foundation_models",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
@@ -322,8 +324,8 @@ impl ProviderComputeProduct {
 
     pub const fn compute_family_label(self) -> &'static str {
         match self {
-            Self::OllamaInference | Self::AppleFoundationModelsInference => "inference",
-            Self::OllamaEmbeddings => "embeddings",
+            Self::GptOssInference | Self::AppleFoundationModelsInference => "inference",
+            Self::GptOssEmbeddings => "embeddings",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -337,16 +339,16 @@ impl ProviderComputeProduct {
             Self::SandboxPythonExec => Some(ProviderSandboxExecutionClass::PythonExec),
             Self::SandboxNodeExec => Some(ProviderSandboxExecutionClass::NodeExec),
             Self::SandboxPosixExec => Some(ProviderSandboxExecutionClass::PosixExec),
-            Self::OllamaInference
-            | Self::OllamaEmbeddings
+            Self::GptOssInference
+            | Self::GptOssEmbeddings
             | Self::AppleFoundationModelsInference => None,
         }
     }
 
     pub const fn capability_summary_base(self) -> &'static str {
         match self {
-            Self::OllamaInference => "backend=ollama execution=local_inference family=inference",
-            Self::OllamaEmbeddings => "backend=ollama execution=local_inference family=embeddings",
+            Self::GptOssInference => "backend=gpt_oss execution=local_inference family=inference",
+            Self::GptOssEmbeddings => "backend=gpt_oss execution=local_inference family=embeddings",
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
             }
@@ -368,8 +370,8 @@ impl ProviderComputeProduct {
     pub fn capability_summary(self, availability: &ProviderAvailability) -> String {
         let base_summary = self.capability_summary_base();
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => {
-                let health = &availability.ollama;
+            Self::GptOssInference | Self::GptOssEmbeddings => {
+                let health = &availability.gpt_oss;
                 let ready_model = health.ready_model.as_deref().unwrap_or("none");
                 let configured_model = health.configured_model.as_deref().unwrap_or("none");
                 let latency_ms = health
@@ -408,7 +410,7 @@ impl ProviderComputeProduct {
 
     pub const fn terms_label(self) -> &'static str {
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => "spot session / local best effort",
+            Self::GptOssInference | Self::GptOssEmbeddings => "spot session / local best effort",
             Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
@@ -419,7 +421,7 @@ impl ProviderComputeProduct {
 
     pub const fn forward_terms_label(self) -> &'static str {
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => {
+            Self::GptOssInference | Self::GptOssEmbeddings => {
                 "forward physical / committed local window"
             }
             Self::AppleFoundationModelsInference => {
@@ -434,8 +436,8 @@ impl ProviderComputeProduct {
 
     pub const fn default_price_floor_sats(self) -> u64 {
         match self {
-            Self::OllamaInference => 21,
-            Self::OllamaEmbeddings => 8,
+            Self::GptOssInference => 21,
+            Self::GptOssEmbeddings => 8,
             Self::AppleFoundationModelsInference => 34,
             Self::SandboxContainerExec => 55,
             Self::SandboxPythonExec => 34,
@@ -446,8 +448,8 @@ impl ProviderComputeProduct {
 
     pub fn for_product_id(product_id: &str) -> Option<Self> {
         match product_id.trim() {
-            "ollama.text_generation" => Some(Self::OllamaInference),
-            "ollama.embeddings" => Some(Self::OllamaEmbeddings),
+            "ollama.text_generation" | "gpt_oss.text_generation" => Some(Self::GptOssInference),
+            "ollama.embeddings" | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
             "apple_foundation_models.text_generation" => Some(Self::AppleFoundationModelsInference),
             "sandbox.container.exec" => Some(Self::SandboxContainerExec),
             "sandbox.python.exec" => Some(Self::SandboxPythonExec),
@@ -498,8 +500,10 @@ pub struct ProviderInventoryRow {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderInventoryControls {
-    pub ollama_inference_enabled: bool,
-    pub ollama_embeddings_enabled: bool,
+    #[serde(alias = "ollama_inference_enabled")]
+    pub gpt_oss_inference_enabled: bool,
+    #[serde(alias = "ollama_embeddings_enabled")]
+    pub gpt_oss_embeddings_enabled: bool,
     pub apple_fm_inference_enabled: bool,
     pub sandbox_container_exec_enabled: bool,
     pub sandbox_python_exec_enabled: bool,
@@ -510,8 +514,8 @@ pub struct ProviderInventoryControls {
 impl Default for ProviderInventoryControls {
     fn default() -> Self {
         Self {
-            ollama_inference_enabled: true,
-            ollama_embeddings_enabled: true,
+            gpt_oss_inference_enabled: true,
+            gpt_oss_embeddings_enabled: true,
             apple_fm_inference_enabled: true,
             sandbox_container_exec_enabled: false,
             sandbox_python_exec_enabled: false,
@@ -524,8 +528,8 @@ impl Default for ProviderInventoryControls {
 impl ProviderInventoryControls {
     pub const fn is_advertised(&self, target: ProviderComputeProduct) -> bool {
         match target {
-            ProviderComputeProduct::OllamaInference => self.ollama_inference_enabled,
-            ProviderComputeProduct::OllamaEmbeddings => self.ollama_embeddings_enabled,
+            ProviderComputeProduct::GptOssInference => self.gpt_oss_inference_enabled,
+            ProviderComputeProduct::GptOssEmbeddings => self.gpt_oss_embeddings_enabled,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
             }
@@ -543,8 +547,8 @@ impl ProviderInventoryControls {
 
     pub fn toggle(&mut self, target: ProviderComputeProduct) -> bool {
         let enabled = match target {
-            ProviderComputeProduct::OllamaInference => &mut self.ollama_inference_enabled,
-            ProviderComputeProduct::OllamaEmbeddings => &mut self.ollama_embeddings_enabled,
+            ProviderComputeProduct::GptOssInference => &mut self.gpt_oss_inference_enabled,
+            ProviderComputeProduct::GptOssEmbeddings => &mut self.gpt_oss_embeddings_enabled,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
             }
@@ -698,7 +702,7 @@ mod tests {
     #[test]
     fn apple_backend_wins_when_both_backends_are_ready() {
         let availability = ProviderAvailability {
-            ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
             sandbox: ProviderSandboxAvailability::default(),
         };
@@ -716,20 +720,20 @@ mod tests {
     #[test]
     fn controls_gate_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
-        assert!(controls.is_product_advertised("ollama.text_generation"));
-        assert!(controls.is_product_advertised("ollama.embeddings"));
+        assert!(controls.is_product_advertised("gpt_oss.text_generation"));
+        assert!(controls.is_product_advertised("gpt_oss.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
         assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
-        let enabled = controls.toggle(ProviderComputeProduct::OllamaEmbeddings);
+        let enabled = controls.toggle(ProviderComputeProduct::GptOssEmbeddings);
         assert!(!enabled);
-        assert!(!controls.is_product_advertised("ollama.embeddings"));
+        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
     }
 
     #[test]
     fn derive_provider_products_reflects_backend_health_and_capability_summary() {
         let availability = ProviderAvailability {
-            ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth {
                 reachable: true,
                 ready: false,
@@ -764,7 +768,7 @@ mod tests {
 
     #[test]
     fn product_descriptor_preserves_launch_and_sandbox_taxonomy() {
-        let embeddings = describe_provider_product_id("ollama.embeddings");
+        let embeddings = describe_provider_product_id("gpt_oss.embeddings");
         assert_eq!(
             embeddings
                 .as_ref()
@@ -775,7 +779,7 @@ mod tests {
             embeddings
                 .as_ref()
                 .map(|descriptor| descriptor.backend_family.as_str()),
-            Some("ollama")
+            Some("gpt_oss")
         );
         assert_eq!(
             embeddings
@@ -809,7 +813,7 @@ mod tests {
     fn derive_provider_products_includes_declared_sandbox_profiles_when_enabled()
     -> Result<(), Box<dyn std::error::Error>> {
         let availability = ProviderAvailability {
-            ollama: ProviderBackendHealth::default(),
+            gpt_oss: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
             sandbox: detect_sandbox_supply(&ProviderSandboxDetectionConfig {
                 path_entries: Vec::new(),
@@ -910,7 +914,7 @@ mod tests {
     #[test]
     fn lifecycle_holds_while_offline_even_if_backends_are_ready() {
         let availability = ProviderAvailability {
-            ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
@@ -928,7 +932,7 @@ mod tests {
     #[test]
     fn lifecycle_promotes_non_offline_runtime_to_online_when_backend_is_ready() {
         let availability = ProviderAvailability {
-            ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
@@ -943,7 +947,7 @@ mod tests {
         assert_eq!(
             transition,
             ProviderLifecycleTransition::Online {
-                active_backend: ProviderBackendKind::Ollama,
+                active_backend: ProviderBackendKind::GptOss,
             }
         );
     }

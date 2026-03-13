@@ -24,7 +24,7 @@ pub type EarnFailureClass = ProviderFailureClass;
 pub type ProviderInventoryProductToggleTarget = ProviderComputeProduct;
 
 #[derive(Clone, Debug, Default)]
-pub struct ProviderOllamaRuntimeState {
+pub struct ProviderGptOssRuntimeState {
     pub reachable: bool,
     pub configured_model: Option<String>,
     pub ready_model: Option<String>,
@@ -37,7 +37,7 @@ pub struct ProviderOllamaRuntimeState {
     pub refreshed_at: Option<Instant>,
 }
 
-impl ProviderOllamaRuntimeState {
+impl ProviderGptOssRuntimeState {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.ready_model.is_some()
     }
@@ -187,7 +187,7 @@ pub struct ProviderRuntimeState {
     pub inventory_rows: Vec<ProviderInventoryRow>,
     pub inventory_last_action: Option<String>,
     pub inventory_last_error: Option<String>,
-    pub ollama: ProviderOllamaRuntimeState,
+    pub gpt_oss: ProviderGptOssRuntimeState,
     pub apple_fm: ProviderAppleFmRuntimeState,
     pub autopilot_presence: ProviderAutopilotPresenceState,
     pub sandbox: ProviderSandboxAvailability,
@@ -224,7 +224,7 @@ impl Default for ProviderRuntimeState {
                 "Launch compute inventory not materialized yet".to_string(),
             ),
             inventory_last_error: None,
-            ollama: ProviderOllamaRuntimeState::default(),
+            gpt_oss: ProviderGptOssRuntimeState::default(),
             apple_fm: ProviderAppleFmRuntimeState::default(),
             autopilot_presence: ProviderAutopilotPresenceState::default(),
             sandbox,
@@ -242,7 +242,7 @@ impl ProviderRuntimeState {
 
     pub fn availability(&self) -> ProviderAvailability {
         ProviderAvailability {
-            ollama: self.ollama.substrate_health(),
+            gpt_oss: self.gpt_oss.substrate_health(),
             apple_foundation_models: self.apple_fm.substrate_health(),
             sandbox: self.sandbox.clone(),
         }
@@ -364,8 +364,8 @@ mod tests {
     #[test]
     fn apple_backend_wins_when_ready() {
         let mut runtime = ProviderRuntimeState::default();
-        runtime.ollama.reachable = true;
-        runtime.ollama.ready_model = Some("llama3.2:latest".to_string());
+        runtime.gpt_oss.reachable = true;
+        runtime.gpt_oss.ready_model = Some("llama3.2:latest".to_string());
         runtime.apple_fm.reachable = true;
         runtime.apple_fm.model_available = true;
         runtime.apple_fm.ready_model = Some("apple-foundation-model".to_string());
@@ -379,15 +379,15 @@ mod tests {
     #[test]
     fn inventory_controls_gate_launch_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
-        assert!(controls.is_product_advertised("ollama.text_generation"));
-        assert!(controls.is_product_advertised("ollama.embeddings"));
+        assert!(controls.is_product_advertised("gpt_oss.text_generation"));
+        assert!(controls.is_product_advertised("gpt_oss.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
         assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
-        let enabled = controls.toggle(ProviderInventoryProductToggleTarget::OllamaEmbeddings);
+        let enabled = controls.toggle(ProviderInventoryProductToggleTarget::GptOssEmbeddings);
         assert!(!enabled);
-        assert!(!controls.is_product_advertised("ollama.embeddings"));
-        assert!(controls.is_product_advertised("ollama.text_generation"));
+        assert!(!controls.is_product_advertised("gpt_oss.embeddings"));
+        assert!(controls.is_product_advertised("gpt_oss.text_generation"));
     }
 
     #[test]
