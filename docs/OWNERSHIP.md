@@ -112,6 +112,92 @@ Must not own:
 - Mission Control orchestration.
 - Buyer workflows, payout UX, or app-specific execution snapshots.
 - App-to-kernel control flow that depends on `apps/autopilot-desktop`.
+- Long-term sandbox runtime engines, clustered transport, or validator logic.
+
+## `crates/psionic/*`
+
+Own:
+
+- Reusable compute execution substrate for local inference, clustered execution,
+  artifact staging, and execution evidence.
+- Backend-specific runtime implementations and execution planning internals.
+- Cluster topology, ordered execution-state, and machine-checkable execution
+  provenance.
+- Long-term sandbox runtime ownership once executable sandbox code is extracted
+  from provider-substrate.
+- Later training-class execution substrate.
+
+Must not own:
+
+- Pane-facing UX or product shell behavior.
+- Wallet, payout, or buyer/provider product orchestration.
+- Canonical compute-market settlement, procurement, or index authority.
+- Final collateral, claim, or adjudication authority.
+
+## `crates/openagents-kernel-core` and `crates/openagents-kernel-proto`
+
+Own:
+
+- Reusable economic domain objects and validation rules for compute-market
+  truth.
+- Canonical authority client contracts and generated wire-layer contracts.
+- Receipt, snapshot, and reason-code shapes that higher-level services and apps
+  consume.
+
+Must not own:
+
+- App-owned UX flows.
+- Reusable runtime execution engines that belong in Psionic.
+- Service-specific storage or deployment logic.
+
+## `apps/nexus-control`
+
+Owns:
+
+- Canonical authority mutation and read-model behavior for the retained compute
+  market slices.
+- Durable receipts, snapshots, projections, and market-policy enforcement.
+- Acceptance of delivery, challenge, and settlement outcomes into canonical
+  market truth.
+
+Must not own:
+
+- Desktop UX.
+- Reusable execution runtimes.
+- Provider-local orchestration that belongs in the desktop app or reusable
+  provider crates.
+
+## Planned Compute Extension Surfaces
+
+These are not all active crates today, but their owner split is already fixed
+by `docs/adr/ADR-0003-compute-market-ownership-and-authority-split.md`.
+
+### Validator services
+
+Own:
+
+- Challenge execution and proof-verification workloads.
+- Supporting evidence generation for adjudication.
+
+Must not own:
+
+- Final settlement authority.
+- Canonical collateral or claim authority.
+- Desktop UX.
+
+### Environment and eval services
+
+Own:
+
+- Environment package descriptors.
+- Dataset, harness, rubric, and eval-run registry logic.
+- Synthetic-data and evaluation pipeline helpers.
+
+Must not own:
+
+- Reusable low-level execution substrate that belongs in Psionic.
+- Final compute-market settlement authority.
+- App-owned product UX.
 
 ## Dependency Rules
 
@@ -130,3 +216,4 @@ Must not own:
 - Does this change add a crate-to-app dependency?
 - Could this logic be moved one layer closer to its true owner?
 - Does this change respect domain-scoped authority boundaries in `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`?
+- Does this change respect compute-market owner split in `docs/adr/ADR-0003-compute-market-ownership-and-authority-split.md`?
