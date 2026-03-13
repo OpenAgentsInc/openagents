@@ -127,7 +127,8 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Actions: refresh metrics plus direct jump-off buttons for `Job Inbox`, `Active Job`, and `Job History`.
 - `Buy Mode`
   - Dedicated buyer smoke-test pane for the fixed `kind: 5050` / `2 sats` loop.
-  - Shows current loop summary, provider/work/payment state, and replay-safe payment ledger history.
+  - Shows current loop summary, provider/work/payment state, and a visualization-first buyer ledger backed by NIP-90 payment facts.
+  - Ledger rows make amount, fees, request identity, provider Nostr pubkey, and Lightning destination pubkey legible together, with degraded source labels when only projected evidence is available.
   - `OPENAGENTS_ENABLE_BUY_MODE` now only suppresses this pane/flow when explicitly disabled; the default shell assumes Buy Mode is available.
   - Action: start/stop loop and copy ledger.
 - `Buyer Race Matrix`

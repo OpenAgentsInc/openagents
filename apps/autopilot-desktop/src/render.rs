@@ -1097,6 +1097,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.relay_connections,
             &state.sync_health,
             &state.network_requests,
+            &state.nip90_payment_facts,
             &state.starter_jobs,
             &state.reciprocal_loop,
             &state.activity_feed,
