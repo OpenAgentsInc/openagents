@@ -115,6 +115,7 @@ pub enum PaneKind {
     KeyLedger,
     SettlementAtlas,
     SparkReplay,
+    RelayChoreography,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,

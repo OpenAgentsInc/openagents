@@ -62,7 +62,8 @@ use crate::panes::{
     earnings_jobs as earnings_jobs_pane, key_ledger as key_ledger_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
-    psionic_viz as psionic_viz_pane, relay_connections as relay_connections_pane,
+    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
+    relay_connections as relay_connections_pane,
     seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, wallet as wallet_pane,
@@ -426,6 +427,14 @@ impl PaneRenderer {
                     spark_replay_pane::paint(
                         content_bounds,
                         spark_replay,
+                        nip90_payment_facts,
+                        paint,
+                    );
+                }
+                PaneKind::RelayChoreography => {
+                    relay_choreography_pane::paint(
+                        content_bounds,
+                        relay_connections,
                         nip90_payment_facts,
                         paint,
                     );

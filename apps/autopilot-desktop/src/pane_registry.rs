@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 50] = [
+const PANE_SPECS: [PaneSpec; 51] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -638,6 +638,21 @@ const PANE_SPECS: [PaneSpec; 50] = [
             id: "pane.spark_replay",
             label: "Spark Replay",
             description: "Open the scrubbable NIP-90 request-to-settlement replay field",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::RelayChoreography,
+        title: "Relay Choreography",
+        default_width: 1180.0,
+        default_height: 660.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.relay_choreography",
+            label: "Relay Choreography",
+            description: "Open live relay health against persisted NIP-90 relay-hop evidence",
             keybinding: None,
         }),
         hotbar: None,

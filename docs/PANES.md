@@ -161,6 +161,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Uses persisted request facts plus provider-observation history first, with lower-confidence segments visibly marked when replay steps are derived/backfilled.
   - Includes `Prev`, `Auto`, and `Next` controls plus per-step evidence detail so the replay is inspectable rather than decorative.
   - Action: scrub replay steps.
+- `Relay Choreography`
+  - Relay-aware pane that keeps current relay health separate from persisted NIP-90 relay-hop evidence.
+  - Shows buyer and provider anchors with relay nodes in the middle, request publish fanout, result ingress, and invoice ingress threads only when those relay URLs are actually present in the payment ledger.
+  - Wallet confirmation is kept explicitly request-scoped in the detail card so the UI does not imply per-relay settlement proof.
+  - Action: read-only relay/evidence visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -285,6 +290,7 @@ Current pane badge mapping:
 - `Key Ledger`: `source: stream.nip90_payment_facts.v1`
 - `Settlement Atlas`: `source: stream.nip90_payment_facts.v1`
 - `Spark Replay`: `source: stream.nip90_payment_facts.v1`
+- `Relay Choreography`: `source: runtime.relay_connections + stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`
