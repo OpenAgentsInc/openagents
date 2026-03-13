@@ -159,6 +159,11 @@ pub fn default_local_inference_runtime() -> Result<Box<dyn LocalInferenceRuntime
         .map(|adapter| Box::new(adapter) as Box<dyn LocalInferenceRuntime>)
 }
 
+pub(crate) fn initial_local_inference_runtime_snapshot() -> LocalInferenceExecutionSnapshot {
+    let model_path = configured_gpt_oss_model_path();
+    configured_runtime_snapshot(model_path.as_path(), GptOssRuntimeBackend::from_env())
+}
+
 /// In-process Psionic adapter for the app-owned runtime seam.
 pub struct PsionicRuntimeAdapter {
     service: CpuReferenceTextGenerationService,
@@ -600,33 +605,7 @@ impl GptOssRuntimeWorker {
         update_tx: Sender<LocalInferenceRuntimeUpdate>,
     ) -> Self {
         let configured_model_label = configured_model_label(model_path.as_path());
-        let artifact_present = model_path.is_file();
-        let backend_label = configured_backend.default_runtime_label();
-        let mut snapshot = LocalInferenceRuntimeSnapshot {
-            base_url: format!("in-process://gpt_oss/{backend_label}"),
-            reachable: true,
-            busy: false,
-            configured_model: Some(configured_model_label.clone()),
-            ready_model: None,
-            available_models: if artifact_present {
-                vec![configured_model_label.clone()]
-            } else {
-                Vec::new()
-            },
-            loaded_models: Vec::new(),
-            configured_model_path: Some(model_path.display().to_string()),
-            artifact_present,
-            backend_label,
-            last_error: None,
-            last_action: Some(String::from("Mission Control local model lane ready")),
-            last_request_id: None,
-            last_metrics: None,
-            refreshed_at: Some(Instant::now()),
-        };
-        if !artifact_present {
-            snapshot.last_error = Some(missing_gpt_oss_artifact_message(model_path.as_path()));
-            snapshot.last_action = Some(String::from("GPT-OSS 20B artifact missing"));
-        }
+        let snapshot = configured_runtime_snapshot(model_path.as_path(), configured_backend);
         Self {
             configured_backend,
             configured_model_label,
@@ -958,6 +937,41 @@ impl GptOssRuntimeWorker {
     }
 }
 
+fn configured_runtime_snapshot(
+    model_path: &Path,
+    configured_backend: GptOssRuntimeBackend,
+) -> LocalInferenceRuntimeSnapshot {
+    let configured_model_label = configured_model_label(model_path);
+    let artifact_present = model_path.is_file();
+    let backend_label = configured_backend.default_runtime_label();
+    let mut snapshot = LocalInferenceRuntimeSnapshot {
+        base_url: format!("in-process://gpt_oss/{backend_label}"),
+        reachable: true,
+        busy: false,
+        configured_model: Some(configured_model_label.clone()),
+        ready_model: None,
+        available_models: if artifact_present {
+            vec![configured_model_label]
+        } else {
+            Vec::new()
+        },
+        loaded_models: Vec::new(),
+        configured_model_path: Some(model_path.display().to_string()),
+        artifact_present,
+        backend_label,
+        last_error: None,
+        last_action: Some(String::from("Mission Control local model lane ready")),
+        last_request_id: None,
+        last_metrics: None,
+        refreshed_at: Some(Instant::now()),
+    };
+    if !artifact_present {
+        snapshot.last_error = Some(missing_gpt_oss_artifact_message(model_path));
+        snapshot.last_action = Some(String::from("GPT-OSS 20B artifact missing"));
+    }
+    snapshot
+}
+
 fn configured_gpt_oss_model_path() -> PathBuf {
     std::env::var(ENV_GPT_OSS_MODEL_PATH)
         .map(PathBuf::from)
@@ -1274,6 +1288,29 @@ mod tests {
             )
         );
         assert!(!snapshot.busy);
+    }
+
+    #[test]
+    fn configured_runtime_snapshot_tracks_backend_and_artifact_state() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let model_path = temp.path().join("gpt-oss-20b-mxfp4.gguf");
+        std::fs::write(&model_path, b"gguf").expect("write gguf");
+
+        let snapshot = super::configured_runtime_snapshot(
+            model_path.as_path(),
+            super::GptOssRuntimeBackend::Cuda,
+        );
+        assert_eq!(snapshot.backend_label, "cuda");
+        assert!(snapshot.artifact_present);
+        assert_eq!(
+            snapshot.configured_model_path.as_deref(),
+            Some(model_path.display().to_string().as_str())
+        );
+        assert_eq!(
+            snapshot.configured_model.as_deref(),
+            Some("gpt-oss-20b-mxfp4.gguf")
+        );
+        assert!(snapshot.last_error.is_none());
     }
 
     #[test]
