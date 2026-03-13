@@ -66,6 +66,7 @@ use crate::panes::{
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
+use crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
@@ -112,6 +113,7 @@ impl PaneRenderer {
         relay_connections: &RelayConnectionsState,
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
+        nip90_payment_facts: &Nip90PaymentFactLedgerState,
         starter_jobs: &StarterJobsState,
         reciprocal_loop: &ReciprocalLoopState,
         activity_feed: &ActivityFeedState,
@@ -387,6 +389,7 @@ impl PaneRenderer {
                         autopilot_chat,
                         buy_mode_payments,
                         network_requests,
+                        nip90_payment_facts,
                         spark_wallet,
                         paint,
                     );
