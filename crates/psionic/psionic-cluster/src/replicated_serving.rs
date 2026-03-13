@@ -27,6 +27,9 @@ pub struct ClusterReplicaLaneKey {
     pub runtime_backend: String,
     /// Stable served-artifact digest shared by the replica lane.
     pub served_artifact_digest: String,
+    /// Stable sharded-manifest digest for the lane, when replicas were provisioned from one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharded_model_manifest_digest: Option<String>,
 }
 
 impl ClusterReplicaLaneKey {
@@ -43,7 +46,15 @@ impl ClusterReplicaLaneKey {
             model_id: model_id.into(),
             runtime_backend: runtime_backend.into(),
             served_artifact_digest: served_artifact_digest.into(),
+            sharded_model_manifest_digest: None,
         }
+    }
+
+    /// Attaches the sharded-model manifest digest backing the replica lane.
+    #[must_use]
+    pub fn with_sharded_model_manifest_digest(mut self, digest: impl Into<String>) -> Self {
+        self.sharded_model_manifest_digest = Some(digest.into());
+        self
     }
 }
 
@@ -128,6 +139,14 @@ impl ClusterReplicaSnapshot {
         hasher.update(self.lane.runtime_backend.as_bytes());
         hasher.update(b"|");
         hasher.update(self.lane.served_artifact_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(
+            self.lane
+                .sharded_model_manifest_digest
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
         for replica in self.replicas.values() {
             hasher.update(b"|replica|");
             hasher.update(replica.node_id.as_str().as_bytes());
@@ -359,6 +378,15 @@ pub fn plan_replicated_serving(
             lifecycle_policy_digest.clone(),
         ))
         .with_replica_nodes(replica_nodes);
+    if let Some(sharded_model_manifest_digest) =
+        replica_snapshot.lane.sharded_model_manifest_digest.clone()
+    {
+        serving_decision.schedule.cluster_execution = serving_decision
+            .schedule
+            .cluster_execution
+            .clone()
+            .with_sharded_model_manifest_digest(sharded_model_manifest_digest);
+    }
 
     Ok(ClusterReplicatedServingDecision {
         lane: replica_snapshot.lane.clone(),
@@ -566,6 +594,10 @@ mod tests {
             "cuda",
             "artifact-1",
         )
+    }
+
+    fn replica_lane_with_manifest() -> ClusterReplicaLaneKey {
+        replica_lane().with_sharded_model_manifest_digest("replica-manifest-digest")
     }
 
     fn ready_membership(cluster_id: &ClusterId, node_id: &str) -> ClusterMembershipRecord {
@@ -977,14 +1009,14 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let state = replica_state_with_authority_and_candidate_truth();
         let replica_snapshot =
-            ClusterReplicaSnapshot::new(state.cluster_id().clone(), replica_lane())
+            ClusterReplicaSnapshot::new(state.cluster_id().clone(), replica_lane_with_manifest())
                 .with_replica(ClusterReplicaRecord::new(
-                    replica_lane(),
+                    replica_lane_with_manifest(),
                     NodeId::new("worker-a"),
                     ClusterReplicaWarmState::Warm,
                 ))
                 .with_replica(ClusterReplicaRecord::new(
-                    replica_lane(),
+                    replica_lane_with_manifest(),
                     NodeId::new("worker-b"),
                     ClusterReplicaWarmState::Warm,
                 ));
@@ -1052,6 +1084,15 @@ mod tests {
                 .iter()
                 .any(|fact| fact.fact_kind == ClusterAdmissionFactKind::SelectedCandidateAdmission),
             "replica-routed execution should carry selected-candidate provenance"
+        );
+        assert_eq!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .sharded_model_manifest_digest
+                .as_deref(),
+            Some("replica-manifest-digest")
         );
         Ok(())
     }

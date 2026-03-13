@@ -4,7 +4,7 @@ mod gpt_oss;
 mod parity;
 mod validation;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 pub use gpt_oss::*;
@@ -1288,6 +1288,9 @@ pub struct ClusterExecutionContext {
     /// Stable digest of replica warm-state facts used for replicated routing, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replica_state_digest: Option<String>,
+    /// Stable digest of the sharded-model manifest constraining this execution path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharded_model_manifest_digest: Option<String>,
     /// Explicit coordinator authority that fenced this cluster decision, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_authority: Option<ClusterCommitAuthorityEvidence>,
@@ -1346,6 +1349,7 @@ impl ClusterExecutionContext {
             topology_digest: topology_digest.into(),
             artifact_residency_digest: None,
             replica_state_digest: None,
+            sharded_model_manifest_digest: None,
             commit_authority: None,
             scheduler_node_id: scheduler_node_id.into(),
             transport,
@@ -1374,6 +1378,13 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_replica_state_digest(mut self, digest: impl Into<String>) -> Self {
         self.replica_state_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches a sharded-model manifest digest.
+    #[must_use]
+    pub fn with_sharded_model_manifest_digest(mut self, digest: impl Into<String>) -> Self {
+        self.sharded_model_manifest_digest = Some(digest.into());
         self
     }
 
@@ -5130,6 +5141,375 @@ impl ServedArtifactIdentity {
     }
 }
 
+/// Layout class for one pre-sharded model manifest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShardedModelLayoutKind {
+    /// The same served state is replicated across multiple shard entries.
+    Replicated,
+    /// Layers are partitioned across multiple shard entries.
+    LayerSharded,
+    /// One tensor axis is partitioned across multiple shard entries.
+    TensorSharded,
+}
+
+impl ShardedModelLayoutKind {
+    /// Returns the matching execution-topology kind.
+    #[must_use]
+    pub const fn topology_kind(self) -> ExecutionTopologyKind {
+        match self {
+            Self::Replicated => ExecutionTopologyKind::Replicated,
+            Self::LayerSharded => ExecutionTopologyKind::LayerSharded,
+            Self::TensorSharded => ExecutionTopologyKind::TensorSharded,
+        }
+    }
+
+    /// Returns the matching clustered lane.
+    #[must_use]
+    pub const fn cluster_lane(self) -> ClusterExecutionLane {
+        match self {
+            Self::Replicated => ClusterExecutionLane::ReplicaRouted,
+            Self::LayerSharded => ClusterExecutionLane::LayerSharded,
+            Self::TensorSharded => ClusterExecutionLane::TensorSharded,
+        }
+    }
+}
+
+/// One explicit shard artifact inside a pre-sharded model manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShardedModelArtifactRef {
+    /// Stable shard identifier.
+    pub shard_id: usize,
+    /// Stable artifact identifier.
+    pub artifact_id: String,
+    /// Stable artifact digest for the shard bytes.
+    pub artifact_digest: String,
+    /// Logical partition owned by this shard artifact.
+    pub partition: ExecutionPartition,
+    /// Stable provenance digest for the shard bytes, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance_digest: Option<String>,
+}
+
+impl ShardedModelArtifactRef {
+    /// Creates one shard-artifact reference from stable IDs and partition truth.
+    #[must_use]
+    pub fn new(
+        shard_id: usize,
+        artifact_id: impl Into<String>,
+        artifact_digest: impl Into<String>,
+        partition: ExecutionPartition,
+    ) -> Self {
+        Self {
+            shard_id,
+            artifact_id: artifact_id.into(),
+            artifact_digest: artifact_digest.into(),
+            partition,
+            provenance_digest: None,
+        }
+    }
+
+    /// Attaches a shard provenance digest.
+    #[must_use]
+    pub fn with_provenance_digest(mut self, provenance_digest: impl Into<String>) -> Self {
+        self.provenance_digest = Some(provenance_digest.into());
+        self
+    }
+}
+
+/// Pre-sharded model manifest that binds shard artifacts to a served artifact identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShardedModelManifest {
+    /// Stable manifest identifier.
+    pub manifest_id: String,
+    /// Stable served-artifact identity the shard set belongs to.
+    pub served_artifact: ServedArtifactIdentity,
+    /// Effective backend the shard set targets.
+    pub effective_backend: String,
+    /// Sharding layout represented by this manifest.
+    pub layout: ShardedModelLayoutKind,
+    /// Explicit shard artifact set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shards: Vec<ShardedModelArtifactRef>,
+}
+
+impl ShardedModelManifest {
+    /// Creates an empty sharded-model manifest.
+    #[must_use]
+    pub fn new(
+        manifest_id: impl Into<String>,
+        served_artifact: ServedArtifactIdentity,
+        layout: ShardedModelLayoutKind,
+    ) -> Self {
+        let effective_backend = served_artifact.backend.effective_backend.clone();
+        Self {
+            manifest_id: manifest_id.into(),
+            served_artifact,
+            effective_backend,
+            layout,
+            shards: Vec::new(),
+        }
+    }
+
+    /// Overrides the effective backend label.
+    #[must_use]
+    pub fn with_effective_backend(mut self, effective_backend: impl Into<String>) -> Self {
+        self.effective_backend = effective_backend.into();
+        self
+    }
+
+    /// Appends one shard artifact reference.
+    #[must_use]
+    pub fn with_shard(mut self, shard: ShardedModelArtifactRef) -> Self {
+        self.shards.push(shard);
+        self
+    }
+
+    /// Returns the stable digest for this shard manifest.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.manifest_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.served_artifact.served_artifact_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.effective_backend.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.layout {
+            ShardedModelLayoutKind::Replicated => b"replicated".as_slice(),
+            ShardedModelLayoutKind::LayerSharded => b"layer_sharded".as_slice(),
+            ShardedModelLayoutKind::TensorSharded => b"tensor_sharded".as_slice(),
+        });
+        for shard in &self.shards {
+            hasher.update(b"|shard|");
+            hasher.update(shard.shard_id.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(shard.artifact_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(shard.artifact_digest.as_bytes());
+            hasher.update(b"|");
+            hasher.update(
+                shard
+                    .provenance_digest
+                    .as_deref()
+                    .unwrap_or_default()
+                    .as_bytes(),
+            );
+            hasher.update(b"|");
+            update_partition_digest(&mut hasher, &shard.partition);
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    /// Returns the stable shard-artifact digests in shard order.
+    #[must_use]
+    pub fn shard_artifact_digests(&self) -> Vec<&str> {
+        let mut shards = self.shards.iter().collect::<Vec<_>>();
+        shards.sort_by_key(|shard| shard.shard_id);
+        shards
+            .into_iter()
+            .map(|shard| shard.artifact_digest.as_str())
+            .collect()
+    }
+
+    /// Validates the manifest structure without any topology assignment.
+    pub fn validate(&self) -> Result<(), ShardedModelManifestError> {
+        if self.shards.is_empty() {
+            return Err(ShardedModelManifestError::EmptyManifest);
+        }
+        let mut seen = BTreeSet::new();
+        for shard in &self.shards {
+            if !seen.insert(shard.shard_id) {
+                return Err(ShardedModelManifestError::DuplicateShardId {
+                    shard_id: shard.shard_id,
+                });
+            }
+            if !partition_matches_layout(&shard.partition, self.layout) {
+                return Err(ShardedModelManifestError::PartitionLayoutMismatch {
+                    shard_id: shard.shard_id,
+                    layout: self.layout,
+                });
+            }
+        }
+        for expected_shard_id in 0..self.shards.len() {
+            if !seen.contains(&expected_shard_id) {
+                return Err(ShardedModelManifestError::MissingShardId {
+                    shard_id: expected_shard_id,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates that the manifest matches one realized execution topology.
+    pub fn validate_against_topology(
+        &self,
+        topology: &ExecutionTopologyPlan,
+    ) -> Result<(), ShardedModelManifestError> {
+        self.validate()?;
+        if topology.kind != self.layout.topology_kind() {
+            return Err(ShardedModelManifestError::TopologyKindMismatch {
+                manifest: self.layout,
+                topology: topology.kind,
+            });
+        }
+        if topology.effective_backend != self.effective_backend {
+            return Err(ShardedModelManifestError::TopologyBackendMismatch {
+                manifest_backend: self.effective_backend.clone(),
+                topology_backend: topology.effective_backend.clone(),
+            });
+        }
+        if topology.assignments.len() != self.shards.len() {
+            return Err(ShardedModelManifestError::TopologyShardCountMismatch {
+                manifest_shards: self.shards.len(),
+                topology_shards: topology.assignments.len(),
+            });
+        }
+        let shard_map = self
+            .shards
+            .iter()
+            .map(|shard| (shard.shard_id, shard))
+            .collect::<BTreeMap<_, _>>();
+        for assignment in &topology.assignments {
+            let Some(shard) = shard_map.get(&assignment.shard_id) else {
+                return Err(ShardedModelManifestError::TopologyShardMissing {
+                    shard_id: assignment.shard_id,
+                });
+            };
+            if shard.partition != assignment.partition {
+                return Err(ShardedModelManifestError::TopologyPartitionMismatch {
+                    shard_id: assignment.shard_id,
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validation failure for one pre-sharded model manifest.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ShardedModelManifestError {
+    /// The manifest carried no shard references.
+    #[error("sharded model manifest is empty")]
+    EmptyManifest,
+    /// Two shard references used the same shard ID.
+    #[error("sharded model manifest duplicated shard {shard_id}")]
+    DuplicateShardId {
+        /// Duplicate shard identifier.
+        shard_id: usize,
+    },
+    /// The manifest omitted one shard ID in the expected contiguous range.
+    #[error("sharded model manifest is missing shard {shard_id}")]
+    MissingShardId {
+        /// Missing shard identifier.
+        shard_id: usize,
+    },
+    /// One shard partition did not match the declared layout.
+    #[error("shard {shard_id} partition does not match {layout:?} layout")]
+    PartitionLayoutMismatch {
+        /// Mismatched shard identifier.
+        shard_id: usize,
+        /// Declared manifest layout.
+        layout: ShardedModelLayoutKind,
+    },
+    /// The manifest belongs to a different served-artifact identity than the caller expected.
+    #[error(
+        "manifest served artifact `{manifest_served_artifact_digest}` does not match expected `{expected_served_artifact_digest}`"
+    )]
+    ServedArtifactDigestMismatch {
+        /// Manifest served-artifact digest.
+        manifest_served_artifact_digest: String,
+        /// Caller-expected served-artifact digest.
+        expected_served_artifact_digest: String,
+    },
+    /// The manifest layout and realized topology kind disagree.
+    #[error("manifest layout {manifest:?} does not match topology kind {topology:?}")]
+    TopologyKindMismatch {
+        /// Declared manifest layout.
+        manifest: ShardedModelLayoutKind,
+        /// Realized topology kind.
+        topology: ExecutionTopologyKind,
+    },
+    /// The manifest and realized topology target different backends.
+    #[error(
+        "manifest backend `{manifest_backend}` does not match topology backend `{topology_backend}`"
+    )]
+    TopologyBackendMismatch {
+        /// Manifest backend.
+        manifest_backend: String,
+        /// Realized topology backend.
+        topology_backend: String,
+    },
+    /// The manifest and realized topology disagree on shard count.
+    #[error(
+        "manifest shard count {manifest_shards} does not match topology shard count {topology_shards}"
+    )]
+    TopologyShardCountMismatch {
+        /// Manifest shard count.
+        manifest_shards: usize,
+        /// Realized topology shard count.
+        topology_shards: usize,
+    },
+    /// The realized topology referenced a shard not present in the manifest.
+    #[error("topology referenced missing manifest shard {shard_id}")]
+    TopologyShardMissing {
+        /// Missing shard identifier.
+        shard_id: usize,
+    },
+    /// One realized topology partition differed from the manifest.
+    #[error("topology partition for shard {shard_id} differs from manifest")]
+    TopologyPartitionMismatch {
+        /// Mismatched shard identifier.
+        shard_id: usize,
+    },
+}
+
+fn partition_matches_layout(
+    partition: &ExecutionPartition,
+    layout: ShardedModelLayoutKind,
+) -> bool {
+    matches!(
+        (layout, partition),
+        (
+            ShardedModelLayoutKind::Replicated,
+            ExecutionPartition::Replica { .. } | ExecutionPartition::WholeModel
+        ) | (
+            ShardedModelLayoutKind::LayerSharded,
+            ExecutionPartition::LayerRange { .. }
+        ) | (
+            ShardedModelLayoutKind::TensorSharded,
+            ExecutionPartition::TensorRange { .. }
+        )
+    )
+}
+
+fn update_partition_digest(hasher: &mut Sha256, partition: &ExecutionPartition) {
+    match partition {
+        ExecutionPartition::WholeModel => hasher.update(b"whole_model"),
+        ExecutionPartition::Replica { replica_index } => {
+            hasher.update(b"replica|");
+            hasher.update(replica_index.to_string().as_bytes());
+        }
+        ExecutionPartition::LayerRange {
+            start_layer,
+            end_layer,
+        } => {
+            hasher.update(b"layer_range|");
+            hasher.update(start_layer.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(end_layer.to_string().as_bytes());
+        }
+        ExecutionPartition::TensorRange { axis, start, end } => {
+            hasher.update(b"tensor_range|");
+            hasher.update(axis.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(start.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(end.to_string().as_bytes());
+        }
+    }
+}
+
 /// Stable identity tuple for one reusable shared prompt prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrefixCacheIdentity {
@@ -6206,7 +6586,7 @@ mod tests {
         ClusterTrustPosture, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor,
         DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
         DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
-        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
+        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPartition, ExecutionPlanCachePolicy,
         ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
         ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
         KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
@@ -6226,8 +6606,10 @@ mod tests {
         SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
         SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        SettlementLinkageInput, SignedClusterEvidenceBundle, ThroughputClass, TokenSampler,
-        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
+        SettlementLinkageInput, ShardedModelArtifactRef, ShardedModelLayoutKind,
+        ShardedModelManifest, ShardedModelManifestError, SignedClusterEvidenceBundle,
+        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
+        plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -7163,6 +7545,258 @@ mod tests {
         assert_ne!(
             baseline.served_artifact_digest,
             changed_backend.served_artifact_digest
+        );
+    }
+
+    #[test]
+    fn sharded_model_manifest_validates_replicated_layer_and_tensor_topologies()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let served_artifact = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+
+        let replicated = ShardedModelManifest::new(
+            "replicated-manifest",
+            served_artifact.clone(),
+            ShardedModelLayoutKind::Replicated,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.replica0",
+            "replica-digest-0",
+            ExecutionPartition::Replica { replica_index: 0 },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.replica1",
+            "replica-digest-1",
+            ExecutionPartition::Replica { replica_index: 1 },
+        ));
+        let replicated_topology = ExecutionTopologyPlan {
+            effective_backend: String::from("cuda"),
+            kind: ExecutionTopologyKind::Replicated,
+            assignments: vec![
+                super::ExecutionShardAssignment {
+                    shard_id: 0,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:0"),
+                        topology_key: None,
+                        placement_index: 0,
+                    },
+                    partition: ExecutionPartition::Replica { replica_index: 0 },
+                },
+                super::ExecutionShardAssignment {
+                    shard_id: 1,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:1"),
+                        topology_key: None,
+                        placement_index: 1,
+                    },
+                    partition: ExecutionPartition::Replica { replica_index: 1 },
+                },
+            ],
+        };
+        replicated.validate_against_topology(&replicated_topology)?;
+
+        let layer_sharded = ShardedModelManifest::new(
+            "layer-manifest",
+            served_artifact.clone(),
+            ShardedModelLayoutKind::LayerSharded,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.layers0_20",
+            "layer-digest-0",
+            ExecutionPartition::LayerRange {
+                start_layer: 0,
+                end_layer: 20,
+            },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.layers20_40",
+            "layer-digest-1",
+            ExecutionPartition::LayerRange {
+                start_layer: 20,
+                end_layer: 40,
+            },
+        ));
+        let layer_topology = ExecutionTopologyPlan {
+            effective_backend: String::from("cuda"),
+            kind: ExecutionTopologyKind::LayerSharded,
+            assignments: vec![
+                super::ExecutionShardAssignment {
+                    shard_id: 0,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:0"),
+                        topology_key: None,
+                        placement_index: 0,
+                    },
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: 0,
+                        end_layer: 20,
+                    },
+                },
+                super::ExecutionShardAssignment {
+                    shard_id: 1,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:1"),
+                        topology_key: None,
+                        placement_index: 1,
+                    },
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: 20,
+                        end_layer: 40,
+                    },
+                },
+            ],
+        };
+        layer_sharded.validate_against_topology(&layer_topology)?;
+
+        let tensor_sharded = ShardedModelManifest::new(
+            "tensor-manifest",
+            served_artifact,
+            ShardedModelLayoutKind::TensorSharded,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.tensor0_32",
+            "tensor-digest-0",
+            ExecutionPartition::TensorRange {
+                axis: 1,
+                start: 0,
+                end: 32,
+            },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.tensor32_64",
+            "tensor-digest-1",
+            ExecutionPartition::TensorRange {
+                axis: 1,
+                start: 32,
+                end: 64,
+            },
+        ));
+        let tensor_topology = ExecutionTopologyPlan {
+            effective_backend: String::from("cuda"),
+            kind: ExecutionTopologyKind::TensorSharded,
+            assignments: vec![
+                super::ExecutionShardAssignment {
+                    shard_id: 0,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:0"),
+                        topology_key: None,
+                        placement_index: 0,
+                    },
+                    partition: ExecutionPartition::TensorRange {
+                        axis: 1,
+                        start: 0,
+                        end: 32,
+                    },
+                },
+                super::ExecutionShardAssignment {
+                    shard_id: 1,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:1"),
+                        topology_key: None,
+                        placement_index: 1,
+                    },
+                    partition: ExecutionPartition::TensorRange {
+                        axis: 1,
+                        start: 32,
+                        end: 64,
+                    },
+                },
+            ],
+        };
+        tensor_sharded.validate_against_topology(&tensor_topology)?;
+        Ok(())
+    }
+
+    #[test]
+    fn sharded_model_manifest_refuses_partition_mismatch() {
+        let served_artifact = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+        let manifest = ShardedModelManifest::new(
+            "layer-manifest",
+            served_artifact,
+            ShardedModelLayoutKind::LayerSharded,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.layers0_20",
+            "layer-digest-0",
+            ExecutionPartition::LayerRange {
+                start_layer: 0,
+                end_layer: 20,
+            },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.layers20_40",
+            "layer-digest-1",
+            ExecutionPartition::LayerRange {
+                start_layer: 20,
+                end_layer: 40,
+            },
+        ));
+        let mismatched_topology = ExecutionTopologyPlan {
+            effective_backend: String::from("cuda"),
+            kind: ExecutionTopologyKind::LayerSharded,
+            assignments: vec![
+                super::ExecutionShardAssignment {
+                    shard_id: 0,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:0"),
+                        topology_key: None,
+                        placement_index: 0,
+                    },
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: 0,
+                        end_layer: 24,
+                    },
+                },
+                super::ExecutionShardAssignment {
+                    shard_id: 1,
+                    device: super::ExecutionDevicePlacement {
+                        stable_device_id: String::from("cuda:1"),
+                        topology_key: None,
+                        placement_index: 1,
+                    },
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: 24,
+                        end_layer: 40,
+                    },
+                },
+            ],
+        };
+
+        let error = manifest
+            .validate_against_topology(&mismatched_topology)
+            .expect_err("partition mismatch should refuse");
+        assert_eq!(
+            error,
+            ShardedModelManifestError::TopologyPartitionMismatch { shard_id: 0 }
         );
     }
 

@@ -4844,6 +4844,10 @@ mod tests {
             json!("replica-state-digest")
         );
         assert_eq!(
+            encoded["cluster_execution"]["sharded_model_manifest_digest"],
+            json!("replica-manifest-digest")
+        );
+        assert_eq!(
             encoded["cluster_execution"]["policy_digests"][0]["kind"],
             json!("replication")
         );
@@ -4944,6 +4948,10 @@ mod tests {
             json!("sharding")
         );
         assert_eq!(
+            encoded["cluster_execution"]["sharded_model_manifest_digest"],
+            json!("layer-manifest-digest")
+        );
+        assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
             json!("activation")
         );
@@ -5039,6 +5047,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["policy_digests"][0]["kind"],
             json!("sharding")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["sharded_model_manifest_digest"],
+            json!("tensor-manifest-digest")
         );
         assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
@@ -5913,6 +5925,7 @@ mod tests {
             capability_profile.lane_communication_eligibility(ClusterExecutionLane::ReplicaRouted),
         )
         .with_replica_state_digest("replica-state-digest")
+        .with_sharded_model_manifest_digest("replica-manifest-digest")
         .with_execution_topology(ExecutionTopologyPlan::replicated(
             "cuda",
             vec![first.clone(), second.clone()],
@@ -5983,6 +5996,7 @@ mod tests {
             capability_profile.lane_communication_eligibility(ClusterExecutionLane::LayerSharded),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
+        .with_sharded_model_manifest_digest("layer-manifest-digest")
         .with_execution_topology(ExecutionTopologyPlan::layer_sharded(
             "cuda",
             vec![(first.clone(), 0, 20), (second.clone(), 20, 40)],
@@ -6047,6 +6061,7 @@ mod tests {
             capability_profile.lane_communication_eligibility(ClusterExecutionLane::TensorSharded),
         )
         .with_artifact_residency_digest("artifact-residency-digest")
+        .with_sharded_model_manifest_digest("tensor-manifest-digest")
         .with_execution_topology(ExecutionTopologyPlan::tensor_sharded(
             "cuda",
             1,

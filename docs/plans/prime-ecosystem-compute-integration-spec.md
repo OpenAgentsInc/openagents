@@ -865,6 +865,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 3: Serving, Sharding, And Data Plane
 
 16. **Psionic Serve: add sharded-model manifests and pre-shard artifact handling**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3500`.
    - Rebuild the useful parts of `prime-vllm` sharding and pre-shard handling in Psionic terms.
    - The output should be explicit shard manifests and artifact refs, not implicit filesystem conventions.
 
