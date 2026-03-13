@@ -12,6 +12,7 @@
 
 pub mod renderer;
 pub mod svg;
+mod vector;
 
 pub use renderer::{RenderMetrics, Renderer};
 pub use svg::{SvgRasterized, SvgRenderer};
