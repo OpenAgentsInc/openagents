@@ -9360,7 +9360,9 @@ pub(super) fn run_buy_mode_payments_action(
     match action {
         BuyModePaymentsPaneAction::ToggleLoop => {
             if !state.mission_control_buy_mode_enabled() {
-                state.buy_mode_payments.record_error("Buy Mode is disabled for this session");
+                state
+                    .buy_mode_payments
+                    .record_error("Buy Mode is disabled for this session");
                 state
                     .mission_control
                     .record_error("Buy Mode is disabled for this session");
@@ -10146,8 +10148,7 @@ pub(super) fn run_mission_control_buy_mode_tick(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) -> bool {
-    if !state.mission_control_buy_mode_enabled() || !state.buy_mode_payments.buy_mode_loop_enabled
-    {
+    if !state.mission_control_buy_mode_enabled() || !state.buy_mode_payments.buy_mode_loop_enabled {
         return false;
     }
     if let Some(reason) =
@@ -10174,10 +10175,12 @@ pub(super) fn run_mission_control_buy_mode_tick(
         .autopilot_chat
         .select_autopilot_buy_mode_target(now_epoch_seconds);
     let Some(target_provider_pubkey) = target_selection.selected_peer_pubkey.clone() else {
-        state.buy_mode_payments.schedule_buy_mode_retry_with_interval(
-            now,
-            crate::app_state::MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL,
-        );
+        state
+            .buy_mode_payments
+            .schedule_buy_mode_retry_with_interval(
+                now,
+                crate::app_state::MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL,
+            );
         let detail = target_selection.blocked_reason.unwrap_or_else(|| {
             "Buy Mode blocked: no eligible Autopilot peer is available".to_string()
         });

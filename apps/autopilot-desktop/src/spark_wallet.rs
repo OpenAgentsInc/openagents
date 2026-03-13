@@ -985,8 +985,8 @@ mod tests {
         DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
         SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
         SparkWalletWorker, coalesce_refresh_like_command_burst, configured_api_key,
-        configured_network, is_settled_wallet_payment_status,
-        is_terminal_wallet_payment_status, run_with_timeout, timeout_message,
+        configured_network, is_settled_wallet_payment_status, is_terminal_wallet_payment_status,
+        run_with_timeout, timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
@@ -1314,11 +1314,8 @@ mod tests {
             SparkWalletCommand::GenerateSparkAddress,
         ]);
 
-        let command = coalesce_refresh_like_command_burst(
-            SparkWalletCommand::Refresh,
-            &rx,
-            &mut backlog,
-        );
+        let command =
+            coalesce_refresh_like_command_burst(SparkWalletCommand::Refresh, &rx, &mut backlog);
 
         assert!(matches!(command, SparkWalletCommand::Reload));
         assert!(matches!(

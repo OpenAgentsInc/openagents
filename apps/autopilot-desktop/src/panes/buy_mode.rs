@@ -52,7 +52,10 @@ pub fn paint(
         .unwrap_or("Buy Mode is disabled for this session.");
     paint.scene.draw_text(paint.text.layout_mono(
         summary,
-        Point::new(content_bounds.origin.x + 12.0, content_bounds.origin.y + 40.0),
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 40.0,
+        ),
         11.0,
         theme::text::PRIMARY,
     ));

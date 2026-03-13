@@ -934,20 +934,16 @@ impl PaneDescriptor {
 
 pub const fn default_pane_presentation(kind: PaneKind) -> PanePresentation {
     match kind {
-        PaneKind::GoOnline => PanePresentation::Fullscreen,
+        PaneKind::GoOnline => PanePresentation::Windowed,
         _ => PanePresentation::Windowed,
     }
 }
 
 fn effective_pane_presentation(
-    state: &RenderState,
+    _state: &RenderState,
     presentation: PanePresentation,
 ) -> PanePresentation {
-    if state.dev_mode_enabled() {
-        PanePresentation::Windowed
-    } else {
-        presentation
-    }
+    presentation
 }
 
 fn fullscreen_pane_bounds(logical: Size, sidebar_width: f32) -> Bounds {
@@ -1367,14 +1363,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
     }
 
     let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
-    if state.dev_mode_enabled()
-        && wallet_label_bounds.size.width > 0.0
-        && wallet_label_bounds.contains(point)
-    {
+    if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 
-    if state.dev_mode_enabled() && state.hotbar_bounds.contains(point) {
+    if state.hotbar_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 
@@ -7120,9 +7113,9 @@ mod tests {
     }
 
     #[test]
-    fn mission_control_descriptor_defaults_to_fullscreen_presentation() {
+    fn mission_control_descriptor_defaults_to_windowed_presentation() {
         let descriptor = PaneDescriptor::for_kind(crate::app_state::PaneKind::GoOnline);
-        assert_eq!(descriptor.presentation, PanePresentation::Fullscreen);
+        assert_eq!(descriptor.presentation, PanePresentation::Windowed);
     }
 
     #[test]

@@ -1979,7 +1979,7 @@ pub(crate) fn mission_control_local_runtime_view_model(
 
 fn mission_control_local_runtime_view_model_for_policy(
     policy: MissionControlLocalRuntimePolicy,
-    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    _desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> MissionControlLocalRuntimeViewModel {
@@ -1996,12 +1996,6 @@ fn mission_control_local_runtime_view_model_for_policy(
                         MissionControlLocalRuntimeAction::None,
                         false,
                         String::from("STARTING APPLE FM"),
-                    )
-                } else if desktop_shell_mode.is_dev() && runtime_ready {
-                    (
-                        MissionControlLocalRuntimeAction::OpenAppleFmWorkbench,
-                        true,
-                        String::from("OPEN APPLE FM"),
                     )
                 } else if provider_runtime.apple_fm.reachable {
                     (
@@ -9793,10 +9787,6 @@ pub struct RenderState {
 }
 
 impl RenderState {
-    pub const fn dev_mode_enabled(&self) -> bool {
-        self.desktop_shell_mode.is_dev()
-    }
-
     pub const fn mission_control_buy_mode_enabled(&self) -> bool {
         self.buy_mode_enabled
     }
@@ -10053,17 +10043,17 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
         AutopilotMessageStatus, AutopilotRole, AutopilotTerminalSessionStatus,
-        AutopilotTurnPlanStep, BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass,
-        CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState,
-        CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode,
-        CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis,
-        CadThreeDMouseMode, CadThreeDMouseProfile, EarnJobLifecycleProjectionRow,
-        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        BuyModePaneState, LogStreamPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        AutopilotTurnPlanStep, BuyModePaneState, BuyerResolutionMode, BuyerResolutionReason,
+        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
+        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
+        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, LogStreamPaneState, NetworkAggregateCountersState,
+        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
+        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
         RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,

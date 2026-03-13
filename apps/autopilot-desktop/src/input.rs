@@ -60,15 +60,14 @@ use crate::pane_system::{
     clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_fm_workbench_input_event,
     dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
-    dispatch_provider_control_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_provider_control_scroll_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -285,7 +284,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
             state.cursor_position = app.cursor_position;
 
-            if state.dev_mode_enabled() && state.command_palette.is_open() {
+            if state.command_palette.is_open() {
                 let event = InputEvent::MouseMove {
                     x: app.cursor_position.x,
                     y: app.cursor_position.y,
@@ -340,7 +339,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 },
             };
 
-            if state.dev_mode_enabled() && state.command_palette.is_open() {
+            if state.command_palette.is_open() {
                 let mut handled = state
                     .command_palette
                     .event(
@@ -387,7 +386,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
             };
             let scroll_event = InputEvent::Scroll { dx, dy };
-            if state.dev_mode_enabled() && state.command_palette.is_open() {
+            if state.command_palette.is_open() {
                 if state
                     .command_palette
                     .event(
@@ -420,9 +419,8 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     &event.logical_key,
                     state.input_modifiers,
                     text_input_focused,
-                    state.dev_mode_enabled() && state.command_palette.is_open(),
+                    state.command_palette.is_open(),
                 )
-                && state.dev_mode_enabled()
             {
                 toggle_command_palette(state);
                 state.window.request_redraw();
@@ -433,7 +431,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if state.dev_mode_enabled() && state.command_palette.is_open() {
+            if state.command_palette.is_open() {
                 if let Some(key) = map_winit_key(&event.logical_key) {
                     let palette_event = InputEvent::KeyDown {
                         key,
@@ -484,9 +482,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     }
                 }
                 key => {
-                    if state.dev_mode_enabled()
-                        && let Some(slot) = hotbar_slot_for_key(key)
-                    {
+                    if let Some(slot) = hotbar_slot_for_key(key) {
                         activate_hotbar_slot(state, slot);
                         state.window.request_redraw();
                     }
@@ -506,14 +502,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 state.provider_runtime.mode,
                 ProviderMode::Connecting | ProviderMode::Online
             );
-            if (state.dev_mode_enabled() && flashing_now)
-                || (state.dev_mode_enabled() && state.hotbar_flash_was_active)
+            if flashing_now
+                || state.hotbar_flash_was_active
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
             {
                 state.window.request_redraw();
             }
-            state.hotbar_flash_was_active = state.dev_mode_enabled() && flashing_now;
+            state.hotbar_flash_was_active = flashing_now;
         }
         _ => {}
     }
@@ -1832,12 +1828,10 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
 
     handled |= PaneInput::dispatch_frame_event(state, &event);
     handled |= dispatch_text_inputs(state, &event);
-    if state.dev_mode_enabled() {
-        handled |= state
-            .hotbar
-            .event(&event, state.hotbar_bounds, &mut state.event_context)
-            .is_handled();
-    }
+    handled |= state
+        .hotbar
+        .event(&event, state.hotbar_bounds, &mut state.event_context)
+        .is_handled();
     handled
 }
 
@@ -1872,7 +1866,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if state.dev_mode_enabled() && button == MouseButton::Left {
+    if button == MouseButton::Left {
         let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
         if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
@@ -1881,7 +1875,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if state.dev_mode_enabled() && state.hotbar_bounds.contains(point) {
+    if state.hotbar_bounds.contains(point) {
         handled |= state
             .hotbar
             .event(event, state.hotbar_bounds, &mut state.event_context)
@@ -1894,13 +1888,11 @@ fn dispatch_mouse_down(
     } else {
         handled |= PaneInput::handle_mouse_down(state, point, button);
         handled |= dispatch_text_inputs(state, event);
-        if state.dev_mode_enabled() {
-            handled |= state
-                .hotbar
-                .event(event, state.hotbar_bounds, &mut state.event_context)
-                .is_handled();
-            handled |= process_hotbar_clicks(state);
-        }
+        handled |= state
+            .hotbar
+            .event(event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+        handled |= process_hotbar_clicks(state);
     }
 
     handled |= begin_cad_camera_drag(state, point, button);
@@ -1935,13 +1927,11 @@ fn dispatch_mouse_up(
             }
         }
     }
-    if state.dev_mode_enabled() {
-        handled |= state
-            .hotbar
-            .event(event, state.hotbar_bounds, &mut state.event_context)
-            .is_handled();
-        handled |= process_hotbar_clicks(state);
-    }
+    handled |= state
+        .hotbar
+        .event(event, state.hotbar_bounds, &mut state.event_context)
+        .is_handled();
+    handled |= process_hotbar_clicks(state);
     handled
 }
 

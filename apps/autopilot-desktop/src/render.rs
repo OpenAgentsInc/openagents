@@ -4,10 +4,10 @@ use std::{cell::RefCell, rc::Rc};
 use anyhow::{Context, Result};
 use nostr::load_or_create_identity;
 use wgpui::components::Text;
-use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
+use wgpui::components::hud::{Command, CommandPalette};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, Easing, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
+    Bounds, Component, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
 };
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
@@ -29,7 +29,7 @@ use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, RIGHT_SIDEBAR_ENABLED,
-    cad_palette_command_specs, sidebar_reserved_width,
+    cad_palette_command_specs, clamp_all_panes_to_window, sidebar_reserved_width,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
@@ -38,7 +38,6 @@ use crate::runtime_lanes::{
 };
 use crate::spark_wallet::SparkWalletCommand;
 
-const GRID_DOT_DISTANCE: f32 = 32.0;
 const WALLET_BALANCE_CHIP_MARGIN: f32 = 12.0;
 const WALLET_BALANCE_CHIP_HEIGHT: f32 = 48.0;
 const WALLET_BALANCE_CHIP_MIN_WIDTH: f32 = 140.0;
@@ -642,34 +641,88 @@ fn local_sim_runtime_bootstrap_enabled() -> bool {
         .unwrap_or(false)
 }
 
-fn open_startup_panes(state: &mut RenderState) {
-    for pane_kind in startup_pane_kinds() {
-        match pane_kind {
-            PaneKind::GoOnline => {
-                let _ = PaneController::create_for_kind(state, pane_kind);
-                let _ = ensure_mission_control_local_runtime_preflight(state);
-                state
-                    .spark_wallet
-                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
-                    state.spark_wallet.last_error = Some(error);
-                }
+fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
+    let _ = PaneController::create_for_kind(state, pane_kind);
+    match pane_kind {
+        PaneKind::GoOnline | PaneKind::ProviderControl => {
+            let _ = ensure_mission_control_local_runtime_preflight(state);
+            state
+                .spark_wallet
+                .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
+            if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
+                state.spark_wallet.last_error = Some(error);
             }
-            PaneKind::CadDemo => {
-                let _ = PaneController::create_for_kind(state, pane_kind);
-                bootstrap_startup_cad_mesh(state);
-            }
-            PaneKind::SparkWallet => {
-                let _ = PaneController::create_for_kind(state, pane_kind);
-                state
-                    .spark_wallet
-                    .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
-                    state.spark_wallet.last_error = Some(error);
-                }
-            }
-            _ => {}
         }
+        PaneKind::CadDemo => bootstrap_startup_cad_mesh(state),
+        PaneKind::SparkWallet => {
+            state
+                .spark_wallet
+                .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
+            if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Reload) {
+                state.spark_wallet.last_error = Some(error);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn layout_split_shell_startup_panes(state: &mut RenderState) {
+    let Some(provider_idx) = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::ProviderControl)
+    else {
+        return;
+    };
+    let Some(earnings_idx) = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::EarningsScoreboard)
+    else {
+        return;
+    };
+
+    let logical = logical_size(&state.config, state.scale_factor);
+    let usable_width = (logical.width - sidebar_reserved_width(state)).max(0.0);
+    let provider_size = state.panes[provider_idx].bounds.size;
+    let earnings_size = state.panes[earnings_idx].bounds.size;
+
+    state.panes[provider_idx].bounds =
+        Bounds::new(12.0, 12.0, provider_size.width, provider_size.height);
+    state.panes[earnings_idx].bounds = Bounds::new(
+        (usable_width - earnings_size.width - 12.0).max(24.0),
+        76.0,
+        earnings_size.width,
+        earnings_size.height,
+    );
+    clamp_all_panes_to_window(state);
+}
+
+fn open_startup_panes(state: &mut RenderState) {
+    let startup_panes = startup_pane_kinds();
+    for pane_kind in [PaneKind::EarningsScoreboard, PaneKind::ProviderControl] {
+        if startup_panes.contains(&pane_kind) {
+            open_startup_pane(state, pane_kind);
+        }
+    }
+    for pane_kind in startup_panes {
+        if matches!(
+            pane_kind,
+            PaneKind::EarningsScoreboard | PaneKind::ProviderControl
+        ) {
+            continue;
+        }
+        open_startup_pane(state, pane_kind);
+    }
+
+    layout_split_shell_startup_panes(state);
+    if let Some(provider_id) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::ProviderControl)
+        .map(|pane| pane.id)
+    {
+        PaneController::bring_to_front(state, provider_id);
     }
 }
 
@@ -678,7 +731,6 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     let width = logical.width;
     let height = logical.height;
     let active_pane = PaneController::active(state);
-    let dev_mode = state.dev_mode_enabled();
 
     let mut scene = Scene::new();
     scene
@@ -744,25 +796,6 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
-
-        if dev_mode {
-            let mut dots_grid = DotsGrid::new()
-                .color(theme::text::MUTED.with_alpha(0.26))
-                .shape(DotShape::Cross)
-                .distance(GRID_DOT_DISTANCE)
-                .size(5.0)
-                .cross_thickness(1.0)
-                .origin(DotsOrigin::Center)
-                .easing(Easing::EaseOut);
-            // Use fixed full-window bounds for the grid so dot positions don't shift when the sidebar is dragged.
-            // Clip to the main canvas so we don't draw under the sidebar.
-            let main_canvas_width = (width - panel_width).max(0.0);
-            paint
-                .scene
-                .push_clip(Bounds::new(0.0, 0.0, main_canvas_width, height));
-            dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
-            paint.scene.pop_clip();
-        }
 
         if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
             let left = sidebar_x + 12.0;
@@ -1101,54 +1134,49 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         );
         paint.scene.set_layer(hotbar_layer);
 
-        if dev_mode {
-            let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
-            let wallet_chip_label = state
-                .spark_wallet
-                .balance
-                .as_ref()
-                .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
-                .unwrap_or_else(|| "LOADING".to_string());
-            let wallet_label_font_size = 11.0;
-            let icon_text_gap = 8.0;
-            let label_width = paint
-                .text
-                .measure(&wallet_chip_label, wallet_label_font_size);
-            let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
-            let group_x = wallet_chip_bounds.origin.x + 6.0;
-            let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
-            let wallet_icon_bounds = Bounds::new(
-                group_x,
-                center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
-                OPENAGENTS_BRAND_ICON_SIZE,
-                OPENAGENTS_BRAND_ICON_SIZE,
-            );
-            paint.scene.draw_svg(
-                SvgQuad::new(
-                    wallet_icon_bounds,
-                    std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
-                )
-                .with_tint(theme::accent::PRIMARY),
-            );
-            paint.scene.draw_text(paint.text.layout_mono(
-                &wallet_chip_label,
-                Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
-                wallet_label_font_size,
-                theme::text::PRIMARY,
-            ));
+        let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
+        let wallet_chip_label = state
+            .spark_wallet
+            .balance
+            .as_ref()
+            .map(|balance| format_sats_amount(spark_total_balance_sats(balance)))
+            .unwrap_or_else(|| "LOADING".to_string());
+        let wallet_label_font_size = 11.0;
+        let icon_text_gap = 8.0;
+        let label_width = paint
+            .text
+            .measure(&wallet_chip_label, wallet_label_font_size);
+        let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
+        let group_x = wallet_chip_bounds.origin.x + 6.0;
+        let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
+        let wallet_icon_bounds = Bounds::new(
+            group_x,
+            center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
+            OPENAGENTS_BRAND_ICON_SIZE,
+            OPENAGENTS_BRAND_ICON_SIZE,
+        );
+        paint.scene.draw_svg(
+            SvgQuad::new(
+                wallet_icon_bounds,
+                std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+            )
+            .with_tint(theme::accent::PRIMARY),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &wallet_chip_label,
+            Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
+            wallet_label_font_size,
+            theme::text::PRIMARY,
+        ));
 
-            let bar_bounds = hotbar_bounds(logical);
-            state.hotbar_bounds = bar_bounds;
-            configure_hotbar(&mut state.hotbar);
-            state.hotbar.paint(bar_bounds, &mut paint);
+        let bar_bounds = hotbar_bounds(logical);
+        state.hotbar_bounds = bar_bounds;
+        configure_hotbar(&mut state.hotbar);
+        state.hotbar.paint(bar_bounds, &mut paint);
 
-            state
-                .command_palette
-                .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
-        } else {
-            state.hotbar_bounds = Bounds::new(0.0, 0.0, 0.0, 0.0);
-            state.command_palette.close();
-        }
+        state
+            .command_palette
+            .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
 
         // Sidebar tooltip for the settings icon.
         if RIGHT_SIDEBAR_ENABLED && state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
@@ -1287,16 +1315,10 @@ pub fn wallet_balance_chip_bounds_for_logical(logical: Size) -> Bounds {
 }
 
 pub fn wallet_balance_chip_bounds(state: &RenderState) -> Bounds {
-    if !state.dev_mode_enabled() {
-        return Bounds::new(0.0, 0.0, 0.0, 0.0);
-    }
     wallet_balance_chip_bounds_for_logical(logical_size(&state.config, state.scale_factor))
 }
 
 pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
-    if !state.dev_mode_enabled() {
-        return Bounds::new(0.0, 0.0, 0.0, 0.0);
-    }
     let logical = logical_size(&state.config, state.scale_factor);
     let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
     let wallet_chip_label = state
@@ -1545,14 +1567,18 @@ mod tests {
     }
 
     #[test]
-    fn startup_pane_set_matches_mvp_core_surfaces() {
+    fn startup_pane_set_matches_split_shell_surfaces() {
         let startup = startup_pane_kinds();
-        assert_eq!(startup, vec![PaneKind::GoOnline]);
+        assert_eq!(
+            startup,
+            vec![PaneKind::ProviderControl, PaneKind::EarningsScoreboard]
+        );
         assert!(!startup.contains(&PaneKind::AutopilotChat));
         assert!(!startup.contains(&PaneKind::ProjectOps));
         assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
+        assert!(!startup.contains(&PaneKind::GoOnline));
     }
 
     #[test]

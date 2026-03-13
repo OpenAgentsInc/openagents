@@ -228,7 +228,9 @@ fn apply_mission_control_summary_update(
                     .log_stream
                     .push_runtime_log_line(TerminalStream::Stdout, completed.summary.clone());
             }
-            state.provider_control.record_action(completed.summary.clone());
+            state
+                .provider_control
+                .record_action(completed.summary.clone());
             state.provider_runtime.last_result = Some(completed.summary.clone());
         }
         AppleFmMissionControlSummaryUpdate::Failed(failed) => {
