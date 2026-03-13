@@ -1,11 +1,11 @@
 [package]
-name = "psionic-cluster"
+name = "psionic-net"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Trusted-LAN cluster control-plane substrate for Psionic"
+description = "Transport and session substrate for Psionic cluster networking"
 
 [lints]
 workspace = true
@@ -16,7 +16,6 @@ path = "src/lib.rs"
 [dependencies]
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
-psionic-net = { path = "../psionic-net" }
 psionic-runtime = { path = "../psionic-runtime" }
 rand = { workspace = true }
 serde = { workspace = true }
