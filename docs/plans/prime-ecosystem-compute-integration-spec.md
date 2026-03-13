@@ -794,6 +794,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The deliverable is a kernel object model that can express clustered, sandboxed, and proof-sensitive compute without inventing ad hoc metadata blobs.
 
 3. **Compute: widen proto packages and authority contracts to match the new taxonomy**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3487`.
    - Extend `openagents-kernel-proto` and the corresponding authority routes/read models so the wire layer matches the real market.
    - This should include product, lot, instrument, delivery, index, validator, and environment-binding surfaces.
 

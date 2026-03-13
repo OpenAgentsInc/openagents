@@ -27,12 +27,49 @@ enum ComputeBackendFamily {
 enum ComputeExecutionKind {
   COMPUTE_EXECUTION_KIND_UNSPECIFIED = 0;
   COMPUTE_EXECUTION_KIND_LOCAL_INFERENCE = 1;
+  COMPUTE_EXECUTION_KIND_CLUSTERED_INFERENCE = 2;
+  COMPUTE_EXECUTION_KIND_SANDBOX_EXECUTION = 3;
+  COMPUTE_EXECUTION_KIND_EVALUATION_RUN = 4;
+  COMPUTE_EXECUTION_KIND_TRAINING_JOB = 5;
 }
 
 enum ComputeFamily {
   COMPUTE_FAMILY_UNSPECIFIED = 0;
   COMPUTE_FAMILY_INFERENCE = 1;
   COMPUTE_FAMILY_EMBEDDINGS = 2;
+  COMPUTE_FAMILY_SANDBOX_EXECUTION = 3;
+  COMPUTE_FAMILY_EVALUATION = 4;
+  COMPUTE_FAMILY_TRAINING = 5;
+  COMPUTE_FAMILY_ADAPTER_HOSTING = 6;
+}
+
+enum ComputeTopologyKind {
+  COMPUTE_TOPOLOGY_KIND_UNSPECIFIED = 0;
+  COMPUTE_TOPOLOGY_KIND_SINGLE_NODE = 1;
+  COMPUTE_TOPOLOGY_KIND_REMOTE_WHOLE_REQUEST = 2;
+  COMPUTE_TOPOLOGY_KIND_REPLICATED = 3;
+  COMPUTE_TOPOLOGY_KIND_PIPELINE_SHARDED = 4;
+  COMPUTE_TOPOLOGY_KIND_LAYER_SHARDED = 5;
+  COMPUTE_TOPOLOGY_KIND_TENSOR_SHARDED = 6;
+  COMPUTE_TOPOLOGY_KIND_SANDBOX_ISOLATED = 7;
+  COMPUTE_TOPOLOGY_KIND_TRAINING_ELASTIC = 8;
+}
+
+enum ComputeProvisioningKind {
+  COMPUTE_PROVISIONING_KIND_UNSPECIFIED = 0;
+  COMPUTE_PROVISIONING_KIND_DESKTOP_LOCAL = 1;
+  COMPUTE_PROVISIONING_KIND_CLUSTER_ATTACHED = 2;
+  COMPUTE_PROVISIONING_KIND_REMOTE_SANDBOX = 3;
+  COMPUTE_PROVISIONING_KIND_RESERVED_CLUSTER_WINDOW = 4;
+}
+
+enum ComputeProofPosture {
+  COMPUTE_PROOF_POSTURE_UNSPECIFIED = 0;
+  COMPUTE_PROOF_POSTURE_DELIVERY_PROOF_ONLY = 1;
+  COMPUTE_PROOF_POSTURE_NONE = 2;
+  COMPUTE_PROOF_POSTURE_TOPOLOGY_AND_DELIVERY = 3;
+  COMPUTE_PROOF_POSTURE_TOPLOC_AUGMENTED = 4;
+  COMPUTE_PROOF_POSTURE_CHALLENGE_ELIGIBLE = 5;
 }
 
 message ComputeHostCapability {
@@ -54,6 +91,34 @@ message GptOssRuntimeCapability {
   optional string quantization = 3;
 }
 
+message ComputeValidatorRequirements {
+  optional string validator_pool_ref = 1;
+  optional string policy_ref = 2;
+  optional uint32 minimum_validator_count = 3;
+  optional uint64 challenge_window_ms = 4;
+}
+
+message ComputeArtifactResidency {
+  optional string residency_class = 1;
+  optional string staging_policy = 2;
+  optional string artifact_set_digest = 3;
+  optional bool warm = 4;
+}
+
+message ComputeEnvironmentBinding {
+  string environment_ref = 1;
+  optional string environment_version = 2;
+  optional string dataset_ref = 3;
+  optional string rubric_ref = 4;
+  optional string evaluator_policy_ref = 5;
+}
+
+message ComputeCheckpointBinding {
+  string checkpoint_family = 1;
+  optional string latest_checkpoint_ref = 2;
+  optional string recovery_posture = 3;
+}
+
 message ComputeCapabilityEnvelope {
   ComputeBackendFamily backend_family = 1;
   ComputeExecutionKind execution_kind = 2;
@@ -66,6 +131,13 @@ message ComputeCapabilityEnvelope {
   optional uint32 latency_ms_p50 = 9;
   optional uint32 throughput_per_minute = 10;
   optional uint32 concurrency_limit = 11;
+  ComputeTopologyKind topology_kind = 12;
+  ComputeProvisioningKind provisioning_kind = 13;
+  ComputeProofPosture proof_posture = 14;
+  optional ComputeValidatorRequirements validator_requirements = 15;
+  optional ComputeArtifactResidency artifact_residency = 16;
+  optional ComputeEnvironmentBinding environment_binding = 17;
+  optional ComputeCheckpointBinding checkpoint_binding = 18;
 }
 
 message ComputeProduct {
