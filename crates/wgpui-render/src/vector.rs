@@ -547,4 +547,41 @@ mod tests {
             "image mesh should produce visible pixels"
         );
     }
+
+    #[test]
+    fn rasterize_vector_batch_honors_state_stack_transform_order() {
+        let mut path = VectorPath::new(VectorFillRule::NonZero);
+        path.move_to(Point::new(0.0, 0.0));
+        path.line_to(Point::new(12.0, 0.0));
+        path.line_to(Point::new(12.0, 12.0));
+        path.line_to(Point::new(0.0, 12.0));
+        path.close();
+
+        let mut batch = VectorBatch::new(Bounds::new(0.0, 0.0, 64.0, 64.0));
+        batch.push_command(VectorCommand::StatePush);
+        batch.push_command(VectorCommand::Transform([1.0, 0.0, 0.0, 1.0, 28.0, 20.0]));
+        batch.push_command(VectorCommand::DrawPath {
+            path,
+            paint: VectorPaint {
+                style: VectorPaintStyle::Fill,
+                brush: VectorBrush::Solid(Hsla::from_hex(0x00FF00)),
+                ..VectorPaint::default()
+            },
+        });
+        batch.push_command(VectorCommand::StatePop);
+
+        let rasterized = rasterize_vector_batch(&batch, 1.0).expect("batch should rasterize");
+        let translated_pixel = (32usize + 24usize * rasterized.width as usize) * 4;
+        let original_pixel = (4usize + 4usize * rasterized.width as usize) * 4;
+
+        assert!(
+            rasterized.pixels[translated_pixel + 1] > 0,
+            "translated draw should land inside the transformed region"
+        );
+        assert_eq!(
+            rasterized.pixels[original_pixel + 1],
+            0,
+            "original region should remain empty after the transform stack is popped"
+        );
+    }
 }

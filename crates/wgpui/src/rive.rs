@@ -268,6 +268,10 @@ pub struct RiveSurface {
     id: Option<ComponentId>,
     controller: RiveController,
     last_paint: Option<Instant>,
+    redraw_pending: bool,
+    carry_redraws: u8,
+    animating: bool,
+    pointer_captured: bool,
 }
 
 impl RiveSurface {
@@ -292,6 +296,10 @@ impl RiveSurface {
                 scene_handle,
             )?,
             last_paint: None,
+            redraw_pending: true,
+            carry_redraws: 0,
+            animating: false,
+            pointer_captured: false,
         })
     }
 
@@ -302,23 +310,55 @@ impl RiveSurface {
     pub fn controller_mut(&mut self) -> &mut RiveController {
         &mut self.controller
     }
+
+    pub fn needs_redraw(&self) -> bool {
+        self.redraw_pending || self.animating || self.carry_redraws > 0
+    }
+
+    pub fn is_animating(&self) -> bool {
+        self.animating
+    }
+
+    pub fn is_settled(&self) -> bool {
+        !self.needs_redraw()
+    }
+
+    pub fn has_pointer_capture(&self) -> bool {
+        self.pointer_captured
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.redraw_pending = true;
+    }
 }
 
 impl Component for RiveSurface {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let now = Instant::now();
+        let first_paint = self.last_paint.is_none();
+        let was_dirty = self.redraw_pending;
         let elapsed = self
             .last_paint
             .replace(now)
             .map_or(Duration::ZERO, |previous| now - previous);
-        self.controller.advance(elapsed);
+        if self.carry_redraws > 0 {
+            self.carry_redraws = self.carry_redraws.saturating_sub(1);
+        }
+        self.animating = self.controller.advance(elapsed);
         self.controller.paint_into_scene(bounds, cx.scene);
+        self.redraw_pending = false;
+        if !self.controller.is_paused() && !self.animating && (first_paint || was_dirty) {
+            self.carry_redraws = self.carry_redraws.max(1);
+        }
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         match event {
-            InputEvent::MouseMove { x, y } if bounds.contains(Point::new(*x, *y)) => {
+            InputEvent::MouseMove { x, y }
+                if self.pointer_captured || bounds.contains(Point::new(*x, *y)) =>
+            {
                 self.controller.pointer_move(*x, *y, bounds);
+                self.redraw_pending = true;
                 EventResult::Handled
             }
             InputEvent::MouseDown {
@@ -327,15 +367,19 @@ impl Component for RiveSurface {
                 y,
                 ..
             } if bounds.contains(Point::new(*x, *y)) => {
+                self.pointer_captured = true;
                 self.controller.pointer_down(*x, *y, bounds);
+                self.redraw_pending = true;
                 EventResult::Handled
             }
             InputEvent::MouseUp {
                 button: MouseButton::Left,
                 x,
                 y,
-            } if bounds.contains(Point::new(*x, *y)) => {
+            } if self.pointer_captured || bounds.contains(Point::new(*x, *y)) => {
+                self.pointer_captured = false;
                 self.controller.pointer_up(*x, *y, bounds);
+                self.redraw_pending = true;
                 EventResult::Handled
             }
             _ => EventResult::Ignored,
@@ -901,7 +945,14 @@ fn transform_point(point: Point, transform: &[f32; 6]) -> Point {
 mod tests {
     use super::RiveHandle;
     use super::{RiveFitMode, invert_transform, scene_handle_label, view_transform};
-    use crate::{Bounds, Size};
+    use crate::{
+        Bounds, Component, EventContext, InputEvent, MouseButton, PaintContext, Scene, Size,
+        TextSystem,
+    };
+
+    fn packaged_hud_bytes() -> &'static [u8] {
+        include_bytes!("../../../apps/autopilot-desktop/resources/rive/simple-fui-hud.riv")
+    }
 
     #[test]
     fn contain_fit_centers_artboard() {
@@ -934,5 +985,71 @@ mod tests {
             scene_handle_label(&RiveHandle::Name("hud".to_string())),
             "hud"
         );
+    }
+
+    #[test]
+    fn surface_event_capture_persists_until_mouse_up() {
+        let mut surface =
+            crate::RiveSurface::from_bytes(packaged_hud_bytes(), None).expect("packaged HUD asset");
+        let bounds = Bounds::new(0.0, 0.0, 320.0, 200.0);
+        let mut event_context = EventContext::new();
+
+        assert!(
+            surface
+                .event(
+                    &InputEvent::MouseDown {
+                        button: MouseButton::Left,
+                        x: 24.0,
+                        y: 32.0,
+                        modifiers: crate::Modifiers::default(),
+                    },
+                    bounds,
+                    &mut event_context,
+                )
+                .is_handled()
+        );
+        assert!(surface.has_pointer_capture());
+        assert!(surface.needs_redraw());
+        assert!(
+            surface
+                .event(
+                    &InputEvent::MouseMove { x: 420.0, y: 260.0 },
+                    bounds,
+                    &mut event_context,
+                )
+                .is_handled(),
+            "captured move should continue forwarding beyond the canvas bounds"
+        );
+        assert!(
+            surface
+                .event(
+                    &InputEvent::MouseUp {
+                        button: MouseButton::Left,
+                        x: 420.0,
+                        y: 260.0,
+                    },
+                    bounds,
+                    &mut event_context,
+                )
+                .is_handled(),
+            "captured release should not be dropped outside the canvas bounds"
+        );
+        assert!(!surface.has_pointer_capture());
+    }
+
+    #[test]
+    fn surface_settles_after_a_paused_paint() {
+        let mut surface =
+            crate::RiveSurface::from_bytes(packaged_hud_bytes(), None).expect("packaged HUD asset");
+        surface.controller_mut().pause();
+        let mut scene = Scene::new();
+        let mut text_system = TextSystem::new(1.0);
+        let mut paint_context = PaintContext::new(&mut scene, &mut text_system, 1.0);
+
+        surface.paint(Bounds::new(0.0, 0.0, 320.0, 200.0), &mut paint_context);
+
+        assert!(!surface.is_animating());
+        assert!(surface.is_settled());
+        assert!(!surface.needs_redraw());
     }
 }

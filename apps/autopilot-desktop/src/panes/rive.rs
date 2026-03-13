@@ -104,6 +104,12 @@ pub fn paint(
         surface.paint(canvas_bounds, paint);
         let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
         let metrics = surface.controller().metrics().clone();
+        let redraw_state = redraw_label(surface);
+        let pointer_capture = if surface.has_pointer_capture() {
+            "captured"
+        } else {
+            "idle"
+        };
         pane_state.load_state = crate::app_state::PaneLoadState::Ready;
         pane_state.last_error = None;
         pane_state.frame_build_ms = Some(elapsed_ms);
@@ -111,7 +117,15 @@ pub fn paint(
         pane_state.image_count = metrics.image_count.min(u32::MAX as usize) as u32;
         pane_state.scene_name = Some(metrics.scene_name.clone());
         paint_canvas_overlay(canvas_bounds, paint);
-        paint_metrics_panel(metrics_bounds, pane_state, &metrics, paint);
+        paint_metrics_panel(
+            metrics_bounds,
+            pane_state,
+            &metrics,
+            redraw_state,
+            pointer_capture,
+            renderer_diagnostic(&metrics).as_deref(),
+            paint,
+        );
     } else {
         paint.scene.draw_text(paint.text.layout(
             "No Rive runtime is loaded.",
@@ -123,6 +137,9 @@ pub fn paint(
             metrics_bounds,
             pane_state,
             &wgpui::RiveMetrics::default(),
+            "unloaded",
+            "idle",
+            Some("No active Rive surface is loaded into the pane runtime."),
             paint,
         );
     }
@@ -275,6 +292,9 @@ fn paint_metrics_panel(
     bounds: Bounds,
     pane_state: &RivePreviewPaneState,
     metrics: &wgpui::RiveMetrics,
+    redraw_state: &str,
+    pointer_capture: &str,
+    renderer_diagnostic: Option<&str>,
     paint: &mut PaintContext,
 ) {
     let lines = [
@@ -307,6 +327,9 @@ fn paint_metrics_panel(
                 .map(|value| format!("{value:.2} ms"))
                 .unwrap_or_else(|| "-".to_string())
         ),
+        format!("redraw        {redraw_state}"),
+        format!("capture       {pointer_capture}"),
+        format!("backend       {}", render_backend_label()),
         format!("commands      {}", pane_state.draw_call_count),
         format!("images        {}", pane_state.image_count),
         format!(
@@ -314,7 +337,7 @@ fn paint_metrics_panel(
             metrics.artboard_size.width, metrics.artboard_size.height
         ),
         format!(
-            "pointer       {}",
+            "cursor        {}",
             pane_state
                 .last_pointer
                 .map(|point| format!("{:.0},{:.0}", point.x, point.y))
@@ -339,6 +362,14 @@ fn paint_metrics_panel(
             theme::text::PRIMARY,
         ));
     }
+    if let Some(diagnostic) = renderer_diagnostic {
+        paint.scene.draw_text(paint.text.layout(
+            diagnostic,
+            Point::new(bounds.origin.x + 14.0, bounds.max_y() - 18.0),
+            10.0,
+            theme::status::ERROR,
+        ));
+    }
 }
 
 fn fit_label(fit_mode: wgpui::RiveFitMode) -> &'static str {
@@ -346,6 +377,33 @@ fn fit_label(fit_mode: wgpui::RiveFitMode) -> &'static str {
         wgpui::RiveFitMode::Contain => "contain",
         wgpui::RiveFitMode::Cover => "cover",
         wgpui::RiveFitMode::Fill => "fill",
+    }
+}
+
+fn redraw_label(surface: &RiveSurface) -> &'static str {
+    if surface.is_animating() {
+        "animating"
+    } else if surface.needs_redraw() {
+        "warmup"
+    } else if surface.is_settled() {
+        "settled"
+    } else {
+        "idle"
+    }
+}
+
+fn render_backend_label() -> &'static str {
+    "vector batch -> rasterized texture"
+}
+
+fn renderer_diagnostic(metrics: &wgpui::RiveMetrics) -> Option<String> {
+    if metrics.command_count == 0 {
+        Some(
+            "Rive emitted 0 vector commands; verify the artboard/scene handle or renderer support."
+                .to_string(),
+        )
+    } else {
+        None
     }
 }
 

@@ -1917,6 +1917,7 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                 );
             }
             PaneKind::RivePreview => {
+                let runtime_surface = state.rive_preview_runtime.surface.as_ref();
                 map.insert(
                     "rive_preview".to_string(),
                     json!({
@@ -1926,6 +1927,19 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                         "draw_call_count": state.rive_preview.draw_call_count,
                         "image_count": state.rive_preview.image_count,
                         "scene_name": state.rive_preview.scene_name,
+                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()),
+                        "animating": runtime_surface.is_some_and(|surface| surface.is_animating()),
+                        "settled": runtime_surface.map(|surface| surface.is_settled()).unwrap_or(true),
+                        "pointer_capture": runtime_surface.is_some_and(|surface| surface.has_pointer_capture()),
+                        "render_backend": "vector batch -> rasterized texture",
+                        "renderer_diagnostic": if state.rive_preview.draw_call_count == 0
+                            && state.rive_preview.frame_build_ms.is_some()
+                            && state.rive_preview_runtime.surface.is_some()
+                        {
+                            Some("Rive emitted 0 vector commands; verify the artboard/scene handle or renderer support.".to_string())
+                        } else {
+                            None
+                        },
                         "last_error": state.rive_preview.last_error,
                     }),
                 );
