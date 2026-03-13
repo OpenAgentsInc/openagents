@@ -843,6 +843,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the first non-local compute execution lane worth selling.
 
 12. **Psionic Cluster: productize replicated serving placement and routing**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3496`.
    - Turn the existing replicated-serving substrate into a real execution mode with explicit topology, routing, and evidence.
    - This creates the first honest clustered low-latency serving product.
 
