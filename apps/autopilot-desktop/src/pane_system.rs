@@ -1521,6 +1521,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::AlertsRecovery
             | PaneKind::LogStream
             | PaneKind::BuyModePayments
+            | PaneKind::BuyerRaceMatrix
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
             | PaneKind::ActiveJob
@@ -5722,6 +5723,7 @@ fn pane_hit_action_for_pane(
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
         PaneKind::PsionicViz => None,
+        PaneKind::BuyerRaceMatrix => None,
         PaneKind::BuyModePayments => {
             if buy_mode_payments_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(

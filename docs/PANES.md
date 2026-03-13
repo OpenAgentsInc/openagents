@@ -130,6 +130,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows current loop summary, provider/work/payment state, and replay-safe payment ledger history.
   - `OPENAGENTS_ENABLE_BUY_MODE` now only suppresses this pane/flow when explicitly disabled; the default shell assumes Buy Mode is available.
   - Action: start/stop loop and copy ledger.
+- `Buyer Race Matrix`
+  - Visualization-first buyer pane for current NIP-90 provider competition.
+  - Centers the current request and paints one vertical lane per provider pubkey with separate `SEL`, `RES`, `INV`, and `PAY` role chips when those roles split.
+  - Uses current buyer flow state plus persisted provider-observation history to show result arrival, invoice arrival, payable-winner selection, relay provenance count, and loser reasons grounded in actual evidence.
+  - Action: read-only live race visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
