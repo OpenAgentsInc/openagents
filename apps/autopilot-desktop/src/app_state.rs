@@ -113,6 +113,7 @@ pub enum PaneKind {
     SellerEarningsTimeline,
     SettlementLadder,
     KeyLedger,
+    SettlementAtlas,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,

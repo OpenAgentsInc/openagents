@@ -151,6 +151,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows sats sent, sats received, jobs won, invoices emitted, settlement failures, average latency, and a tiny recent-activity sparkline for each actor row.
   - Includes a focus card that summarizes the current top actor and points operators toward atlas/replay drill paths.
   - Action: read-only actor visibility.
+- `Settlement Atlas`
+  - Constellation-style graph of buyer-to-provider NIP-90 payment edges using canonical Nostr identities from the fact ledger.
+  - Encodes edge thickness from sats volume and edge glow from recency while keeping facts without both sides of identity proof out of the graph and counted as degraded.
+  - Includes a focus edge card for the hottest current buyer/provider relationship and its request/payment evidence anchor.
+  - Action: read-only graph visibility.
 - `Log Stream`
   - Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.
   - Independent terminal scroll/copy surface rather than an inline Mission Control log box.
@@ -273,6 +278,7 @@ Current pane badge mapping:
 - `Seller Earnings Timeline`: `source: stream.nip90_payment_facts.v1`
 - `Settlement Ladder`: `source: stream.nip90_payment_facts.v1`
 - `Key Ledger`: `source: stream.nip90_payment_facts.v1`
+- `Settlement Atlas`: `source: stream.nip90_payment_facts.v1`
 - `Log Stream`: `source: log`
 - `Starter Jobs`: `source: runtime`
 - `Activity Feed`: `source: stream.activity_projection.v1`
