@@ -73,8 +73,8 @@ use crate::pane_system::{
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
-    logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_sats_label_bounds,
+    logical_size, pane_fullscreen_active, render_frame, sidebar_go_online_button_bounds,
+    sidebar_handle_bounds, wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
@@ -1952,10 +1952,12 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
 
     handled |= PaneInput::dispatch_frame_event(state, &event);
     handled |= dispatch_text_inputs(state, &event);
-    handled |= state
-        .hotbar
-        .event(&event, state.hotbar_bounds, &mut state.event_context)
-        .is_handled();
+    if !pane_fullscreen_active(state) {
+        handled |= state
+            .hotbar
+            .event(&event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+    }
     handled
 }
 
@@ -1990,7 +1992,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if button == MouseButton::Left {
+    if button == MouseButton::Left && !pane_fullscreen_active(state) {
         let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
         if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
@@ -1999,7 +2001,7 @@ fn dispatch_mouse_down(
         }
     }
 
-    if state.hotbar_bounds.contains(point) {
+    if !pane_fullscreen_active(state) && state.hotbar_bounds.contains(point) {
         handled |= state
             .hotbar
             .event(event, state.hotbar_bounds, &mut state.event_context)
@@ -2012,11 +2014,13 @@ fn dispatch_mouse_down(
     } else {
         handled |= PaneInput::handle_mouse_down(state, point, button);
         handled |= dispatch_text_inputs(state, event);
-        handled |= state
-            .hotbar
-            .event(event, state.hotbar_bounds, &mut state.event_context)
-            .is_handled();
-        handled |= process_hotbar_clicks(state);
+        if !pane_fullscreen_active(state) {
+            handled |= state
+                .hotbar
+                .event(event, state.hotbar_bounds, &mut state.event_context)
+                .is_handled();
+            handled |= process_hotbar_clicks(state);
+        }
     }
 
     handled |= begin_cad_camera_drag(state, point, button);
@@ -2051,11 +2055,13 @@ fn dispatch_mouse_up(
             }
         }
     }
-    handled |= state
-        .hotbar
-        .event(event, state.hotbar_bounds, &mut state.event_context)
-        .is_handled();
-    handled |= process_hotbar_clicks(state);
+    if !pane_fullscreen_active(state) {
+        handled |= state
+            .hotbar
+            .event(event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+        handled |= process_hotbar_clicks(state);
+    }
     handled
 }
 

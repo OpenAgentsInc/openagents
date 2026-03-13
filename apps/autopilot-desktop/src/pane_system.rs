@@ -16,7 +16,7 @@ use crate::panes::{
     relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
 };
 use crate::render::{
-    logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+    logical_size, pane_fullscreen_active, sidebar_go_online_button_bounds, sidebar_handle_bounds,
     wallet_balance_sats_label_bounds,
 };
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1399,13 +1399,15 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         return CursorIcon::Pointer;
     }
 
-    let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
-    if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
-        return CursorIcon::Pointer;
-    }
+    if !pane_fullscreen_active(state) {
+        let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
+        if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
+            return CursorIcon::Pointer;
+        }
 
-    if state.hotbar_bounds.contains(point) {
-        return CursorIcon::Pointer;
+        if state.hotbar_bounds.contains(point) {
+            return CursorIcon::Pointer;
+        }
     }
 
     let pane_order = pane_indices_by_z_desc(state);
