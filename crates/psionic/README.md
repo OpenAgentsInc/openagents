@@ -56,8 +56,9 @@ scheduling, replica-routed clustered serving with explicit replica evidence,
 layer-sharded clustered serving with explicit handoff evidence, and restart-safe
 catch-up in `psionic-cluster`, tensor-sharded clustered serving with explicit
 collective evidence, and artifact residency/staging truth for clustered
-placement, plus explicit AMD discovery/readiness groundwork. AMD execution
-support is still future work.
+placement, plus sharded-model manifest and pre-shard artifact support across
+runtime, serve, and clustered execution evidence. AMD execution support is
+still future work.
 
 ## Docs
 

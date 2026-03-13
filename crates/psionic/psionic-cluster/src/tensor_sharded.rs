@@ -6,7 +6,7 @@ use psionic_runtime::{
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
     ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
-    ExecutionTopologyPlan,
+    ExecutionTopologyPlan, ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -172,6 +172,9 @@ pub struct TensorShardedExecutionRequest {
     /// Stable policy digests constraining the tensor-sharded decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Optional pre-sharded manifest that must match the realized topology.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharded_model_manifest: Option<ShardedModelManifest>,
 }
 
 impl TensorShardedExecutionRequest {
@@ -195,6 +198,7 @@ impl TensorShardedExecutionRequest {
             allow_copy_staging: false,
             allow_pull_staging: false,
             policy_digests: Vec::new(),
+            sharded_model_manifest: None,
         }
     }
 
@@ -258,6 +262,16 @@ impl TensorShardedExecutionRequest {
         self
     }
 
+    /// Attaches one pre-sharded model manifest that must match the realized topology.
+    #[must_use]
+    pub fn with_sharded_model_manifest(
+        mut self,
+        sharded_model_manifest: ShardedModelManifest,
+    ) -> Self {
+        self.sharded_model_manifest = Some(sharded_model_manifest);
+        self
+    }
+
     fn whole_request_scheduling_request(
         &self,
         excluded_node_ids: BTreeSet<NodeId>,
@@ -300,6 +314,8 @@ pub enum TensorShardedSchedulingFailureCode {
     MeshLinkMissing,
     /// One required pair of shard nodes is connected, but the transport policy is not satisfied.
     MeshLinkUnsuitable,
+    /// The supplied pre-sharded manifest was missing, invalid, or incompatible.
+    ManifestInvalid,
     /// Whole-request candidate selection failed before tensor planning could proceed.
     SchedulingFailure,
 }
@@ -543,6 +559,34 @@ pub fn schedule_tensor_sharded_execution(
             .map(|(device, (start, end))| (device, start, end))
             .collect(),
     );
+    let sharded_model_manifest_digest = request
+        .sharded_model_manifest
+        .as_ref()
+        .map(ShardedModelManifest::stable_digest);
+    if let Some(manifest) = &request.sharded_model_manifest {
+        validate_sharded_manifest_for_request(
+            manifest,
+            &request.served_artifact_digest,
+            &execution_topology,
+        )
+        .map_err(|error| {
+            Box::new(tensor_sharded_failure(
+                TensorShardedSchedulingFailureCode::ManifestInvalid,
+                format!(
+                    "sharded manifest `{}` is incompatible with tensor-sharded request `{}`: {error}",
+                    manifest.manifest_id, request.served_artifact_digest
+                ),
+                state,
+                request,
+                &cluster_state_digest,
+                &topology_digest,
+                artifact_residency_digest.clone(),
+                communication_eligibility.clone(),
+                selected_node_ids.clone(),
+                None,
+            ))
+        })?;
+    }
     let selected_nodes = shard_schedules
         .iter()
         .zip(devices.iter())
@@ -586,6 +630,10 @@ pub fn schedule_tensor_sharded_execution(
     if let Some(artifact_residency_digest) = artifact_residency_digest.clone() {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
+    }
+    if let Some(sharded_model_manifest_digest) = sharded_model_manifest_digest {
+        cluster_execution =
+            cluster_execution.with_sharded_model_manifest_digest(sharded_model_manifest_digest);
     }
     cluster_execution = cluster_execution.with_command_provenance(merged_command_provenance(
         shard_schedules
@@ -848,6 +896,23 @@ fn build_tensor_collectives(
     Ok(shard_handoffs)
 }
 
+fn validate_sharded_manifest_for_request(
+    manifest: &ShardedModelManifest,
+    served_artifact_digest: &str,
+    execution_topology: &ExecutionTopologyPlan,
+) -> Result<(), ShardedModelManifestError> {
+    if manifest.served_artifact.served_artifact_digest != served_artifact_digest {
+        return Err(ShardedModelManifestError::ServedArtifactDigestMismatch {
+            manifest_served_artifact_digest: manifest
+                .served_artifact
+                .served_artifact_digest
+                .clone(),
+            expected_served_artifact_digest: served_artifact_digest.to_owned(),
+        });
+    }
+    manifest.validate_against_topology(execution_topology)
+}
+
 fn cluster_transport_for_sharded_path(
     shard_schedules: &[crate::WholeRequestClusterSchedule],
     shard_handoffs: &[ClusterShardHandoff],
@@ -955,7 +1020,8 @@ mod tests {
 
     use psionic_runtime::{
         ClusterCommunicationClass, ClusterExecutionCapabilityProfile, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ExecutionTopologyKind,
+        ClusterPolicyDigestKind, ExecutionPartition, ExecutionTopologyKind, ServedArtifactIdentity,
+        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
     };
 
     use crate::{
@@ -1107,6 +1173,57 @@ mod tests {
         snapshot
     }
 
+    fn sample_served_artifact_identity(served_artifact_digest: &str) -> ServedArtifactIdentity {
+        serde_json::from_value(serde_json::json!({
+            "model_id": "fixture-word-decoder-v0",
+            "model_revision": "v0",
+            "weight_bundle_digest": "bundle-digest",
+            "served_artifact_digest": served_artifact_digest,
+            "model_blob_digest": null,
+            "tokenizer_digest": "tokenizer-digest",
+            "chat_template_digest": "template-digest",
+            "generation_defaults_digest": "defaults-digest",
+            "weight_format": "gguf",
+            "quantization_family": "ggml_q4_0",
+            "backend": {
+                "effective_backend": "cuda",
+                "toolchain_version": "cuda@0.1.0",
+                "compiled_backend_features": [],
+                "probe_state": "compiled_only",
+                "probed_backend_features": []
+            }
+        }))
+        .expect("served artifact identity fixture should decode")
+    }
+
+    fn sample_tensor_sharded_manifest(served_artifact_digest: &str) -> ShardedModelManifest {
+        ShardedModelManifest::new(
+            "tensor-manifest",
+            sample_served_artifact_identity(served_artifact_digest),
+            ShardedModelLayoutKind::TensorSharded,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.tensor0_32",
+            "tensor-digest-0",
+            ExecutionPartition::TensorRange {
+                axis: 1,
+                start: 0,
+                end: 32,
+            },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.tensor32_64",
+            "tensor-digest-1",
+            ExecutionPartition::TensorRange {
+                axis: 1,
+                start: 32,
+                end: 64,
+            },
+        ))
+    }
+
     #[test]
     fn tensor_sharded_scheduler_builds_two_shard_cuda_plan()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -1125,12 +1242,14 @@ mod tests {
         .with_policy_digest(ClusterPolicyDigest::new(
             ClusterPolicyDigestKind::Placement,
             "tensor-placement-digest",
-        ));
+        ))
+        .with_sharded_model_manifest(sample_tensor_sharded_manifest("artifact-1"));
 
         let schedule =
             schedule_tensor_sharded_execution(&state, &request, &policy).map_err(|err| {
                 fixture_error(&format!("tensor-sharded schedule should succeed: {err:?}"))
             })?;
+        let expected_manifest_digest = sample_tensor_sharded_manifest("artifact-1").stable_digest();
 
         assert_eq!(schedule.runtime_backend, "cuda");
         assert_eq!(schedule.shard_node_ids.len(), 2);
@@ -1171,6 +1290,13 @@ mod tests {
                 .as_ref()
                 .and_then(|eligibility| eligibility.capability_profile_digest.as_deref())
                 .is_some()
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .sharded_model_manifest_digest
+                .as_deref(),
+            Some(expected_manifest_digest.as_str())
         );
         Ok(())
     }

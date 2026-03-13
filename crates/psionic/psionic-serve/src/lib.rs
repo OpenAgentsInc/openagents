@@ -66,8 +66,9 @@ use psionic_runtime::{
     LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
     ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
-    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
+    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
+    ShardedModelManifestError, TokenSampler, default_cache_invalidation_policy,
+    plan_model_admission, select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -328,6 +329,61 @@ fn served_artifact_identity_for_decoder_backend(
         compiled_backend_features,
         model.artifact_identity.as_ref(),
     )
+}
+
+/// Failure while loading one sharded-model manifest document for served products.
+#[derive(Debug, Error)]
+pub enum ShardedModelManifestLoadError {
+    /// The manifest file could not be read.
+    #[error("failed to read sharded model manifest `{path}`: {message}")]
+    Read {
+        /// Manifest path that failed.
+        path: String,
+        /// Underlying OS or I/O message.
+        message: String,
+    },
+    /// The manifest file could not be decoded as JSON.
+    #[error("failed to decode sharded model manifest `{path}`: {message}")]
+    Decode {
+        /// Manifest path that failed.
+        path: String,
+        /// Underlying JSON decode message.
+        message: String,
+    },
+    /// The manifest decoded but failed structural validation.
+    #[error("invalid sharded model manifest `{path}`: {error}")]
+    Invalid {
+        /// Manifest path that failed.
+        path: String,
+        /// Structural validation failure.
+        error: ShardedModelManifestError,
+    },
+}
+
+/// Loads and validates one sharded-model manifest from JSON on disk.
+pub fn load_sharded_model_manifest_json(
+    path: impl AsRef<std::path::Path>,
+) -> Result<ShardedModelManifest, ShardedModelManifestLoadError> {
+    let path = path.as_ref();
+    let path_label = path.display().to_string();
+    let contents =
+        std::fs::read_to_string(path).map_err(|error| ShardedModelManifestLoadError::Read {
+            path: path_label.clone(),
+            message: error.to_string(),
+        })?;
+    let manifest = serde_json::from_str::<ShardedModelManifest>(&contents).map_err(|error| {
+        ShardedModelManifestLoadError::Decode {
+            path: path_label.clone(),
+            message: error.to_string(),
+        }
+    })?;
+    manifest
+        .validate()
+        .map_err(|error| ShardedModelManifestLoadError::Invalid {
+            path: path_label,
+            error,
+        })?;
+    Ok(manifest)
 }
 
 fn paged_tensor_cache_observation(weights: &WeightBundleMetadata) -> CacheObservation {
@@ -6895,11 +6951,14 @@ mod tests {
     use psionic_backend_cpu::CpuBackend;
     use psionic_core::{DType, Shape};
     use psionic_runtime::{
-        AdmissionRefusalReason, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState,
-        LocalRuntimeErrorCode, LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy,
-        PrefixCacheState, ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
+        AdmissionRefusalReason, BackendSelection, ExecutionPartition, HealthStatus,
+        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
+        LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
+        ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
+        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
     };
+    use tempfile::tempdir;
 
     use super::{
         ContextOverflowPolicy, ContextWindowError, CpuGenerationStream,
@@ -6915,7 +6974,9 @@ mod tests {
         SmokeEmbeddingsService, StreamingTextGenerationExecutor, TerminationReason,
         TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
         WeightTensorMetadata, WordDecoderExecutionModel, current_time_millis,
-        default_generation_streaming_policy, finalize_embedding_values, prefix_compatibility,
+        default_generation_streaming_policy, finalize_embedding_values,
+        load_sharded_model_manifest_json, prefix_compatibility,
+        served_artifact_identity_for_decoder_model,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use psionic_models::{
@@ -8826,5 +8887,45 @@ mod tests {
 
     fn sample_embedding_descriptor() -> psionic_models::EmbeddingModelDescriptor {
         SmokeByteEmbedder::new().descriptor().clone()
+    }
+
+    #[test]
+    fn sharded_model_manifest_loader_round_trips_valid_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest = ShardedModelManifest::new(
+            "layer-manifest",
+            served_artifact_identity_for_decoder_model(
+                &sample_decoder_descriptor(),
+                &BackendSelection::direct("cpu", None, vec![]),
+            ),
+            ShardedModelLayoutKind::LayerSharded,
+        )
+        .with_shard(ShardedModelArtifactRef::new(
+            0,
+            "decoder.layers0_20",
+            "layer-digest-0",
+            ExecutionPartition::LayerRange {
+                start_layer: 0,
+                end_layer: 20,
+            },
+        ))
+        .with_shard(ShardedModelArtifactRef::new(
+            1,
+            "decoder.layers20_40",
+            "layer-digest-1",
+            ExecutionPartition::LayerRange {
+                start_layer: 20,
+                end_layer: 40,
+            },
+        ));
+        let tempdir = tempdir()?;
+        let manifest_path = tempdir.path().join("layer-manifest.json");
+        std::fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
+
+        let loaded = load_sharded_model_manifest_json(&manifest_path)?;
+
+        assert_eq!(loaded, manifest);
+        assert_eq!(loaded.stable_digest(), manifest.stable_digest());
+        Ok(())
     }
 }
