@@ -24,6 +24,7 @@ It can:
 
 - fetch the current desktop-control snapshot
 - stream desktop-control event batches
+- list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
 - refresh, warm, unload, and wait on GPT-OSS directly
@@ -48,7 +49,9 @@ not the primary product read model. The desktop imports recoverable payment
 facts from session logs into the app-owned
 `~/.openagents/autopilot-nip90-payment-facts-v1.json` ledger with degraded
 `log-backfill` provenance, and panes query that ledger instead of reparsing raw
-logs on demand.
+logs on demand. During live desktop operation, that background import
+intentionally defers hot session logs and caps the imported byte budget so UI
+redraws do not block on large or actively growing JSONL files.
 
 Useful `autopilotctl` starting points:
 
@@ -64,6 +67,10 @@ autopilotctl chat status
 autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
 autopilotctl logs --tail 50
+autopilotctl pane list
+autopilotctl pane status provider_control
+autopilotctl pane close provider_control
+autopilotctl pane open provider_control
 ```
 
 Apple-specific bridge flows still exist for the shipped macOS release path:

@@ -40,6 +40,10 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     Status,
+    Pane {
+        #[command(subcommand)]
+        command: PaneCommand,
+    },
     Provider {
         #[command(subcommand)]
         command: ProviderCommand,
@@ -108,6 +112,15 @@ enum ProviderCommand {
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
         timeout_ms: u64,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum PaneCommand {
+    List,
+    Open { pane: String },
+    Focus { pane: String },
+    Close { pane: String },
+    Status { pane: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -223,6 +236,20 @@ impl ProviderCommand {
         match self {
             Self::Online { .. } => DesktopControlActionRequest::SetProviderMode { online: true },
             Self::Offline { .. } => DesktopControlActionRequest::SetProviderMode { online: false },
+        }
+    }
+}
+
+impl PaneCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::List => DesktopControlActionRequest::ListPanes,
+            Self::Open { pane } => DesktopControlActionRequest::OpenPane { pane: pane.clone() },
+            Self::Focus { pane } => DesktopControlActionRequest::FocusPane { pane: pane.clone() },
+            Self::Close { pane } => DesktopControlActionRequest::ClosePane { pane: pane.clone() },
+            Self::Status { pane } => {
+                DesktopControlActionRequest::GetPaneSnapshot { pane: pane.clone() }
+            }
         }
     }
 }
@@ -421,6 +448,33 @@ fn main() -> Result<()> {
                 print_status_text(&client.target, &snapshot);
             }
         }
+        Command::Pane { command } => match command {
+            PaneCommand::List => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    print_pane_list_text(payload);
+                }
+            }
+            PaneCommand::Status { .. } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    print_pane_snapshot_text(payload);
+                }
+            }
+            PaneCommand::Open { .. } | PaneCommand::Focus { .. } | PaneCommand::Close { .. } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                print_action(json_output, &response, None)?;
+            }
+        },
         Command::Provider { command } => match command {
             ProviderCommand::Online { wait, timeout_ms } => {
                 let response = client.action(&command.action_request())?;
@@ -1178,6 +1232,76 @@ fn print_json<T: Serialize>(value: &T) -> Result<()> {
         serde_json::to_string_pretty(value).context("serialize autopilotctl JSON output")?
     );
     Ok(())
+}
+
+fn print_pane_list_text(payload: &Value) {
+    let active_pane_id = payload.get("active_pane_id").and_then(Value::as_u64);
+    println!("active pane id: {}", active_pane_id.unwrap_or(0));
+    println!("registered panes:");
+    for pane in payload
+        .get("registered")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = pane.get("kind").and_then(Value::as_str).unwrap_or("-");
+        let title = pane.get("title").and_then(Value::as_str).unwrap_or("-");
+        let command_id = pane
+            .get("command_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-");
+        println!("  {kind:<24} {title} [{command_id}]");
+    }
+    println!("open panes:");
+    for pane in payload
+        .get("open")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let pane_id = pane.get("pane_id").and_then(Value::as_u64).unwrap_or(0);
+        let kind = pane.get("kind").and_then(Value::as_str).unwrap_or("-");
+        let title = pane.get("title").and_then(Value::as_str).unwrap_or("-");
+        let z_index = pane.get("z_index").and_then(Value::as_u64).unwrap_or(0);
+        println!("  #{pane_id:<6} {kind:<24} z={z_index:<4} {title}");
+    }
+}
+
+fn print_pane_snapshot_text(payload: &Value) {
+    let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("-");
+    let title = payload.get("title").and_then(Value::as_str).unwrap_or("-");
+    let open_instances = payload
+        .get("open_instances")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let top_pane_id = payload
+        .get("top_pane_id")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let active_pane_id = payload
+        .get("active_pane_id")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    println!("pane: {kind} ({title})");
+    println!(
+        "open_instances={} top_pane_id={} active_pane_id={}",
+        open_instances, top_pane_id, active_pane_id
+    );
+    if let Some(object) = payload.as_object() {
+        for (key, value) in object {
+            if matches!(
+                key.as_str(),
+                "kind" | "title" | "open_instances" | "top_pane_id" | "active_pane_id"
+            ) {
+                continue;
+            }
+            println!("{key}:");
+            println!(
+                "{}",
+                serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+            );
+        }
+    }
 }
 
 fn print_action(

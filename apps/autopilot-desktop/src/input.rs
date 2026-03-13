@@ -108,6 +108,11 @@ pub(crate) use actions::ensure_mission_control_local_runtime_preflight;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
+pub(crate) use tool_bridge::{
+    pane_kind_key as desktop_control_pane_kind_key,
+    pane_snapshot_details as desktop_control_pane_snapshot_details,
+    resolve_pane_kind_for_runtime as desktop_control_resolve_pane_kind_for_runtime,
+};
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);

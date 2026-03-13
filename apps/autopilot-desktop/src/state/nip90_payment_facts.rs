@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::app_state::{JobHistoryState, NetworkRequestsState, PaneLoadState};
 use crate::nip90_compute_flow::{Nip90FlowPhase, build_buyer_request_flow_snapshot};
@@ -20,6 +20,9 @@ const NIP90_RELAY_HOP_ROW_LIMIT: usize = 8192;
 const LIVE_PROJECTION_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
 const LOG_BACKFILL_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const STARTUP_LOG_BACKFILL_DELAY: Duration = Duration::from_secs(8);
+const LOG_BACKFILL_STABLE_AGE: Duration = Duration::from_secs(45);
+const LOG_BACKFILL_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+const LOG_BACKFILL_MAX_TOTAL_BYTES: u64 = 16 * 1024 * 1024;
 const NIP90_ACTOR_ROLE_BUYER: u32 = 1 << 0;
 const NIP90_ACTOR_ROLE_PROVIDER: u32 = 1 << 1;
 const NIP90_ACTOR_ROLE_INVOICE_PROVIDER: u32 = 1 << 2;
@@ -233,6 +236,27 @@ struct SessionLogBackfillRefresh {
     notice: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionLogBackfillMode {
+    Manual,
+    Background,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SessionLogBackfillSelection {
+    signature: Option<String>,
+    paths: Vec<PathBuf>,
+    notice: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct SessionLogFileCandidate {
+    path: PathBuf,
+    len_bytes: u64,
+    modified_ms: u128,
+    is_recent: bool,
+}
+
 impl SessionLogBackfillRefresh {
     fn decorate_action(&self, action: impl Into<String>) -> String {
         let action = action.into();
@@ -355,6 +379,8 @@ impl Nip90PaymentFactLedgerState {
             local_nostr_pubkey_hex,
             session_log_backfill_dir().as_path(),
             true,
+            SessionLogBackfillMode::Manual,
+            SystemTime::now(),
         )
     }
 
@@ -373,6 +399,7 @@ impl Nip90PaymentFactLedgerState {
             local_nostr_pubkey_hex,
             session_log_backfill_dir().as_path(),
             now,
+            SystemTime::now(),
         )
     }
 
@@ -384,6 +411,7 @@ impl Nip90PaymentFactLedgerState {
         local_nostr_pubkey_hex: Option<&str>,
         session_log_dir: &Path,
         now: Instant,
+        session_log_now: SystemTime,
     ) -> bool {
         if self.next_log_backfill_refresh_at.is_none() {
             self.next_log_backfill_refresh_at = Some(now + STARTUP_LOG_BACKFILL_DELAY);
@@ -402,6 +430,8 @@ impl Nip90PaymentFactLedgerState {
                 local_nostr_pubkey_hex,
                 session_log_dir,
                 true,
+                SessionLogBackfillMode::Background,
+                session_log_now,
             );
         }
 
@@ -420,6 +450,8 @@ impl Nip90PaymentFactLedgerState {
             local_nostr_pubkey_hex,
             session_log_dir,
             false,
+            SessionLogBackfillMode::Background,
+            session_log_now,
         )
     }
 
@@ -431,12 +463,19 @@ impl Nip90PaymentFactLedgerState {
         local_nostr_pubkey_hex: Option<&str>,
         session_log_dir: &Path,
         refresh_log_backfill: bool,
+        log_backfill_mode: SessionLogBackfillMode,
+        session_log_now: SystemTime,
     ) -> bool {
         let local_nostr_pubkey_hex = local_nostr_pubkey_hex
             .map(normalize_pubkey_key)
             .filter(|value| !value.is_empty());
         let log_backfill_refresh = if refresh_log_backfill {
-            self.refresh_log_backfill_cache(session_log_dir, local_nostr_pubkey_hex.as_deref())
+            self.refresh_log_backfill_cache(
+                session_log_dir,
+                local_nostr_pubkey_hex.as_deref(),
+                log_backfill_mode,
+                session_log_now,
+            )
         } else {
             SessionLogBackfillRefresh {
                 changed: false,
@@ -536,19 +575,22 @@ impl Nip90PaymentFactLedgerState {
         &mut self,
         session_log_dir: &Path,
         local_nostr_pubkey_hex: Option<&str>,
+        mode: SessionLogBackfillMode,
+        session_log_now: SystemTime,
     ) -> SessionLogBackfillRefresh {
-        let signature = match session_log_directory_signature(session_log_dir) {
-            Ok(signature) => signature,
-            Err(error) => {
-                return SessionLogBackfillRefresh {
-                    changed: false,
-                    fact_count: self.log_backfill.facts.len(),
-                    notice: Some(format!("session-log backfill unavailable: {error}")),
-                };
-            }
-        };
+        let selection =
+            match select_session_log_backfill_files(session_log_dir, mode, session_log_now) {
+                Ok(selection) => selection,
+                Err(error) => {
+                    return SessionLogBackfillRefresh {
+                        changed: false,
+                        fact_count: self.log_backfill.facts.len(),
+                        notice: Some(format!("session-log backfill unavailable: {error}")),
+                    };
+                }
+            };
 
-        if self.log_backfill.signature == signature {
+        if self.log_backfill.signature == selection.signature {
             return SessionLogBackfillRefresh {
                 changed: false,
                 fact_count: self.log_backfill.facts.len(),
@@ -557,22 +599,25 @@ impl Nip90PaymentFactLedgerState {
         }
 
         let previous_had_cache = self.log_backfill.signature.is_some();
-        match signature {
+        match selection.signature {
             None => {
                 self.log_backfill.signature = None;
                 self.log_backfill.facts.clear();
                 SessionLogBackfillRefresh {
                     changed: previous_had_cache,
                     fact_count: 0,
-                    notice: if previous_had_cache {
-                        Some("session-log backfill cache cleared".to_string())
-                    } else {
-                        None
-                    },
+                    notice: merge_log_backfill_notice(
+                        if previous_had_cache {
+                            Some("session-log backfill cache cleared".to_string())
+                        } else {
+                            None
+                        },
+                        selection.notice,
+                    ),
                 }
             }
-            Some(signature) => match load_log_backfill_facts_from_session_dir(
-                session_log_dir,
+            Some(signature) => match load_log_backfill_facts_from_paths(
+                selection.paths.as_slice(),
                 local_nostr_pubkey_hex,
             ) {
                 Ok(facts) => {
@@ -582,13 +627,16 @@ impl Nip90PaymentFactLedgerState {
                     SessionLogBackfillRefresh {
                         changed,
                         fact_count: self.log_backfill.facts.len(),
-                        notice: None,
+                        notice: selection.notice,
                     }
                 }
                 Err(error) => SessionLogBackfillRefresh {
                     changed: false,
                     fact_count: self.log_backfill.facts.len(),
-                    notice: Some(format!("session-log backfill import failed: {error}")),
+                    notice: merge_log_backfill_notice(
+                        selection.notice,
+                        Some(format!("session-log backfill import failed: {error}")),
+                    ),
                 },
             },
         }
@@ -789,29 +837,118 @@ fn seller_fact_from_history_row(
     }
 }
 
-fn session_log_directory_signature(session_log_dir: &Path) -> Result<Option<String>, String> {
+fn select_session_log_backfill_files(
+    session_log_dir: &Path,
+    mode: SessionLogBackfillMode,
+    now: SystemTime,
+) -> Result<SessionLogBackfillSelection, String> {
+    let stable_age = match mode {
+        SessionLogBackfillMode::Manual => Duration::ZERO,
+        SessionLogBackfillMode::Background => LOG_BACKFILL_STABLE_AGE,
+    };
+    select_session_log_backfill_files_with_limits(
+        session_log_dir,
+        now,
+        stable_age,
+        LOG_BACKFILL_MAX_FILE_BYTES,
+        LOG_BACKFILL_MAX_TOTAL_BYTES,
+    )
+}
+
+fn select_session_log_backfill_files_with_limits(
+    session_log_dir: &Path,
+    now: SystemTime,
+    stable_age: Duration,
+    max_file_bytes: u64,
+    max_total_bytes: u64,
+) -> Result<SessionLogBackfillSelection, String> {
     let files = session_log_jsonl_files(session_log_dir)?;
     if files.is_empty() {
-        return Ok(None);
+        return Ok(SessionLogBackfillSelection::default());
     }
 
-    let mut signature = Vec::with_capacity(files.len());
+    let mut candidates = Vec::with_capacity(files.len());
     for path in files {
         let metadata = fs::metadata(path.as_path())
             .map_err(|error| format!("read session log metadata {}: {error}", path.display()))?;
-        let modified_ms = metadata
-            .modified()
-            .ok()
-            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        let modified = metadata.modified().ok();
+        let modified_ms = modified
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
             .map(|duration| duration.as_millis())
             .unwrap_or(0);
-        let file_name = path
+        let is_recent = stable_age > Duration::ZERO
+            && modified
+                .and_then(|value| now.duration_since(value).ok())
+                .is_some_and(|age| age < stable_age);
+        candidates.push(SessionLogFileCandidate {
+            path,
+            len_bytes: metadata.len(),
+            modified_ms,
+            is_recent,
+        });
+    }
+
+    candidates.sort_by(|left, right| {
+        right
+            .modified_ms
+            .cmp(&left.modified_ms)
+            .then_with(|| right.path.cmp(&left.path))
+    });
+
+    let mut selected = Vec::new();
+    let mut selected_signature = Vec::new();
+    let mut selected_total_bytes = 0_u64;
+    let mut skipped_recent = 0_usize;
+    let mut skipped_oversized = 0_usize;
+    let mut skipped_budget = 0_usize;
+
+    for candidate in candidates {
+        if candidate.is_recent {
+            skipped_recent = skipped_recent.saturating_add(1);
+            continue;
+        }
+        if candidate.len_bytes > max_file_bytes {
+            skipped_oversized = skipped_oversized.saturating_add(1);
+            continue;
+        }
+        if selected_total_bytes.saturating_add(candidate.len_bytes) > max_total_bytes {
+            skipped_budget = skipped_budget.saturating_add(1);
+            continue;
+        }
+        let file_name = candidate
+            .path
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("session.jsonl");
-        signature.push(format!("{file_name}:{}:{modified_ms}", metadata.len()));
+        selected_total_bytes = selected_total_bytes.saturating_add(candidate.len_bytes);
+        selected_signature.push(format!(
+            "{file_name}:{}:{}",
+            candidate.len_bytes, candidate.modified_ms
+        ));
+        selected.push(candidate.path);
     }
-    Ok(Some(signature.join("|")))
+
+    selected.sort();
+    let signature = if selected_signature.is_empty()
+        && skipped_recent == 0
+        && skipped_oversized == 0
+        && skipped_budget == 0
+    {
+        None
+    } else {
+        Some(format!(
+            "selected=[{}];recent={skipped_recent};oversized={skipped_oversized};budget={skipped_budget}",
+            selected_signature.join("|")
+        ))
+    };
+    let notice =
+        describe_session_log_backfill_selection(skipped_recent, skipped_oversized, skipped_budget);
+
+    Ok(SessionLogBackfillSelection {
+        signature,
+        paths: selected,
+        notice,
+    })
 }
 
 fn session_log_jsonl_files(session_log_dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -840,15 +977,52 @@ fn session_log_jsonl_files(session_log_dir: &Path) -> Result<Vec<PathBuf>, Strin
     Ok(files)
 }
 
-fn load_log_backfill_facts_from_session_dir(
-    session_log_dir: &Path,
+fn describe_session_log_backfill_selection(
+    skipped_recent: usize,
+    skipped_oversized: usize,
+    skipped_budget: usize,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if skipped_recent > 0 {
+        parts.push(format!("deferred {} hot session log(s)", skipped_recent));
+    }
+    if skipped_oversized > 0 {
+        parts.push(format!(
+            "skipped {} oversized session log(s)",
+            skipped_oversized
+        ));
+    }
+    if skipped_budget > 0 {
+        parts.push(format!(
+            "skipped {} older session log(s) over budget",
+            skipped_budget
+        ));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("; "))
+    }
+}
+
+fn merge_log_backfill_notice(primary: Option<String>, secondary: Option<String>) -> Option<String> {
+    match (primary, secondary) {
+        (Some(primary), Some(secondary)) => Some(format!("{primary}; {secondary}")),
+        (Some(primary), None) => Some(primary),
+        (None, Some(secondary)) => Some(secondary),
+        (None, None) => None,
+    }
+}
+
+fn load_log_backfill_facts_from_paths(
+    paths: &[PathBuf],
     local_nostr_pubkey_hex: Option<&str>,
 ) -> Result<Vec<Nip90PaymentFact>, String> {
     let local_nostr_pubkey_hex = local_nostr_pubkey_hex
         .map(normalize_pubkey_key)
         .filter(|value| !value.is_empty());
     let mut facts_by_request = BTreeMap::<String, Nip90PaymentFact>::new();
-    for path in session_log_jsonl_files(session_log_dir)? {
+    for path in paths {
         let contents = fs::read_to_string(path.as_path())
             .map_err(|error| format!("read session log {}: {error}", path.display()))?;
         for (line_idx, line) in contents.lines().enumerate() {
@@ -871,6 +1045,14 @@ fn load_log_backfill_facts_from_session_dir(
         }
     }
     Ok(normalize_facts(facts_by_request.into_values().collect()))
+}
+
+fn load_log_backfill_facts_from_session_dir(
+    session_log_dir: &Path,
+    local_nostr_pubkey_hex: Option<&str>,
+) -> Result<Vec<Nip90PaymentFact>, String> {
+    let paths = session_log_jsonl_files(session_log_dir)?;
+    load_log_backfill_facts_from_paths(paths.as_slice(), local_nostr_pubkey_hex)
 }
 
 fn log_backfill_fact_from_entry(
@@ -1850,8 +2032,9 @@ fn load_nip90_payment_fact_document(path: &Path) -> Result<Nip90PaymentFactDocum
 #[cfg(test)]
 mod tests {
     use super::{
+        LOG_BACKFILL_MAX_FILE_BYTES, LOG_BACKFILL_MAX_TOTAL_BYTES, LOG_BACKFILL_STABLE_AGE,
         Nip90ActorNamespace, Nip90PaymentFactLedgerState, Nip90PaymentFactSourceQuality,
-        Nip90PaymentFactStatus, STARTUP_LOG_BACKFILL_DELAY,
+        Nip90PaymentFactStatus, STARTUP_LOG_BACKFILL_DELAY, SessionLogBackfillMode,
     };
     use crate::app_state::{
         BuyerResolutionMode, JobDemandSource, JobHistoryReceiptRow, JobHistoryState,
@@ -2470,6 +2653,8 @@ mod tests {
             Some("LOCALBUYERKEY"),
             session_dir.as_path(),
             true,
+            SessionLogBackfillMode::Manual,
+            SystemTime::now(),
         );
 
         let fact = ledger
@@ -2538,6 +2723,7 @@ mod tests {
             Some("LOCALBUYERKEY"),
             session_dir.as_path(),
             start,
+            SystemTime::now() + LOG_BACKFILL_STABLE_AGE + Duration::from_secs(1),
         ));
         assert!(ledger.fact_for_request("req-log-deferred-001").is_none());
 
@@ -2548,6 +2734,7 @@ mod tests {
             Some("LOCALBUYERKEY"),
             session_dir.as_path(),
             start + STARTUP_LOG_BACKFILL_DELAY + Duration::from_millis(1),
+            SystemTime::now() + LOG_BACKFILL_STABLE_AGE + Duration::from_secs(1),
         ));
         let fact = ledger
             .fact_for_request("req-log-deferred-001")
@@ -2558,6 +2745,77 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+
+    #[test]
+    fn session_log_backfill_selection_defers_hot_files_for_background_refreshes() {
+        let session_dir = temp_session_dir("nip90-payment-log-hot");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let session_path = session_dir.join("20260313T233500Z-pid1001.jsonl");
+        write_session_log(
+            &session_path,
+            &[json!({
+                "timestamp_ms": 1_762_700_301_000_u64,
+                "source": "desktop_control",
+                "event": "pane.open",
+                "summary": "opened provider control"
+            })],
+        );
+
+        let hot_selection = super::select_session_log_backfill_files_with_limits(
+            session_dir.as_path(),
+            SystemTime::now(),
+            Duration::from_secs(60),
+            LOG_BACKFILL_MAX_FILE_BYTES,
+            LOG_BACKFILL_MAX_TOTAL_BYTES,
+        )
+        .expect("hot selection");
+        assert!(hot_selection.paths.is_empty());
+        assert!(
+            hot_selection
+                .notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("deferred 1 hot session log"))
+        );
+
+        let cooled_selection = super::select_session_log_backfill_files_with_limits(
+            session_dir.as_path(),
+            SystemTime::now() + Duration::from_secs(120),
+            Duration::from_secs(60),
+            LOG_BACKFILL_MAX_FILE_BYTES,
+            LOG_BACKFILL_MAX_TOTAL_BYTES,
+        )
+        .expect("cooled selection");
+        assert_eq!(cooled_selection.paths, vec![session_path.clone()]);
+
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+
+    #[test]
+    fn session_log_backfill_selection_skips_oversized_files() {
+        let session_dir = temp_session_dir("nip90-payment-log-oversized");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let session_path = session_dir.join("20260313T233900Z-pid1002.jsonl");
+        let oversized = "x".repeat((LOG_BACKFILL_MAX_FILE_BYTES as usize) + 32);
+        std::fs::write(&session_path, oversized).expect("write oversized session log");
+
+        let selection = super::select_session_log_backfill_files_with_limits(
+            session_dir.as_path(),
+            SystemTime::now() + Duration::from_secs(120),
+            Duration::ZERO,
+            LOG_BACKFILL_MAX_FILE_BYTES,
+            LOG_BACKFILL_MAX_TOTAL_BYTES,
+        )
+        .expect("oversized selection");
+        assert!(selection.paths.is_empty());
+        assert!(
+            selection
+                .notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("oversized session log"))
+        );
+
         let _ = std::fs::remove_dir_all(session_dir);
     }
 

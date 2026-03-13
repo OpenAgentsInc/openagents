@@ -4782,6 +4782,32 @@ impl AutopilotChatState {
             .collect()
     }
 
+    pub fn active_managed_chat_message_tail(
+        &self,
+        limit: usize,
+    ) -> Vec<&ManagedChatMessageProjection> {
+        if limit == 0 || self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return Vec::new();
+        }
+        let Some(active_channel) = self.active_managed_chat_channel() else {
+            return Vec::new();
+        };
+        let mut tail = active_channel
+            .message_ids
+            .iter()
+            .rev()
+            .filter_map(|message_id| {
+                self.managed_chat_projection
+                    .snapshot
+                    .messages
+                    .get(message_id)
+            })
+            .take(limit)
+            .collect::<Vec<_>>();
+        tail.reverse();
+        tail
+    }
+
     pub fn configured_main_managed_chat_channel(
         &self,
         config: &DefaultNip28ChannelConfig,
@@ -4865,8 +4891,14 @@ impl AutopilotChatState {
             return cached.selection.clone();
         }
 
-        let selection =
-            self.select_autopilot_buy_mode_target_with_config(&config, now_epoch_seconds);
+        let roster = self.autopilot_peer_roster(now_epoch_seconds);
+        let selection = crate::autopilot_peer_roster::select_autopilot_buy_mode_target_from_rows(
+            &self.managed_chat_projection.snapshot,
+            self.managed_chat_local_pubkey(),
+            &config,
+            self.buy_mode_last_targeted_peer_pubkey.as_deref(),
+            roster.as_slice(),
+        );
         *self.buy_mode_target_selection_cache.borrow_mut() =
             Some(AutopilotBuyModeTargetSelectionCacheEntry {
                 projection_revision,
@@ -4884,13 +4916,13 @@ impl AutopilotChatState {
         config: &DefaultNip28ChannelConfig,
         now_epoch_seconds: u64,
     ) -> crate::autopilot_peer_roster::AutopilotBuyModeTargetSelection {
-        crate::autopilot_peer_roster::select_autopilot_buy_mode_target_with_policy(
+        let roster = self.autopilot_peer_roster_with_config(config, now_epoch_seconds);
+        crate::autopilot_peer_roster::select_autopilot_buy_mode_target_from_rows(
             &self.managed_chat_projection.snapshot,
-            &self.managed_chat_projection.local_state,
             self.managed_chat_local_pubkey(),
             config,
-            now_epoch_seconds,
             self.buy_mode_last_targeted_peer_pubkey.as_deref(),
+            roster.as_slice(),
         )
     }
 
