@@ -52,6 +52,7 @@ mod project_ops;
 mod provider_admin;
 mod provider_nip90_lane;
 mod render;
+pub mod rive_assets;
 mod runtime_lanes;
 mod runtime_log;
 mod skill_autoload;
