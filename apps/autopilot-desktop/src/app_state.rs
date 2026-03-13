@@ -10,11 +10,11 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
+use wgpui::components::TextInput;
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
+use wgpui::{theme, Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
@@ -615,6 +615,14 @@ pub struct MissionControlPaneState {
     pub local_fm_summary_text: String,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    wallet_refresh_icon_clicked_at_epoch_ms: u64,
+    log_copy_icon_clicked_at_epoch_ms: u64,
+    sell_scroll_offset_px: f32,
+    earnings_scroll_offset_px: f32,
+    wallet_scroll_offset_px: f32,
+    actions_scroll_offset_px: f32,
+    load_funds_scroll_offset_px: f32,
+    active_jobs_scroll_offset_px: f32,
     buy_mode_last_blocked_signature: Option<String>,
     buy_mode_last_blocked_notice_at: Option<Instant>,
     /// Dedupe keys for already-rendered Mission Control log entries.
@@ -632,22 +640,25 @@ impl Default for MissionControlPaneState {
             load_funds_amount_sats: TextInput::new()
                 .value("1000")
                 .placeholder("Lightning sats")
+                .font_size(wgpui::theme::font_size::SM - 2.0)
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
-                .border_color(wgpui::Hsla::from_hex(0x3A5D66))
-                .border_color_focused(wgpui::Hsla::from_hex(0x2DE2E6))
+                .border_color(wgpui::Hsla::from_hex(0x5A4730))
+                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
                 .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             send_invoice: TextInput::new()
                 .placeholder("Paste Lightning invoice to withdraw")
+                .font_size(wgpui::theme::font_size::SM - 2.0)
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
-                .border_color(wgpui::Hsla::from_hex(0x3A5D66))
-                .border_color_focused(wgpui::Hsla::from_hex(0x2DE2E6))
+                .border_color(wgpui::Hsla::from_hex(0x5A4730))
+                .border_color_focused(wgpui::Hsla::from_hex(0xFF6A00))
                 .text_color(wgpui::Hsla::from_hex(0xE8E3D7))
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             withdraw_invoice: TextInput::new()
                 .placeholder("Paste Lightning invoice to withdraw")
+                .font_size(wgpui::theme::font_size::SM - 2.0)
                 .mono(true)
                 .background(wgpui::theme::bg::APP)
                 .border_color(wgpui::Hsla::from_hex(0x5A4730))
@@ -661,6 +672,14 @@ impl Default for MissionControlPaneState {
             local_fm_summary_text: String::new(),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
+            wallet_refresh_icon_clicked_at_epoch_ms: 0,
+            log_copy_icon_clicked_at_epoch_ms: 0,
+            sell_scroll_offset_px: 0.0,
+            earnings_scroll_offset_px: 0.0,
+            wallet_scroll_offset_px: 0.0,
+            actions_scroll_offset_px: 0.0,
+            load_funds_scroll_offset_px: 0.0,
+            active_jobs_scroll_offset_px: 0.0,
             buy_mode_last_blocked_signature: None,
             buy_mode_last_blocked_notice_at: None,
             rendered_log_content: Vec::new(),
@@ -670,6 +689,101 @@ impl Default for MissionControlPaneState {
 }
 
 impl MissionControlPaneState {
+    const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
+
+    fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
+        if clicked_at_epoch_ms == 0 {
+            return 0.0;
+        }
+        let elapsed = now_epoch_ms.saturating_sub(clicked_at_epoch_ms);
+        if elapsed >= Self::ICON_CLICK_FEEDBACK_DURATION_MS {
+            0.0
+        } else {
+            1.0 - (elapsed as f32 / Self::ICON_CLICK_FEEDBACK_DURATION_MS as f32)
+        }
+    }
+
+    pub fn mark_wallet_refresh_icon_clicked(&mut self) {
+        self.wallet_refresh_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn mark_log_copy_icon_clicked(&mut self) {
+        self.log_copy_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn wallet_refresh_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
+        Self::icon_click_feedback_intensity(
+            self.wallet_refresh_icon_clicked_at_epoch_ms,
+            now_epoch_ms,
+        )
+    }
+
+    pub fn log_copy_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
+        Self::icon_click_feedback_intensity(self.log_copy_icon_clicked_at_epoch_ms, now_epoch_ms)
+    }
+
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_sell_by(&mut self, dy: f32) {
+        self.sell_scroll_offset_px = (self.sell_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn scroll_earnings_by(&mut self, dy: f32) {
+        self.earnings_scroll_offset_px = (self.earnings_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn scroll_wallet_by(&mut self, dy: f32) {
+        self.wallet_scroll_offset_px = (self.wallet_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn scroll_actions_by(&mut self, dy: f32) {
+        self.actions_scroll_offset_px = (self.actions_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn scroll_load_funds_by(&mut self, dy: f32) {
+        self.load_funds_scroll_offset_px = (self.load_funds_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn scroll_active_jobs_by(&mut self, dy: f32) {
+        self.active_jobs_scroll_offset_px = (self.active_jobs_scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_sell_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.sell_scroll_offset_px, max_scroll)
+    }
+
+    pub fn clamp_earnings_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.earnings_scroll_offset_px, max_scroll)
+    }
+
+    pub fn clamp_wallet_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.wallet_scroll_offset_px, max_scroll)
+    }
+
+    pub fn clamp_actions_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.actions_scroll_offset_px, max_scroll)
+    }
+
+    pub fn clamp_load_funds_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.load_funds_scroll_offset_px, max_scroll)
+    }
+
+    pub fn clamp_active_jobs_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.active_jobs_scroll_offset_px, max_scroll)
+    }
+
+    pub fn actions_scroll_offset(&self) -> f32 {
+        self.actions_scroll_offset_px
+    }
+
+    pub fn load_funds_scroll_offset(&self) -> f32 {
+        self.load_funds_scroll_offset_px
+    }
+
     fn push_persisted_log_line(&mut self, line: TerminalLine) {
         crate::runtime_log::record_mission_control_line(
             line.stream.clone(),
@@ -9098,6 +9212,7 @@ pub struct RenderState {
     pub buy_mode_enabled: bool,
     pub hotbar: Hotbar,
     pub hotbar_bounds: Bounds,
+    pub cursor_position: Point,
     pub event_context: EventContext,
     pub input_modifiers: Modifiers,
     pub panes: Vec<DesktopPane>,
@@ -9905,27 +10020,24 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("ping".to_string());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Queued)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Queued));
 
         chat.mark_turn_started("turn-1".to_string());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Running)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Running));
 
         chat.append_turn_delta("pong");
         chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.content.contains("pong"))
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.content.contains("pong")));
     }
 
     #[test]
@@ -10852,11 +10964,10 @@ mod tests {
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
-        assert!(
-            chat.threads
-                .iter()
-                .any(|thread_id| thread_id == "thread-active")
-        );
+        assert!(chat
+            .threads
+            .iter()
+            .any(|thread_id| thread_id == "thread-active"));
         assert_eq!(
             chat.thread_metadata
                 .get("thread-active")
@@ -11035,11 +11146,10 @@ mod tests {
                 .map(|artifact| artifact.source_turn_id.as_str()),
             Some("turn-a")
         );
-        assert!(
-            chat.turn_diff
-                .as_deref()
-                .is_some_and(|diff| diff.contains("+new"))
-        );
+        assert!(chat
+            .turn_diff
+            .as_deref()
+            .is_some_and(|diff| diff.contains("+new")));
         let diff = chat.active_diff_artifact().expect("thread-a diff");
         assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
         assert_eq!(diff.project_name.as_deref(), Some("a"));
@@ -11264,12 +11374,10 @@ mod tests {
             metadata.project_name.as_deref(),
             repo.file_name().and_then(|value| value.to_str())
         );
-        assert!(
-            metadata
-                .git_branch
-                .as_deref()
-                .is_some_and(|value| !value.is_empty())
-        );
+        assert!(metadata
+            .git_branch
+            .as_deref()
+            .is_some_and(|value| !value.is_empty()));
         assert_eq!(metadata.git_dirty, Some(true));
 
         let project = chat
@@ -12088,12 +12196,10 @@ mod tests {
             .expect("running->delivered should succeed");
         let paid_transition = active.advance_stage();
         assert!(paid_transition.is_err());
-        assert!(
-            paid_transition
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("payment pointer"))
-        );
+        assert!(paid_transition
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("payment pointer")));
         let job = active.job.as_ref().expect("active job exists");
         assert!(job.payment_id.is_none());
         assert_eq!(job.stage, JobLifecycleStage::Delivered);
@@ -12106,11 +12212,10 @@ mod tests {
             .expect("history row should be recorded");
         assert_eq!(row.status, JobHistoryStatus::Failed);
         assert_eq!(row.payout_sats, 0);
-        assert!(
-            row.failure_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
-        );
+        assert!(row
+            .failure_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("not wallet-confirmed")));
     }
 
     #[test]
@@ -12135,12 +12240,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("running event"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("running event")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Accepted
@@ -12175,12 +12278,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("delivered event"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("delivered event")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Running
@@ -12219,12 +12320,10 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(
-            outcome
-                .err()
-                .as_deref()
-                .is_some_and(|error| error.contains("payment pointer"))
-        );
+        assert!(outcome
+            .err()
+            .as_deref()
+            .is_some_and(|error| error.contains("payment pointer")));
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Delivered
@@ -12867,12 +12966,10 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(
-            relays
-                .relays
-                .iter()
-                .all(|row| row.url != "wss://relay.new.example")
-        );
+        assert!(relays
+            .relays
+            .iter()
+            .all(|row| row.url != "wss://relay.new.example"));
     }
 
     #[test]
@@ -13676,11 +13773,9 @@ mod tests {
                 && line.text.contains("wallet_status=failed")
                 && line.text.contains("wallet_method=lightning")
         }));
-        assert!(
-            lines
-                .iter()
-                .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") })
-        );
+        assert!(lines
+            .iter()
+            .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") }));
         assert!(lines.iter().any(|line| {
             line.text.contains("destination_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
@@ -13772,16 +13867,12 @@ mod tests {
             summary,
             "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats  //  3 fee sats  //  5 wallet debit sats"
         );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("LIVE BUY MODE REQUESTS"))
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("WALLET-BACKFILL HISTORY"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("LIVE BUY MODE REQUESTS")));
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("WALLET-BACKFILL HISTORY")));
         assert!(lines.iter().any(|line| {
             line.text
                 .contains("request_id=wallet-inferred:6872f65774d7e233")
@@ -13794,11 +13885,9 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text.contains("provider_pubkey=") && line.text.contains(provider_pubkey.as_str())
         }));
-        assert!(
-            !lines
-                .iter()
-                .any(|line| { line.text.contains("wallet-payment-non-buy-001") })
-        );
+        assert!(!lines
+            .iter()
+            .any(|line| { line.text.contains("wallet-payment-non-buy-001") }));
     }
 
     #[test]
@@ -14159,27 +14248,23 @@ mod tests {
         assert_eq!(row.winning_provider_pubkey, None);
         assert_eq!(row.pending_bolt11, None);
         assert_eq!(row.status, NetworkRequestStatus::ResultReceived);
-        assert!(
-            row.payment_notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2"))
-        );
+        assert!(row
+            .payment_notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2")));
 
         let snapshot = crate::nip90_compute_flow::build_buyer_request_flow_snapshot(
             row,
             &SparkPaneState::default(),
         );
-        assert!(
-            snapshot
-                .payment_blocker_codes
-                .iter()
-                .any(|code| code == "invoice_over_budget")
-        );
-        assert!(
-            snapshot.payment_blocker_summary.as_deref().is_some_and(
-                |summary| summary.contains("requested 25 sats above approved budget 2")
-            )
-        );
+        assert!(snapshot
+            .payment_blocker_codes
+            .iter()
+            .any(|code| code == "invoice_over_budget"));
+        assert!(snapshot
+            .payment_blocker_summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("requested 25 sats above approved budget 2")));
     }
 
     #[test]
@@ -14227,11 +14312,10 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should remain present");
-        assert!(
-            row.payment_notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount"))
-        );
+        assert!(row
+            .payment_notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount")));
     }
 
     #[test]
@@ -14650,11 +14734,9 @@ mod tests {
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
         );
-        assert!(
-            state.agents[0]
-                .credential_key_name
-                .starts_with("BLINK_API_KEY")
-        );
+        assert!(state.agents[0]
+            .credential_key_name
+            .starts_with("BLINK_API_KEY"));
     }
 
     #[test]
@@ -14667,12 +14749,10 @@ mod tests {
         assert_eq!(state.agents[0].btc_balance_sats, 2_000);
         assert_eq!(state.agents[0].usd_balance_cents, 250);
         assert!(!state.transfer_ledger.is_empty());
-        assert!(
-            state
-                .transfer_ledger
-                .iter()
-                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
-        );
+        assert!(state
+            .transfer_ledger
+            .iter()
+            .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:")));
     }
 
     #[test]
@@ -14701,12 +14781,10 @@ mod tests {
             state.agents[0].last_switch_summary,
             "refresh failed: missing secure credential"
         );
-        assert!(
-            state
-                .last_error
-                .as_deref()
-                .is_some_and(|value| value.contains("1 wallet error"))
-        );
+        assert!(state
+            .last_error
+            .as_deref()
+            .is_some_and(|value| value.contains("1 wallet error")));
         assert!(!state.transfer_ledger.is_empty());
     }
 
@@ -14767,12 +14845,10 @@ mod tests {
             .expect("second dispatch check should not error");
         assert!(blocked_by_cap.is_none());
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert!(
-            starter_jobs
-                .last_action
-                .as_deref()
-                .is_some_and(|value| value.contains("max=1"))
-        );
+        assert!(starter_jobs
+            .last_action
+            .as_deref()
+            .is_some_and(|value| value.contains("max=1")));
 
         assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
         assert_eq!(starter_jobs.inflight_jobs(), 0);
@@ -15048,11 +15124,10 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(
-            feed.visible_rows()
-                .into_iter()
-                .all(|row| row.domain == ActivityEventDomain::Wallet)
-        );
+        assert!(feed
+            .visible_rows()
+            .into_iter()
+            .all(|row| row.domain == ActivityEventDomain::Wallet));
 
         feed.upsert_event(fixture_activity_event(
             "cad:event:1",
@@ -15060,11 +15135,10 @@ mod tests {
             1_761_920_260,
         ));
         feed.set_filter(ActivityFeedFilter::Cad);
-        assert!(
-            feed.visible_rows()
-                .into_iter()
-                .all(|row| row.domain == ActivityEventDomain::Cad)
-        );
+        assert!(feed
+            .visible_rows()
+            .into_iter()
+            .all(|row| row.domain == ActivityEventDomain::Cad));
     }
 
     #[test]
@@ -15245,21 +15319,17 @@ mod tests {
             1_761_920_360,
         ));
 
-        assert!(
-            primary
-                .rows
-                .iter()
-                .all(|row| row.event_id != "sync:checkpoint:2")
-        );
+        assert!(primary
+            .rows
+            .iter()
+            .all(|row| row.event_id != "sync:checkpoint:2"));
         primary
             .reload_projection()
             .expect("projection reload should reconcile rows");
-        assert!(
-            primary
-                .rows
-                .iter()
-                .any(|row| row.event_id == "sync:checkpoint:2")
-        );
+        assert!(primary
+            .rows
+            .iter()
+            .any(|row| row.event_id == "sync:checkpoint:2"));
         let _ = std::fs::remove_file(path.as_path());
     }
 
@@ -15809,12 +15879,10 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(
-            score
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("wallet backend unavailable"))
-        );
+        assert!(score
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("wallet backend unavailable")));
     }
 
     #[test]
@@ -15931,12 +15999,10 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.stream == TerminalStream::Stdout
-                    && line.text.contains("\u{20BF} 1 000"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.stream == TerminalStream::Stdout
+                && line.text.contains("\u{20BF} 1 000")));
     }
 
     #[test]
@@ -16011,21 +16077,15 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.text == "Provider offline. Platform not supported for selling compute."
         }));
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Start Apple FM"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("capability pending"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Preflight blocker"))
-        );
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Start Apple FM")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("capability pending")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Preflight blocker")));
     }
 
     #[test]
@@ -16056,20 +16116,16 @@ mod tests {
         );
 
         if super::mission_control_uses_apple_fm() {
-            assert!(
-                lines
-                    .iter()
-                    .any(|line| line.text.contains("Apple Foundation Models unavailable"))
-            );
+            assert!(lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable")));
         } else {
             assert!(lines.iter().any(|line| {
                 line.text == "Provider offline. Platform not supported for selling compute."
             }));
-            assert!(
-                !lines
-                    .iter()
-                    .any(|line| { line.text.contains("Apple Foundation Models unavailable") })
-            );
+            assert!(!lines
+                .iter()
+                .any(|line| { line.text.contains("Apple Foundation Models unavailable") }));
         }
         assert!(!lines.iter().any(|line| line.text.contains("GPT-OSS")));
     }
@@ -16102,16 +16158,12 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.text.contains("bridge reachable but not ready yet"))
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.text.contains("bridge reachable but not ready yet")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.text.contains("Apple Foundation Models unavailable")));
     }
 
     #[test]
@@ -16408,11 +16460,9 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") })
-        );
+        assert!(lines
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") }));
         assert!(keys.iter().any(|key| {
             key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
         }));
@@ -16459,13 +16509,11 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(
-            first
-                .log_stream
-                .recent_lines(32)
-                .iter()
-                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
-        );
+        assert!(first
+            .log_stream
+            .recent_lines(32)
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
 
         let mut reopened = MissionControlPaneState::default();
         reopened.sync_log_stream(
@@ -16479,13 +16527,11 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(
-            reopened
-                .log_stream
-                .recent_lines(32)
-                .iter()
-                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
-        );
+        assert!(reopened
+            .log_stream
+            .recent_lines(32)
+            .iter()
+            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
     }
 
     #[test]
@@ -16545,12 +16591,10 @@ mod tests {
             mission_control.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
-        assert!(
-            !mission_control.buy_mode_dispatch_due(
-                now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
-                    .saturating_sub(std::time::Duration::from_millis(1))
-            )
-        );
+        assert!(!mission_control.buy_mode_dispatch_due(
+            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
+                .saturating_sub(std::time::Duration::from_millis(1))
+        ));
 
         assert!(!mission_control.toggle_buy_mode_loop(now));
         assert!(!mission_control.buy_mode_loop_enabled);
@@ -16709,12 +16753,10 @@ mod tests {
 
         assert_eq!(counters.load_state, super::PaneLoadState::Error);
         assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
-        assert!(
-            counters
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("wallet service unavailable"))
-        );
+        assert!(counters
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("wallet service unavailable")));
     }
 
     #[test]
@@ -16738,12 +16780,10 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.degraded"
         );
-        assert!(
-            counters
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("presence query timeout"))
-        );
+        assert!(counters
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("presence query timeout")));
     }
 
     #[test]
@@ -16766,12 +16806,10 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.stale"
         );
-        assert!(
-            counters
-                .last_action
-                .as_deref()
-                .is_some_and(|action| action.contains("stale"))
-        );
+        assert!(counters
+            .last_action
+            .as_deref()
+            .is_some_and(|action| action.contains("stale")));
     }
 
     #[test]
@@ -16905,18 +16943,14 @@ mod tests {
         assert_eq!(archived.thread_id, "thread-1");
         assert_eq!(archived.turn_id, "turn-1");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
-        assert!(
-            archived
-                .latest_tool_result
-                .as_deref()
-                .is_some_and(|value| value.contains("OA-CAD-INTENT-OK"))
-        );
-        assert!(
-            archived
-                .latest_rebuild_result
-                .as_deref()
-                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
-        );
+        assert!(archived
+            .latest_tool_result
+            .as_deref()
+            .is_some_and(|value| value.contains("OA-CAD-INTENT-OK")));
+        assert!(archived
+            .latest_rebuild_result
+            .as_deref()
+            .is_some_and(|value| value.contains("ai-intent:setmaterial")));
         assert!(!archived.events.is_empty());
     }
 

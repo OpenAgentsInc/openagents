@@ -1,28 +1,29 @@
+use std::sync::Arc;
+
 use crate::app_state::{
-    ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
-    AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
-    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
-    BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
-    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
-    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
-    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
-    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
-    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
-    mission_control_show_local_model_button,
+    mission_control_show_local_model_button, ActiveJobRecord, ActiveJobState, ActivityEventDomain,
+    ActivityFeedFilter, ActivityFeedState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
+    AlertSeverity, AlertsRecoveryState, AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState,
+    AutopilotChatState, BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs,
+    CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
+    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, LocalInferencePaneInputs,
+    LocalInferencePaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
+    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
+    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
-    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
+    active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
@@ -43,24 +44,26 @@ use crate::pane_system::{
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
     mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
-    mission_control_copy_seed_button_bounds, mission_control_layout_for_mode,
-    mission_control_load_funds_layout, mission_control_local_fm_test_button_bounds,
-    mission_control_local_model_button_bounds, mission_control_send_invoice_input_bounds,
-    mission_control_send_lightning_button_bounds, mission_control_wallet_refresh_button_bounds,
-    network_requests_accept_button_bounds, network_requests_budget_input_bounds,
-    network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
-    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
-    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
-    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
-    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-    settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    mission_control_copy_seed_button_bounds_for_scroll, mission_control_layout_for_mode,
+    mission_control_load_funds_layout_with_scroll,
+    mission_control_load_funds_scroll_viewport_bounds, mission_control_local_fm_test_button_bounds,
+    mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
+    mission_control_send_invoice_input_bounds_for_scroll,
+    mission_control_send_lightning_button_bounds_for_scroll,
+    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
+    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
+    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+    network_requests_type_input_bounds, network_requests_visible_quote_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
+    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
-    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds, PANE_TITLE_HEIGHT,
 };
 use crate::panes::{
     agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane,
@@ -71,12 +74,14 @@ use crate::panes::{
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
-use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
+use wgpui::{theme, Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad};
 
 pub struct PaneRenderer;
 
 const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
 const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
+const MISSION_CONTROL_REFRESH_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z"/></svg>"##;
+const MISSION_CONTROL_COPY_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M480 400L288 400C279.2 400 272 392.8 272 384L272 128C272 119.2 279.2 112 288 112L421.5 112C425.7 112 429.8 113.7 432.8 116.7L491.3 175.2C494.3 178.2 496 182.3 496 186.5L496 384C496 392.8 488.8 400 480 400zM288 448L480 448C515.3 448 544 419.3 544 384L544 186.5C544 169.5 537.3 153.2 525.3 141.2L466.7 82.7C454.7 70.7 438.5 64 421.5 64L288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L368 496L368 512C368 520.8 360.8 528 352 528L160 528C151.2 528 144 520.8 144 512L144 256C144 247.2 151.2 240 160 240L176 240L176 192L160 192z"/></svg>"##;
 
 impl PaneRenderer {
     #[expect(
@@ -87,6 +92,7 @@ impl PaneRenderer {
         panes: &mut [DesktopPane],
         canvas_bounds: Bounds,
         active_id: Option<u64>,
+        cursor_position: Point,
         desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
         buy_mode_enabled: bool,
         backend_kernel_authority: bool,
@@ -163,6 +169,7 @@ impl PaneRenderer {
             next_layer = next_layer.saturating_add(1);
 
             let pane = &mut panes[idx];
+            let pane_is_active = active_id == Some(pane.id);
 
             paint
                 .scene
@@ -171,7 +178,7 @@ impl PaneRenderer {
             let content_bounds = pane_content_bounds_for_pane(pane);
             if pane.presentation.uses_window_chrome() {
                 pane.frame.set_title(&pane.title);
-                pane.frame.set_active(active_id == Some(pane.id));
+                pane.frame.set_active(pane_is_active);
                 pane.frame.set_title_height(PANE_TITLE_HEIGHT);
                 pane.frame.paint(pane.bounds, paint);
 
@@ -228,6 +235,8 @@ impl PaneRenderer {
                 PaneKind::GoOnline => {
                     paint_go_online_pane(
                         content_bounds,
+                        pane_is_active,
+                        cursor_position,
                         desktop_shell_mode,
                         buy_mode_enabled,
                         autopilot_chat,
@@ -557,6 +566,8 @@ fn paint_autopilot_chat_pane(
 
 fn paint_go_online_pane(
     content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     buy_mode_enabled: bool,
     autopilot_chat: &AutopilotChatState,
@@ -591,6 +602,7 @@ fn paint_go_online_pane(
 
     let layout = mission_control_layout_for_mode(content_bounds, buy_mode_enabled);
     let now = std::time::Instant::now();
+    let now_epoch_ms = mission_control_now_epoch_millis();
     let status_label = provider_runtime.mode.label().to_ascii_uppercase();
     let status_color = mission_control_mode_color(provider_runtime.mode);
     let wallet_status = match spark_wallet.network_status_label() {
@@ -692,37 +704,49 @@ fn paint_go_online_pane(
         layout.sell_panel,
         "SELL COMPUTE",
         mission_control_green_color(),
+        matches!(
+            provider_runtime.mode,
+            crate::app_state::ProviderMode::Offline
+        ),
         paint,
     );
     paint_mission_control_section_panel(
         layout.earnings_panel,
         "EARNINGS",
         mission_control_green_color(),
+        false,
         paint,
     );
     paint_mission_control_section_panel(
         layout.wallet_panel,
         "WALLET",
         mission_control_green_color(),
+        false,
         paint,
     );
-    paint_mission_control_command_button(
-        mission_control_wallet_refresh_button_bounds(content_bounds),
-        "REFRESH",
-        mission_control_cyan_color(),
-        true,
+    let wallet_refresh_bounds = mission_control_wallet_refresh_button_bounds(content_bounds);
+    let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
+    let wallet_refresh_hovered = pointer_in_pane && wallet_refresh_bounds.contains(cursor_position);
+    let wallet_refresh_clicked = mission_control.wallet_refresh_icon_click_feedback(now_epoch_ms);
+    paint_mission_control_wallet_refresh_icon_button(
+        wallet_refresh_bounds,
+        mission_control_green_color(),
+        wallet_refresh_hovered,
+        wallet_refresh_clicked,
         paint,
     );
     paint_mission_control_section_panel(
         layout.actions_panel,
         "CONTROL",
         mission_control_orange_color(),
+        false,
         paint,
     );
     paint_mission_control_section_panel(
         layout.active_jobs_panel,
         "ACTIVE JOBS",
         status_color,
+        false,
         paint,
     );
     if buy_mode_enabled {
@@ -730,6 +754,7 @@ fn paint_go_online_pane(
             layout.buy_mode_panel,
             "BUY MODE",
             mission_control_cyan_color(),
+            false,
             paint,
         );
     }
@@ -737,6 +762,7 @@ fn paint_go_online_pane(
         layout.load_funds_panel,
         "LOAD FUNDS",
         mission_control_cyan_color(),
+        false,
         paint,
     );
 
@@ -756,6 +782,16 @@ fn paint_go_online_pane(
     } else {
         "GO OFFLINE"
     };
+    let sell_optional_rows =
+        usize::from(provider_runtime.mode != crate::app_state::ProviderMode::Offline)
+            + usize::from(sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline)
+            + usize::from(skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown)
+            + usize::from(ac_lane.credit_available);
+    let sell_content_height = (6.0 * 39.0) + (sell_optional_rows as f32 * 38.0);
+    let sell_viewport = mission_control_sell_scroll_viewport_bounds(content_bounds);
+    let sell_max_scroll =
+        mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
+    let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
     paint_mission_control_go_online_button(
         toggle_bounds,
         toggle_label,
@@ -764,10 +800,10 @@ fn paint_go_online_pane(
         paint,
     );
 
-    let sell_clip = mission_control_section_clip_bounds(layout.sell_panel);
+    let sell_clip = sell_viewport;
     let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
     paint.scene.push_clip(sell_clip);
-    let mut sell_y = toggle_bounds.max_y() + 24.0;
+    let mut sell_y = sell_viewport.origin.y - sell_scroll;
     sell_y = paint_wrapped_label_line_mission_control_label(
         paint,
         layout.sell_panel.origin.x + 12.0,
@@ -889,11 +925,22 @@ fn paint_go_online_pane(
         );
     }
     paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        layout.sell_panel,
+        sell_viewport,
+        sell_content_height,
+        sell_scroll,
+        paint,
+    );
 
     let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
     paint.scene.push_clip(earnings_clip);
     const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
-    let mut earnings_y = layout.earnings_panel.origin.y + 36.0;
+    let earnings_content_height = 41.0 + 41.0 + 40.0 + 6.0 + 54.0;
+    let earnings_max_scroll =
+        mission_control_section_max_scroll(layout.earnings_panel, earnings_content_height);
+    let earnings_scroll = mission_control.clamp_earnings_scroll_offset(earnings_max_scroll);
+    let mut earnings_y = mission_control_section_content_y(layout.earnings_panel) - earnings_scroll;
     earnings_y = paint_mission_control_amount_line(
         paint,
         layout.earnings_panel.origin.x + 12.0,
@@ -928,6 +975,12 @@ fn paint_go_online_pane(
         false,
     );
     paint.scene.pop_clip();
+    paint_mission_control_section_scrollbar(
+        layout.earnings_panel,
+        earnings_content_height,
+        earnings_scroll,
+        paint,
+    );
 
     let wallet_clip = mission_control_section_clip_bounds(layout.wallet_panel);
     paint.scene.push_clip(wallet_clip);
@@ -944,7 +997,11 @@ fn paint_go_online_pane(
         .unwrap_or_else(|| "NOT GENERATED".to_string());
     let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let mut wallet_y = layout.wallet_panel.origin.y + 42.0;
+    let wallet_content_height = 41.0 + 39.0 + 39.0 + 38.0;
+    let wallet_max_scroll =
+        mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
+    let wallet_scroll = mission_control.clamp_wallet_scroll_offset(wallet_max_scroll);
+    let mut wallet_y = mission_control_section_content_y(layout.wallet_panel) - wallet_scroll;
     wallet_y = paint_mission_control_amount_line(
         paint,
         layout.wallet_panel.origin.x + 12.0,
@@ -987,6 +1044,12 @@ fn paint_go_online_pane(
         false,
     );
     paint.scene.pop_clip();
+    paint_mission_control_section_scrollbar(
+        layout.wallet_panel,
+        wallet_content_height,
+        wallet_scroll,
+        paint,
+    );
 
     let download_bounds = mission_control_local_model_button_bounds(content_bounds);
     if mission_control_show_local_model_button(
@@ -1046,14 +1109,8 @@ fn paint_go_online_pane(
             paint,
         );
     }
-    let load_funds_layout = mission_control_load_funds_layout(content_bounds, buy_mode_enabled);
-    let lightning_amount_valid = mission_control
-        .load_funds_amount_sats
-        .get_value()
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .is_some_and(|value| value > 0);
+    let load_funds_viewport =
+        mission_control_load_funds_scroll_viewport_bounds(content_bounds, buy_mode_enabled);
     let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
     let lightning_target_text = match lightning_state {
         SparkInvoiceState::Ready => spark_wallet
@@ -1066,17 +1123,43 @@ fn paint_go_online_pane(
         }
         SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
     };
-    let load_funds_clip = mission_control_section_clip_bounds(layout.load_funds_panel);
-    paint.scene.push_clip(load_funds_clip);
-    paint.scene.draw_text(paint.text.layout_mono(
+    let detail_lines = lightning_target_text.lines().count().max(1)
+        + mission_control_recent_receive_history(spark_wallet)
+            .lines()
+            .count()
+            .max(1);
+    let load_funds_content_height = 170.0 + detail_lines as f32 * 16.0;
+    let load_funds_max_scroll =
+        mission_control_max_scroll_for_viewport(load_funds_viewport, load_funds_content_height);
+    let load_funds_scroll = mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
+    let load_funds_layout = mission_control_load_funds_layout_with_scroll(
+        content_bounds,
+        buy_mode_enabled,
+        load_funds_scroll,
+    );
+    let lightning_amount_valid = mission_control
+        .load_funds_amount_sats
+        .get_value()
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .is_some_and(|value| value > 0);
+    paint.scene.push_clip(load_funds_viewport);
+    let mut lightning_sats_label = paint.text.layout_mono(
         "LIGHTNING SATS (₿)",
-        Point::new(
-            load_funds_layout.amount_input.origin.x,
-            load_funds_layout.amount_input.origin.y - 12.0,
-        ),
+        Point::ZERO,
         MISSION_CONTROL_PANEL_FONT_SIZE,
         mission_control_muted_color(),
-    ));
+    );
+    let lightning_sats_label_bounds = lightning_sats_label.bounds();
+    let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 12.0;
+    lightning_sats_label.origin = Point::new(
+        load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
+        lightning_sats_label_bottom
+            - lightning_sats_label_bounds.size.height
+            - lightning_sats_label_bounds.origin.y,
+    );
+    paint.scene.draw_text(lightning_sats_label);
     mission_control
         .load_funds_amount_sats
         .set_max_width(load_funds_layout.amount_input.size.width);
@@ -1097,17 +1180,26 @@ fn paint_go_online_pane(
         lightning_state == SparkInvoiceState::Ready,
         paint,
     );
-    let send_invoice_bounds =
-        mission_control_send_invoice_input_bounds(content_bounds, buy_mode_enabled);
-    paint.scene.draw_text(paint.text.layout_mono(
+    let send_invoice_bounds = mission_control_send_invoice_input_bounds_for_scroll(
+        content_bounds,
+        buy_mode_enabled,
+        load_funds_scroll,
+    );
+    let mut lightning_withdraw_label = paint.text.layout_mono(
         "LIGHTNING WITHDRAW",
-        Point::new(
-            send_invoice_bounds.origin.x,
-            send_invoice_bounds.origin.y - 12.0,
-        ),
+        Point::ZERO,
         MISSION_CONTROL_PANEL_FONT_SIZE,
         mission_control_muted_color(),
-    ));
+    );
+    let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
+    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 12.0;
+    lightning_withdraw_label.origin = Point::new(
+        send_invoice_bounds.origin.x - lightning_withdraw_label_bounds.origin.x,
+        lightning_withdraw_label_bottom
+            - lightning_withdraw_label_bounds.size.height
+            - lightning_withdraw_label_bounds.origin.y,
+    );
+    paint.scene.draw_text(lightning_withdraw_label);
     mission_control
         .send_invoice
         .set_max_width(send_invoice_bounds.size.width);
@@ -1115,14 +1207,22 @@ fn paint_go_online_pane(
         .send_invoice
         .paint(send_invoice_bounds, paint);
     paint_mission_control_command_button(
-        mission_control_send_lightning_button_bounds(content_bounds, buy_mode_enabled),
+        mission_control_send_lightning_button_bounds_for_scroll(
+            content_bounds,
+            buy_mode_enabled,
+            load_funds_scroll,
+        ),
         "LIGHTNING WITHDRAW",
         mission_control_orange_color(),
         !mission_control.send_invoice.get_value().trim().is_empty(),
         paint,
     );
     paint_mission_control_command_button(
-        mission_control_copy_seed_button_bounds(content_bounds, buy_mode_enabled),
+        mission_control_copy_seed_button_bounds_for_scroll(
+            content_bounds,
+            buy_mode_enabled,
+            load_funds_scroll,
+        ),
         "COPY SEED",
         mission_control_cyan_color(),
         nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
@@ -1184,6 +1284,13 @@ fn paint_go_online_pane(
         false,
     );
     paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        layout.load_funds_panel,
+        load_funds_viewport,
+        load_funds_content_height,
+        load_funds_scroll,
+        paint,
+    );
 
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
@@ -1202,79 +1309,16 @@ fn paint_go_online_pane(
         "ACTIVE" => ("ACTIVE", mission_control_green_color()),
         _ => ("SCANNING", mission_control_cyan_color()),
     };
-    if provider_runtime.mode == crate::app_state::ProviderMode::Online {
-        let anim_t = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs_f32())
-            .unwrap_or(0.0);
-        let scan_bounds = Bounds::new(
-            layout.active_jobs_panel.origin.x + 10.0,
-            layout.active_jobs_panel.origin.y + 30.0,
-            (layout.active_jobs_panel.size.width - 20.0).max(0.0),
-            (layout.active_jobs_panel.size.height - 40.0).max(0.0),
-        );
-        if scan_bounds.size.width > 1.0 && scan_bounds.size.height > 1.0 {
-            let scan_width = 120.0;
-            let inner_width = 42.0;
-            let lead_width = 2.0;
-            let travel = scan_bounds.size.width + scan_width;
-            let phase = (anim_t * 260.0 + scan_bounds.origin.x * 0.2).rem_euclid(travel);
-            let scan_x = scan_bounds.origin.x - scan_width + phase;
-
-            paint.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    scan_x,
-                    scan_bounds.origin.y,
-                    scan_width,
-                    scan_bounds.size.height,
-                ))
-                .with_background(mission_control_cyan_color().with_alpha(0.12)),
-            );
-            paint.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    scan_x + (scan_width - inner_width) * 0.5,
-                    scan_bounds.origin.y,
-                    inner_width,
-                    scan_bounds.size.height,
-                ))
-                .with_background(mission_control_cyan_color().with_alpha(0.20)),
-            );
-            paint.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    scan_x + scan_width - lead_width,
-                    scan_bounds.origin.y,
-                    lead_width,
-                    scan_bounds.size.height,
-                ))
-                .with_background(mission_control_cyan_color().with_alpha(0.56)),
-            );
-
-            let dot_blink = ((anim_t * 8.0).sin() * 0.5) + 0.5;
-            let dot_x = (scan_x + scan_width + 6.0).min(scan_bounds.max_x() - 4.0);
-            let dot_start_y = scan_bounds.origin.y + 8.0;
-            for idx in 0..3 {
-                paint.scene.draw_quad(
-                    Quad::new(Bounds::new(
-                        dot_x,
-                        dot_start_y + idx as f32 * 10.0,
-                        4.0,
-                        4.0,
-                    ))
-                    .with_background(
-                        mission_control_cyan_color()
-                            .with_alpha(0.26 + dot_blink * (0.34 - idx as f32 * 0.07)),
-                    )
-                    .with_corner_radius(2.0),
-                );
-            }
-        }
-    }
+    let active_content_height = 44.0 + active_panel_state.lines.len() as f32 * 17.0;
+    let active_jobs_max_scroll =
+        mission_control_section_max_scroll(layout.active_jobs_panel, active_content_height);
+    let active_jobs_scroll =
+        mission_control.clamp_active_jobs_scroll_offset(active_jobs_max_scroll);
+    let active_content_y =
+        mission_control_section_content_y(layout.active_jobs_panel) - active_jobs_scroll;
     paint.scene.draw_text(paint.text.layout_mono(
         active_state.0,
-        Point::new(
-            layout.active_jobs_panel.origin.x + 12.0,
-            layout.active_jobs_panel.origin.y + 30.0,
-        ),
+        Point::new(layout.active_jobs_panel.origin.x + 12.0, active_content_y),
         22.0,
         active_state.1,
     ));
@@ -1283,7 +1327,7 @@ fn paint_go_online_pane(
             line,
             Point::new(
                 layout.active_jobs_panel.origin.x + 12.0,
-                layout.active_jobs_panel.origin.y + 60.0 + index as f32 * 17.0,
+                active_content_y + 30.0 + index as f32 * 17.0,
             ),
             10.0,
             if index == 2 && active_job.job.is_some() {
@@ -1294,6 +1338,12 @@ fn paint_go_online_pane(
         ));
     }
     paint.scene.pop_clip();
+    paint_mission_control_section_scrollbar(
+        layout.active_jobs_panel,
+        active_content_height,
+        active_jobs_scroll,
+        paint,
+    );
 
     if buy_mode_enabled {
         paint_mission_control_buy_mode_panel(
@@ -1312,18 +1362,28 @@ fn paint_go_online_pane(
         layout.log_stream,
         "LOG STREAM",
         mission_control_orange_color(),
+        false,
         paint,
     );
-    paint_action_button(
-        mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled),
-        "Copy log",
+    let log_copy_bounds =
+        mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
+    let log_copy_hovered = pointer_in_pane && log_copy_bounds.contains(cursor_position);
+    let log_copy_clicked = mission_control.log_copy_icon_click_feedback(now_epoch_ms);
+    paint_mission_control_log_copy_icon_button(
+        log_copy_bounds,
+        mission_control_orange_color(),
+        log_copy_hovered,
+        log_copy_clicked,
         paint,
     );
     let log_body_bounds = Bounds::new(
         layout.log_stream.origin.x,
-        layout.log_stream.origin.y + 28.0,
+        mission_control_section_content_y(layout.log_stream),
         layout.log_stream.size.width,
-        (layout.log_stream.size.height - 28.0).max(0.0),
+        (layout.log_stream.size.height
+            - MISSION_CONTROL_SECTION_CONTENT_TOP
+            - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
+            .max(0.0),
     );
     paint.scene.draw_quad(
         Quad::new(log_body_bounds)
@@ -1338,6 +1398,7 @@ fn paint_mission_control_section_panel(
     bounds: Bounds,
     title: &str,
     accent: Hsla,
+    show_moving_header_bar: bool,
     paint: &mut PaintContext,
 ) {
     let width = bounds.size.width.max(0.0);
@@ -1345,11 +1406,10 @@ fn paint_mission_control_section_panel(
     if width <= 1.0 || height <= 1.0 {
         return;
     }
-    let anim_t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f32())
-        .unwrap_or(0.0);
-    let pulse = ((anim_t * 5.0 + bounds.origin.x * 0.015).sin() * 0.5) + 0.5;
+    let anim_t = mission_control_anim_seconds_f64();
+    let pulse_phase =
+        (anim_t * 5.0 + bounds.origin.x as f64 * 0.015).rem_euclid(std::f64::consts::TAU);
+    let pulse = ((pulse_phase as f32).sin() * 0.5) + 0.5;
 
     paint.scene.draw_quad(
         Quad::new(bounds)
@@ -1382,7 +1442,7 @@ fn paint_mission_control_section_panel(
             bounds.origin.x + 5.0,
             bounds.origin.y,
             (bounds.size.width - 5.0).max(0.0),
-            28.0,
+            MISSION_CONTROL_SECTION_HEADER_HEIGHT,
         ))
         .with_background(mission_control_panel_header_color().with_alpha(0.95)),
     );
@@ -1395,20 +1455,31 @@ fn paint_mission_control_section_panel(
         ))
         .with_background(accent.with_alpha(0.35)),
     );
-    let shimmer_track = (bounds.size.width - 30.0).max(1.0);
-    let shimmer_phase = (anim_t * 420.0 + bounds.origin.x * 0.07).rem_euclid(shimmer_track);
-    let shimmer_x = bounds.origin.x + 6.0 + shimmer_phase;
-    let shimmer_width = 22.0_f32.min((bounds.max_x() - 6.0 - shimmer_x).max(0.0));
-    if shimmer_width > 0.5 {
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                shimmer_x,
-                bounds.origin.y + 1.0,
-                shimmer_width,
-                1.0,
-            ))
-            .with_background(accent.with_alpha(0.28)),
-        );
+    if show_moving_header_bar {
+        let rail_top = bounds.origin.y + 2.0;
+        let rail_bottom = bounds.max_y() - 2.0;
+        let rail_height = (rail_bottom - rail_top).max(1.0);
+        let shimmer_height = 26.0_f32.min(rail_height);
+        let travel = (rail_height - shimmer_height).max(0.0);
+        // Ease-in/out vertical motion: smooth at turns, no abrupt wrap jump.
+        let cycle_seconds = 1.35_f64;
+        let phase = (anim_t / cycle_seconds) * std::f64::consts::TAU;
+        let ease = (0.5 - 0.5 * phase.cos()) as f32;
+        let shimmer_top = rail_top + travel * ease;
+        let shimmer_bottom = (shimmer_top + shimmer_height).min(rail_bottom);
+        let visible_height = (shimmer_bottom - shimmer_top).max(0.0);
+        if visible_height > 0.5 {
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    bounds.origin.x + 1.0,
+                    shimmer_top,
+                    3.0,
+                    visible_height,
+                ))
+                .with_background(Hsla::from_hex(0x1F8A44).with_alpha(0.92))
+                .with_corner_radius(2.0),
+            );
+        }
     }
 
     if !title.is_empty() {
@@ -1448,17 +1519,26 @@ fn paint_mission_control_buy_mode_panel(
     let clip = mission_control_section_clip_bounds(panel_bounds);
     paint.scene.push_clip(clip);
 
+    let primary_button_bounds = mission_control_buy_mode_button_bounds(content_bounds, true);
+    let history_button_bounds =
+        mission_control_buy_mode_history_button_bounds(content_bounds, true);
+    let content_y = mission_control_section_content_y(panel_bounds);
+    let extra_height = (panel_bounds.size.height - 120.0).max(0.0);
+    let summary_to_cells_gap = (14.0 + extra_height * 0.12).clamp(14.0, 30.0);
+    let cell_height = (34.0 + extra_height * 0.10).clamp(34.0, 44.0);
+    let min_cells_to_buttons_gap = 18.0;
+    let max_cell_y = (primary_button_bounds.origin.y - min_cells_to_buttons_gap - cell_height)
+        .max(content_y + 14.0);
     paint.scene.draw_text(paint.text.layout_mono(
         panel_state.summary.as_str(),
-        Point::new(panel_bounds.origin.x + 12.0, panel_bounds.origin.y + 34.0),
+        Point::new(panel_bounds.origin.x + 12.0, content_y),
         11.0,
         mission_control_text_color(),
     ));
 
     let cell_gap = 8.0;
     let cell_width = ((panel_bounds.size.width - 24.0 - cell_gap * 4.0) / 5.0).max(0.0);
-    let cell_y = panel_bounds.origin.y + 48.0;
-    let cell_height = 34.0;
+    let cell_y = (content_y + summary_to_cells_gap).min(max_cell_y);
     let values = [
         ("MODE", panel_state.mode.clone()),
         ("NEXT", panel_state.next.clone()),
@@ -1480,7 +1560,7 @@ fn paint_mission_control_buy_mode_panel(
     paint.scene.pop_clip();
 
     paint_mission_control_command_button(
-        mission_control_buy_mode_button_bounds(content_bounds, true),
+        primary_button_bounds,
         panel_state.button_label.as_str(),
         if panel_state.button_enabled {
             if panel_state.button_active {
@@ -1495,7 +1575,7 @@ fn paint_mission_control_buy_mode_panel(
         paint,
     );
     paint_mission_control_command_button(
-        mission_control_buy_mode_history_button_bounds(content_bounds, true),
+        history_button_bounds,
         "PAYMENT HISTORY",
         mission_control_cyan_color(),
         true,
@@ -2086,6 +2166,16 @@ fn mission_control_background_color() -> Hsla {
     Hsla::from_hex(0x070C14)
 }
 
+const MISSION_CONTROL_SECTION_HEADER_HEIGHT: f32 = 28.0;
+const MISSION_CONTROL_SECTION_HEADER_MARGIN_BOTTOM: f32 = 10.0;
+const MISSION_CONTROL_SECTION_BOTTOM_PADDING: f32 = 15.0;
+const MISSION_CONTROL_SECTION_CONTENT_TOP: f32 =
+    MISSION_CONTROL_SECTION_HEADER_HEIGHT + MISSION_CONTROL_SECTION_HEADER_MARGIN_BOTTOM;
+
+fn mission_control_section_content_y(bounds: Bounds) -> f32 {
+    bounds.origin.y + MISSION_CONTROL_SECTION_CONTENT_TOP
+}
+
 fn mission_control_panel_color() -> Hsla {
     Hsla::from_hex(0x0D121A)
 }
@@ -2292,12 +2382,86 @@ fn compact_mission_control_id(value: &str) -> String {
 }
 
 fn mission_control_section_clip_bounds(bounds: Bounds) -> Bounds {
+    mission_control_section_scroll_viewport_bounds(bounds)
+}
+
+fn mission_control_section_scroll_viewport_bounds(bounds: Bounds) -> Bounds {
     Bounds::new(
         bounds.origin.x + 8.0,
-        bounds.origin.y + 8.0,
+        mission_control_section_content_y(bounds),
         (bounds.size.width - 16.0).max(0.0),
-        (bounds.size.height - 16.0).max(0.0),
+        (bounds.size.height
+            - MISSION_CONTROL_SECTION_CONTENT_TOP
+            - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
+            .max(0.0),
     )
+}
+
+fn mission_control_section_max_scroll(bounds: Bounds, content_height: f32) -> f32 {
+    mission_control_max_scroll_for_viewport(
+        mission_control_section_scroll_viewport_bounds(bounds),
+        content_height,
+    )
+}
+
+fn mission_control_max_scroll_for_viewport(viewport: Bounds, content_height: f32) -> f32 {
+    (content_height - viewport.size.height).max(0.0)
+}
+
+fn paint_mission_control_section_scrollbar(
+    bounds: Bounds,
+    content_height: f32,
+    scroll_offset: f32,
+    paint: &mut PaintContext,
+) {
+    paint_mission_control_scrollbar_for_viewport(
+        bounds,
+        mission_control_section_scroll_viewport_bounds(bounds),
+        content_height,
+        scroll_offset,
+        paint,
+    );
+}
+
+fn paint_mission_control_scrollbar_for_viewport(
+    bounds: Bounds,
+    viewport: Bounds,
+    content_height: f32,
+    scroll_offset: f32,
+    paint: &mut PaintContext,
+) {
+    if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
+        return;
+    }
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    if max_offset <= 0.5 {
+        return;
+    }
+    let track = Bounds::new(
+        bounds.max_x() - 6.0,
+        viewport.origin.y,
+        2.0,
+        viewport.size.height,
+    );
+    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+        .clamp(16.0, viewport.size.height);
+    let thumb_y = viewport.origin.y
+        + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    paint.scene.draw_quad(
+        Quad::new(track)
+            .with_background(mission_control_panel_header_color().with_alpha(0.45))
+            .with_corner_radius(1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            track.origin.x,
+            thumb_y,
+            track.size.width,
+            thumb_height,
+        ))
+        .with_background(mission_control_muted_color().with_alpha(0.72))
+        .with_corner_radius(1.0),
+    );
 }
 
 fn paint_mission_control_amount_line(
@@ -6226,6 +6390,94 @@ fn paint_mission_control_command_button(
     );
 }
 
+fn paint_mission_control_wallet_refresh_icon_button(
+    bounds: Bounds,
+    color: Hsla,
+    hovered: bool,
+    click_feedback: f32,
+    paint: &mut PaintContext,
+) {
+    let feedback = click_feedback.clamp(0.0, 1.0);
+    if hovered || feedback > 0.0 {
+        let glow_alpha = (if hovered { 0.16 } else { 0.0 }) + feedback * 0.34;
+        let border_alpha = (if hovered { 0.38 } else { 0.0 }) + feedback * 0.52;
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x - 3.0,
+                bounds.origin.y - 3.0,
+                bounds.size.width + 6.0,
+                bounds.size.height + 6.0,
+            ))
+            .with_background(color.with_alpha(glow_alpha.clamp(0.0, 0.62)))
+            .with_border(color.with_alpha(border_alpha.clamp(0.0, 0.86)), 1.0)
+            .with_corner_radius(6.0),
+        );
+    }
+    let icon_size = 14.0f32
+        .min(bounds.size.width.max(0.0))
+        .min(bounds.size.height.max(0.0));
+    if icon_size <= 0.0 {
+        return;
+    }
+    let icon_bounds = Bounds::new(
+        bounds.origin.x + (bounds.size.width - icon_size) * 0.5,
+        bounds.origin.y + (bounds.size.height - icon_size) * 0.5,
+        icon_size,
+        icon_size,
+    );
+    paint.scene.draw_svg(
+        SvgQuad::new(
+            icon_bounds,
+            Arc::<[u8]>::from(MISSION_CONTROL_REFRESH_ICON_SVG_RAW.as_bytes()),
+        )
+        .with_tint(color.with_alpha((0.82 + feedback * 0.18).clamp(0.0, 1.0))),
+    );
+}
+
+fn paint_mission_control_log_copy_icon_button(
+    bounds: Bounds,
+    color: Hsla,
+    hovered: bool,
+    click_feedback: f32,
+    paint: &mut PaintContext,
+) {
+    let feedback = click_feedback.clamp(0.0, 1.0);
+    if hovered || feedback > 0.0 {
+        let glow_alpha = (if hovered { 0.16 } else { 0.0 }) + feedback * 0.34;
+        let border_alpha = (if hovered { 0.38 } else { 0.0 }) + feedback * 0.52;
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x - 3.0,
+                bounds.origin.y - 3.0,
+                bounds.size.width + 6.0,
+                bounds.size.height + 6.0,
+            ))
+            .with_background(color.with_alpha(glow_alpha.clamp(0.0, 0.62)))
+            .with_border(color.with_alpha(border_alpha.clamp(0.0, 0.86)), 1.0)
+            .with_corner_radius(6.0),
+        );
+    }
+    let icon_size = 14.0f32
+        .min(bounds.size.width.max(0.0))
+        .min(bounds.size.height.max(0.0));
+    if icon_size <= 0.0 {
+        return;
+    }
+    let icon_bounds = Bounds::new(
+        bounds.origin.x + (bounds.size.width - icon_size) * 0.5,
+        bounds.origin.y + (bounds.size.height - icon_size) * 0.5,
+        icon_size,
+        icon_size,
+    );
+    paint.scene.draw_svg(
+        SvgQuad::new(
+            icon_bounds,
+            Arc::<[u8]>::from(MISSION_CONTROL_COPY_ICON_SVG_RAW.as_bytes()),
+        )
+        .with_tint(color.with_alpha((0.82 + feedback * 0.18).clamp(0.0, 1.0))),
+    );
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ButtonStyle {
     Primary,
@@ -6573,6 +6825,26 @@ fn mission_control_now_epoch_seconds() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
+}
+
+fn mission_control_now_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
+
+fn mission_control_now_epoch_seconds_f64() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |duration| duration.as_secs_f64())
+}
+
+fn mission_control_anim_seconds_f64() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(std::time::Instant::now);
+    std::time::Instant::now()
+        .duration_since(*start)
+        .as_secs_f64()
 }
 
 fn mission_control_lightning_receive_state_label(state: SparkInvoiceState) -> &'static str {
@@ -7037,21 +7309,15 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Flow phase: delivered-unpaid") })
-        );
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Next event: buyer settlement timed out") })
-        );
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") })
-        );
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Flow phase: delivered-unpaid") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Next event: buyer settlement timed out") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Settlement invoice: lnbc20n1activejobunpaid") }));
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived",
@@ -7080,16 +7346,12 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<Vec<_>>();
 
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") })
-        );
-        assert!(
-            texts
-                .iter()
-                .any(|text| { text.contains("Next event: buyer Lightning payment") })
-        );
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Stage: delivered (awaiting buyer payment)") }));
+        assert!(texts
+            .iter()
+            .any(|text| { text.contains("Next event: buyer Lightning payment") }));
         assert!(texts.iter().any(|text| {
             text.contains(
                 "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment",
@@ -7628,11 +7890,9 @@ mod tests {
         assert_eq!(panel.next, "waiting-peer");
         assert_eq!(panel.provider, "none");
         assert_eq!(panel.work, "blocked");
-        assert!(
-            panel
-                .summary
-                .contains("no eligible Autopilot peers are online for compute")
-        );
+        assert!(panel
+            .summary
+            .contains("no eligible Autopilot peers are online for compute"));
         assert!(panel.summary.contains("provider-offline"));
     }
 
@@ -7733,18 +7993,14 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "ACTIVE");
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") })
-        );
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RELAY / PUBLISHING-RESULT") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // RELAY CONFIRMATION") }));
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // RESULT SIGNED")
                 && line.contains("RELAY ATTEMPT 4")
@@ -7773,18 +8029,14 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "AWAITING PAYMENT");
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") })
-        );
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RESULT DELIVERED / AWAITING BUYER PAYMENT") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // BUYER LIGHTNING PAYMENT") }));
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // AWAITING BUYER PAYMENT") && line.contains("WINDOW 195S")
         }));
@@ -7820,18 +8072,14 @@ mod tests {
         );
 
         assert_eq!(panel.headline, "UNPAID");
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") })
-        );
-        assert!(
-            panel
-                .lines
-                .iter()
-                .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") })
-        );
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("FLOW // RESULT DELIVERED / BUYER NEVER PAID") }));
+        assert!(panel
+            .lines
+            .iter()
+            .any(|line| { line.contains("NEXT // BUYER SETTLEMENT TIMED OUT") }));
         assert!(panel.lines.iter().any(|line| {
             line.contains("CONT // BUYER NEVER SETTLED")
                 && line.contains("RESULT RESULT")
@@ -7879,11 +8127,9 @@ mod tests {
         )
         .expect("buy mode panel should render pending wallet confirmation");
         assert_eq!(pending.payment, "pending");
-        assert!(
-            pending
-                .summary
-                .contains("payment pending Spark confirmation")
-        );
+        assert!(pending
+            .summary
+            .contains("payment pending Spark confirmation"));
 
         let mut wallet = SparkPaneState::default();
         wallet.recent_payments.push(openagents_spark::PaymentSummary {
@@ -7911,11 +8157,9 @@ mod tests {
         )
         .expect("buy mode panel should render failed wallet state");
         assert_eq!(failed.payment, "failed");
-        assert!(
-            failed
-                .summary
-                .contains("lightning send failed before preimage settlement")
-        );
+        assert!(failed
+            .summary
+            .contains("lightning send failed before preimage settlement"));
         assert!(failed.summary.contains("2 sats invoice"));
         assert!(failed.summary.contains("3 sats fee"));
         assert!(failed.summary.contains("5 sats total debit"));
@@ -7986,15 +8230,11 @@ mod tests {
         assert_eq!(panel.work, "settled");
         assert_eq!(panel.payment, "pending");
         assert!(panel.summary.contains("seller settlement confirmed"));
-        assert!(
-            panel
-                .summary
-                .contains("seller settled; awaiting local wallet confirmation")
-        );
-        assert!(
-            panel
-                .summary
-                .contains("phase seller-settled-pending-wallet")
-        );
+        assert!(panel
+            .summary
+            .contains("seller settled; awaiting local wallet confirmation"));
+        assert!(panel
+            .summary
+            .contains("phase seller-settled-pending-wallet"));
     }
 }

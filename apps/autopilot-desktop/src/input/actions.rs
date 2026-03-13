@@ -9035,6 +9035,7 @@ pub(super) fn run_mission_control_action(
 ) -> bool {
     match action {
         MissionControlPaneAction::RefreshWallet => {
+            state.mission_control.mark_wallet_refresh_icon_clicked();
             queue_spark_command(state, SparkWalletCommand::Refresh);
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
@@ -9112,6 +9113,7 @@ pub(super) fn run_mission_control_action(
             true
         }
         MissionControlPaneAction::CopyLogStream => {
+            state.mission_control.mark_log_copy_icon_clicked();
             let output = state
                 .mission_control
                 .log_stream
