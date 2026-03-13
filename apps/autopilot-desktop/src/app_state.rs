@@ -1841,6 +1841,18 @@ impl MissionControlLocalRuntimePolicy {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MissionControlLocalRuntimeAction {
+    None,
+    StartAppleFm,
+    RefreshAppleFm,
+    OpenAppleFmWorkbench,
+    RefreshGptOss,
+    WarmGptOss,
+    UnloadGptOss,
+    OpenGptOssWorkbench,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct MissionControlLocalRuntimeViewModel {
     pub policy: MissionControlLocalRuntimePolicy,
@@ -1849,6 +1861,7 @@ pub(crate) struct MissionControlLocalRuntimeViewModel {
     pub go_online_ready: bool,
     pub supports_sell_compute: bool,
     pub show_local_model_button: bool,
+    pub primary_action: MissionControlLocalRuntimeAction,
     pub local_model_button_enabled: bool,
     pub local_model_button_label: String,
     pub model_label: String,
@@ -1978,6 +1991,20 @@ pub(crate) fn mission_control_local_runtime_view_model(
     local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
 ) -> MissionControlLocalRuntimeViewModel {
     let policy = mission_control_local_runtime_policy(desktop_shell_mode, local_inference_runtime);
+    mission_control_local_runtime_view_model_for_policy(
+        policy,
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+}
+
+fn mission_control_local_runtime_view_model_for_policy(
+    policy: MissionControlLocalRuntimePolicy,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> MissionControlLocalRuntimeViewModel {
     let lane = policy.local_runtime_lane();
     let supports_sell_compute = policy.supports_sell_compute();
     match lane {
@@ -1985,15 +2012,31 @@ pub(crate) fn mission_control_local_runtime_view_model(
             let runtime_ready = provider_runtime.apple_fm.is_ready();
             let bridge_starting =
                 provider_runtime.apple_fm.bridge_status.as_deref() == Some("starting");
-            let local_model_button_label =
+            let (primary_action, local_model_button_enabled, local_model_button_label) =
                 if bridge_starting {
-                    String::from("STARTING APPLE FM")
+                    (
+                        MissionControlLocalRuntimeAction::None,
+                        false,
+                        String::from("STARTING APPLE FM"),
+                    )
                 } else if desktop_shell_mode.is_dev() && runtime_ready {
-                    String::from("OPEN APPLE FM")
+                    (
+                        MissionControlLocalRuntimeAction::OpenAppleFmWorkbench,
+                        true,
+                        String::from("OPEN APPLE FM"),
+                    )
                 } else if provider_runtime.apple_fm.reachable {
-                    String::from("REFRESH APPLE FM")
+                    (
+                        MissionControlLocalRuntimeAction::RefreshAppleFm,
+                        true,
+                        String::from("REFRESH APPLE FM"),
+                    )
                 } else {
-                    String::from("START APPLE FM")
+                    (
+                        MissionControlLocalRuntimeAction::StartAppleFm,
+                        true,
+                        String::from("START APPLE FM"),
+                    )
                 };
             let model_label = provider_runtime
                 .apple_fm
@@ -2081,7 +2124,8 @@ pub(crate) fn mission_control_local_runtime_view_model(
                 go_online_ready: runtime_ready,
                 supports_sell_compute,
                 show_local_model_button: true,
-                local_model_button_enabled: !bridge_starting,
+                primary_action,
+                local_model_button_enabled,
                 local_model_button_label,
                 model_label,
                 backend_label,
@@ -2145,6 +2189,18 @@ pub(crate) fn mission_control_local_runtime_view_model(
                             .unwrap_or("configured model")
                     ),
                 )
+            } else if local_inference_runtime.busy {
+                if let Some(path_label) = path_label.as_deref() {
+                    (
+                        TerminalStream::Stdout,
+                        format!("GPT-OSS loading configured model ({path_label})."),
+                    )
+                } else {
+                    (
+                        TerminalStream::Stdout,
+                        format!("GPT-OSS runtime is loading on {backend} backend."),
+                    )
+                }
             } else if let Some(error) = local_inference_runtime.last_error.as_deref() {
                 (TerminalStream::Stderr, format!("GPT-OSS unavailable: {error}"))
             } else if !local_inference_runtime.artifact_present {
@@ -2186,6 +2242,10 @@ pub(crate) fn mission_control_local_runtime_view_model(
                 format!(
                     "GPT-OSS backend is {backend_upper}. Go Online currently requires CUDA for the compute lane."
                 )
+            } else if local_inference_runtime.busy {
+                String::from(
+                    "GPT-OSS is loading. Go Online unlocks when the configured model is ready.",
+                )
             } else if let Some(error) = local_inference_runtime.last_error.as_deref() {
                 format!("Mission Control needs GPT-OSS ready: {error}")
             } else if !local_inference_runtime.artifact_present {
@@ -2197,6 +2257,48 @@ pub(crate) fn mission_control_local_runtime_view_model(
             } else {
                 String::from("Refresh GPT-OSS runtime health before you go online.")
             };
+            let (primary_action, local_model_button_enabled, local_model_button_label) =
+                if !supports_sell_compute {
+                    (
+                        MissionControlLocalRuntimeAction::OpenGptOssWorkbench,
+                        true,
+                        String::from("OPEN GPT-OSS WORKBENCH"),
+                    )
+                } else if local_inference_runtime.busy {
+                    (
+                        MissionControlLocalRuntimeAction::None,
+                        false,
+                        String::from("GPT-OSS BUSY"),
+                    )
+                } else if runtime_ready {
+                    (
+                        MissionControlLocalRuntimeAction::UnloadGptOss,
+                        true,
+                        String::from("UNLOAD GPT-OSS"),
+                    )
+                } else if !local_inference_runtime.reachable
+                    || local_inference_runtime.last_error.is_some()
+                {
+                    (
+                        MissionControlLocalRuntimeAction::RefreshGptOss,
+                        true,
+                        String::from("REFRESH GPT-OSS"),
+                    )
+                } else if local_inference_runtime.configured_model_path.is_some()
+                    && local_inference_runtime.artifact_present
+                {
+                    (
+                        MissionControlLocalRuntimeAction::WarmGptOss,
+                        true,
+                        String::from("WARM GPT-OSS"),
+                    )
+                } else {
+                    (
+                        MissionControlLocalRuntimeAction::OpenGptOssWorkbench,
+                        true,
+                        String::from("OPEN GPT-OSS WORKBENCH"),
+                    )
+                };
             let mut detail_lines = vec![
                 (
                     TerminalStream::Stdout,
@@ -2240,8 +2342,9 @@ pub(crate) fn mission_control_local_runtime_view_model(
                 go_online_ready,
                 supports_sell_compute,
                 show_local_model_button: true,
-                local_model_button_enabled: true,
-                local_model_button_label: String::from("OPEN GPT-OSS WORKBENCH"),
+                primary_action,
+                local_model_button_enabled,
+                local_model_button_label,
                 model_label,
                 backend_label: format!("GPT-OSS / {backend_upper}"),
                 load_label,
@@ -2258,6 +2361,7 @@ pub(crate) fn mission_control_local_runtime_view_model(
             go_online_ready: false,
             supports_sell_compute,
             show_local_model_button: false,
+            primary_action: MissionControlLocalRuntimeAction::None,
             local_model_button_enabled: false,
             local_model_button_label: String::from("NO LOCAL MODEL"),
             model_label: String::from("No supported model"),
@@ -2351,7 +2455,20 @@ pub(crate) fn mission_control_local_runtime_is_ready(
     .go_online_ready
 }
 
-/// True when Mission Control should show the local-model button (Refresh/Start/Open Apple FM or Open GPT-OSS).
+pub(crate) fn mission_control_local_model_button_enabled(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    )
+    .local_model_button_enabled
+}
+
+/// True when Mission Control should show the primary local-runtime action button.
 pub(crate) fn mission_control_show_local_model_button(
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
@@ -16564,6 +16681,153 @@ mod tests {
             !lines
                 .iter()
                 .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
+    }
+
+    #[test]
+    fn mission_control_gpt_oss_cuda_view_model_cycles_refresh_warm_and_unload_actions() {
+        let provider = ProviderRuntimeState::default();
+
+        let refresh_view = super::mission_control_local_runtime_view_model_for_policy(
+            super::MissionControlLocalRuntimePolicy::GptOssCuda,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot {
+                backend_label: "cuda".to_string(),
+                artifact_present: true,
+                configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+                last_error: Some("runtime offline".to_string()),
+                ..super::LocalInferenceExecutionSnapshot::default()
+            },
+        );
+        assert_eq!(
+            refresh_view.lane,
+            Some(super::MissionControlLocalRuntimeLane::GptOss)
+        );
+        assert!(refresh_view.supports_sell_compute);
+        assert_eq!(
+            refresh_view.primary_action,
+            super::MissionControlLocalRuntimeAction::RefreshGptOss
+        );
+        assert!(refresh_view.local_model_button_enabled);
+        assert_eq!(refresh_view.local_model_button_label, "REFRESH GPT-OSS");
+        assert_eq!(
+            refresh_view.go_online_hint,
+            "Mission Control needs GPT-OSS ready: runtime offline"
+        );
+
+        let warm_view = super::mission_control_local_runtime_view_model_for_policy(
+            super::MissionControlLocalRuntimePolicy::GptOssCuda,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot {
+                reachable: true,
+                backend_label: "cuda".to_string(),
+                artifact_present: true,
+                configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+                configured_model: Some("gpt-oss-20b".to_string()),
+                ..super::LocalInferenceExecutionSnapshot::default()
+            },
+        );
+        assert_eq!(
+            warm_view.primary_action,
+            super::MissionControlLocalRuntimeAction::WarmGptOss
+        );
+        assert!(warm_view.local_model_button_enabled);
+        assert_eq!(warm_view.local_model_button_label, "WARM GPT-OSS");
+        assert!(!warm_view.go_online_ready);
+        assert_eq!(
+            warm_view.go_online_hint,
+            "Load the configured GPT-OSS model before you go online."
+        );
+
+        let unload_view = super::mission_control_local_runtime_view_model_for_policy(
+            super::MissionControlLocalRuntimePolicy::GptOssCuda,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot {
+                reachable: true,
+                ready_model: Some("gpt-oss-20b".to_string()),
+                backend_label: "cuda".to_string(),
+                artifact_present: true,
+                configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+                ..super::LocalInferenceExecutionSnapshot::default()
+            },
+        );
+        assert_eq!(
+            unload_view.primary_action,
+            super::MissionControlLocalRuntimeAction::UnloadGptOss
+        );
+        assert!(unload_view.local_model_button_enabled);
+        assert_eq!(unload_view.local_model_button_label, "UNLOAD GPT-OSS");
+        assert!(unload_view.go_online_ready);
+        assert_eq!(unload_view.go_online_hint, "");
+    }
+
+    #[test]
+    fn mission_control_gpt_oss_view_model_keeps_busy_and_unsupported_hosts_truthful() {
+        let provider = ProviderRuntimeState::default();
+
+        let busy_view = super::mission_control_local_runtime_view_model_for_policy(
+            super::MissionControlLocalRuntimePolicy::GptOssCuda,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot {
+                reachable: true,
+                busy: true,
+                backend_label: "cuda".to_string(),
+                artifact_present: true,
+                configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+                ..super::LocalInferenceExecutionSnapshot::default()
+            },
+        );
+        assert_eq!(
+            busy_view.lane,
+            Some(super::MissionControlLocalRuntimeLane::GptOss)
+        );
+        assert!(busy_view.supports_sell_compute);
+        assert_eq!(
+            busy_view.primary_action,
+            super::MissionControlLocalRuntimeAction::None
+        );
+        assert!(!busy_view.local_model_button_enabled);
+        assert_eq!(busy_view.local_model_button_label, "GPT-OSS BUSY");
+        assert_eq!(
+            busy_view.status_line,
+            "GPT-OSS loading configured model (gpt-oss-20b.gguf)."
+        );
+        assert_eq!(
+            busy_view.go_online_hint,
+            "GPT-OSS is loading. Go Online unlocks when the configured model is ready."
+        );
+
+        let unsupported_view = super::mission_control_local_runtime_view_model_for_policy(
+            super::MissionControlLocalRuntimePolicy::GptOssMetal,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot {
+                reachable: true,
+                ready_model: Some("gpt-oss-20b".to_string()),
+                backend_label: "metal".to_string(),
+                artifact_present: true,
+                configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+                ..super::LocalInferenceExecutionSnapshot::default()
+            },
+        );
+        assert_eq!(
+            unsupported_view.primary_action,
+            super::MissionControlLocalRuntimeAction::OpenGptOssWorkbench
+        );
+        assert!(!unsupported_view.supports_sell_compute);
+        assert!(unsupported_view.local_model_button_enabled);
+        assert_eq!(
+            unsupported_view.local_model_button_label,
+            "OPEN GPT-OSS WORKBENCH"
+        );
+        assert!(!unsupported_view.go_online_ready);
+        assert_eq!(
+            unsupported_view.go_online_hint,
+            "GPT-OSS backend is METAL. Go Online currently requires CUDA for the compute lane."
         );
     }
 

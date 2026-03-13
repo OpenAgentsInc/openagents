@@ -6,7 +6,7 @@ use winit::window::CursorIcon;
 
 use crate::app_state::{
     ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
-    mission_control_show_local_model_button,
+    mission_control_local_model_button_enabled, mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -5388,6 +5388,10 @@ fn pane_hit_action_for_pane(
                     MissionControlPaneAction::OpenBuyModePayments,
                 ))
             } else if mission_control_show_local_model_button(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            ) && mission_control_local_model_button_enabled(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
                 &state.gpt_oss_execution,

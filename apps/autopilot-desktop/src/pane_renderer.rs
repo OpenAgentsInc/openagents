@@ -2535,12 +2535,11 @@ fn mission_control_local_action_enabled(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> bool {
-    crate::app_state::mission_control_local_runtime_view_model(
+    crate::app_state::mission_control_local_model_button_enabled(
         desktop_shell_mode,
         provider_runtime,
         local_inference_runtime,
     )
-    .local_model_button_enabled
 }
 
 fn mission_control_local_fm_test_button_visible(
@@ -6938,11 +6937,12 @@ mod tests {
         earnings_scoreboard_amount_display, mission_control_active_jobs_panel_state,
         mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
         mission_control_buy_mode_payment_label, mission_control_go_online_hint,
-        mission_control_lightning_receive_state_label, mission_control_local_fm_test_button_label,
-        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
-        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
-        pay_invoice_view_state, payment_terminal_status, request_freshness_summary,
-        spark_wallet_view_state, split_text_for_display,
+        mission_control_lightning_receive_state_label, mission_control_local_action_enabled,
+        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
+        mission_control_local_model_button_label, mission_control_value_chunk_len,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, request_freshness_summary, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, EarnJobLifecycleProjectionState, JobDemandSource,
@@ -7522,7 +7522,7 @@ mod tests {
         if crate::app_state::mission_control_uses_apple_fm() {
             assert_eq!(button_label, "REFRESH APPLE FM");
         } else {
-            assert_eq!(button_label, "OPEN GPT-OSS WORKBENCH");
+            assert_eq!(button_label, "UNLOAD GPT-OSS");
         }
         assert_eq!(
             mission_control_go_online_hint(
@@ -7579,6 +7579,45 @@ mod tests {
                 "GPT-OSS backend is METAL. Go Online currently requires CUDA for the compute lane."
             );
         }
+    }
+
+    #[test]
+    fn mission_control_gpt_oss_busy_button_disables_inline_action() {
+        if crate::app_state::mission_control_uses_apple_fm() {
+            return;
+        }
+
+        let provider = ProviderRuntimeState::default();
+        let local = LocalInferenceExecutionSnapshot {
+            reachable: true,
+            busy: true,
+            backend_label: "cuda".to_string(),
+            artifact_present: true,
+            configured_model_path: Some("/tmp/models/gpt-oss-20b.gguf".to_string()),
+            ..LocalInferenceExecutionSnapshot::default()
+        };
+
+        assert_eq!(
+            mission_control_local_model_button_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "GPT-OSS BUSY"
+        );
+        assert!(!mission_control_local_action_enabled(
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &local,
+        ));
+        assert_eq!(
+            mission_control_go_online_hint(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local
+            ),
+            "GPT-OSS is loading. Go Online unlocks when the configured model is ready."
+        );
     }
 
     #[test]
