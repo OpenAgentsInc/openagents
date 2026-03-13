@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use crate::app_state::{JobHistoryState, NetworkRequestsState, PaneLoadState};
 use crate::nip90_compute_flow::{Nip90FlowPhase, build_buyer_request_flow_snapshot};
@@ -17,6 +17,9 @@ const NIP90_PAYMENT_FACT_STREAM_ID: &str = "stream.nip90_payment_facts.v1";
 const NIP90_PAYMENT_FACT_ROW_LIMIT: usize = 4096;
 const NIP90_ACTOR_ROW_LIMIT: usize = 4096;
 const NIP90_RELAY_HOP_ROW_LIMIT: usize = 8192;
+const LIVE_PROJECTION_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
+const LOG_BACKFILL_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
+const STARTUP_LOG_BACKFILL_DELAY: Duration = Duration::from_secs(8);
 const NIP90_ACTOR_ROLE_BUYER: u32 = 1 << 0;
 const NIP90_ACTOR_ROLE_PROVIDER: u32 = 1 << 1;
 const NIP90_ACTOR_ROLE_INVOICE_PROVIDER: u32 = 1 << 2;
@@ -251,6 +254,8 @@ pub struct Nip90PaymentFactLedgerState {
     pub relay_hops: Vec<Nip90RelayHop>,
     ledger_path: PathBuf,
     log_backfill: SessionLogBackfillCache,
+    next_live_projection_refresh_at: Option<Instant>,
+    next_log_backfill_refresh_at: Option<Instant>,
 }
 
 impl Default for Nip90PaymentFactLedgerState {
@@ -289,6 +294,8 @@ impl Nip90PaymentFactLedgerState {
             relay_hops,
             ledger_path,
             log_backfill: SessionLogBackfillCache::default(),
+            next_live_projection_refresh_at: None,
+            next_log_backfill_refresh_at: None,
         }
     }
 
@@ -337,14 +344,83 @@ impl Nip90PaymentFactLedgerState {
         job_history: &JobHistoryState,
         spark_wallet: &SparkPaneState,
         local_nostr_pubkey_hex: Option<&str>,
-    ) {
+    ) -> bool {
+        let now = Instant::now();
+        self.next_live_projection_refresh_at = Some(now + LIVE_PROJECTION_REFRESH_INTERVAL);
+        self.next_log_backfill_refresh_at = Some(now + LOG_BACKFILL_REFRESH_INTERVAL);
         self.sync_from_current_truth_with_session_log_dir(
             network_requests,
             job_history,
             spark_wallet,
             local_nostr_pubkey_hex,
             session_log_backfill_dir().as_path(),
-        );
+            true,
+        )
+    }
+
+    pub fn sync_from_background_tick(
+        &mut self,
+        network_requests: &NetworkRequestsState,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+        local_nostr_pubkey_hex: Option<&str>,
+        now: Instant,
+    ) -> bool {
+        self.sync_from_background_tick_with_session_log_dir(
+            network_requests,
+            job_history,
+            spark_wallet,
+            local_nostr_pubkey_hex,
+            session_log_backfill_dir().as_path(),
+            now,
+        )
+    }
+
+    fn sync_from_background_tick_with_session_log_dir(
+        &mut self,
+        network_requests: &NetworkRequestsState,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+        local_nostr_pubkey_hex: Option<&str>,
+        session_log_dir: &Path,
+        now: Instant,
+    ) -> bool {
+        if self.next_log_backfill_refresh_at.is_none() {
+            self.next_log_backfill_refresh_at = Some(now + STARTUP_LOG_BACKFILL_DELAY);
+        }
+
+        let backfill_due = self
+            .next_log_backfill_refresh_at
+            .is_some_and(|deadline| now >= deadline);
+        if backfill_due {
+            self.next_log_backfill_refresh_at = Some(now + LOG_BACKFILL_REFRESH_INTERVAL);
+            self.next_live_projection_refresh_at = Some(now + LIVE_PROJECTION_REFRESH_INTERVAL);
+            return self.sync_from_current_truth_with_session_log_dir(
+                network_requests,
+                job_history,
+                spark_wallet,
+                local_nostr_pubkey_hex,
+                session_log_dir,
+                true,
+            );
+        }
+
+        if self
+            .next_live_projection_refresh_at
+            .is_some_and(|deadline| now < deadline)
+        {
+            return false;
+        }
+
+        self.next_live_projection_refresh_at = Some(now + LIVE_PROJECTION_REFRESH_INTERVAL);
+        self.sync_from_current_truth_with_session_log_dir(
+            network_requests,
+            job_history,
+            spark_wallet,
+            local_nostr_pubkey_hex,
+            session_log_dir,
+            false,
+        )
     }
 
     fn sync_from_current_truth_with_session_log_dir(
@@ -354,12 +430,20 @@ impl Nip90PaymentFactLedgerState {
         spark_wallet: &SparkPaneState,
         local_nostr_pubkey_hex: Option<&str>,
         session_log_dir: &Path,
-    ) {
+        refresh_log_backfill: bool,
+    ) -> bool {
         let local_nostr_pubkey_hex = local_nostr_pubkey_hex
             .map(normalize_pubkey_key)
             .filter(|value| !value.is_empty());
-        let log_backfill_refresh =
-            self.refresh_log_backfill_cache(session_log_dir, local_nostr_pubkey_hex.as_deref());
+        let log_backfill_refresh = if refresh_log_backfill {
+            self.refresh_log_backfill_cache(session_log_dir, local_nostr_pubkey_hex.as_deref())
+        } else {
+            SessionLogBackfillRefresh {
+                changed: false,
+                fact_count: self.log_backfill.facts.len(),
+                notice: None,
+            }
+        };
         let mut facts_by_request = BTreeMap::<String, Nip90PaymentFact>::new();
         for fact in self.facts.iter().cloned() {
             merge_fact(&mut facts_by_request, fact);
@@ -403,17 +487,23 @@ impl Nip90PaymentFactLedgerState {
         let relay_hops = derive_relay_hops(facts.as_slice());
 
         if self.facts == facts && self.actors == actors && self.relay_hops == relay_hops {
+            let mut changed = false;
             if self.load_state == PaneLoadState::Loading {
                 self.load_state = PaneLoadState::Ready;
+                changed = true;
             }
-            self.last_error = None;
+            if self.last_error.take().is_some() {
+                changed = true;
+            }
             if log_backfill_refresh.changed || log_backfill_refresh.notice.is_some() {
-                self.last_action = Some(
-                    log_backfill_refresh
-                        .decorate_action("NIP-90 payment facts unchanged after sync"),
-                );
+                let action = log_backfill_refresh
+                    .decorate_action("NIP-90 payment facts unchanged after sync");
+                if self.last_action.as_deref() != Some(action.as_str()) {
+                    self.last_action = Some(action);
+                    changed = true;
+                }
             }
-            return;
+            return changed;
         }
 
         let fact_count = facts.len();
@@ -426,10 +516,11 @@ impl Nip90PaymentFactLedgerState {
             self.actors.as_slice(),
             self.relay_hops.as_slice(),
         ) {
+            let had_same_error = self.last_error.as_deref() == Some(error.as_str());
             self.last_error = Some(error);
             self.load_state = PaneLoadState::Error;
             self.last_action = Some("NIP-90 payment fact persist failed".to_string());
-            return;
+            return !had_same_error;
         }
 
         self.last_error = None;
@@ -438,6 +529,7 @@ impl Nip90PaymentFactLedgerState {
             "Rebuilt NIP-90 payment fact ledger ({} facts)",
             fact_count
         )));
+        true
     }
 
     fn refresh_log_backfill_cache(
@@ -1759,7 +1851,7 @@ fn load_nip90_payment_fact_document(path: &Path) -> Result<Nip90PaymentFactDocum
 mod tests {
     use super::{
         Nip90ActorNamespace, Nip90PaymentFactLedgerState, Nip90PaymentFactSourceQuality,
-        Nip90PaymentFactStatus,
+        Nip90PaymentFactStatus, STARTUP_LOG_BACKFILL_DELAY,
     };
     use crate::app_state::{
         BuyerResolutionMode, JobDemandSource, JobHistoryReceiptRow, JobHistoryState,
@@ -1773,7 +1865,7 @@ mod tests {
     use openagents_spark::PaymentSummary;
     use serde_json::json;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     fn temp_path(label: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -2377,6 +2469,7 @@ mod tests {
             &SparkPaneState::default(),
             Some("LOCALBUYERKEY"),
             session_dir.as_path(),
+            true,
         );
 
         let fact = ledger
@@ -2399,6 +2492,69 @@ mod tests {
                 .last_action
                 .as_deref()
                 .is_some_and(|action| action.contains("log-backfill facts cached"))
+        );
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+
+    #[test]
+    fn payment_fact_ledger_background_tick_defers_session_log_backfill_until_after_startup_delay() {
+        let path = temp_path("nip90-payment-log-deferred");
+        let session_dir = temp_session_dir("nip90-payment-log-deferred");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let session_path = session_dir.join("20260313T232500Z-pid999.jsonl");
+        write_session_log(
+            &session_path,
+            &[
+                json!({
+                    "timestamp_ms": 1_762_700_201_000_u64,
+                    "source": "tracing",
+                    "target": "autopilot_desktop::buyer",
+                    "line": "Published NIP-90 request request_id=req-log-deferred-001 request_type=text-generation event_id=event-request-deferred-001 accepted_relays=1 rejected_relays=0"
+                }),
+                json!({
+                    "timestamp_ms": 1_762_700_202_000_u64,
+                    "domain": {
+                        "event": "buyer.payment_settled",
+                        "request_id": "req-log-deferred-001",
+                        "provider_pubkey": "providerdeferred001",
+                        "payment_pointer": "wallet-send-deferred-001",
+                        "amount_sats": "5",
+                        "fees_sats": "1",
+                        "total_debit_sats": "6"
+                    }
+                }),
+            ],
+        );
+
+        let mut ledger = Nip90PaymentFactLedgerState::from_path_for_tests(path.clone());
+        let start = Instant::now();
+
+        assert!(!ledger.sync_from_background_tick_with_session_log_dir(
+            &NetworkRequestsState::default(),
+            &JobHistoryState::default(),
+            &SparkPaneState::default(),
+            Some("LOCALBUYERKEY"),
+            session_dir.as_path(),
+            start,
+        ));
+        assert!(ledger.fact_for_request("req-log-deferred-001").is_none());
+
+        assert!(ledger.sync_from_background_tick_with_session_log_dir(
+            &NetworkRequestsState::default(),
+            &JobHistoryState::default(),
+            &SparkPaneState::default(),
+            Some("LOCALBUYERKEY"),
+            session_dir.as_path(),
+            start + STARTUP_LOG_BACKFILL_DELAY + Duration::from_millis(1),
+        ));
+        let fact = ledger
+            .fact_for_request("req-log-deferred-001")
+            .expect("deferred log-backed fact should be imported");
+        assert_eq!(
+            fact.buyer_payment_pointer.as_deref(),
+            Some("wallet-send-deferred-001")
         );
 
         let _ = std::fs::remove_file(path);

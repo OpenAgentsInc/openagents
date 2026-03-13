@@ -440,12 +440,22 @@ impl SparkPaneState {
 
     fn complete_startup_convergence_after_refresh(&mut self) {
         if self.startup_convergence_active
-            && self
-                .startup_convergence_next_refresh_epoch_seconds
-                .is_none()
+            && (self.startup_convergence_satisfied()
+                || self
+                    .startup_convergence_next_refresh_epoch_seconds
+                    .is_none())
         {
             self.cancel_startup_convergence();
         }
+    }
+
+    fn startup_convergence_satisfied(&self) -> bool {
+        self.last_error.is_none()
+            && self.balance.is_some()
+            && self
+                .network_status
+                .as_ref()
+                .is_some_and(|status| status.status == NetworkStatus::Connected)
     }
 
     fn request_spark_address(&mut self, runtime: &Runtime) {
@@ -983,10 +993,10 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
 mod tests {
     use super::{
         DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
-        SPARK_ACTION_TIMEOUT, SparkInvoiceState, SparkPaneState, SparkWalletCommand,
-        SparkWalletWorker, coalesce_refresh_like_command_burst, configured_api_key,
-        configured_network, is_settled_wallet_payment_status, is_terminal_wallet_payment_status,
-        run_with_timeout, timeout_message,
+        NetworkStatus, NetworkStatusReport, SPARK_ACTION_TIMEOUT, SparkInvoiceState,
+        SparkPaneState, SparkWalletCommand, SparkWalletWorker, coalesce_refresh_like_command_burst,
+        configured_api_key, configured_network, is_settled_wallet_payment_status,
+        is_terminal_wallet_payment_status, run_with_timeout, timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
@@ -1364,6 +1374,27 @@ mod tests {
             assert_eq!(state.network_status_label(), "unknown");
             assert!(state.last_error.is_some());
         });
+    }
+
+    #[test]
+    fn startup_convergence_clears_early_once_wallet_state_is_ready() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
+
+        state.begin_startup_convergence(100);
+        state.network_status = Some(NetworkStatusReport {
+            status: NetworkStatus::Connected,
+            detail: None,
+        });
+        state.balance = Some(Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        state.complete_startup_convergence_after_refresh();
+
+        assert!(!state.startup_convergence_active);
+        assert_eq!(state.network_status_label(), "connected");
     }
 
     #[test]

@@ -430,7 +430,6 @@ fn rehydrate_startup_earnings_history(state: &mut RenderState) {
         reference_epoch_seconds,
         source_error,
     );
-    state.refresh_nip90_payment_facts();
 }
 
 pub(crate) fn sync_project_ops_runtime_contract_state(state: &mut RenderState) {
@@ -738,7 +737,6 @@ fn open_startup_panes(state: &mut RenderState) {
 
 pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRenderReport> {
     let frame_start = Instant::now();
-    state.refresh_nip90_payment_facts();
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let height = logical.height;
