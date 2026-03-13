@@ -828,6 +828,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 2: Cluster Control And Scheduling
 
 9. **Psionic Cluster: make ordered state durable and catch-up capable**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3493`.
    - Persist ordered cluster facts, event indices, and snapshots so cluster state can survive restarts and late joins.
    - This is the minimum requirement for trustworthy multi-node execution.
 
