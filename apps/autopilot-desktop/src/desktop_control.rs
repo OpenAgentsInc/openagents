@@ -2098,7 +2098,11 @@ fn withdraw_action(state: &mut RenderState, bolt11: &str) -> DesktopControlActio
         .pay_invoice_inputs
         .payment_request
         .set_value(trimmed.to_string());
-    pay_invoice_action_response(state, PayInvoicePaneAction::SendPayment, "Queued Lightning withdrawal")
+    pay_invoice_action_response(
+        state,
+        PayInvoicePaneAction::SendPayment,
+        "Queued Lightning withdrawal",
+    )
 }
 
 fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionResponse {
@@ -2159,12 +2163,8 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         generated_at_epoch_ms: current_epoch_ms(),
         session: DesktopControlSessionStatus {
             pid: std::process::id(),
-            shell_mode: if state.dev_mode_enabled() {
-                "dev".to_string()
-            } else {
-                "production".to_string()
-            },
-            dev_mode_enabled: state.dev_mode_enabled(),
+            shell_mode: "hotbar".to_string(),
+            dev_mode_enabled: false,
             buy_mode_surface_enabled: state.mission_control_buy_mode_enabled(),
         },
         mission_control: DesktopControlMissionControlStatus {
@@ -2172,11 +2172,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.mission_control.last_error.clone(),
             can_go_online: state.mission_control_go_online_enabled(),
             blocker_codes: blocker_codes.clone(),
-            log_line_count: state
-                .log_stream
-                .terminal
-                .recent_lines(usize::MAX)
-                .len(),
+            log_line_count: state.log_stream.terminal.recent_lines(usize::MAX).len(),
         },
         provider: DesktopControlProviderStatus {
             mode: state.provider_nip90_lane.mode.label().to_string(),
@@ -2478,7 +2474,10 @@ fn withdraw_readiness(balance_sats: Option<u64>, wallet_connected: bool) -> (boo
         return (false, Some("wallet is not connected to Spark".to_string()));
     }
     let Some(balance_sats) = balance_sats else {
-        return (false, Some("wallet balance is still reconciling".to_string()));
+        return (
+            false,
+            Some("wallet balance is still reconciling".to_string()),
+        );
     };
     if balance_sats == 0 {
         return (false, Some("wallet balance is zero".to_string()));
@@ -2947,7 +2946,7 @@ mod tests {
             generated_at_epoch_ms: 123,
             session: DesktopControlSessionStatus {
                 pid: 42,
-                shell_mode: "production".to_string(),
+                shell_mode: "hotbar".to_string(),
                 dev_mode_enabled: false,
                 buy_mode_surface_enabled: true,
             },

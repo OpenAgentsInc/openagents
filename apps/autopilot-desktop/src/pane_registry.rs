@@ -4,16 +4,16 @@ use crate::spark_pane::{
     PAY_INVOICE_PANE_WIDTH, SPARK_PANE_HEIGHT, SPARK_PANE_WIDTH,
 };
 
-pub const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
+pub const HOTBAR_SLOT_PROVIDER_CONTROL: u8 = 1;
 pub const HOTBAR_SLOT_NOSTR_IDENTITY: u8 = 2;
 pub const HOTBAR_SLOT_SPARK_WALLET: u8 = 3;
-pub const HOTBAR_SLOT_COMMAND_PALETTE: u8 = 4;
-pub const HOTBAR_SLOT_PROVIDER_CONTROL: u8 = 5;
-pub const HOTBAR_SLOT_EARNINGS_JOBS: u8 = 6;
+pub const HOTBAR_SLOT_EARNINGS_JOBS: u8 = 4;
+pub const HOTBAR_SLOT_LOG_STREAM: u8 = 5;
+pub const HOTBAR_SLOT_COMMAND_PALETTE: u8 = 6;
 
 pub const HOTBAR_COMMAND_PALETTE_ICON: &str = "K";
 pub const HOTBAR_COMMAND_PALETTE_TOOLTIP: &str = "Command palette";
-pub const HOTBAR_COMMAND_PALETTE_SHORTCUT: &str = "4";
+pub const HOTBAR_COMMAND_PALETTE_SHORTCUT: &str = "K";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PaneCommandSpec {
@@ -115,12 +115,7 @@ const PANE_SPECS: [PaneSpec; 44] = [
             description: "Open a simple local Autopilot conversation pane",
             keybinding: None,
         }),
-        hotbar: Some(PaneHotbarSpec {
-            slot: HOTBAR_SLOT_NEW_CHAT,
-            icon: "<>",
-            tooltip: "Autopilot Chat",
-            shortcut: None,
-        }),
+        hotbar: None,
     },
     PaneSpec {
         kind: PaneKind::ProjectOps,
@@ -268,13 +263,13 @@ const PANE_SPECS: [PaneSpec; 44] = [
             id: "pane.provider_control",
             label: "Provider Control",
             description: "Open provider status, runtime controls, and launch inventory toggles",
-            keybinding: None,
+            keybinding: Some("1"),
         }),
         hotbar: Some(PaneHotbarSpec {
             slot: HOTBAR_SLOT_PROVIDER_CONTROL,
             icon: ">",
             tooltip: "Provider control",
-            shortcut: Some("5"),
+            shortcut: Some("1"),
         }),
     },
     PaneSpec {
@@ -328,18 +323,18 @@ const PANE_SPECS: [PaneSpec; 44] = [
         default_width: 980.0,
         default_height: 560.0,
         singleton: true,
-        startup: false,
+        startup: true,
         command: Some(PaneCommandSpec {
             id: "pane.earnings_scoreboard",
             label: "Earnings & Jobs",
             description: "Open provider earnings, active-job, inbox, and recent history summaries",
-            keybinding: None,
+            keybinding: Some("4"),
         }),
         hotbar: Some(PaneHotbarSpec {
             slot: HOTBAR_SLOT_EARNINGS_JOBS,
-            icon: "$",
+            icon: "E",
             tooltip: "Earnings and jobs",
-            shortcut: Some("6"),
+            shortcut: Some("4"),
         }),
     },
     PaneSpec {
@@ -533,9 +528,14 @@ const PANE_SPECS: [PaneSpec; 44] = [
             id: "pane.log_stream",
             label: "Log Stream",
             description: "Open replay-safe runtime logs with independent scroll and copy-all",
-            keybinding: None,
+            keybinding: Some("5"),
         }),
-        hotbar: None,
+        hotbar: Some(PaneHotbarSpec {
+            slot: HOTBAR_SLOT_LOG_STREAM,
+            icon: "L",
+            tooltip: "Log stream",
+            shortcut: Some("5"),
+        }),
     },
     PaneSpec {
         kind: PaneKind::BuyModePayments,
@@ -547,8 +547,7 @@ const PANE_SPECS: [PaneSpec; 44] = [
         command: Some(PaneCommandSpec {
             id: "pane.buy_mode_payments",
             label: "Buy Mode",
-            description:
-                "Open the buyer smoke-test loop, targeting state, and payment history surface",
+            description: "Open the buyer smoke-test loop, targeting state, and payment history surface",
             keybinding: None,
         }),
         hotbar: None,
@@ -570,7 +569,7 @@ const PANE_SPECS: [PaneSpec; 44] = [
             slot: HOTBAR_SLOT_NOSTR_IDENTITY,
             icon: "N",
             tooltip: "Nostr keys",
-            shortcut: None,
+            shortcut: Some("2"),
         }),
     },
     PaneSpec {

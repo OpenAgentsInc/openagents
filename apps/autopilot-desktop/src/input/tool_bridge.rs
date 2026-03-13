@@ -5796,9 +5796,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
         PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
         PaneKind::LogStream => &["log_stream", "logs", "runtime_logs"],
-        PaneKind::BuyModePayments => {
-            &["buy_mode", "buy_mode_payments", "buy_payments", "payment_history"]
-        }
+        PaneKind::BuyModePayments => &[
+            "buy_mode",
+            "buy_mode_payments",
+            "buy_payments",
+            "payment_history",
+        ],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],

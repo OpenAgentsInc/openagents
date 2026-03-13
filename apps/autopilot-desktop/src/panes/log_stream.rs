@@ -17,7 +17,10 @@ pub fn paint(
     );
     paint.scene.draw_text(paint.text.layout(
         "Replay-safe runtime logs for provider, buyer, wallet, and mirrored trace output.",
-        Point::new(content_bounds.origin.x + 12.0, content_bounds.origin.y + 12.0),
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 12.0,
+        ),
         10.0,
         theme::text::MUTED,
     ));

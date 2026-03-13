@@ -1,15 +1,14 @@
 use wgpui::{Bounds, PaintContext, Point, theme};
 
 use crate::app_state::{
-    MissionControlLocalRuntimeLane, ProviderBlocker, ProviderControlPaneState, ProviderRuntimeState,
-    mission_control_local_model_button_enabled, mission_control_local_runtime_is_ready,
-    mission_control_local_runtime_lane, mission_control_local_runtime_view_model,
-    mission_control_show_local_model_button,
+    MissionControlLocalRuntimeLane, ProviderBlocker, ProviderControlPaneState,
+    ProviderRuntimeState, mission_control_local_model_button_enabled,
+    mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
+    mission_control_local_runtime_view_model, mission_control_show_local_model_button,
 };
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_renderer::{
-    mission_control_blocker_detail, paint_action_button, paint_source_badge,
-    split_text_for_display,
+    mission_control_blocker_detail, paint_action_button, paint_source_badge, split_text_for_display,
 };
 use crate::pane_system::{
     provider_control_inventory_toggle_button_bounds, provider_control_local_fm_test_button_bounds,
@@ -154,9 +153,8 @@ pub fn paint_provider_control_pane(
         );
     }
     if let Some(action) = provider_control.last_action.as_deref() {
-        detail_lines.extend(
-            split_text_for_display(&format!("Last action: {action}"), 96).into_iter(),
-        );
+        detail_lines
+            .extend(split_text_for_display(&format!("Last action: {action}"), 96).into_iter());
     }
     if let Some(error) = provider_control.last_error.as_deref() {
         detail_lines.extend(split_text_for_display(&format!("Error: {error}"), 96).into_iter());
@@ -164,7 +162,10 @@ pub fn paint_provider_control_pane(
     if !provider_control.local_fm_summary_text.trim().is_empty() {
         detail_lines.extend(
             split_text_for_display(
-                &format!("Local FM summary: {}", provider_control.local_fm_summary_text.trim()),
+                &format!(
+                    "Local FM summary: {}",
+                    provider_control.local_fm_summary_text.trim()
+                ),
                 96,
             )
             .into_iter(),
