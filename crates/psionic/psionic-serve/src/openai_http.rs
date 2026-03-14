@@ -27,9 +27,11 @@ use axum::{
 use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_models::{
     GgufBlobArtifact, GgufDecoderFamily, GgufPromptTemplateRenderer, GptOssHarmonyParseOptions,
-    GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig,
-    PromptMessage, PromptMessageRole, PromptReasoningEffort, PromptRenderOptions,
-    parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
+    GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, GptOssTokenizer,
+    ParsedReasoningResponse, PromptChannelConfig, PromptMessage, PromptMessageRole,
+    PromptReasoningEffort, PromptRenderOptions, ReasoningParser, parse_gpt_oss_harmony_text,
+    parse_reasoning_response_text_for_decoder_family, reasoning_parser_for_decoder_family,
+    render_gpt_oss_harmony_prompt,
 };
 use psionic_runtime::{
     ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
@@ -61,10 +63,6 @@ use crate::{
 const DEFAULT_MAX_TOKENS: usize = 256;
 const HARMONY_RETURN_STOP: &str = "<|return|>";
 const HARMONY_CALL_STOP: &str = "<|call|>";
-const HARMONY_START_TOKEN: &str = "<|start|>";
-const HARMONY_END_TOKEN: &str = "<|end|>";
-const HARMONY_MESSAGE_TOKEN: &str = "<|message|>";
-const HARMONY_CHANNEL_TOKEN: &str = "<|channel|>";
 const CPU_SERVER_RESIDENCY_MODE: &str = "cpu_only";
 const CPU_SERVER_HYBRID_OFFLOAD_MODE: &str = "unsupported";
 const CPU_SERVER_FALLBACK_POLICY: &str = "refuse";
@@ -132,6 +130,12 @@ struct ToolCallingContract {
 struct ToolCallOutcome {
     content: Option<String>,
     tool_calls: Vec<ResolvedToolCall>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ResolvedReasoningRequest {
+    parser: ReasoningParser,
+    mode: PsionicReasoningMode,
 }
 
 #[derive(Clone, Debug)]
@@ -1643,7 +1647,25 @@ struct ChatCompletionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_structured_output: Option<StructuredOutputRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_reasoning: Option<PsionicReasoningRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_prefix_cache: Option<PrefixCacheControl>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PsionicReasoningMode {
+    #[default]
+    Separate,
+    Suppress,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+struct PsionicReasoningRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parser: Option<ReasoningParser>,
+    #[serde(default)]
+    mode: PsionicReasoningMode,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1774,6 +1796,8 @@ struct ResponsesRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_structured_output: Option<StructuredOutputRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_reasoning: Option<PsionicReasoningRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_prefix_cache: Option<PrefixCacheControl>,
 }
 
@@ -1870,6 +1894,74 @@ fn validate_structured_output_request(
     StructuredOutputMatcher::compile(structured_output.clone())
         .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))?;
     Ok(structured_output)
+}
+
+fn reasoning_request_for_family(
+    request: Option<&PsionicReasoningRequest>,
+    family: GgufDecoderFamily,
+) -> Result<Option<ResolvedReasoningRequest>, OpenAiCompatHttpError> {
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let Some(family_parser) = reasoning_parser_for_decoder_family(family) else {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "model family `{}` does not expose a Psionic reasoning parser",
+            decoder_family_label(family)
+        )));
+    };
+    if let Some(parser) = request.parser
+        && parser != family_parser
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "requested reasoning parser `{}` does not match the `{}` parser for model family `{}`",
+            parser.label(),
+            family_parser.label(),
+            decoder_family_label(family)
+        )));
+    }
+    Ok(Some(ResolvedReasoningRequest {
+        parser: request.parser.unwrap_or(family_parser),
+        mode: request.mode,
+    }))
+}
+
+fn decoder_family_label(family: GgufDecoderFamily) -> &'static str {
+    match family {
+        GgufDecoderFamily::Llama => "llama",
+        GgufDecoderFamily::Qwen => "qwen",
+        GgufDecoderFamily::Mistral => "mistral",
+        GgufDecoderFamily::GptOss => "gpt_oss",
+    }
+}
+
+fn parse_reasoning_response_for_family(
+    family: GgufDecoderFamily,
+    text: &str,
+) -> Result<Option<ParsedReasoningResponse>, OpenAiCompatHttpError> {
+    parse_reasoning_response_text_for_decoder_family(
+        family,
+        text,
+        GptOssHarmonyParseOptions {
+            role_hint: Some(PromptMessageRole::Assistant),
+            strict: false,
+        },
+    )
+    .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))
+}
+
+fn surfaced_reasoning_response(
+    parsed: Option<&ParsedReasoningResponse>,
+    request: Option<&ResolvedReasoningRequest>,
+    include_debug_fields: bool,
+) -> Option<ParsedReasoningResponse> {
+    let parsed = parsed?;
+    if let Some(request) = request {
+        return Some(match request.mode {
+            PsionicReasoningMode::Separate => parsed.clone(),
+            PsionicReasoningMode::Suppress => parsed.suppress_reasoning(),
+        });
+    }
+    include_debug_fields.then(|| parsed.clone())
 }
 
 fn tool_contract_from_chat_request(
@@ -2245,6 +2337,10 @@ async fn handle_chat_completions(
     state: Arc<GptOssOpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
+    let reasoning_request = reasoning_request_for_family(
+        request.psionic_reasoning.as_ref(),
+        GgufDecoderFamily::GptOss,
+    )?;
     let tool_contract = tool_contract_from_chat_request(&request, false)?;
     if tool_contract
         .as_ref()
@@ -2257,6 +2353,11 @@ async fn handle_chat_completions(
     if structured_output_from_chat_request(&request)?.is_some() {
         return Err(OpenAiCompatHttpError::BadRequest(String::from(
             "structured output fallback is only available on `psionic-openai-server` today",
+        )));
+    }
+    if state.proxy.is_some() && reasoning_request.is_some() {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "psionic reasoning separation is unavailable while the GPT-OSS endpoint is proxying through llama.cpp",
         )));
     }
     if let Some(proxy) = state.proxy.as_ref() {
@@ -2314,19 +2415,22 @@ async fn handle_chat_completions(
         })
     })?;
     let response = worker.generate(generation_request).await?;
-    let parsed = if state.include_psionic_fields {
-        parse_gpt_oss_harmony_text(
-            response.output.text.as_str(),
-            GptOssHarmonyParseOptions {
-                role_hint: Some(PromptMessageRole::Assistant),
-                strict: false,
-            },
-        )
-        .ok()
-    } else {
-        None
-    };
-    let choice = completion_choice(&response, parsed.clone());
+    let parsed = parse_gpt_oss_harmony_text(
+        response.output.text.as_str(),
+        GptOssHarmonyParseOptions {
+            role_hint: Some(PromptMessageRole::Assistant),
+            strict: false,
+        },
+    )
+    .ok();
+    let parsed_reasoning = parsed
+        .as_ref()
+        .map(GptOssHarmonyParsedOutput::reasoning_response);
+    let choice = completion_choice(
+        &response,
+        parsed_reasoning.as_ref(),
+        reasoning_request.as_ref(),
+    );
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
             request_id.as_str(),
@@ -2339,6 +2443,7 @@ async fn handle_chat_completions(
             request_id.as_str(),
             response_model_name.as_str(),
             choice.content.clone(),
+            choice.reasoning_content.clone(),
             (!choice.tool_calls.is_empty()).then_some(choice.tool_calls.clone()),
             unix_timestamp_secs(),
         ))?;
@@ -2374,6 +2479,11 @@ async fn handle_chat_completions(
             .include_psionic_fields
             .then(|| response.metrics.clone()),
         psionic_harmony,
+        psionic_reasoning: surfaced_reasoning_response(
+            parsed_reasoning.as_ref(),
+            reasoning_request.as_ref(),
+            state.include_psionic_fields,
+        ),
         psionic_perf: state
             .include_psionic_fields
             .then(|| response.metrics.gpt_oss_perf.clone())
@@ -2425,6 +2535,8 @@ async fn handle_generic_chat_completions(
             loaded_model.model_key
         ))
     })?;
+    let reasoning_request =
+        reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
     let structured_output = structured_output_from_chat_request(&request)?;
     let tool_contract = tool_contract_from_chat_request(&request, structured_output.is_some())?;
     let prompt_messages = apply_tool_contract_to_prompt_messages(
@@ -2461,6 +2573,13 @@ async fn handle_generic_chat_completions(
         .map_err(|error| {
             OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
         })?;
+    let parsed_reasoning = if reasoning_parser_for_decoder_family(model.family).is_some() {
+        parse_reasoning_response_for_family(model.family, response.output.text.as_str())
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     let parsed =
         if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
             parse_gpt_oss_harmony_text(
@@ -2479,7 +2598,8 @@ async fn handle_generic_chat_completions(
     let choice = completion_choice_for_family(
         model.family,
         &response,
-        parsed.clone(),
+        parsed_reasoning.as_ref(),
+        reasoning_request.as_ref(),
         tool_outcome.as_ref(),
     )?;
     let psionic_tool_calls = tool_outcome
@@ -2537,6 +2657,7 @@ async fn handle_generic_chat_completions(
             request_id.as_str(),
             response_model_name.as_str(),
             choice.content.clone(),
+            choice.reasoning_content.clone(),
             (!choice.tool_calls.is_empty()).then_some(choice.tool_calls.clone()),
             unix_timestamp_secs(),
         ))?;
@@ -2582,6 +2703,11 @@ async fn handle_generic_chat_completions(
             .include_psionic_fields
             .then(|| response.metrics.clone()),
         psionic_harmony,
+        psionic_reasoning: surfaced_reasoning_response(
+            parsed_reasoning.as_ref(),
+            reasoning_request.as_ref(),
+            state.include_psionic_fields,
+        ),
         psionic_perf: state
             .include_psionic_fields
             .then(|| response.metrics.gpt_oss_perf.clone())
@@ -2655,6 +2781,8 @@ async fn handle_generic_responses(
             loaded_model.model_key
         ))
     })?;
+    let reasoning_request =
+        reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
     let structured_output = structured_output_from_responses_request(&request)?;
     let tool_contract =
         tool_contract_from_responses_request(&request, structured_output.is_some())?;
@@ -2691,6 +2819,13 @@ async fn handle_generic_responses(
         .map_err(|error| {
             OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
         })?;
+    let parsed_reasoning = if reasoning_parser_for_decoder_family(model.family).is_some() {
+        parse_reasoning_response_for_family(model.family, response.output.text.as_str())
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     let parsed =
         if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
             parse_gpt_oss_harmony_text(
@@ -2709,7 +2844,8 @@ async fn handle_generic_responses(
     let choice = completion_choice_for_family(
         model.family,
         &response,
-        parsed.clone(),
+        parsed_reasoning.as_ref(),
+        reasoning_request.as_ref(),
         tool_outcome.as_ref(),
     )?;
     let content = choice.content.clone().unwrap_or_default();
@@ -2762,20 +2898,7 @@ async fn handle_generic_responses(
         created_at: unix_timestamp_secs(),
         status: "completed",
         model: response_model_name,
-        output: if content.is_empty() {
-            Vec::new()
-        } else {
-            vec![ResponsesOutputItem {
-                id: format!("{request_id}-msg-0"),
-                kind: "message",
-                status: "completed",
-                role: "assistant",
-                content: vec![ResponsesOutputContent {
-                    kind: "output_text",
-                    text: content.clone(),
-                }],
-            }]
-        },
+        output: responses_output_items(request_id.as_str(), &choice),
         output_text: content,
         usage: ResponsesUsage {
             input_tokens: response.usage.input_tokens,
@@ -2787,6 +2910,11 @@ async fn handle_generic_responses(
             .include_psionic_fields
             .then(|| response.metrics.clone()),
         psionic_harmony: state.include_psionic_fields.then_some(parsed).flatten(),
+        psionic_reasoning: surfaced_reasoning_response(
+            parsed_reasoning.as_ref(),
+            reasoning_request.as_ref(),
+            state.include_psionic_fields,
+        ),
         psionic_perf: state
             .include_psionic_fields
             .then(|| response.metrics.gpt_oss_perf.clone())
@@ -2994,6 +3122,8 @@ struct ChatCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_harmony: Option<GptOssHarmonyParsedOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_reasoning: Option<ParsedReasoningResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     psionic_perf: Option<GptOssPerformanceMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_output_text: Option<String>,
@@ -3025,6 +3155,8 @@ struct ResponsesResponse {
     psionic_metrics: Option<GenerationMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_harmony: Option<GptOssHarmonyParsedOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_reasoning: Option<ParsedReasoningResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_perf: Option<GptOssPerformanceMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3075,6 +3207,8 @@ struct ChatCompletionResponseMessage {
     role: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<ChatCompletionToolCall>>,
 }
@@ -3150,12 +3284,15 @@ struct ChatCompletionChunkDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<ChatCompletionToolCall>>,
 }
 
 #[derive(Clone, Debug)]
 struct ParsedCompletionChoice {
     content: Option<String>,
+    reasoning_content: Option<String>,
     tool_calls: Vec<ChatCompletionToolCall>,
     finish_reason: &'static str,
 }
@@ -3167,6 +3304,7 @@ impl ParsedCompletionChoice {
             message: ChatCompletionResponseMessage {
                 role: "assistant",
                 content: self.content,
+                reasoning_content: self.reasoning_content,
                 tool_calls: (!self.tool_calls.is_empty()).then_some(self.tool_calls),
             },
             finish_reason: self.finish_reason,
@@ -3184,13 +3322,20 @@ struct PsionicToolCall {
 
 fn completion_choice(
     response: &crate::GenerationResponse,
-    parsed: Option<GptOssHarmonyParsedOutput>,
+    parsed_reasoning: Option<&ParsedReasoningResponse>,
+    reasoning_request: Option<&ResolvedReasoningRequest>,
 ) -> ParsedCompletionChoice {
-    let content = fast_final_assistant_content(response.output.text.as_str())
-        .or_else(|| parsed.as_ref().and_then(final_assistant_content))
+    let content = parsed_reasoning
+        .and_then(|parsed| parsed.final_content.clone())
         .unwrap_or_else(|| response.output.text.clone());
     ParsedCompletionChoice {
         content: Some(content),
+        reasoning_content: reasoning_request.and_then(|request| match request.mode {
+            PsionicReasoningMode::Separate => {
+                parsed_reasoning.and_then(|parsed| parsed.reasoning_content.clone())
+            }
+            PsionicReasoningMode::Suppress => None,
+        }),
         tool_calls: Vec::new(),
         finish_reason: finish_reason(response.termination),
     }
@@ -3220,6 +3365,7 @@ fn completion_delta_chunk(
     request_id: &str,
     model: &str,
     content: Option<String>,
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<ChatCompletionToolCall>>,
     created: u64,
 ) -> ChatCompletionChunk {
@@ -3233,11 +3379,43 @@ fn completion_delta_chunk(
             delta: ChatCompletionChunkDelta {
                 role: Some("assistant"),
                 content,
+                reasoning_content,
                 tool_calls,
             },
             finish_reason: None,
         }],
     }
+}
+
+fn responses_output_items(
+    request_id: &str,
+    choice: &ParsedCompletionChoice,
+) -> Vec<ResponsesOutputItem> {
+    let mut content_items = Vec::new();
+    if let Some(reasoning) = choice.reasoning_content.clone() {
+        content_items.push(ResponsesOutputContent {
+            kind: "reasoning_text",
+            text: reasoning,
+        });
+    }
+    if let Some(content) = choice.content.clone()
+        && !content.is_empty()
+    {
+        content_items.push(ResponsesOutputContent {
+            kind: "output_text",
+            text: content,
+        });
+    }
+    if content_items.is_empty() {
+        return Vec::new();
+    }
+    vec![ResponsesOutputItem {
+        id: format!("{request_id}-msg-0"),
+        kind: "message",
+        status: "completed",
+        role: "assistant",
+        content: content_items,
+    }]
 }
 
 fn serialize_event_data(value: &impl Serialize) -> Result<String, OpenAiCompatHttpError> {
@@ -3628,7 +3806,8 @@ fn fallback_prompt_text(messages: &[PromptMessage]) -> String {
 fn completion_choice_for_family(
     family: GgufDecoderFamily,
     response: &crate::GenerationResponse,
-    parsed: Option<GptOssHarmonyParsedOutput>,
+    parsed_reasoning: Option<&ParsedReasoningResponse>,
+    reasoning_request: Option<&ResolvedReasoningRequest>,
     tool_outcome: Option<&ToolCallOutcome>,
 ) -> Result<ParsedCompletionChoice, OpenAiCompatHttpError> {
     if let Some(tool_outcome) = tool_outcome {
@@ -3640,6 +3819,12 @@ fn completion_choice_for_family(
             .collect::<Result<Vec<_>, OpenAiCompatHttpError>>()?;
         return Ok(ParsedCompletionChoice {
             content: tool_outcome.content.clone(),
+            reasoning_content: reasoning_request.and_then(|request| match request.mode {
+                PsionicReasoningMode::Separate => {
+                    parsed_reasoning.and_then(|parsed| parsed.reasoning_content.clone())
+                }
+                PsionicReasoningMode::Suppress => None,
+            }),
             finish_reason: if tool_calls.is_empty() {
                 finish_reason(response.termination)
             } else {
@@ -3649,10 +3834,15 @@ fn completion_choice_for_family(
         });
     }
     if matches!(family, GgufDecoderFamily::GptOss) {
-        return Ok(completion_choice(response, parsed));
+        return Ok(completion_choice(
+            response,
+            parsed_reasoning,
+            reasoning_request,
+        ));
     }
     Ok(ParsedCompletionChoice {
         content: Some(response.output.text.clone()),
+        reasoning_content: None,
         tool_calls: Vec::new(),
         finish_reason: finish_reason(response.termination),
     })
@@ -3888,42 +4078,6 @@ fn prompt_message_role_cache_key(role: PromptMessageRole) -> &'static str {
     }
 }
 
-fn final_assistant_content(parsed: &GptOssHarmonyParsedOutput) -> Option<String> {
-    parsed
-        .messages
-        .iter()
-        .rev()
-        .find(|message| {
-            message.role == PromptMessageRole::Assistant
-                && message.channel.as_deref().unwrap_or("final") == "final"
-        })
-        .map(|message| message.content.clone())
-}
-
-fn fast_final_assistant_content(text: &str) -> Option<String> {
-    let assistant_start = text.rfind(HARMONY_START_TOKEN)?;
-    let assistant_header = &text[assistant_start..];
-    if !assistant_header.starts_with("<|start|>assistant") {
-        return None;
-    }
-    let message_offset = assistant_header.find(HARMONY_MESSAGE_TOKEN)?;
-    let header = &assistant_header[..message_offset];
-    if let Some(channel_offset) = header.find(HARMONY_CHANNEL_TOKEN) {
-        let channel = &header[channel_offset + HARMONY_CHANNEL_TOKEN.len()..];
-        if channel.trim() != "final" {
-            return None;
-        }
-    }
-    let content_start = assistant_start + message_offset + HARMONY_MESSAGE_TOKEN.len();
-    let content_tail = &text[content_start..];
-    let content_end = [HARMONY_END_TOKEN, HARMONY_RETURN_STOP, HARMONY_CALL_STOP]
-        .iter()
-        .filter_map(|marker| content_tail.find(marker))
-        .min()
-        .unwrap_or(content_tail.len());
-    Some(content_tail[..content_end].to_string())
-}
-
 fn validate_requested_model(
     requested: Option<&str>,
     accepted_model_names: &BTreeSet<String>,
@@ -3987,16 +4141,20 @@ mod tests {
         ChatCompletionResponseFormatRequest, EmbeddingsInput, EmbeddingsRequest,
         GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, HARMONY_CALL_STOP,
         HARMONY_RETURN_STOP, NamedToolChoiceFunction, NamedToolChoiceRequest, OpenAiCompatConfig,
-        OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, ResponsesInput,
-        ResponsesRequest, ToolChoiceRequest, ToolDefinitionEnvelope, ToolDefinitionRequest,
+        OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, PsionicReasoningMode,
+        PsionicReasoningRequest, ResolvedReasoningRequest, ResponsesInput, ResponsesRequest,
+        ToolChoiceRequest, ToolDefinitionEnvelope, ToolDefinitionRequest,
         chat_messages_to_prompt_messages, chat_messages_to_prompt_messages_for_family,
-        ensure_harmony_stop_sequences, fast_final_assistant_content, final_assistant_content,
-        generation_options_from_chat_request, generation_options_from_chat_request_for_family,
-        generic_embeddings, generic_health, generic_list_models, handle_generic_chat_completions,
-        handle_generic_responses, prompt_request_cache_key, render_prompt_for_model,
-        resolve_execution_summary, resolve_generic_model,
+        completion_choice, ensure_harmony_stop_sequences, generation_options_from_chat_request,
+        generation_options_from_chat_request_for_family, generic_embeddings, generic_health,
+        generic_list_models, handle_generic_chat_completions, handle_generic_responses,
+        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
+        resolve_generic_model, responses_output_items, surfaced_reasoning_response,
     };
-    use crate::GenerationRequest;
+    use crate::{
+        GenerationMetrics, GenerationOutput, GenerationRequest, GenerationResponse,
+        GenerationUsage, TerminationReason,
+    };
     use axum::{
         Json,
         body::to_bytes,
@@ -4006,9 +4164,9 @@ mod tests {
     };
     use psionic_models::{
         ByteProjectionEmbedder, GgufDecoderFamily, GgufMetadataValue, GgufTensorType,
-        GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext,
-        PromptChannelConfig, PromptMessage, PromptMessageRole, PromptReasoningEffort,
-        PromptRenderOptions, TokenId, TokenSequence, render_gpt_oss_harmony_prompt,
+        GptOssHarmonyParseOptions, GptOssHarmonyRenderContext, PromptChannelConfig, PromptMessage,
+        PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, ReasoningParser, TokenId,
+        TokenSequence, parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
     };
     use psionic_runtime::{
         BatchExecutionPosture, PrefixCacheControl, PrefixCacheMode, QueueDiscipline,
@@ -4149,6 +4307,7 @@ mod tests {
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         });
 
@@ -4205,29 +4364,57 @@ mod tests {
     }
 
     #[test]
-    fn final_assistant_content_prefers_final_channel() {
-        let parsed = GptOssHarmonyParsedOutput {
-            source: GptOssHarmonyParseSource::Text,
-            messages: vec![
-                PromptMessage::new(PromptMessageRole::Assistant, "working")
-                    .with_channel("analysis"),
-                PromptMessage::new(PromptMessageRole::Assistant, "323").with_channel("final"),
-            ],
+    fn gpt_oss_completion_choice_can_surface_reasoning_contracts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = "<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323";
+        let parsed = parse_gpt_oss_harmony_text(
+            raw,
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: false,
+            },
+        )?
+        .reasoning_response();
+        let response = test_generation_response(raw);
+        let reasoning_request = ResolvedReasoningRequest {
+            parser: ReasoningParser::GptOssHarmony,
+            mode: PsionicReasoningMode::Separate,
         };
 
-        assert_eq!(final_assistant_content(&parsed).as_deref(), Some("323"));
+        let choice = completion_choice(&response, Some(&parsed), Some(&reasoning_request));
+        let serialized_choice = serde_json::to_value(choice.clone().into_full_choice())?;
+
+        assert_eq!(choice.content.as_deref(), Some("323"));
+        assert_eq!(choice.reasoning_content.as_deref(), Some("thinking"));
+        assert_eq!(
+            serialized_choice["message"]["reasoning_content"],
+            serde_json::json!("thinking")
+        );
+        let surfaced = surfaced_reasoning_response(Some(&parsed), Some(&reasoning_request), false)
+            .expect("typed reasoning should surface");
+        assert_eq!(surfaced.final_content.as_deref(), Some("323"));
+        assert_eq!(surfaced.reasoning_content.as_deref(), Some("thinking"));
+        Ok(())
     }
 
     #[test]
-    fn fast_final_assistant_content_extracts_final_channel() {
-        let text = "<|start|>assistant<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323<|end|>";
-        assert_eq!(fast_final_assistant_content(text).as_deref(), Some("323"));
-    }
+    fn responses_output_items_keep_reasoning_and_final_text_in_order() {
+        let items = responses_output_items(
+            "resp-1",
+            &super::ParsedCompletionChoice {
+                content: Some(String::from("323")),
+                reasoning_content: Some(String::from("thinking")),
+                tool_calls: Vec::new(),
+                finish_reason: "stop",
+            },
+        );
 
-    #[test]
-    fn fast_final_assistant_content_ignores_non_final_channel() {
-        let text = "<|start|>assistant<|channel|>analysis<|message|>thinking<|end|>";
-        assert_eq!(fast_final_assistant_content(text), None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].content.len(), 2);
+        assert_eq!(items[0].content[0].kind, "reasoning_text");
+        assert_eq!(items[0].content[0].text, "thinking");
+        assert_eq!(items[0].content[1].kind, "output_text");
+        assert_eq!(items[0].content[1].text, "323");
     }
 
     #[test]
@@ -4503,6 +4690,7 @@ mod tests {
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
         let prompt_messages =
@@ -4561,6 +4749,7 @@ mod tests {
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
         let prompt_messages =
@@ -4584,6 +4773,56 @@ mod tests {
                 .generate(model.model_key.clone(), generation_request),
         )?;
         assert_eq!(response.usage.output_tokens, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_refuses_reasoning_request_for_unsupported_family()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny reasoning llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let error = tokio::runtime::Runtime::new()?
+            .block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_reasoning: Some(PsionicReasoningRequest {
+                        parser: None,
+                        mode: PsionicReasoningMode::Separate,
+                    }),
+                    psionic_prefix_cache: None,
+                },
+            ))
+            .expect_err("llama family should refuse the reasoning parser contract");
+        let payload =
+            tokio::runtime::Runtime::new()?.block_on(response_json(error.into_response()))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("does not expose a Psionic reasoning parser")
+        );
         Ok(())
     }
 
@@ -4666,6 +4905,7 @@ mod tests {
                 tool_choice: None,
                 previous_response_id: Some(String::from("resp-prev-1")),
                 psionic_structured_output: None,
+                psionic_reasoning: None,
                 psionic_prefix_cache: None,
             },
         ))?;
@@ -4734,6 +4974,7 @@ mod tests {
                     tool_choice: None,
                     previous_response_id: None,
                     psionic_structured_output: None,
+                    psionic_reasoning: None,
                     psionic_prefix_cache: None,
                 },
             ))
@@ -4782,6 +5023,7 @@ mod tests {
                 syntax: Some(StructuredGrammarSyntax::Gbnf),
             }),
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
 
@@ -4880,6 +5122,7 @@ mod tests {
             }),
             psionic_grammar: None,
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
 
@@ -4965,6 +5208,7 @@ mod tests {
             psionic_structured_output: Some(StructuredOutputRequest::Choice {
                 values: vec![String::from("world"), String::from("psionic")],
             }),
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
 
@@ -5026,6 +5270,7 @@ mod tests {
                 psionic_structured_output: Some(StructuredOutputRequest::Regex {
                     pattern: String::from("w[a-z]{4}"),
                 }),
+                psionic_reasoning: None,
                 psionic_prefix_cache: None,
             },
         ))?;
@@ -5095,6 +5340,7 @@ mod tests {
                     }),
                 }],
             }),
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
 
@@ -5164,6 +5410,7 @@ mod tests {
                     response_format: None,
                     psionic_grammar: None,
                     psionic_structured_output: None,
+                    psionic_reasoning: None,
                     psionic_prefix_cache: None,
                 },
             ))?;
@@ -5208,6 +5455,7 @@ mod tests {
                     response_format: None,
                     psionic_grammar: None,
                     psionic_structured_output: None,
+                    psionic_reasoning: None,
                     psionic_prefix_cache: None,
                 },
             ))?;
@@ -5262,6 +5510,7 @@ mod tests {
                     response_format: None,
                     psionic_grammar: None,
                     psionic_structured_output: None,
+                    psionic_reasoning: None,
                     psionic_prefix_cache: None,
                 },
             ))?;
@@ -5316,6 +5565,7 @@ mod tests {
                 })),
                 previous_response_id: None,
                 psionic_structured_output: None,
+                psionic_reasoning: None,
                 psionic_prefix_cache: None,
             },
         ))?;
@@ -5363,6 +5613,7 @@ mod tests {
                 response_format: None,
                 psionic_grammar: None,
                 psionic_structured_output: None,
+                psionic_reasoning: None,
                 psionic_prefix_cache: None,
             }),
         ));
@@ -5410,6 +5661,7 @@ mod tests {
                     response_format: None,
                     psionic_grammar: None,
                     psionic_structured_output: None,
+                    psionic_reasoning: None,
                     psionic_prefix_cache: None,
                 },
             ))?;
@@ -5450,6 +5702,7 @@ mod tests {
                 response_format: None,
                 psionic_grammar: None,
                 psionic_structured_output: None,
+                psionic_reasoning: None,
                 psionic_prefix_cache: Some(prefix_cache),
             };
 
@@ -5560,6 +5813,7 @@ mod tests {
             }),
             psionic_grammar: None,
             psionic_structured_output: None,
+            psionic_reasoning: None,
             psionic_prefix_cache: None,
         };
 
@@ -5596,6 +5850,29 @@ mod tests {
             .get(name)
             .and_then(|value| value.to_str().ok())
             .map(String::from)
+    }
+
+    fn test_generation_response(text: &str) -> GenerationResponse {
+        GenerationResponse {
+            request_id: String::from("req-test"),
+            product_id: String::from("psionic.text_generation"),
+            model_id: String::from("tiny-gpt-oss"),
+            session_id: None,
+            output: GenerationOutput {
+                tokens: TokenSequence::new(Vec::new()),
+                text: String::from(text),
+                structured: None,
+                harmony: None,
+            },
+            usage: GenerationUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_tokens: 0,
+            },
+            metrics: GenerationMetrics::default(),
+            provenance: None,
+            termination: TerminationReason::EndOfSequence,
+        }
     }
 
     #[derive(Clone, Debug)]

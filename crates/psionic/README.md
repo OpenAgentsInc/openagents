@@ -91,6 +91,12 @@ Implemented now:
   tagged tool envelopes, schema-backed argument validation, and
   machine-readable tool-call surfaces on both normal and streaming chat
   responses.
+- Psionic-owned reasoning parser seams for reasoning-bearing families, starting
+  with GPT-OSS / Harmony: typed parsed-response envelopes now separate final
+  content, reasoning content, and side channels; `psionic_reasoning` request
+  policy can explicitly separate or suppress reasoning; and both chat plus
+  responses surfaces can return typed reasoning-aware response fields without
+  falling back to raw-string scraping alone.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded

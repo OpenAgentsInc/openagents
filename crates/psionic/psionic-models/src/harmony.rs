@@ -17,8 +17,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::{
-    GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, PromptMessage,
-    PromptMessageRole, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
+    GgufDecoderFamily, GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer,
+    PromptMessage, PromptMessageRole, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
 };
 
 /// GPT-OSS / Harmony reasoning-effort label.
@@ -137,6 +137,171 @@ pub struct GptOssHarmonyParsedOutput {
     pub source: GptOssHarmonyParseSource,
     /// Fully parsed Harmony messages.
     pub messages: Vec<PromptMessage>,
+}
+
+/// Family-specific reasoning parser contract surfaced by Psionic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningParser {
+    /// GPT-OSS / Harmony parser contract.
+    GptOssHarmony,
+}
+
+impl ReasoningParser {
+    /// Returns the stable parser label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::GptOssHarmony => "gpt_oss_harmony",
+        }
+    }
+}
+
+/// Source lane used to recover a typed reasoning-bearing response.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningParseSource {
+    /// Structured output was parsed from token IDs.
+    Tokens,
+    /// Structured output was parsed from raw text.
+    Text,
+}
+
+impl From<GptOssHarmonyParseSource> for ReasoningParseSource {
+    fn from(value: GptOssHarmonyParseSource) -> Self {
+        match value {
+            GptOssHarmonyParseSource::Tokens => Self::Tokens,
+            GptOssHarmonyParseSource::Text => Self::Text,
+        }
+    }
+}
+
+/// Typed lane for one parsed output part.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningResponsePartKind {
+    /// Public final answer content.
+    Final,
+    /// Model reasoning or analysis content.
+    Reasoning,
+    /// Non-final assistant side-channel content.
+    SideChannel,
+    /// Assistant-emitted tool call content.
+    ToolCall,
+    /// Tool-result content.
+    ToolResult,
+    /// Any other parsed content that does not fit the current buckets.
+    Other,
+}
+
+/// One typed parsed output part.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReasoningResponsePart {
+    /// Part classification derived from family parser semantics.
+    pub kind: ReasoningResponsePartKind,
+    /// Message role.
+    pub role: PromptMessageRole,
+    /// Part content.
+    pub content: String,
+    /// Author name when the role carries one, such as a named tool result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_name: Option<String>,
+    /// Explicit recipient when the part targets a specific tool or assistant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient: Option<String>,
+    /// Explicit channel when the part carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Explicit content-type suffix when the part carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+}
+
+/// Typed reasoning-bearing response recovered by a family parser.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParsedReasoningResponse {
+    /// Parser that produced this response envelope.
+    pub parser: ReasoningParser,
+    /// Source lane used during parsing.
+    pub source: ReasoningParseSource,
+    /// Final public answer content when the parser can recover it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_content: Option<String>,
+    /// Reasoning content when the parser can recover it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    /// Typed parsed parts in source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<ReasoningResponsePart>,
+}
+
+impl ParsedReasoningResponse {
+    /// Returns a copy with reasoning parts removed.
+    #[must_use]
+    pub fn suppress_reasoning(&self) -> Self {
+        let mut filtered = self.clone();
+        filtered.reasoning_content = None;
+        filtered
+            .parts
+            .retain(|part| part.kind != ReasoningResponsePartKind::Reasoning);
+        filtered
+    }
+}
+
+impl GptOssHarmonyParsedOutput {
+    /// Builds the typed reasoning-bearing response envelope for Harmony output.
+    #[must_use]
+    pub fn reasoning_response(&self) -> ParsedReasoningResponse {
+        let parts = self
+            .messages
+            .iter()
+            .map(reasoning_response_part_from_prompt_message)
+            .collect::<Vec<_>>();
+        ParsedReasoningResponse {
+            parser: ReasoningParser::GptOssHarmony,
+            source: self.source.into(),
+            final_content: join_response_parts(&parts, ReasoningResponsePartKind::Final),
+            reasoning_content: join_response_parts(&parts, ReasoningResponsePartKind::Reasoning),
+            parts,
+        }
+    }
+}
+
+/// Returns the reasoning parser contract for one decoder family when present.
+#[must_use]
+pub fn reasoning_parser_for_decoder_family(family: GgufDecoderFamily) -> Option<ReasoningParser> {
+    match family {
+        GgufDecoderFamily::GptOss => Some(ReasoningParser::GptOssHarmony),
+        GgufDecoderFamily::Llama | GgufDecoderFamily::Qwen | GgufDecoderFamily::Mistral => None,
+    }
+}
+
+/// Parses typed reasoning-bearing output from decoder-family token IDs.
+pub fn parse_reasoning_response_tokens_for_decoder_family(
+    family: GgufDecoderFamily,
+    tokens: &[TokenId],
+    options: GptOssHarmonyParseOptions,
+) -> Result<Option<ParsedReasoningResponse>, GptOssHarmonyError> {
+    match reasoning_parser_for_decoder_family(family) {
+        Some(ReasoningParser::GptOssHarmony) => Ok(Some(
+            parse_gpt_oss_harmony_tokens(tokens, options)?.reasoning_response(),
+        )),
+        None => Ok(None),
+    }
+}
+
+/// Parses typed reasoning-bearing output from decoder-family raw text.
+pub fn parse_reasoning_response_text_for_decoder_family(
+    family: GgufDecoderFamily,
+    text: &str,
+    options: GptOssHarmonyParseOptions,
+) -> Result<Option<ParsedReasoningResponse>, GptOssHarmonyError> {
+    match reasoning_parser_for_decoder_family(family) {
+        Some(ReasoningParser::GptOssHarmony) => Ok(Some(
+            parse_gpt_oss_harmony_text(text, options)?.reasoning_response(),
+        )),
+        None => Ok(None),
+    }
 }
 
 /// Parser options for GPT-OSS / Harmony output recovery.
@@ -362,6 +527,47 @@ pub fn parse_gpt_oss_harmony_text(
             .map(prompt_message_from_harmony_message)
             .collect(),
     })
+}
+
+fn reasoning_response_part_from_prompt_message(message: &PromptMessage) -> ReasoningResponsePart {
+    ReasoningResponsePart {
+        kind: reasoning_response_part_kind(message),
+        role: message.role,
+        content: message.content.clone(),
+        author_name: message.author_name.clone(),
+        recipient: message.recipient.clone(),
+        channel: message.channel.clone(),
+        content_type: message.content_type.clone(),
+    }
+}
+
+fn reasoning_response_part_kind(message: &PromptMessage) -> ReasoningResponsePartKind {
+    if message.recipient.is_some() {
+        return ReasoningResponsePartKind::ToolCall;
+    }
+    if message.role == PromptMessageRole::Tool {
+        return ReasoningResponsePartKind::ToolResult;
+    }
+    if message.role != PromptMessageRole::Assistant {
+        return ReasoningResponsePartKind::Other;
+    }
+    match message.channel.as_deref() {
+        Some("analysis") => ReasoningResponsePartKind::Reasoning,
+        Some("final") | None => ReasoningResponsePartKind::Final,
+        Some(_) => ReasoningResponsePartKind::SideChannel,
+    }
+}
+
+fn join_response_parts(
+    parts: &[ReasoningResponsePart],
+    kind: ReasoningResponsePartKind,
+) -> Option<String> {
+    let joined = parts
+        .iter()
+        .filter(|part| part.kind == kind)
+        .map(|part| part.content.as_str())
+        .collect::<String>();
+    (!joined.is_empty()).then_some(joined)
 }
 
 fn load_gpt_oss_harmony_encoding() -> Result<openai_harmony::HarmonyEncoding, GptOssHarmonyError> {

@@ -7260,15 +7260,17 @@ mod tests {
         GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
         GgufWeightBundleLoader, GptOssHarmonyParseOptions, GptOssHarmonyParseSource,
         GptOssHarmonyStreamParser, LoadedWeightTensor, LocalBlobOpenOptions,
-        LocalWeightBundleLoader, PromptMessage, PromptMessageRole, PromptRenderOptions,
-        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
-        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId, TokenSequence,
-        TokenizerBoundary, WeightArtifactBlobKind, WeightArtifactReadPath, WeightFormat,
-        WeightSource, WeightTensorStorage, apply_context_window, apply_special_token_defaults,
-        assert_prompt_template_fixture_matches, assert_prompt_window_case,
-        assert_rendered_prompt_case, assert_tokenizer_fixture_matches, digest_chat_template,
-        golden_prompt_fixture, golden_prompt_fixtures, golden_tokenizer_fixture,
-        golden_tokenizer_fixtures, parse_gpt_oss_harmony_text, parse_gpt_oss_harmony_tokens,
+        LocalWeightBundleLoader, ParsedReasoningResponse, PromptMessage, PromptMessageRole,
+        PromptRenderOptions, QuantizedTensorStorage, ReasoningParser, ReasoningResponsePartKind,
+        ReferenceWordDecoder, SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader,
+        SmokeByteEmbedder, TokenId, TokenSequence, TokenizerBoundary, WeightArtifactBlobKind,
+        WeightArtifactReadPath, WeightFormat, WeightSource, WeightTensorStorage,
+        apply_context_window, apply_special_token_defaults, assert_prompt_template_fixture_matches,
+        assert_prompt_window_case, assert_rendered_prompt_case, assert_tokenizer_fixture_matches,
+        digest_chat_template, golden_prompt_fixture, golden_prompt_fixtures,
+        golden_tokenizer_fixture, golden_tokenizer_fixtures, parse_gpt_oss_harmony_text,
+        parse_gpt_oss_harmony_tokens, parse_reasoning_response_text_for_decoder_family,
+        reasoning_parser_for_decoder_family,
     };
 
     #[test]
@@ -8170,6 +8172,99 @@ mod tests {
                 .with_content_type("<|constrain|>json"),
             ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_reasoning_response_separates_final_reasoning_and_tool_calls()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let parsed = parse_gpt_oss_harmony_text(
+            concat!(
+                "<|channel|>analysis<|message|>thinking<|end|>",
+                "<|start|>assistant<|channel|>final<|message|>323<|end|>",
+                "<|start|>assistant<|channel|>commentary to=functions.get_weather<|constrain|>json<|message|>{\"city\":\"Paris\"}<|call|>",
+            ),
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: true,
+            },
+        )?;
+
+        let typed = parsed.reasoning_response();
+        assert_eq!(typed.parser, ReasoningParser::GptOssHarmony);
+        assert_eq!(typed.final_content.as_deref(), Some("323"));
+        assert_eq!(typed.reasoning_content.as_deref(), Some("thinking"));
+        assert_eq!(
+            typed.parts.iter().map(|part| part.kind).collect::<Vec<_>>(),
+            vec![
+                ReasoningResponsePartKind::Reasoning,
+                ReasoningResponsePartKind::Final,
+                ReasoningResponsePartKind::ToolCall
+            ]
+        );
+        assert_eq!(
+            typed
+                .parts
+                .iter()
+                .find(|part| part.kind == ReasoningResponsePartKind::ToolCall)
+                .and_then(|part| part.recipient.as_deref()),
+            Some("functions.get_weather")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_reasoning_response_can_suppress_reasoning()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let parsed = parse_gpt_oss_harmony_text(
+            "<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323",
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: true,
+            },
+        )?;
+
+        let suppressed: ParsedReasoningResponse = parsed.reasoning_response().suppress_reasoning();
+        assert_eq!(suppressed.reasoning_content, None);
+        assert_eq!(suppressed.final_content.as_deref(), Some("323"));
+        assert!(
+            suppressed
+                .parts
+                .iter()
+                .all(|part| part.kind != ReasoningResponsePartKind::Reasoning)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reasoning_parser_registry_tracks_decoder_family() -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(
+            reasoning_parser_for_decoder_family(GgufDecoderFamily::GptOss),
+            Some(ReasoningParser::GptOssHarmony)
+        );
+        assert_eq!(
+            reasoning_parser_for_decoder_family(GgufDecoderFamily::Llama),
+            None
+        );
+
+        let parsed = parse_reasoning_response_text_for_decoder_family(
+            GgufDecoderFamily::GptOss,
+            "<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323",
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: true,
+            },
+        )?
+        .expect("gpt-oss family should parse");
+        assert_eq!(parsed.final_content.as_deref(), Some("323"));
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("thinking"));
+
+        let unsupported = parse_reasoning_response_text_for_decoder_family(
+            GgufDecoderFamily::Llama,
+            "world",
+            GptOssHarmonyParseOptions::default(),
+        )?;
+        assert_eq!(unsupported, None);
         Ok(())
     }
 

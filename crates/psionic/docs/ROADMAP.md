@@ -848,7 +848,15 @@ too through first-class `tools` / `tool_choice` contracts on the generic
 server, explicit `none` / `auto` / `required` / named tool modes, tagged
 structured-output tool envelopes with parser-backed JSON-schema validation, and
 truthful tool-calling capability reporting plus streaming/non-streaming
-machine-readable tool-call surfaces.
+machine-readable tool-call surfaces. `PSI-246` /
+[#3551](https://github.com/OpenAgentsInc/openagents/issues/3551) is now landed
+too through a first Psionic-owned reasoning-parser registry in
+`psionic-models`, typed parsed-response envelopes for final content vs
+reasoning vs side channels, explicit `psionic_reasoning` request policy on chat
+and responses surfaces, and parser-backed reasoning/content separation on the
+serve path instead of raw-string scraping alone. The next dependency-ordered
+issue in that chain is now `PSI-247` /
+[#3552](https://github.com/OpenAgentsInc/openagents/issues/3552).
 
 ## Current Reality
 
