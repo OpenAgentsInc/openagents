@@ -71,6 +71,9 @@ const CPU_SERVER_LOAD_STATUS: &str = "loaded";
 const CPU_SERVER_WARM_CONTROL: &str = "not_implemented";
 const CPU_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
 const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
+const RESPONSE_STATE_STORAGE: &str = "memory_only";
+const RESPONSE_STATE_RETENTION_SCOPE: &str = "process_lifetime";
+const RESPONSE_STATE_CACHE_BEHAVIOR: &str = "prompt_replay_only";
 
 fn structured_output_parser_labels() -> Vec<&'static str> {
     local_structured_output_parsers()
@@ -109,6 +112,276 @@ struct ToolCallingCapability {
     supported_modes: Vec<&'static str>,
     parser: &'static str,
     argument_validation: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct ResponseStateCapability {
+    storage: &'static str,
+    retention_scope: &'static str,
+    cache_behavior: &'static str,
+    continuation_modes: Vec<&'static str>,
+    max_responses: usize,
+    max_conversations: usize,
+    max_items_per_conversation: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ResponseContinuationMode {
+    #[default]
+    AppendTurn,
+    ContinueLastAssistant,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+struct PsionicResponseStateRequest {
+    #[serde(
+        default = "default_response_state_store",
+        skip_serializing_if = "is_true"
+    )]
+    store: bool,
+    #[serde(default)]
+    continuation: ResponseContinuationMode,
+    #[serde(default)]
+    invalidate_references: bool,
+}
+
+impl Default for PsionicResponseStateRequest {
+    fn default() -> Self {
+        Self {
+            store: true,
+            continuation: ResponseContinuationMode::AppendTurn,
+            invalidate_references: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct ResponseConversationRef {
+    id: String,
+    revision: u64,
+    item_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct ResponseStateReceipt {
+    storage: &'static str,
+    retention_scope: &'static str,
+    cache_behavior: &'static str,
+    stored: bool,
+    continuation: ResponseContinuationMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_response_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conversation_id: Option<String>,
+    replayed_prompt_messages: usize,
+    input_messages_appended: usize,
+    assistant_messages_recorded: usize,
+    max_responses: usize,
+    max_conversations: usize,
+    max_items_per_conversation: usize,
+    conversation_item_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    invalidated_references: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ResponseStateRetentionPolicy {
+    max_responses: usize,
+    max_conversations: usize,
+    max_items_per_conversation: usize,
+}
+
+impl Default for ResponseStateRetentionPolicy {
+    fn default() -> Self {
+        Self {
+            max_responses: 128,
+            max_conversations: 64,
+            max_items_per_conversation: 64,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StoredResponseState {
+    response_id: String,
+    model_key: String,
+    conversation_id: Option<String>,
+    prompt_history: Vec<PromptMessage>,
+}
+
+#[derive(Clone, Debug)]
+struct StoredConversationState {
+    conversation_id: String,
+    model_key: String,
+    prompt_history: Vec<PromptMessage>,
+    revision: u64,
+    last_response_id: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ResponseStateContext {
+    model_key: Option<String>,
+    conversation_id: Option<String>,
+    prompt_history: Vec<PromptMessage>,
+    previous_response_id: Option<String>,
+    replayed_prompt_messages: usize,
+    conversation_item_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ResponseStateStore {
+    retention: ResponseStateRetentionPolicy,
+    responses: BTreeMap<String, StoredResponseState>,
+    response_order: VecDeque<String>,
+    conversations: BTreeMap<String, StoredConversationState>,
+    conversation_order: VecDeque<String>,
+}
+
+impl ResponseStateStore {
+    fn new(retention: ResponseStateRetentionPolicy) -> Self {
+        Self {
+            retention,
+            responses: BTreeMap::new(),
+            response_order: VecDeque::new(),
+            conversations: BTreeMap::new(),
+            conversation_order: VecDeque::new(),
+        }
+    }
+
+    fn capability(&self) -> ResponseStateCapability {
+        ResponseStateCapability {
+            storage: RESPONSE_STATE_STORAGE,
+            retention_scope: RESPONSE_STATE_RETENTION_SCOPE,
+            cache_behavior: RESPONSE_STATE_CACHE_BEHAVIOR,
+            continuation_modes: vec!["append_turn"],
+            max_responses: self.retention.max_responses,
+            max_conversations: self.retention.max_conversations,
+            max_items_per_conversation: self.retention.max_items_per_conversation,
+        }
+    }
+
+    fn load_context(
+        &self,
+        previous_response_id: Option<&str>,
+        conversation_id: Option<&str>,
+    ) -> Result<ResponseStateContext, OpenAiCompatHttpError> {
+        if let Some(previous_response_id) = previous_response_id {
+            let stored = self.responses.get(previous_response_id).ok_or_else(|| {
+                OpenAiCompatHttpError::BadRequest(format!(
+                    "response state `{previous_response_id}` is unknown or expired"
+                ))
+            })?;
+            return Ok(ResponseStateContext {
+                model_key: Some(stored.model_key.clone()),
+                conversation_id: stored.conversation_id.clone(),
+                prompt_history: stored.prompt_history.clone(),
+                previous_response_id: Some(stored.response_id.clone()),
+                replayed_prompt_messages: stored.prompt_history.len(),
+                conversation_item_count: stored.prompt_history.len(),
+            });
+        }
+        if let Some(conversation_id) = conversation_id {
+            let stored = self.conversations.get(conversation_id).ok_or_else(|| {
+                OpenAiCompatHttpError::BadRequest(format!(
+                    "conversation state `{conversation_id}` is unknown or expired"
+                ))
+            })?;
+            return Ok(ResponseStateContext {
+                model_key: Some(stored.model_key.clone()),
+                conversation_id: Some(stored.conversation_id.clone()),
+                prompt_history: stored.prompt_history.clone(),
+                previous_response_id: Some(stored.last_response_id.clone()),
+                replayed_prompt_messages: stored.prompt_history.len(),
+                conversation_item_count: stored.prompt_history.len(),
+            });
+        }
+        Ok(ResponseStateContext::default())
+    }
+
+    fn record_response(
+        &mut self,
+        response_id: String,
+        model_key: String,
+        conversation_id: Option<String>,
+        prompt_history: Vec<PromptMessage>,
+    ) -> Result<Option<ResponseConversationRef>, OpenAiCompatHttpError> {
+        if prompt_history.len() > self.retention.max_items_per_conversation {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "stateful response exceeds the bounded conversation-state limit of {} prompt messages",
+                self.retention.max_items_per_conversation
+            )));
+        }
+        let stored_response = StoredResponseState {
+            response_id: response_id.clone(),
+            model_key: model_key.clone(),
+            conversation_id: conversation_id.clone(),
+            prompt_history: prompt_history.clone(),
+        };
+        self.responses.insert(response_id.clone(), stored_response);
+        touch_fifo_key(&mut self.response_order, response_id.clone());
+        while self.responses.len() > self.retention.max_responses {
+            if let Some(evicted) = self.response_order.pop_front() {
+                self.responses.remove(&evicted);
+            }
+        }
+
+        let Some(conversation_id) = conversation_id else {
+            return Ok(None);
+        };
+        let revision = self
+            .conversations
+            .get(&conversation_id)
+            .map_or(1, |conversation| conversation.revision + 1);
+        self.conversations.insert(
+            conversation_id.clone(),
+            StoredConversationState {
+                conversation_id: conversation_id.clone(),
+                model_key,
+                prompt_history,
+                revision,
+                last_response_id: response_id,
+            },
+        );
+        touch_fifo_key(&mut self.conversation_order, conversation_id.clone());
+        while self.conversations.len() > self.retention.max_conversations {
+            if let Some(evicted) = self.conversation_order.pop_front() {
+                self.conversations.remove(&evicted);
+            }
+        }
+        let stored = self
+            .conversations
+            .get(&conversation_id)
+            .expect("stored conversation should exist");
+        Ok(Some(ResponseConversationRef {
+            id: conversation_id,
+            revision: stored.revision,
+            item_count: stored.prompt_history.len(),
+        }))
+    }
+
+    fn invalidate_references(
+        &mut self,
+        previous_response_id: Option<&str>,
+        conversation_id: Option<&str>,
+    ) -> Vec<String> {
+        let mut invalidated = Vec::new();
+        if let Some(previous_response_id) = previous_response_id
+            && self.responses.remove(previous_response_id).is_some()
+        {
+            self.response_order
+                .retain(|candidate| candidate != previous_response_id);
+            invalidated.push(format!("response:{previous_response_id}"));
+        }
+        if let Some(conversation_id) = conversation_id
+            && self.conversations.remove(conversation_id).is_some()
+        {
+            self.conversation_order
+                .retain(|candidate| candidate != conversation_id);
+            invalidated.push(format!("conversation:{conversation_id}"));
+        }
+        invalidated
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -610,6 +883,8 @@ struct OpenAiCompatState {
     model_aliases: BTreeMap<String, String>,
     include_psionic_fields: bool,
     request_counter: AtomicU64,
+    conversation_counter: AtomicU64,
+    response_state: Mutex<ResponseStateStore>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -729,6 +1004,11 @@ impl OpenAiCompatLoadedModel {
         }
     }
 
+    fn response_state_capability(&self) -> Option<ResponseStateCapability> {
+        self.decoder()
+            .map(|_| ResponseStateStore::new(ResponseStateRetentionPolicy::default()).capability())
+    }
+
     fn family_label(&self) -> &str {
         match &self.kind {
             OpenAiCompatLoadedModelKind::Decoder(model) => model.descriptor.model.family.as_str(),
@@ -845,6 +1125,10 @@ impl OpenAiCompatServer {
                 model_aliases,
                 include_psionic_fields,
                 request_counter: AtomicU64::new(1),
+                conversation_counter: AtomicU64::new(1),
+                response_state: Mutex::new(ResponseStateStore::new(
+                    ResponseStateRetentionPolicy::default(),
+                )),
             }),
         })
     }
@@ -1499,6 +1783,8 @@ struct ModelCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_tool_calling: Option<ToolCallingCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_response_state: Option<ResponseStateCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     psionic_execution_profile: Option<ExecutionCapabilityProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_scheduler_policy: Option<GenerationSchedulerPolicy>,
@@ -1524,6 +1810,7 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             psionic_structured_outputs: None,
             psionic_structured_output_capabilities: None,
             psionic_tool_calling: None,
+            psionic_response_state: None,
             psionic_execution_profile: None,
             psionic_scheduler_policy: None,
             psionic_embedding_dimensions: None,
@@ -1556,6 +1843,8 @@ struct GenericHealthResponse {
     structured_output_capabilities: Option<Vec<StructuredOutputCapability>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calling: Option<ToolCallingCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_state: Option<ResponseStateCapability>,
     execution_profile: ExecutionCapabilityProfile,
     #[serde(skip_serializing_if = "Option::is_none")]
     scheduler_policy: Option<GenerationSchedulerPolicy>,
@@ -1588,6 +1877,7 @@ async fn generic_health(
         structured_output_fallbacks: default_model.structured_output_labels(),
         structured_output_capabilities: Some(default_model.structured_output_capabilities()),
         tool_calling: Some(default_model.tool_calling_capability()),
+        response_state: default_model.response_state_capability(),
         execution_profile: default_model.execution_profile().clone(),
         scheduler_policy: default_model.scheduler_policy().cloned(),
     })
@@ -1614,6 +1904,7 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                     model.structured_output_capabilities(),
                 ),
                 psionic_tool_calling: Some(model.tool_calling_capability()),
+                psionic_response_state: model.response_state_capability(),
                 psionic_execution_profile: Some(model.execution_profile().clone()),
                 psionic_scheduler_policy: model.scheduler_policy().cloned(),
                 psionic_embedding_dimensions: model.embedding_dimensions(),
@@ -1778,6 +2069,8 @@ struct ResponsesRequest {
     model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conversation: Option<String>,
     input: ResponsesInput,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -1797,6 +2090,8 @@ struct ResponsesRequest {
     psionic_structured_output: Option<StructuredOutputRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_reasoning: Option<PsionicReasoningRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_response_state: Option<PsionicResponseStateRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_prefix_cache: Option<PrefixCacheControl>,
 }
@@ -1932,6 +2227,49 @@ fn decoder_family_label(family: GgufDecoderFamily) -> &'static str {
         GgufDecoderFamily::Mistral => "mistral",
         GgufDecoderFamily::GptOss => "gpt_oss",
     }
+}
+
+fn default_response_state_store() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+fn touch_fifo_key(order: &mut VecDeque<String>, key: String) {
+    order.retain(|candidate| candidate != &key);
+    order.push_back(key);
+}
+
+fn resolved_response_state_request(
+    request: &ResponsesRequest,
+) -> Result<PsionicResponseStateRequest, OpenAiCompatHttpError> {
+    if request.previous_response_id.is_some() && request.conversation.is_some() {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "`conversation` and `previous_response_id` are mutually exclusive on `/v1/responses`",
+        )));
+    }
+    Ok(request.psionic_response_state.clone().unwrap_or_default())
+}
+
+fn next_conversation_id(state: &OpenAiCompatState) -> String {
+    let next = state.conversation_counter.fetch_add(1, Ordering::Relaxed);
+    format!("psionic-conv-{next}")
+}
+
+fn current_response_state_capability(
+    state: &OpenAiCompatState,
+) -> Result<ResponseStateCapability, OpenAiCompatHttpError> {
+    state
+        .response_state
+        .lock()
+        .map_err(|_| {
+            OpenAiCompatHttpError::Internal(String::from(
+                "generic response-state store is poisoned",
+            ))
+        })
+        .map(|store| store.capability())
 }
 
 fn parse_reasoning_response_for_family(
@@ -2770,26 +3108,85 @@ async fn handle_generic_responses(
             "streaming `/v1/responses` is not implemented on the generic Psionic server yet",
         )));
     }
-    let loaded_model = resolve_generic_model_for_endpoint(
-        state.as_ref(),
+    let response_state_request = resolved_response_state_request(&request)?;
+    if matches!(
+        response_state_request.continuation,
+        ResponseContinuationMode::ContinueLastAssistant
+    ) {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "`psionic_response_state.continuation = continue_last_assistant` is not available on the current prompt-replay `/v1/responses` runtime",
+        )));
+    }
+    let response_state_context = state
+        .response_state
+        .lock()
+        .map_err(|_| {
+            OpenAiCompatHttpError::Internal(String::from(
+                "generic response-state store is poisoned",
+            ))
+        })?
+        .load_context(
+            request.previous_response_id.as_deref(),
+            request.conversation.as_deref(),
+        )?;
+    let loaded_model = match (
         request.model.as_deref(),
-        OpenAiCompatEndpoint::Responses,
-    )?;
+        response_state_context.model_key.as_deref(),
+    ) {
+        (Some(requested), _) => resolve_generic_model_for_endpoint(
+            state.as_ref(),
+            Some(requested),
+            OpenAiCompatEndpoint::Responses,
+        )?,
+        (None, Some(model_key)) => resolve_generic_model_key_for_endpoint(
+            state.as_ref(),
+            model_key,
+            OpenAiCompatEndpoint::Responses,
+        )?,
+        (None, None) => resolve_generic_model_for_endpoint(
+            state.as_ref(),
+            None,
+            OpenAiCompatEndpoint::Responses,
+        )?,
+    };
+    if let Some(expected_model_key) = response_state_context.model_key.as_deref()
+        && loaded_model.model_key != expected_model_key
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "stateful `/v1/responses` continuation must stay on model `{}`",
+            loaded_model.canonical_name
+        )));
+    }
     let model = loaded_model.decoder().ok_or_else(|| {
         OpenAiCompatHttpError::Internal(format!(
             "loaded model `{}` is missing decoder metadata",
             loaded_model.model_key
         ))
     })?;
+    if !response_state_context.prompt_history.is_empty()
+        && let Some(instructions) = request.instructions.as_deref()
+        && leading_response_instructions(response_state_context.prompt_history.as_slice())
+            != Some(instructions)
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "stateful `/v1/responses` continuation cannot change `instructions`; omit it or repeat the original value exactly",
+        )));
+    }
     let reasoning_request =
         reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
     let structured_output = structured_output_from_responses_request(&request)?;
     let tool_contract =
         tool_contract_from_responses_request(&request, structured_output.is_some())?;
-    let prompt_messages = apply_tool_contract_to_prompt_messages(
-        response_input_to_prompt_messages(&request, model.family)?,
-        tool_contract.as_ref(),
-    );
+    let appended_prompt_messages = response_input_to_prompt_messages_with_options(
+        &request,
+        model.family,
+        response_state_context.prompt_history.is_empty(),
+        false,
+    )?;
+    let mut prompt_history = response_state_context.prompt_history.clone();
+    prompt_history.extend(appended_prompt_messages.clone());
+    let prompt_messages =
+        apply_tool_contract_to_prompt_messages(prompt_history.clone(), tool_contract.as_ref());
     let rendered = render_prompt_for_model(loaded_model, prompt_messages.as_slice())?;
     let request_id = next_generic_request_id(&state, "psionic-resp");
     let response_model_name = request
@@ -2892,6 +3289,56 @@ async fn handle_generic_responses(
         });
     let time_to_first_token_ns = response.metrics.time_to_first_token_ns;
     let inter_token_latency_ns = response.metrics.inter_token_latency_ns;
+    let assistant_history = assistant_history_from_response(
+        model.family,
+        response.output.text.as_str(),
+        parsed.as_ref(),
+    );
+    let response_state_capability = current_response_state_capability(state.as_ref())?;
+    let assigned_conversation_id = response_state_request.store.then(|| {
+        if response_state_request.invalidate_references
+            || response_state_context.conversation_id.is_none()
+        {
+            next_conversation_id(state.as_ref())
+        } else {
+            response_state_context
+                .conversation_id
+                .clone()
+                .expect("checked conversation presence above")
+        }
+    });
+    let mut stored_prompt_history = prompt_history.clone();
+    stored_prompt_history.extend(assistant_history.clone());
+    let (conversation, invalidated_references) = {
+        let mut response_state = state.response_state.lock().map_err(|_| {
+            OpenAiCompatHttpError::Internal(String::from(
+                "generic response-state store is poisoned",
+            ))
+        })?;
+        let conversation = if response_state_request.store {
+            response_state.record_response(
+                request_id.clone(),
+                loaded_model.model_key.clone(),
+                assigned_conversation_id.clone(),
+                stored_prompt_history.clone(),
+            )?
+        } else {
+            None
+        };
+        let invalidated = if response_state_request.invalidate_references {
+            let invalidated_conversation_id = response_state_context
+                .conversation_id
+                .as_deref()
+                .filter(|candidate| Some(*candidate) != assigned_conversation_id.as_deref());
+            response_state.invalidate_references(
+                request.previous_response_id.as_deref(),
+                invalidated_conversation_id,
+            )
+        } else {
+            Vec::new()
+        };
+        (conversation, invalidated)
+    };
     let body = ResponsesResponse {
         id: request_id.clone(),
         object: "response",
@@ -2905,7 +3352,8 @@ async fn handle_generic_responses(
             output_tokens: response.usage.output_tokens,
             total_tokens: response.usage.input_tokens + response.usage.output_tokens,
         },
-        previous_response_id: request.previous_response_id.clone(),
+        previous_response_id: response_state_context.previous_response_id.clone(),
+        conversation,
         psionic_metrics: state
             .include_psionic_fields
             .then(|| response.metrics.clone()),
@@ -2915,6 +3363,31 @@ async fn handle_generic_responses(
             reasoning_request.as_ref(),
             state.include_psionic_fields,
         ),
+        psionic_response_state: Some(ResponseStateReceipt {
+            storage: response_state_capability.storage,
+            retention_scope: response_state_capability.retention_scope,
+            cache_behavior: response_state_capability.cache_behavior,
+            stored: response_state_request.store,
+            continuation: response_state_request.continuation,
+            previous_response_id: response_state_context.previous_response_id.clone(),
+            conversation_id: assigned_conversation_id.clone(),
+            replayed_prompt_messages: response_state_context.replayed_prompt_messages,
+            input_messages_appended: appended_prompt_messages.len(),
+            assistant_messages_recorded: if response_state_request.store {
+                assistant_history.len()
+            } else {
+                0
+            },
+            max_responses: response_state_capability.max_responses,
+            max_conversations: response_state_capability.max_conversations,
+            max_items_per_conversation: response_state_capability.max_items_per_conversation,
+            conversation_item_count: if response_state_request.store {
+                stored_prompt_history.len()
+            } else {
+                response_state_context.conversation_item_count
+            },
+            invalidated_references,
+        }),
         psionic_perf: state
             .include_psionic_fields
             .then(|| response.metrics.gpt_oss_perf.clone())
@@ -3152,11 +3625,15 @@ struct ResponsesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     previous_response_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    conversation: Option<ResponseConversationRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     psionic_metrics: Option<GenerationMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_harmony: Option<GptOssHarmonyParsedOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_reasoning: Option<ParsedReasoningResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_response_state: Option<ResponseStateReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_perf: Option<GptOssPerformanceMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3619,6 +4096,26 @@ fn resolve_generic_model_for_endpoint<'a>(
     }
 }
 
+fn resolve_generic_model_key_for_endpoint<'a>(
+    state: &'a OpenAiCompatState,
+    model_key: &str,
+    endpoint: OpenAiCompatEndpoint,
+) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
+    let model = state.models_by_key.get(model_key).ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!("loaded model `{model_key}` is missing"))
+    })?;
+    if model.supported_endpoints.contains(&endpoint) {
+        Ok(model)
+    } else {
+        Err(OpenAiCompatHttpError::BadRequest(format!(
+            "model `{}` does not support `{}`; supported endpoints: {}",
+            model.canonical_name,
+            endpoint.path(),
+            model_endpoint_paths(model).join(", ")
+        )))
+    }
+}
+
 fn model_endpoint_paths(model: &OpenAiCompatLoadedModel) -> Vec<&'static str> {
     model
         .supported_endpoints
@@ -3940,12 +4437,14 @@ fn generation_options_from_responses_request(
     options
 }
 
-fn response_input_to_prompt_messages(
+fn response_input_to_prompt_messages_with_options(
     request: &ResponsesRequest,
     family: GgufDecoderFamily,
+    include_instructions: bool,
+    allow_empty_input: bool,
 ) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
     let mut messages = Vec::new();
-    if let Some(instructions) = request.instructions.as_ref() {
+    if include_instructions && let Some(instructions) = request.instructions.as_ref() {
         messages.push(ChatCompletionMessage {
             role: String::from("developer"),
             content: instructions.clone(),
@@ -3953,14 +4452,51 @@ fn response_input_to_prompt_messages(
         });
     }
     match &request.input {
-        ResponsesInput::Text(text) => messages.push(ChatCompletionMessage {
-            role: String::from("user"),
-            content: text.clone(),
-            name: None,
-        }),
-        ResponsesInput::Messages(input_messages) => messages.extend(input_messages.clone()),
+        ResponsesInput::Text(text) => {
+            if allow_empty_input && text.is_empty() {
+            } else {
+                messages.push(ChatCompletionMessage {
+                    role: String::from("user"),
+                    content: text.clone(),
+                    name: None,
+                });
+            }
+        }
+        ResponsesInput::Messages(input_messages) => {
+            if allow_empty_input && input_messages.is_empty() {
+            } else {
+                messages.extend(input_messages.clone());
+            }
+        }
     }
     chat_messages_to_prompt_messages_for_family(messages.as_slice(), family)
+}
+
+fn assistant_history_from_response(
+    family: GgufDecoderFamily,
+    raw_output: &str,
+    parsed_harmony: Option<&GptOssHarmonyParsedOutput>,
+) -> Vec<PromptMessage> {
+    if matches!(family, GgufDecoderFamily::GptOss)
+        && let Some(parsed_harmony) = parsed_harmony
+        && !parsed_harmony.messages.is_empty()
+    {
+        return parsed_harmony.messages.clone();
+    }
+    vec![PromptMessage::new(PromptMessageRole::Assistant, raw_output)]
+}
+
+fn leading_response_instructions(prompt_history: &[PromptMessage]) -> Option<&str> {
+    prompt_history
+        .first()
+        .filter(|message| {
+            message.role == PromptMessageRole::Developer
+                && message.author_name.is_none()
+                && message.recipient.is_none()
+                && message.channel.is_none()
+                && message.content_type.is_none()
+        })
+        .map(|message| message.content.as_str())
 }
 
 fn ensure_harmony_stop_sequences(stop_sequences: &mut Vec<String>) {
@@ -4142,10 +4678,11 @@ mod tests {
         GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, HARMONY_CALL_STOP,
         HARMONY_RETURN_STOP, NamedToolChoiceFunction, NamedToolChoiceRequest, OpenAiCompatConfig,
         OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, PsionicReasoningMode,
-        PsionicReasoningRequest, ResolvedReasoningRequest, ResponsesInput, ResponsesRequest,
-        ToolChoiceRequest, ToolDefinitionEnvelope, ToolDefinitionRequest,
-        chat_messages_to_prompt_messages, chat_messages_to_prompt_messages_for_family,
-        completion_choice, ensure_harmony_stop_sequences, generation_options_from_chat_request,
+        PsionicReasoningRequest, PsionicResponseStateRequest, ResolvedReasoningRequest,
+        ResponseContinuationMode, ResponsesInput, ResponsesRequest, ToolChoiceRequest,
+        ToolDefinitionEnvelope, ToolDefinitionRequest, chat_messages_to_prompt_messages,
+        chat_messages_to_prompt_messages_for_family, completion_choice,
+        ensure_harmony_stop_sequences, generation_options_from_chat_request,
         generation_options_from_chat_request_for_family, generic_embeddings, generic_health,
         generic_list_models, handle_generic_chat_completions, handle_generic_responses,
         prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
@@ -4848,10 +5385,34 @@ mod tests {
             health.0.supported_endpoints,
             vec!["/v1/chat/completions", "/v1/embeddings", "/v1/responses"]
         );
+        assert_eq!(
+            health
+                .0
+                .response_state
+                .as_ref()
+                .map(|capability| capability.continuation_modes.clone()),
+            Some(vec!["append_turn"])
+        );
 
         let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
             std::sync::Arc::clone(&server.state),
         )));
+        let decoder_model = models
+            .0
+            .data
+            .iter()
+            .find(|model| {
+                model.psionic_supported_endpoints.contains(&"/v1/responses")
+                    && model.psionic_response_state.is_some()
+            })
+            .expect("decoder model should be listed");
+        assert_eq!(
+            decoder_model
+                .psionic_response_state
+                .as_ref()
+                .map(|capability| capability.cache_behavior),
+            Some("prompt_replay_only")
+        );
         let embeddings_model = models
             .0
             .data
@@ -4859,6 +5420,7 @@ mod tests {
             .find(|model| model.psionic_supported_endpoints == vec!["/v1/embeddings"])
             .expect("embeddings model should be listed");
         assert_eq!(embeddings_model.psionic_embedding_dimensions, Some(8));
+        assert_eq!(embeddings_model.psionic_response_state, None);
 
         let response = tokio::runtime::Runtime::new()?.block_on(generic_embeddings(
             State(std::sync::Arc::clone(&server.state)),
@@ -4896,6 +5458,7 @@ mod tests {
             ResponsesRequest {
                 model: Some(String::from("tiny-llama")),
                 instructions: Some(String::from("Be brief.")),
+                conversation: None,
                 input: ResponsesInput::Text(String::from("hello")),
                 temperature: Some(0.0),
                 max_output_tokens: Some(1),
@@ -4903,9 +5466,10 @@ mod tests {
                 stream: false,
                 tools: Vec::new(),
                 tool_choice: None,
-                previous_response_id: Some(String::from("resp-prev-1")),
+                previous_response_id: None,
                 psionic_structured_output: None,
                 psionic_reasoning: None,
+                psionic_response_state: None,
                 psionic_prefix_cache: None,
             },
         ))?;
@@ -4914,11 +5478,288 @@ mod tests {
         assert_eq!(payload["object"], serde_json::json!("response"));
         assert_eq!(payload["status"], serde_json::json!("completed"));
         assert_eq!(payload["output_text"], serde_json::json!("world"));
+        assert_eq!(payload["previous_response_id"], serde_json::Value::Null);
         assert_eq!(
-            payload["previous_response_id"],
-            serde_json::json!("resp-prev-1")
+            payload["conversation"]["id"],
+            serde_json::json!("psionic-conv-1")
+        );
+        assert_eq!(
+            payload["psionic_response_state"]["stored"],
+            serde_json::json!(true)
         );
         assert_eq!(payload["output"][0]["type"], serde_json::json!("message"));
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_conversation_state_replays_and_updates()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-stateful-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny stateful llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let runtime = tokio::runtime::Runtime::new()?;
+        let first_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-stateful-llama")),
+                instructions: Some(String::from("Be brief.")),
+                conversation: None,
+                input: ResponsesInput::Text(String::from("hello")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let first_payload = runtime.block_on(response_json(first_response))?;
+        assert_eq!(
+            first_payload["psionic_response_state"]["replayed_prompt_messages"],
+            serde_json::json!(0)
+        );
+        assert_eq!(
+            first_payload["psionic_response_state"]["input_messages_appended"],
+            serde_json::json!(2)
+        );
+        assert_eq!(
+            first_payload["psionic_response_state"]["assistant_messages_recorded"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            first_payload["psionic_response_state"]["conversation_item_count"],
+            serde_json::json!(3)
+        );
+        let first_response_id = first_payload["id"]
+            .as_str()
+            .expect("response id")
+            .to_string();
+        let conversation_id = first_payload["conversation"]["id"]
+            .as_str()
+            .expect("conversation id")
+            .to_string();
+
+        let second_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: None,
+                instructions: None,
+                conversation: Some(conversation_id.clone()),
+                input: ResponsesInput::Text(String::from("again")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let second_payload = runtime.block_on(response_json(second_response))?;
+        assert_eq!(
+            second_payload["previous_response_id"],
+            serde_json::json!(first_response_id)
+        );
+        assert_eq!(
+            second_payload["conversation"]["id"],
+            serde_json::json!(conversation_id)
+        );
+        assert_eq!(
+            second_payload["conversation"]["revision"],
+            serde_json::json!(2)
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["replayed_prompt_messages"],
+            serde_json::json!(3)
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["input_messages_appended"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["conversation_item_count"],
+            serde_json::json!(5)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_refuse_unknown_state_references() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-unknown-state-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny unknown state llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let error = tokio::runtime::Runtime::new()?
+            .block_on(handle_generic_responses(
+                std::sync::Arc::clone(&server.state),
+                ResponsesRequest {
+                    model: Some(String::from("tiny-unknown-state-llama")),
+                    instructions: None,
+                    conversation: None,
+                    input: ResponsesInput::Text(String::from("hello")),
+                    temperature: Some(0.0),
+                    max_output_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    previous_response_id: Some(String::from("resp-missing")),
+                    psionic_structured_output: None,
+                    psionic_reasoning: None,
+                    psionic_response_state: None,
+                    psionic_prefix_cache: None,
+                },
+            ))
+            .expect_err("unknown response state should be refused");
+        let payload =
+            tokio::runtime::Runtime::new()?.block_on(response_json(error.into_response()))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("unknown or expired")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_refuse_instruction_changes_on_continuation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-instruction-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny instruction llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let runtime = tokio::runtime::Runtime::new()?;
+        let first_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-instruction-llama")),
+                instructions: Some(String::from("Be brief.")),
+                conversation: None,
+                input: ResponsesInput::Text(String::from("hello")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let first_payload = runtime.block_on(response_json(first_response))?;
+        let error = runtime
+            .block_on(handle_generic_responses(
+                std::sync::Arc::clone(&server.state),
+                ResponsesRequest {
+                    model: None,
+                    instructions: Some(String::from("Be verbose.")),
+                    conversation: Some(
+                        first_payload["conversation"]["id"]
+                            .as_str()
+                            .expect("conversation id")
+                            .to_string(),
+                    ),
+                    input: ResponsesInput::Text(String::from("again")),
+                    temperature: Some(0.0),
+                    max_output_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    previous_response_id: None,
+                    psionic_structured_output: None,
+                    psionic_reasoning: None,
+                    psionic_response_state: None,
+                    psionic_prefix_cache: None,
+                },
+            ))
+            .expect_err("instruction drift should be refused");
+        let payload = runtime.block_on(response_json(error.into_response()))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("cannot change `instructions`")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_refuse_unsupported_continue_last_assistant()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-continue-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny continue llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let error = tokio::runtime::Runtime::new()?
+            .block_on(handle_generic_responses(
+                std::sync::Arc::clone(&server.state),
+                ResponsesRequest {
+                    model: Some(String::from("tiny-continue-llama")),
+                    instructions: None,
+                    conversation: None,
+                    input: ResponsesInput::Text(String::from("hello")),
+                    temperature: Some(0.0),
+                    max_output_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    previous_response_id: None,
+                    psionic_structured_output: None,
+                    psionic_reasoning: None,
+                    psionic_response_state: Some(PsionicResponseStateRequest {
+                        store: true,
+                        continuation: ResponseContinuationMode::ContinueLastAssistant,
+                        invalidate_references: false,
+                    }),
+                    psionic_prefix_cache: None,
+                },
+            ))
+            .expect_err("continue_last_assistant should be refused on the current runtime");
+        let payload =
+            tokio::runtime::Runtime::new()?.block_on(response_json(error.into_response()))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("continue_last_assistant")
+        );
         Ok(())
     }
 
@@ -4965,6 +5806,7 @@ mod tests {
                 ResponsesRequest {
                     model: Some(String::from("tiny-embed")),
                     instructions: None,
+                    conversation: None,
                     input: ResponsesInput::Text(String::from("hello")),
                     temperature: Some(0.0),
                     max_output_tokens: Some(1),
@@ -4975,6 +5817,7 @@ mod tests {
                     previous_response_id: None,
                     psionic_structured_output: None,
                     psionic_reasoning: None,
+                    psionic_response_state: None,
                     psionic_prefix_cache: None,
                 },
             ))
@@ -5259,6 +6102,7 @@ mod tests {
             ResponsesRequest {
                 model: Some(String::from("tiny-regex-llama")),
                 instructions: None,
+                conversation: None,
                 input: ResponsesInput::Text(String::from("hello")),
                 temperature: Some(0.0),
                 max_output_tokens: Some(1),
@@ -5271,6 +6115,7 @@ mod tests {
                     pattern: String::from("w[a-z]{4}"),
                 }),
                 psionic_reasoning: None,
+                psionic_response_state: None,
                 psionic_prefix_cache: None,
             },
         ))?;
@@ -5551,6 +6396,7 @@ mod tests {
             ResponsesRequest {
                 model: Some(String::from("tiny-tool-response-llama")),
                 instructions: None,
+                conversation: None,
                 input: ResponsesInput::Text(String::from("hello")),
                 temperature: Some(0.0),
                 max_output_tokens: Some(1),
@@ -5566,6 +6412,7 @@ mod tests {
                 previous_response_id: None,
                 psionic_structured_output: None,
                 psionic_reasoning: None,
+                psionic_response_state: None,
                 psionic_prefix_cache: None,
             },
         ))?;

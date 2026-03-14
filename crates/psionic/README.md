@@ -97,6 +97,11 @@ Implemented now:
   policy can explicitly separate or suppress reasoning; and both chat plus
   responses surfaces can return typed reasoning-aware response fields without
   falling back to raw-string scraping alone.
+- Psionic-owned response-state and conversation contracts on `/v1/responses`,
+  with bounded in-memory response/conversation state, explicit response and
+  conversation identifiers, truthful prompt-replay-only cache behavior,
+  per-model capability reporting, and explicit refusal for unsupported
+  continuation modes instead of pushing multi-turn state emulation into callers.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded

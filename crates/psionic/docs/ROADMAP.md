@@ -855,8 +855,15 @@ too through a first Psionic-owned reasoning-parser registry in
 reasoning vs side channels, explicit `psionic_reasoning` request policy on chat
 and responses surfaces, and parser-backed reasoning/content separation on the
 serve path instead of raw-string scraping alone. The next dependency-ordered
-issue in that chain is now `PSI-247` /
-[#3552](https://github.com/OpenAgentsInc/openagents/issues/3552).
+issue in that chain is now `PSI-248` /
+[#3553](https://github.com/OpenAgentsInc/openagents/issues/3553). `PSI-247` /
+[#3552](https://github.com/OpenAgentsInc/openagents/issues/3552) is now landed
+too through bounded in-memory response and conversation state on
+`/v1/responses`, explicit response/conversation identifiers and replay counts,
+truthful prompt-replay-only state capability reporting in `/health` and
+`/v1/models`, and explicit refusal for unsupported continuation modes or
+invalid/expired state references instead of leaving multi-turn agent loops to
+ad hoc caller-side glue.
 
 ## Current Reality
 

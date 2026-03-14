@@ -660,6 +660,15 @@ chat and responses contracts, and accepts explicit `psionic_reasoning` policy
 requests to separate or suppress reasoning instead of relying on raw-string
 scraping.
 
+Implemented now: `PSI-247` is materially landed in-tree too. `psionic-serve`
+now owns bounded in-memory response and conversation state for `/v1/responses`,
+with explicit response identifiers, conversation identifiers, replay counts,
+and retention limits carried in capability plus response-state receipts.
+Current continuation truth is also explicit: append-turn replay is supported on
+the prompt-replay runtime, while unsupported continuation modes and
+invalid/expired references are refused machine-readably instead of leaking
+ad hoc multi-turn state handling into callers.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
@@ -687,7 +696,7 @@ scraping.
 | `PSI-244` | Psionic Serve: add structured outputs for choice, regex, JSON schema, grammar, and tagged structure | `psionic-serve`, `psionic-runtime` | `SGLang` plus `vLLM` plus `llama.cpp` | Status: implemented on 2026-03-14 via GitHub issue `#3549`. Added one Psionic-owned structured-output contract across choice, regex, grammar, JSON schema, JSON object, and tagged-structure cases, plus explicit capability reporting and machine-readable structured value surfaces on the generic server. | `PSI-243`, `PSI-236` |
 | `PSI-245` | Psionic Serve: add named, auto, required, and none tool-calling modes with parser-backed validation | `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3550`. Added first-class `tools` / `tool_choice` contracts, tagged structured-output tool envelopes, parser-backed argument validation, streaming/non-streaming tool-call surfaces, and explicit per-model tool-calling capability truth. | `PSI-243`, `PSI-244` |
 | `PSI-246` | Psionic Serve: add reasoning-parser seam and explicit reasoning/content separation | `psionic-serve`, `psionic-models` | `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3551`. Added a first reasoning-parser registry and typed parsed-response envelopes in `psionic-models`, plus parser-backed reasoning/content separation and explicit `psionic_reasoning` policy surfaces on chat and responses contracts. | `PSI-243`, `PSI-244` |
-| `PSI-247` | Psionic Serve: add response-state and conversation contracts for multi-turn agent loops | `psionic-serve` | `SGLang` | Move beyond stateless repeated chat-completions by giving Psionic explicit response-stateful and conversation-stateful runtime contracts. | `PSI-243`, `PSI-245`, `PSI-246` |
+| `PSI-247` | Psionic Serve: add response-state and conversation contracts for multi-turn agent loops | `psionic-serve` | `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3552`. Added bounded in-memory response/conversation state, explicit response-state receipts and capability reporting on the generic server, append-turn replay semantics for `/v1/responses`, and explicit refusal for unsupported continuation modes plus invalid/expired references. | `PSI-243`, `PSI-245`, `PSI-246` |
 | `PSI-248` | Psionic Adapters: add LoRA and adapter import, merge/unmerge, batching, and hosted serving | `psionic-models`, `psionic-serve`, backend crates | `SGLang` plus `llama.cpp` | Replace today's explicit adapter refusal posture with a truthful Rust-native adapter runtime shaped by `SGLang` multi-LoRA and `llama.cpp` adapter ecosystem lessons. | `PSI-233`, `PSI-244`, `PSI-245` |
 
 ### Phase 4: Router And Gateway Layer
