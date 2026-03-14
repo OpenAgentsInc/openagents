@@ -86,10 +86,25 @@ membership truth on top of clustered execution evidence, plus a new
 quantized collectives that clustered training evidence can surface explicitly.
 `psionic-adapters` now adds explicit LoRA and adapter packaging plus hosted
 binding digests so adapter-backed serving stays attributable instead of hiding
-behind the base model artifact. AMD execution support is still future work.
+behind the base model artifact. Recent broader-stack issue closures also mean
+that environment-package, evaluation-run, and synthetic-data authority flows
+now exist outside the Psionic subtree in kernel/Nexus surfaces, even though
+Psionic-native environment and eval runtime crates are still future work. AMD
+execution support is still future work.
 
 ## Docs
 
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — canonical Psionic-wide
+  system spec covering layering, work classes, artifact and receipt model,
+  execution lifecycle, failure, and security boundaries.
+- **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training
+  subsystem spec covering current substrate, planned architecture, object
+  model, receipts, policy surfaces, and the issue-program path to a full
+  Rust-native train stack, now tracked as GitHub issues `#3564` through
+  `#3593`.
+- **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
+  active inference-completion spec and issue-program source for the current
+  `PSI-232` through `PSI-258` backlog.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
