@@ -54,6 +54,7 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
+use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 11;
@@ -776,6 +777,8 @@ pub enum DesktopControlActionRequest {
         job_id: String,
         relative_path: String,
     },
+    GetResearchStatus,
+    ResetResearchState,
     GetTrainingStatus,
     GetProofStatus,
     GetChallengeStatus,
@@ -846,6 +849,8 @@ impl DesktopControlActionRequest {
             Self::WaitSandboxJob { .. } => "sandbox-wait",
             Self::DownloadSandboxArtifact { .. } => "sandbox-download-artifact",
             Self::DownloadSandboxWorkspaceFile { .. } => "sandbox-download-workspace",
+            Self::GetResearchStatus => "research-status",
+            Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
             Self::GetProofStatus => "proof-status",
             Self::GetChallengeStatus => "challenge-status",
@@ -1562,6 +1567,8 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology
         | DesktopControlActionRequest::GetSandboxStatus
+        | DesktopControlActionRequest::GetResearchStatus
+        | DesktopControlActionRequest::ResetResearchState
         | DesktopControlActionRequest::GetTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
@@ -2373,6 +2380,8 @@ fn apply_action_request(
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology => cluster_payload_response(state),
         DesktopControlActionRequest::GetSandboxStatus => sandbox_status_payload_response(state),
+        DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
+        DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
         DesktopControlActionRequest::CreateSandboxJob {
             profile_id,
@@ -3339,6 +3348,40 @@ fn challenge_payload_response(state: &mut RenderState) -> DesktopControlActionRe
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode challenge control state: {error}"
         )),
+    }
+}
+
+fn research_payload_response() -> DesktopControlActionResponse {
+    match research_control::research_status() {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Captured research frontier state",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode research frontier state: {error}"
+            )),
+        },
+        Err(error) => {
+            DesktopControlActionResponse::error(format!("Research control error: {error}"))
+        }
+    }
+}
+
+fn reset_research_action() -> DesktopControlActionResponse {
+    match research_control::reset_research_state() {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Reset research frontier state",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode research frontier state: {error}"
+            )),
+        },
+        Err(error) => {
+            DesktopControlActionResponse::error(format!("Research control error: {error}"))
+        }
     }
 }
 
