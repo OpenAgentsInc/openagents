@@ -182,10 +182,12 @@ Implemented now:
   steps, explicit checkpoint pointers and checkpoint manifests, restore
   receipts with declared recovery modes, checkpoint-anchored restore, explicit
   run graphs, contributor-set revisions, window lifecycle, first orchestrator
-  state, and adapter lineage.
+  state, rollout-admission receipts, bounded off-policy freshness budgets, and
+  adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
-  artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
-  digests inside `psionic-train`.
+  artifacts, deterministic trainer-batch assembly, explicit policy-lineage
+  digests, and quarantined-versus-discarded stale-rollout pruning inside
+  `psionic-train`.
 - early data substrate: versioned dataset manifests, tokenizer digests, split
   declarations, resumable streamed-iteration contracts, and long-context
   packing policies in `psionic-data`, with environment packages now binding

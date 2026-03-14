@@ -189,11 +189,11 @@ shape already includes at least:
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
-| Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, and trainer-batch assembly requests over the run graph |
+| Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
-| Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, and deterministic trainer-batch assembly with policy-lineage digests |
+| Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `planned` | no rollout verification bundle family or sampled adjudication loop |
 
 ## Current Crate Ownership
@@ -792,8 +792,9 @@ Today the repo already has some lower-level receipt substrate:
 - runtime execution-proof bundles
 - checkpoint and recovery contexts that can feed later receipts
 
-What is still missing is the train-specific receipt family. The mature train
-system should emit at least these receipts.
+The first train-specific receipt family now exists through
+`RolloutAdmissionReceipt`, but the mature train system should still emit at
+least these broader receipts.
 
 | Receipt | Purpose | Minimum Contents |
 | --- | --- | --- |
@@ -1378,11 +1379,30 @@ off-policy pruning or worker protocol completion.
 
 ### 11. `Psionic Train: implement off-policy budget rules and stale-rollout pruning`
 
-Asynchronous RL only works when stale work is bounded and rejected honestly.
-This issue should define maximum policy age or revision drift, stale-rollout
-quarantine rules, discard receipts, and visibility into accepted versus dropped
-samples. It should sit directly on top of the rollout artifact model and the
-orchestrator state machine.
+Status: implemented on 2026-03-14 via GitHub issue `#3574`.
+
+Added bounded rollout-admission contracts inside `psionic-train` for:
+
+- explicit `TrainingOffPolicyBudget` policy over revision drift, policy age,
+  rollout age, and quarantine thresholds
+- typed `RolloutAdmissionReceipt` outcomes for accepted exact, accepted
+  off-policy, quarantined, and discarded rollouts
+- machine-readable `RolloutAdmissionSignal` reason codes so freshness and drift
+  violations stay inspectable rather than log-only
+- per-window `RolloutIngestionTelemetry` and retained quarantined-versus-
+  discarded rollout state on the orchestrator
+- replay-safe tests proving exact acceptance, bounded off-policy acceptance,
+  quarantine outside direct-accept budgets, and hard discard beyond quarantine
+  budgets
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md`
+- `scripts/release/check-psionic-train-off-policy-budget.sh`
+
+This issue makes stale-rollout accounting first-class train control-plane truth
+instead of a batch-filtering convention. It does not yet land worker claim
+protocols or validator-owned rollout adjudication.
 
 ### 12. `Psionic Train: define the inference-worker protocol for trustless rollout generation`
 
