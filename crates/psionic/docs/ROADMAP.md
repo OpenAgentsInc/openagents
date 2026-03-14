@@ -863,7 +863,15 @@ too through bounded in-memory response and conversation state on
 truthful prompt-replay-only state capability reporting in `/health` and
 `/v1/models`, and explicit refusal for unsupported continuation modes or
 invalid/expired state references instead of leaving multi-turn agent loops to
-ad hoc caller-side glue.
+ad hoc caller-side glue. `PSI-248` /
+[#3553](https://github.com/OpenAgentsInc/openagents/issues/3553) is now landed
+too through a first truthful adapter-serving lane for dense CPU GGUF decoder
+families: LM-head LoRA imports from safetensors, explicit attach/detach and
+merge/unmerge hosted serving modes, adapter compatibility/refusal surfaces, and
+real adapter-backed generation instead of metadata-only parsing or silent
+fallback to the base model. The next dependency-ordered issue in that chain is
+now `PSI-249` /
+[#3554](https://github.com/OpenAgentsInc/openagents/issues/3554).
 
 ## Current Reality
 

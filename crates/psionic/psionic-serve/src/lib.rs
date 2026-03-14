@@ -4014,6 +4014,14 @@ pub enum ReferenceTextGenerationError {
     /// descriptor.
     #[error("unsupported model `{0}`")]
     UnsupportedModel(String),
+    /// The request targeted an adapter binding that this runtime cannot honor.
+    #[error("unsupported adapter binding `{binding_id}`: {reason}")]
+    UnsupportedAdapterBinding {
+        /// Stable binding identifier or digest.
+        binding_id: String,
+        /// Plain-text refusal reason.
+        reason: String,
+    },
     /// The request carried no prompt tokens.
     #[error("generation request must contain at least one prompt token")]
     EmptyPrompt,
@@ -4100,6 +4108,11 @@ impl ReferenceTextGenerationError {
                 self.to_string(),
             )
             .with_model_id(model_id.clone()),
+            Self::UnsupportedAdapterBinding { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedCapability,
+                400,
+                self.to_string(),
+            ),
             Self::EmptyPrompt | Self::InvalidToken { .. } => LocalRuntimeDiagnostic::new(
                 LocalRuntimeErrorCode::InvalidRequest,
                 400,
@@ -4235,6 +4248,7 @@ struct GenerationStepOutput {
     key: Vec<f32>,
     value: Vec<f32>,
     logits: Vec<f32>,
+    hidden: Option<Vec<f32>>,
     execution_plan_digest: Option<String>,
     compile_path: Option<CompilePathEvidence>,
     kernel_count: usize,
@@ -4271,9 +4285,33 @@ trait CompiledWordGenerationModel: GenerationModelHandle + Clone {
         position: usize,
         cache: &InMemoryKvCache,
     ) -> Result<GenerationStepOutput, ReferenceTextGenerationError>;
+    fn adjust_step_output(
+        &self,
+        step: &mut GenerationStepOutput,
+        request: &GenerationRequest,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        let _ = (step, request);
+        Ok(())
+    }
     fn plan_digest(&self) -> &str;
     fn load_duration_ns(&self) -> u64;
     fn backend_compatibility(&self) -> &'static str;
+}
+
+fn execute_generation_step_for_request<B, M>(
+    loaded_model: &M,
+    backend: &mut B,
+    request: &GenerationRequest,
+    token: TokenId,
+    position: usize,
+    cache: &InMemoryKvCache,
+) -> Result<GenerationStepOutput, ReferenceTextGenerationError>
+where
+    M: CompiledWordGenerationModel<Backend = B>,
+{
+    let mut step = loaded_model.execute_step(backend, token, position, cache)?;
+    loaded_model.adjust_step_output(&mut step, request)?;
+    Ok(step)
 }
 
 /// Loaded CPU-backed generation model.
@@ -5762,8 +5800,10 @@ where
             }
 
             self.generated_tokens.push(next_token);
-            let step = self.loaded_model.execute_step(
+            let step = execute_generation_step_for_request(
+                &self.loaded_model,
                 backend,
+                &self.request,
                 next_token,
                 self.cache.len(),
                 &self.cache,
@@ -6595,7 +6635,14 @@ where
             ));
             let request_kv_checkpoint = cache.checkpoint();
             for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
-                let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
+                let step = execute_generation_step_for_request(
+                    &loaded_model,
+                    backend,
+                    request,
+                    *token,
+                    cache.len(),
+                    &cache,
+                )?;
                 if execution_plan_digest.is_none() {
                     execution_plan_digest = step.execution_plan_digest.clone();
                 }
@@ -7008,8 +7055,10 @@ where
             }
 
             self.generated_tokens.push(next_token);
-            match self.loaded_model.execute_step(
+            match execute_generation_step_for_request(
+                &self.loaded_model,
                 self.backend,
+                &self.request,
                 next_token,
                 self.cache.len(),
                 &self.cache,
@@ -7284,7 +7333,14 @@ where
         ));
         let request_kv_checkpoint = cache.checkpoint();
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
-            let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
+            let step = execute_generation_step_for_request(
+                &loaded_model,
+                backend,
+                request,
+                *token,
+                cache.len(),
+                &cache,
+            )?;
             accumulate_generation_step_counters(
                 &step,
                 &mut execution_plan_digest,
@@ -7330,7 +7386,14 @@ where
             }
 
             generated_tokens.push(next_token);
-            let step = loaded_model.execute_step(backend, next_token, cache.len(), &cache)?;
+            let step = execute_generation_step_for_request(
+                &loaded_model,
+                backend,
+                request,
+                next_token,
+                cache.len(),
+                &cache,
+            )?;
             accumulate_generation_step_counters(
                 &step,
                 &mut execution_plan_digest,
@@ -7693,6 +7756,7 @@ fn execute_cpu_generation_graph(
         key: hidden.clone(),
         value: hidden,
         logits,
+        hidden: None,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
         kernel_count: result.metrics.kernel_count,
@@ -7753,6 +7817,7 @@ fn execute_metal_generation_graph(
         key: hidden.clone(),
         value: hidden,
         logits,
+        hidden: None,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
         kernel_count: result.metrics.kernel_count,

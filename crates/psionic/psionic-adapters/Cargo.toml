@@ -17,6 +17,10 @@ path = "src/lib.rs"
 hex = { workspace = true }
 psionic-core = { path = "../psionic-core" }
 psionic-datastream = { path = "../psionic-datastream" }
+safetensors = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
