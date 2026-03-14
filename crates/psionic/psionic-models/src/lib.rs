@@ -3,6 +3,7 @@
 mod fixtures;
 mod harmony;
 mod runtime_tokenizer;
+mod sharding;
 
 use std::{
     borrow::Cow,
@@ -26,6 +27,7 @@ use thiserror::Error;
 pub use fixtures::*;
 pub use harmony::*;
 pub use runtime_tokenizer::*;
+pub use sharding::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "reusable model definitions and metadata";

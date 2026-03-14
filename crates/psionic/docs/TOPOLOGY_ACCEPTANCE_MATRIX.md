@@ -118,7 +118,9 @@ These combinations must stay explicit:
   serving planner, route policy, cache contract, or provider receipt shape.
 - Local `DP`, `PP`, layer-sharded, and `TP` are unsupported.
   Rationale: local Psionic serving is still one runtime owner per request path,
-  with explicit local PD support but no shipped multi-device local planner.
+  with explicit local PD support. Psionic now has a lower-level same-type local
+  multi-device runner plus declarative sharding contracts, but no local serving
+  lane is wired to that runner yet.
 - Clustered Metal dispatch remains refused.
   Rationale: the current cluster planners still point at the active Metal queue
   `#3286` -> `#3285` -> `#3269` -> `#3262` and must not silently claim cluster

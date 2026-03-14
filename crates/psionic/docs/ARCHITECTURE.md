@@ -202,6 +202,9 @@ Applications / Operators / Authority
 4. `psionic-runtime`
    - runtime traits, runtime planning, execution-proof bundles, training-class
      runtime truth
+   - same-type local multi-device plan-runner contracts, declarative local
+     sharding validation, and local multi-device execution evidence kept
+     distinct from clustered execution truth
 5. `psionic-sandbox`
    - bounded execution profiles, runtime detection, execution receipts, and
      background-job lifecycle

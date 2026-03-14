@@ -6599,6 +6599,7 @@ dependencies = [
  "openai-harmony",
  "psionic-catalog",
  "psionic-core",
+ "psionic-runtime",
  "safetensors",
  "serde",
  "serde_json",

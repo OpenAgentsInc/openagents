@@ -19,6 +19,7 @@ hex = { workspace = true }
 psionic-catalog = { path = "../psionic-catalog" }
 psionic-core = { path = "../psionic-core" }
 openai-harmony = "0.0.8"
+psionic-runtime = { path = "../psionic-runtime" }
 safetensors = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
