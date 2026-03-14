@@ -10,7 +10,7 @@ use psionic_runtime::{
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode,
     ClusterTransportClass as RuntimeClusterTransportClass, DeviceInventoryQualifiers,
-    DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan,
+    DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan, PrefillDecodeExecutionMode,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -116,6 +116,9 @@ pub struct WholeRequestSchedulingRequest {
     /// Explicit nodes that this scheduling attempt must exclude.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub excluded_node_ids: BTreeSet<NodeId>,
+    /// Required prompt-prefill/decode execution mode for the selected clustered lane.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_prefill_decode_mode: Option<PrefillDecodeExecutionMode>,
 }
 
 impl WholeRequestSchedulingRequest {
@@ -135,6 +138,7 @@ impl WholeRequestSchedulingRequest {
             policy_digests: Vec::new(),
             exo_placement_hint: None,
             excluded_node_ids: BTreeSet::new(),
+            required_prefill_decode_mode: None,
         }
     }
 
@@ -214,6 +218,16 @@ impl WholeRequestSchedulingRequest {
         I: IntoIterator<Item = NodeId>,
     {
         self.excluded_node_ids.extend(node_ids);
+        self
+    }
+
+    /// Requires one explicit prompt-prefill/decode mode for remote whole-request execution.
+    #[must_use]
+    pub const fn requiring_prefill_decode_mode(
+        mut self,
+        required_prefill_decode_mode: PrefillDecodeExecutionMode,
+    ) -> Self {
+        self.required_prefill_decode_mode = Some(required_prefill_decode_mode);
         self
     }
 }
@@ -392,6 +406,8 @@ pub enum WholeRequestSchedulingFailureCode {
     SchedulerNodeNotReady,
     /// The requested backend does not satisfy the required communication class for cluster execution.
     CommunicationClassIneligible,
+    /// The requested cluster lane does not truthfully support the required prefill/decode mode.
+    PrefillDecodeModeIneligible,
     /// No eligible remote execution candidate exists under the current cluster facts.
     NoEligibleRemoteNode,
 }
@@ -509,6 +525,30 @@ pub fn schedule_remote_whole_request(
                         request.requested_backend
                     )
                 }),
+            cluster_id: state.cluster_id().clone(),
+            scheduler_node_id: request.scheduler_node_id.clone(),
+            requested_backend: request.requested_backend.clone(),
+            cluster_state_digest,
+            topology_digest,
+            artifact_residency_digest,
+            policy_digests: request.policy_digests.clone(),
+            communication_eligibility,
+            refusals: Vec::new(),
+        }));
+    }
+    if let Some(required_prefill_decode_mode) = request.required_prefill_decode_mode
+        && !request.capability_profile.supports_prefill_decode_mode(
+            ClusterExecutionLane::RemoteWholeRequest,
+            required_prefill_decode_mode,
+        )
+    {
+        return Err(Box::new(WholeRequestSchedulingFailure {
+            code: WholeRequestSchedulingFailureCode::PrefillDecodeModeIneligible,
+            detail: format!(
+                "cluster capability profile for backend `{}` does not declare prefill/decode mode `{}` on lane `remote_whole_request`",
+                request.requested_backend,
+                required_prefill_decode_mode.as_str(),
+            ),
             cluster_id: state.cluster_id().clone(),
             scheduler_node_id: request.scheduler_node_id.clone(),
             requested_backend: request.requested_backend.clone(),
@@ -1454,7 +1494,9 @@ mod tests {
     };
     use psionic_runtime::{
         ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterExecutionCapabilityProfile,
-        ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind,
+        ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ClusterPrefillDecodeCapability, ExecutionTopologyKind, PrefillDecodeCapability,
+        PrefillDecodeExecutionMode,
     };
 
     use crate::{
@@ -1532,6 +1574,12 @@ mod tests {
     fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
         ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                PrefillDecodeCapability::colocated_split().with_detail(
+                    "remote whole-request execution only supports co-located prefill/decode split inside the selected runtime owner",
+                ),
+            ))
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             )
@@ -2396,6 +2444,30 @@ mod tests {
                 .detail
                 .contains("`#3286` -> `#3285` -> `#3269` -> `#3262`"),
             "refusal detail should point at the active Metal gate"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_refuses_unsupported_prefill_decode_mode_explicitly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let state = ClusterState::from_snapshot(sample_snapshot());
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
+            .requiring_prefill_decode_mode(PrefillDecodeExecutionMode::DisaggregatedKvTransfer);
+
+        let failure = schedule_remote_whole_request(&state, &request)
+            .expect_err("remote whole-request dispatch should refuse unsupported kv-transfer mode");
+
+        assert_eq!(
+            failure.code,
+            WholeRequestSchedulingFailureCode::PrefillDecodeModeIneligible
+        );
+        assert!(
+            failure
+                .detail
+                .contains(PrefillDecodeExecutionMode::DisaggregatedKvTransfer.as_str()),
+            "failure detail should name the refused prefill/decode mode"
         );
         Ok(())
     }

@@ -70,14 +70,15 @@ use psionic_runtime::{
     KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
     LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
     MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
-    PrefixCacheControl, PrefixCacheIdentity, PrefixCacheMode, PrefixCacheRefusalReason,
-    PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
-    QuantizationDispatchRequest, QuantizationDispatchWorkload, RuntimeError,
-    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
-    SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest, ShardedModelManifestError,
-    StructuredOutputError, StructuredOutputExecutionReport, StructuredOutputMatchStatus,
-    StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
-    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
+    PrefillDecodeCapability, PrefillDecodeExecutionMode, PrefillDecodeHandoff, PrefixCacheControl,
+    PrefixCacheIdentity, PrefixCacheMode, PrefixCacheRefusalReason, PrefixCacheReusePolicy,
+    PrefixCacheState, QuantizationDispatchDecision, QuantizationDispatchRequest,
+    QuantizationDispatchWorkload, RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind,
+    RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedArtifactIdentity,
+    ShardedModelManifest, ShardedModelManifestError, StructuredOutputError,
+    StructuredOutputExecutionReport, StructuredOutputMatchStatus, StructuredOutputMatcher,
+    StructuredOutputRequest, TokenSampler, default_cache_invalidation_policy, plan_model_admission,
+    select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -241,6 +242,9 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
 #[must_use]
 pub fn default_text_generation_execution_profile() -> ExecutionCapabilityProfile {
     ExecutionCapabilityProfile::single_request_latency_optimized()
+        .with_prefill_decode_capability(PrefillDecodeCapability::colocated_split().with_detail(
+            "local text generation separates prompt-prefill and decode inside one runtime-owned KV seam",
+        ))
 }
 
 /// Returns the default scheduler policy for shared continuous-batching generation.
@@ -255,6 +259,9 @@ pub fn continuous_batch_text_generation_execution_profile() -> ExecutionCapabili
     ExecutionCapabilityProfile::continuous_batch_throughput_optimized(
         &default_generation_scheduler_policy(),
     )
+    .with_prefill_decode_capability(PrefillDecodeCapability::colocated_split().with_detail(
+        "continuous batching keeps prompt-prefill and decode as distinct co-located scheduler phases",
+    ))
 }
 
 fn session_kv_owner(model_id: &str, session_id: &SessionId) -> KvCacheOwnerBinding {
@@ -549,12 +556,14 @@ fn build_delivery_proof(
     plan_cache_hits: usize,
     plan_cache_misses: usize,
     kv_growth: Option<psionic_runtime::KvCacheGrowth>,
+    prefill_decode_handoff: Option<PrefillDecodeHandoff>,
 ) -> Option<ExecutionDeliveryProof> {
     if kernel_count == 0
         && bytes_moved == 0
         && plan_cache_hits == 0
         && plan_cache_misses == 0
         && kv_growth.is_none()
+        && prefill_decode_handoff.is_none()
     {
         return None;
     }
@@ -565,7 +574,36 @@ fn build_delivery_proof(
         plan_cache_hits,
         plan_cache_misses,
         kv_growth,
+        prefill_decode_handoff,
     })
+}
+
+fn elapsed_ns(started_at: Instant) -> u64 {
+    started_at
+        .elapsed()
+        .as_nanos()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn average_inter_token_latency_ns(
+    first_token_at: Option<Instant>,
+    last_token_at: Option<Instant>,
+    output_tokens: usize,
+) -> Option<u64> {
+    (output_tokens > 1)
+        .then_some((first_token_at?, last_token_at?))
+        .and_then(|(first_token_at, last_token_at)| {
+            let interval_count = output_tokens.saturating_sub(1);
+            let elapsed = last_token_at.duration_since(first_token_at).as_nanos();
+            let average = elapsed / interval_count as u128;
+            average.try_into().ok()
+        })
+}
+
+fn local_prefill_decode_handoff(prefill_kv_state: &KvCacheState) -> Option<PrefillDecodeHandoff> {
+    (prefill_kv_state.tokens > 0 || prefill_kv_state.pages > 0 || prefill_kv_state.bytes > 0)
+        .then(|| PrefillDecodeHandoff::colocated(prefill_kv_state.pages, prefill_kv_state.bytes))
 }
 
 fn accumulate_generation_step_counters(
@@ -1183,6 +1221,12 @@ pub struct GenerationMetrics {
     /// Output-generation duration in nanoseconds, when measured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eval_duration_ns: Option<u64>,
+    /// Time to first emitted token in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ns: Option<u64>,
+    /// Average inter-token latency in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inter_token_latency_ns: Option<u64>,
     /// Explicit paged-KV accounting for the request, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
@@ -1760,6 +1804,8 @@ impl GenerationMetrics {
             context_window: None,
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: None,
+            time_to_first_token_ns: None,
+            inter_token_latency_ns: None,
             kv_cache: None,
             prefix_tokens_reused: None,
             gpt_oss_perf: None,
@@ -1775,6 +1821,8 @@ impl GenerationMetrics {
             && self.context_window.is_none()
             && self.eval_count.is_none()
             && self.eval_duration_ns.is_none()
+            && self.time_to_first_token_ns.is_none()
+            && self.inter_token_latency_ns.is_none()
             && self.kv_cache.is_none()
             && self.prefix_tokens_reused.is_none()
             && self.gpt_oss_perf.is_none()
@@ -5230,6 +5278,9 @@ where
     residency_snapshot: Option<MemoryResidencySnapshot>,
     prompt_eval_started_at: Option<Instant>,
     prompt_eval_duration_ns: Option<u64>,
+    prefill_handoff_state: Option<KvCacheState>,
+    first_token_emitted_at: Option<Instant>,
+    last_token_emitted_at: Option<Instant>,
     context_window: ContextWindowAccounting,
     previous_kv_state: KvCacheState,
     cache: InMemoryKvCache,
@@ -5421,6 +5472,10 @@ where
                 residency_snapshot,
                 prompt_eval_started_at: None,
                 prompt_eval_duration_ns,
+                prefill_handoff_state: (prefix_tokens_reused == prompt_tokens.len())
+                    .then(|| cache.state()),
+                first_token_emitted_at: None,
+                last_token_emitted_at: None,
                 context_window,
                 previous_kv_state,
                 cache,
@@ -5521,12 +5576,11 @@ where
 
         if self.prefill_complete() {
             if self.prompt_eval_duration_ns.is_none() {
-                self.prompt_eval_duration_ns = Some(
-                    self.prompt_eval_started_at
-                        .take()
-                        .map(|start| start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX))
-                        .unwrap_or(0),
-                );
+                self.prompt_eval_duration_ns =
+                    Some(self.prompt_eval_started_at.take().map_or(0, elapsed_ns));
+            }
+            if self.prefill_handoff_state.is_none() {
+                self.prefill_handoff_state = Some(self.cache.state());
             }
             if self.shared_prefix_eligible && !self.prompt_prefix_recorded {
                 let recorded_identity = shared_prefixes.record(
@@ -5605,6 +5659,11 @@ where
             self.cache.append(next_token, step.key, step.value)?;
             self.last_logits = step.logits;
             decoded = decoded.saturating_add(1);
+            let emitted_at = Instant::now();
+            if self.first_token_emitted_at.is_none() {
+                self.first_token_emitted_at = Some(emitted_at);
+            }
+            self.last_token_emitted_at = Some(emitted_at);
 
             if truncate_generated_text(
                 self.loaded_model.tokenizer(),
@@ -5650,12 +5709,20 @@ where
             output_tokens: generated.len(),
             cache_tokens: self.cache.len(),
         };
-        let total_duration_ns = self
-            .generation_start
-            .elapsed()
-            .as_nanos()
-            .try_into()
-            .unwrap_or(u64::MAX);
+        let total_duration_ns = elapsed_ns(self.generation_start);
+        let time_to_first_token_ns = self
+            .first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(self.generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = average_inter_token_latency_ns(
+            self.first_token_emitted_at,
+            self.last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = self
+            .prefill_handoff_state
+            .as_ref()
+            .and_then(local_prefill_decode_handoff);
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match self.load_state {
@@ -5669,6 +5736,8 @@ where
             eval_duration_ns: Some(
                 total_duration_ns.saturating_sub(self.prompt_eval_duration_ns.unwrap_or(0)),
             ),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(KvCacheAccounting::from_states(
                 &self.previous_kv_state,
                 self.cache.state(),
@@ -5707,6 +5776,7 @@ where
                 self.plan_cache_hits,
                 self.plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff.clone(),
             ),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
@@ -5785,6 +5855,16 @@ where
         &self,
         policy: &GenerationSchedulerPolicy,
     ) -> GenerationSchedulerRequestReceipt {
+        let time_to_first_token_ns = self
+            .state
+            .first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(self.state.generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = average_inter_token_latency_ns(
+            self.state.first_token_emitted_at,
+            self.state.last_token_emitted_at,
+            self.decode_tokens,
+        );
         GenerationSchedulerRequestReceipt {
             policy: policy.clone(),
             batch_posture: psionic_runtime::BatchExecutionPosture::ContinuousBatch,
@@ -5793,6 +5873,15 @@ where
             scheduling_class: self.scheduling_class(),
             prefill_tokens: self.prefill_tokens,
             decode_tokens: self.decode_tokens,
+            prefill_decode_mode: (self.prefill_tokens > 0 || self.decode_tokens > 0)
+                .then_some(PrefillDecodeExecutionMode::DisaggregatedColocated),
+            prefill_decode_handoff: self
+                .state
+                .prefill_handoff_state
+                .as_ref()
+                .and_then(local_prefill_decode_handoff),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             fallback_reason: None,
         }
     }
@@ -5815,6 +5904,38 @@ fn generation_response_kv_ownership(
         .provenance
         .as_ref()
         .and_then(|provenance| provenance.kv_ownership.as_ref())
+}
+
+fn generation_response_prefill_decode_handoff(
+    response: &GenerationResponse,
+) -> Option<&PrefillDecodeHandoff> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|provenance| provenance.delivery_proof.as_ref())
+        .and_then(|proof| proof.prefill_decode_handoff.as_ref())
+}
+
+fn accumulate_scheduler_timing_metrics(
+    scheduler_metrics: &mut GenerationSchedulerMetrics,
+    response: &GenerationResponse,
+) {
+    if let Some(time_to_first_token_ns) = response.metrics.time_to_first_token_ns {
+        scheduler_metrics.total_time_to_first_token_ns = scheduler_metrics
+            .total_time_to_first_token_ns
+            .saturating_add(time_to_first_token_ns);
+        scheduler_metrics.measured_time_to_first_token_requests = scheduler_metrics
+            .measured_time_to_first_token_requests
+            .saturating_add(1);
+    }
+    if let Some(inter_token_latency_ns) = response.metrics.inter_token_latency_ns {
+        scheduler_metrics.total_inter_token_latency_ns = scheduler_metrics
+            .total_inter_token_latency_ns
+            .saturating_add(inter_token_latency_ns);
+        scheduler_metrics.measured_inter_token_latency_requests = scheduler_metrics
+            .measured_inter_token_latency_requests
+            .saturating_add(1);
+    }
 }
 
 fn update_scheduler_kv_peaks<M>(
@@ -5856,6 +5977,15 @@ fn fallback_single_request_receipt(
             .input_tokens
             .saturating_sub(response.metrics.prefix_tokens_reused.unwrap_or(0)),
         decode_tokens: response.usage.output_tokens,
+        prefill_decode_mode: generation_response_prefill_decode_handoff(response)
+            .map(|handoff| handoff.mode)
+            .or_else(|| {
+                (response.usage.input_tokens > 0 || response.usage.output_tokens > 0)
+                    .then_some(PrefillDecodeExecutionMode::DisaggregatedColocated)
+            }),
+        prefill_decode_handoff: generation_response_prefill_decode_handoff(response).cloned(),
+        time_to_first_token_ns: response.metrics.time_to_first_token_ns,
+        inter_token_latency_ns: response.metrics.inter_token_latency_ns,
         fallback_reason: Some(fallback_reason),
     }
 }
@@ -5896,6 +6026,9 @@ where
                 );
                 response_with_scheduler_receipt(response, receipt)
             });
+        if let Ok(response) = &result {
+            accumulate_scheduler_timing_metrics(&mut scheduler_metrics, response);
+        }
         responses[index] = Some(result);
     }
 
@@ -6013,6 +6146,7 @@ where
                                             .sum::<u64>(),
                                     );
                             }
+                            accumulate_scheduler_timing_metrics(&mut scheduler_metrics, &response);
                             scheduler_metrics.total_completed_requests =
                                 scheduler_metrics.total_completed_requests.saturating_add(1);
                             responses[entry.index] = Some(Ok(response));
@@ -6145,6 +6279,7 @@ where
     residency_policy: Option<ModelResidencyPolicy>,
     residency_snapshot: Option<MemoryResidencySnapshot>,
     prompt_eval_duration_ns: u64,
+    prefill_handoff_state: KvCacheState,
     context_window: ContextWindowAccounting,
     previous_kv_state: KvCacheState,
     cache: InMemoryKvCache,
@@ -6166,6 +6301,8 @@ where
     plan_cache_misses: usize,
     last_logits: Vec<f32>,
     generated_tokens: Vec<TokenId>,
+    first_token_emitted_at: Option<Instant>,
+    last_token_emitted_at: Option<Instant>,
     emitted_token_count: usize,
     emitted_text_bytes: usize,
     pending_terminal: Option<GenerationStreamTerminal>,
@@ -6351,11 +6488,8 @@ where
                 }
             }
 
-            let prompt_eval_duration_ns = prompt_eval_start
-                .elapsed()
-                .as_nanos()
-                .try_into()
-                .unwrap_or(u64::MAX);
+            let prompt_eval_duration_ns = elapsed_ns(prompt_eval_start);
+            let prefill_handoff_state = cache.state();
 
             Ok((
                 prompt_tokens,
@@ -6371,6 +6505,7 @@ where
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
+                prefill_handoff_state,
                 execution_plan_digest,
                 compile_path,
                 kernel_count,
@@ -6396,6 +6531,7 @@ where
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
+                prefill_handoff_state,
                 execution_plan_digest,
                 compile_path,
                 kernel_count,
@@ -6420,6 +6556,7 @@ where
                 residency_policy,
                 residency_snapshot,
                 prompt_eval_duration_ns,
+                prefill_handoff_state,
                 context_window,
                 previous_kv_state,
                 cache,
@@ -6440,6 +6577,8 @@ where
                 plan_cache_misses,
                 last_logits,
                 generated_tokens: Vec::new(),
+                first_token_emitted_at: None,
+                last_token_emitted_at: None,
                 emitted_token_count: 0,
                 emitted_text_bytes: 0,
                 pending_terminal: None,
@@ -6473,12 +6612,17 @@ where
             output_tokens: generated.len(),
             cache_tokens: self.cache.len(),
         };
-        let total_duration_ns = self
-            .generation_start
-            .elapsed()
-            .as_nanos()
-            .try_into()
-            .unwrap_or(u64::MAX);
+        let total_duration_ns = elapsed_ns(self.generation_start);
+        let time_to_first_token_ns = self
+            .first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(self.generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = average_inter_token_latency_ns(
+            self.first_token_emitted_at,
+            self.last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = local_prefill_decode_handoff(&self.prefill_handoff_state);
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match self.load_state {
@@ -6490,6 +6634,8 @@ where
             context_window: Some(self.context_window.clone()),
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: Some(total_duration_ns.saturating_sub(self.prompt_eval_duration_ns)),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(KvCacheAccounting::from_states(
                 &self.previous_kv_state,
                 self.cache.state(),
@@ -6523,6 +6669,7 @@ where
                 self.plan_cache_hits,
                 self.plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff,
             ),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
@@ -6748,6 +6895,11 @@ where
                         ));
                     }
                     self.last_logits = step.logits;
+                    let emitted_at = Instant::now();
+                    if self.first_token_emitted_at.is_none() {
+                        self.first_token_emitted_at = Some(emitted_at);
+                    }
+                    self.last_token_emitted_at = Some(emitted_at);
                 }
                 Err(error) => {
                     return Some(self.emit_terminal_or_chunk(
@@ -7001,12 +7153,15 @@ where
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
+        let prefill_handoff_state = cache.state();
         let prompt_cache = (shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len())
             .then(|| cache.clone());
 
         let mut sampler = GenerationSampler::new(&request.options)?;
         let structured_output_report = sampler.structured_output_report();
         let mut generated_tokens = Vec::new();
+        let mut first_token_emitted_at = None;
+        let mut last_token_emitted_at = None;
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break TerminationReason::MaxOutputTokens;
@@ -7042,6 +7197,11 @@ where
             );
             cache.append(next_token, step.key, step.value)?;
             last_logits = step.logits;
+            let emitted_at = Instant::now();
+            if first_token_emitted_at.is_none() {
+                first_token_emitted_at = Some(emitted_at);
+            }
+            last_token_emitted_at = Some(emitted_at);
 
             if truncate_generated_text(
                 loaded_model.tokenizer(),
@@ -7068,11 +7228,7 @@ where
             }
         }
 
-        let prompt_eval_duration_ns = prompt_eval_start
-            .elapsed()
-            .as_nanos()
-            .try_into()
-            .unwrap_or(u64::MAX);
+        let prompt_eval_duration_ns = elapsed_ns(prompt_eval_start);
 
         let generated = TokenSequence::new(generated_tokens);
         if let Some(session_id) = &request.session_id {
@@ -7093,11 +7249,16 @@ where
             cache_tokens: cache.len(),
         };
         let kv_cache = KvCacheAccounting::from_states(&previous_kv_state, cache.state());
-        let total_duration_ns = generation_start
-            .elapsed()
-            .as_nanos()
-            .try_into()
-            .unwrap_or(u64::MAX);
+        let total_duration_ns = elapsed_ns(generation_start);
+        let time_to_first_token_ns = first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = average_inter_token_latency_ns(
+            first_token_emitted_at,
+            last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = local_prefill_decode_handoff(&prefill_handoff_state);
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
@@ -7109,6 +7270,8 @@ where
             context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
@@ -7142,6 +7305,7 @@ where
                 plan_cache_hits,
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff,
             ),
             cache_observations: generation_cache_observations(
                 loaded_model.descriptor(),
@@ -7928,6 +8092,7 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
                 plan_cache_hits,
                 plan_cache_misses,
                 None,
+                None,
             ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
@@ -8078,6 +8243,7 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
                 bytes_moved,
                 plan_cache_hits,
                 plan_cache_misses,
+                None,
                 None,
             ),
             cache_observations: cache_observations_for_embedding_model(
@@ -8257,6 +8423,7 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
                 plan_cache_hits,
                 plan_cache_misses,
                 None,
+                None,
             ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
@@ -8434,6 +8601,7 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
                 bytes_moved,
                 plan_cache_hits,
                 plan_cache_misses,
+                None,
                 None,
             ),
             cache_observations: cache_observations_for_embedding_model(

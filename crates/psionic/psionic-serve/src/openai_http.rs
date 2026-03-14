@@ -1622,6 +1622,19 @@ async fn handle_generic_chat_completions(
         .as_ref()
         .and_then(|value| value.prefix_cache_refusal_reason);
     let prefix_tokens_reused = response.metrics.prefix_tokens_reused;
+    let prefill_decode_mode = scheduler_receipt
+        .as_ref()
+        .and_then(|receipt| receipt.prefill_decode_mode)
+        .or_else(|| {
+            response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .and_then(|proof| proof.prefill_decode_handoff.as_ref())
+                .map(|handoff| handoff.mode)
+        });
+    let time_to_first_token_ns = response.metrics.time_to_first_token_ns;
+    let inter_token_latency_ns = response.metrics.inter_token_latency_ns;
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
             request_id.as_str(),
@@ -1647,6 +1660,9 @@ async fn handle_generic_chat_completions(
             state.as_ref(),
             structured_output_report.as_ref(),
             scheduler_receipt.as_ref(),
+            prefill_decode_mode,
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             prefix_cache_state,
             prefix_cache_refusal_reason,
             prefix_tokens_reused,
@@ -1705,6 +1721,9 @@ async fn handle_generic_chat_completions(
         state.as_ref(),
         structured_output_report.as_ref(),
         scheduler_receipt.as_ref(),
+        prefill_decode_mode,
+        time_to_first_token_ns,
+        inter_token_latency_ns,
         prefix_cache_state,
         prefix_cache_refusal_reason,
         prefix_tokens_reused,
@@ -1948,6 +1967,9 @@ fn insert_generic_execution_headers(
     state: &OpenAiCompatState,
     structured_output: Option<&StructuredOutputExecutionReport>,
     scheduler: Option<&GenerationSchedulerRequestReceipt>,
+    prefill_decode_mode: Option<psionic_runtime::PrefillDecodeExecutionMode>,
+    time_to_first_token_ns: Option<u64>,
+    inter_token_latency_ns: Option<u64>,
     prefix_cache_state: Option<PrefixCacheState>,
     prefix_cache_refusal_reason: Option<PrefixCacheRefusalReason>,
     prefix_tokens_reused: Option<usize>,
@@ -2005,6 +2027,22 @@ fn insert_generic_execution_headers(
                 }
             }),
         );
+    }
+    if let Some(prefill_decode_mode) = prefill_decode_mode {
+        headers.insert(
+            HeaderName::from_static("x-psionic-prefill-decode-mode"),
+            HeaderValue::from_static(prefill_decode_mode.as_str()),
+        );
+    }
+    if let Some(time_to_first_token_ns) = time_to_first_token_ns
+        && let Ok(value) = HeaderValue::from_str(time_to_first_token_ns.to_string().as_str())
+    {
+        headers.insert(HeaderName::from_static("x-psionic-ttft-ns"), value);
+    }
+    if let Some(inter_token_latency_ns) = inter_token_latency_ns
+        && let Ok(value) = HeaderValue::from_str(inter_token_latency_ns.to_string().as_str())
+    {
+        headers.insert(HeaderName::from_static("x-psionic-itl-ns"), value);
     }
     if let Some(prefix_cache_state) = prefix_cache_state {
         headers.insert(
@@ -2988,6 +3026,15 @@ mod tests {
             Some(String::from("mixed_prefill_decode"))
         );
         assert_eq!(
+            header_value(response.headers(), "x-psionic-prefill-decode-mode"),
+            Some(String::from("disaggregated_colocated"))
+        );
+        assert!(
+            header_value(response.headers(), "x-psionic-ttft-ns")
+                .is_some_and(|value| !value.is_empty()),
+            "TTFT header should be surfaced when measured"
+        );
+        assert_eq!(
             header_value(response.headers(), "x-psionic-structured-output-parser"),
             Some(String::from("gbnf_subset"))
         );
@@ -3061,6 +3108,15 @@ mod tests {
         assert_eq!(
             header_value(response.headers(), "x-psionic-scheduling-class"),
             Some(String::from("mixed_prefill_decode"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-prefill-decode-mode"),
+            Some(String::from("disaggregated_colocated"))
+        );
+        assert!(
+            header_value(response.headers(), "x-psionic-ttft-ns")
+                .is_some_and(|value| !value.is_empty()),
+            "TTFT header should be surfaced when measured"
         );
         assert_eq!(
             header_value(response.headers(), "x-psionic-structured-output-parser"),

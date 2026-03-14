@@ -451,7 +451,8 @@ For serving lanes this typically means:
 
 - served artifact resolution
 - backend and capability gating
-- queue admission, fairness, and mixed prefill/decode work
+- queue admission, fairness, mixed prefill/decode work, and explicit TTFT/ITL
+  plus prefill/decode handoff truth when the lane supports it
 - structured outputs, tool or response-state semantics, and optional multi-model
   routing
 - optional clustered placement and shard handoff

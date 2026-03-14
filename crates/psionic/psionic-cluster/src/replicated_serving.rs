@@ -593,7 +593,7 @@ mod tests {
     use psionic_runtime::{
         CacheAction, CacheInvalidationTrigger, ClusterAdmissionFactKind, ClusterCacheCapability,
         ClusterCacheScope, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
-        ClusterPolicyDigestKind,
+        ClusterPolicyDigestKind, ClusterPrefillDecodeCapability, PrefillDecodeCapability,
     };
 
     use crate::{
@@ -686,6 +686,18 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::ReplicaRouted,
             ])
+            .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                PrefillDecodeCapability::colocated_split().with_detail(
+                    "remote whole-request dispatch keeps prefill and decode split inside one selected replica runtime",
+                ),
+            ))
+            .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+                ClusterExecutionLane::ReplicaRouted,
+                PrefillDecodeCapability::colocated_split().with_detail(
+                    "replica-routed serving keeps prefill and decode split on the winning warm replica rather than moving KV across replicas",
+                ),
+            ))
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::ReplicaRouted,
