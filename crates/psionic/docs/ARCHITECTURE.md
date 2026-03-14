@@ -140,7 +140,7 @@ Psionic is also not:
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
 | Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
-| Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
+| Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, stage-program identity, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
 | Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |

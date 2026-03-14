@@ -182,9 +182,11 @@ Implemented now:
   bandwidth-aware local/global sync planning, typed fixed-budget trainer
   steps, explicit checkpoint pointers and checkpoint manifests, restore
   receipts with declared recovery modes, checkpoint-anchored restore, explicit
-  run graphs, contributor-set revisions, window lifecycle, first orchestrator
-  state, rollout-admission receipts, bounded off-policy freshness budgets,
-  worker heartbeats, claims, upload receipts, and adapter lineage.
+  run graphs, contributor-set revisions, stage-program identity across
+  `general_sft` / `agentic_sft` / `rl`, typed SFT trace lineage, window
+  lifecycle, first orchestrator state, rollout-admission receipts, bounded
+  off-policy freshness budgets, worker heartbeats, claims, upload receipts,
+  and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, explicit policy-lineage
   digests, quarantined-versus-discarded stale-rollout pruning, and typed
@@ -237,6 +239,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md](docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md)** —
   canonical rollout-artifact, trainer-batch, and policy-lineage runbook for
   the first reusable RL-facing contracts in `psionic-train`.
+- **[docs/TRAIN_STAGE_PROGRAM_REFERENCE.md](docs/TRAIN_STAGE_PROGRAM_REFERENCE.md)** —
+  canonical multi-stage `general_sft -> agentic_sft -> rl` runbook for
+  `psionic-train`.
 - **[docs/ENVIRONMENT_ABI_REFERENCE.md](docs/ENVIRONMENT_ABI_REFERENCE.md)** —
   canonical package ABI, runtime-session runbook, and acceptance criteria for
   the first Psionic-native environment contract.

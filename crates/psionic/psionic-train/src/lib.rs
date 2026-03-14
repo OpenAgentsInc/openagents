@@ -26,6 +26,7 @@ mod orchestrator;
 mod rl_artifacts;
 mod rollout_validation;
 mod run_graph;
+mod stage_program;
 mod worker_protocol;
 
 pub use checkpoint_recovery::*;
@@ -34,6 +35,7 @@ pub use orchestrator::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
 pub use run_graph::*;
+pub use stage_program::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.
