@@ -6709,6 +6709,7 @@ dependencies = [
 name = "psionic-train"
 version = "0.1.1"
 dependencies = [
+ "ed25519-dalek",
  "hex",
  "psionic-cluster",
  "psionic-collectives",

@@ -224,6 +224,10 @@ Implemented now:
   seeds, sample-selection rules, environment and tool pins, eval posture, and
   replay drift verification machine-legible instead of scattered across
   receipts.
+- a first train-security posture layer in `psionic-train`, making environment
+  verification, artifact trust roots, untrusted-worker admission, poisoning
+  controls, and validator-bound security receipts explicit instead of
+  hand-waved around the rollout validator.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
@@ -320,6 +324,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_REPLAY_TRUTH_REFERENCE.md](docs/TRAIN_REPLAY_TRUTH_REFERENCE.md)** —
   canonical replay-seed, sample-selection, environment-pin, eval-posture, and
   replay-verification runbook for `psionic-train`.
+- **[docs/TRAIN_SECURITY_POSTURE_REFERENCE.md](docs/TRAIN_SECURITY_POSTURE_REFERENCE.md)** —
+  canonical environment verification, artifact trust-root, untrusted-worker
+  admission, and poisoning-control runbook for `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
