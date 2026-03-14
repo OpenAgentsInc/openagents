@@ -1,0 +1,36 @@
+{
+  "name": "matmul_add",
+  "description": "baseline linear algebra lowering over a simple matmul plus bias add",
+  "graph_digest": "831261d4cc262c4e7021cb3bba7bf28b40bf7350037ad3bed39cc927efd0f124",
+  "graph_signature": [
+    "t0|input|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||input:input|",
+    "t1|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||constant|f32:3f800000,00000000,00000000,3f800000",
+    "t2|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||constant|f32:3e800000,3e800000,3e800000,3e800000",
+    "t3|matmul|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t0,t1|matmul|",
+    "t4|add|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t3,t2|add|",
+    "outputs|t4"
+  ],
+  "plan_digest": "7e9d3552bfaf6ac836f725bad16fc8b14d2cd217dad4055ee54ecf8781cb0efa",
+  "plan_signature": [
+    "graph|831261d4cc262c4e7021cb3bba7bf28b40bf7350037ad3bed39cc927efd0f124",
+    "step|t0|input|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||input:input",
+    "step|t1|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||f32:3f800000,00000000,00000000,3f800000",
+    "step|t2|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||f32:3e800000,3e800000,3e800000,3e800000",
+    "step|t3|matmul|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t0,t1|",
+    "step|t4|add|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t3,t2|",
+    "outputs|t4"
+  ],
+  "plan_debug": "graph|831261d4cc262c4e7021cb3bba7bf28b40bf7350037ad3bed39cc927efd0f124\nt0 <- input[input:input]()\nt1 <- constant[f32:3f800000,00000000,00000000,3f800000]()\nt2 <- constant[f32:3e800000,3e800000,3e800000,3e800000]()\nt3 <- matmul(t0, t1)\nt4 <- add(t3, t2)\noutputs: t4",
+  "compiled_digest": "ada9800969a86e39e8b868c56e5062cd687798c3aaa85d86f1678dd67b464a86",
+  "compiled_signature": [
+    "graph|831261d4cc262c4e7021cb3bba7bf28b40bf7350037ad3bed39cc927efd0f124",
+    "step|t0|input|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||input:input",
+    "step|t1|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||f32:3f800000,00000000,00000000,3f800000",
+    "step|t2|constant|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0||f32:3e800000,3e800000,3e800000,3e800000",
+    "step|t3|matmul|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t0,t1|",
+    "step|t4|add|shape=[2, 2] strides=[2, 1] offset=0 dtype=F32 device=cpu:0|t3,t2|",
+    "outputs|t4",
+    "topology|none"
+  ],
+  "topology": null
+}

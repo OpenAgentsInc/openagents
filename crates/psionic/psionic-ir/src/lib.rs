@@ -271,16 +271,18 @@ impl Graph {
     /// Returns a stable digest of the graph structure and payloads.
     #[must_use]
     pub fn stable_digest(&self) -> String {
-        digest_lines(self.stable_lines())
+        digest_lines(self.stable_signature_lines())
     }
 
     /// Returns a stable debug string for snapshots and diagnostics.
     #[must_use]
     pub fn stable_debug(&self) -> String {
-        self.stable_lines().join("\n")
+        self.stable_signature_lines().join("\n")
     }
 
-    fn stable_lines(&self) -> Vec<String> {
+    /// Returns the canonical line-oriented signature used for replay fixtures.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
         let mut lines = Vec::with_capacity(self.nodes.len() + 1);
         for node in &self.nodes {
             let input_labels = node
@@ -453,32 +455,7 @@ impl ExecutionPlan {
     /// Returns a stable digest of the plan shape.
     #[must_use]
     pub fn stable_digest(&self) -> String {
-        let mut lines = vec![format!("graph|{}", self.graph_digest)];
-        for step in &self.steps {
-            let inputs = step
-                .inputs
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",");
-            lines.push(format!(
-                "step|{}|{}|{}|{}|{}",
-                step.output,
-                step.op.label(),
-                format_spec(&step.spec),
-                inputs,
-                format_execution_payload(&step.op),
-            ));
-        }
-        lines.push(format!(
-            "outputs|{}",
-            self.outputs
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-        digest_lines(lines)
+        digest_lines(self.stable_signature_lines())
     }
 
     /// Returns a stable debug view of the plan.
@@ -512,6 +489,37 @@ impl ExecutionPlan {
                 .join(", ")
         ));
         lines.join("\n")
+    }
+
+    /// Returns the canonical line-oriented signature used for replay fixtures.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("graph|{}", self.graph_digest)];
+        for step in &self.steps {
+            let inputs = step
+                .inputs
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            lines.push(format!(
+                "step|{}|{}|{}|{}|{}",
+                step.output,
+                step.op.label(),
+                format_spec(&step.spec),
+                inputs,
+                format_execution_payload(&step.op),
+            ));
+        }
+        lines.push(format!(
+            "outputs|{}",
+            self.outputs
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+        lines
     }
 }
 

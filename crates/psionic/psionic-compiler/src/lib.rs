@@ -78,6 +78,20 @@ impl CompiledExecutionPlan {
         hasher.update(topology_digest.as_bytes());
         format!("{:x}", hasher.finalize())
     }
+
+    /// Returns the canonical line-oriented signature used for replay fixtures.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = self.plan.stable_signature_lines();
+        lines.push(format!(
+            "topology|{}",
+            self.topology.as_ref().map_or_else(
+                || String::from("none"),
+                ExecutionTopologyPlan::stable_digest
+            )
+        ));
+        lines
+    }
 }
 
 /// Lowering pass interface.

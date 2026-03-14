@@ -6516,6 +6516,8 @@ dependencies = [
  "psionic-core",
  "psionic-ir",
  "psionic-runtime",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 2.0.17",
 ]
