@@ -1,0 +1,19 @@
+[package]
+name = "psionic-router"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Multi-model routing and policy contracts for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+psionic-runtime = { path = "../psionic-runtime" }
+serde = { workspace = true }
+thiserror = { workspace = true }

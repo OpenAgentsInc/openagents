@@ -215,7 +215,10 @@ Applications / Operators / Authority
    - reusable model definitions and metadata
 14. `psionic-serve`
    - request, response, and execution contracts for served products
-15. `psionic-provider`
+15. `psionic-router`
+   - reusable multi-model routing inventory, policy filters, and worker-path
+     selection for served fleets
+16. `psionic-provider`
    - provider-facing capability, readiness, and receipt types at the OpenAgents
      boundary
 

@@ -25,6 +25,7 @@ psionic-compiler = { path = "../psionic-compiler" }
 psionic-core = { path = "../psionic-core" }
 psionic-ir = { path = "../psionic-ir" }
 psionic-models = { path = "../psionic-models" }
+psionic-router = { path = "../psionic-router" }
 psionic-runtime = { path = "../psionic-runtime" }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["blocking"] }
