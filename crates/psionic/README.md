@@ -173,8 +173,9 @@ Implemented now:
 - explicit policy-weight shard manifests, lightweight control-plane refs,
   freshness windows, mirror metadata, and assembled broadcast receipts on top
   of the resumable datastream plane.
-- `psionic-sandbox` runtime detection, bounded execution, background jobs, and
-  file-transfer lifecycle.
+- `psionic-sandbox` runtime detection, bounded execution, background jobs,
+  file-transfer lifecycle, warm reusable pools, staged loop inputs, and
+  repeated agentic iteration receipts.
 - canonical execution-proof bundles and embeddings-first activation-fingerprint
   proof posture.
 - early train substrate: checkpoint-backed recovery, elastic membership,
@@ -246,6 +247,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ENVIRONMENT_REGISTRY_REFERENCE.md](docs/ENVIRONMENT_REGISTRY_REFERENCE.md)** —
   canonical install, pinning, mixed-group composition, and train/eval parity
   runbook for `psionic-environments`.
+- **[docs/SANDBOX_RL_THROUGHPUT_REFERENCE.md](docs/SANDBOX_RL_THROUGHPUT_REFERENCE.md)** —
+  canonical warm-pool, staged-input, repeated-loop, and pool-reuse runbook for
+  `psionic-sandbox`.
 - **[docs/DATASET_TOKENIZER_PACKING_REFERENCE.md](docs/DATASET_TOKENIZER_PACKING_REFERENCE.md)** —
   canonical versioned-dataset, tokenizer-digest, streamed-iteration, and
   long-context packing runbook for the first Psionic-native data-contract

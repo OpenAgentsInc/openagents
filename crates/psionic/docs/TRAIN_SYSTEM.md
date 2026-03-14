@@ -186,7 +186,7 @@ shape already includes at least:
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
-| Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
+| Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
@@ -1517,12 +1517,25 @@ remain later layers.
 
 ### 16. `Psionic Sandbox: add RL-throughput primitives for pooled, repeated agentic execution`
 
-`psionic-sandbox` already owns bounded execution and background jobs, but RL and
-agentic post-training need a different hot path. This issue should add warm
-pools, fast readiness, repeated command loops, streamed image or artifact
-staging, and receipts for pool reuse and acquisition latency. The target is a
-sandbox substrate optimized for thousands of short-lived environment actions,
-not only one-shot remote execution.
+Status: implemented on 2026-03-14 via GitHub issue `#3579`.
+
+Added the first RL-throughput sandbox control plane inside `psionic-sandbox`:
+
+- typed warm-pool specs, snapshots, warm receipts, and acquisition receipts
+- staged-input receipts for command inputs, image frames, and context artifacts
+- repeated bounded loop execution on the same acquired workspace
+- explicit reuse accounting so pool health and acquisition latency are visible
+  to later train or operator layers
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/SANDBOX_RL_THROUGHPUT_REFERENCE.md`
+- `scripts/release/check-psionic-sandbox-rl-throughput.sh`
+
+This issue makes the sandbox layer usable for RL-style short-lived environment
+actions without forcing one bespoke background-job flow per environment.
+Distributed pool management and higher-level train scheduling still remain
+later layers.
 
 ### 17. `Psionic Train: add SFT trace ingestion, stage transitions, and agentic pre-RL flows`
 

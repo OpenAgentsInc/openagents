@@ -8,3 +8,6 @@ pub use execution::*;
 
 mod jobs;
 pub use jobs::*;
+
+mod pool;
+pub use pool::*;

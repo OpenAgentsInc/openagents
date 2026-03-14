@@ -6668,6 +6668,7 @@ dependencies = [
 name = "psionic-sandbox"
 version = "0.1.1"
 dependencies = [
+ "hex",
  "serde",
  "serde_json",
  "sha2",
