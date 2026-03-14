@@ -359,7 +359,7 @@ impl PortableTokenizerBinding {
 pub enum ModelStateTensorRole {
     /// Train-visible model parameter tensor.
     Parameter,
-    /// SGD momentum buffer.
+    /// Momentum buffer for momentum-bearing local optimizers.
     SgdMomentumBuffer,
     /// Adam-family first moment.
     AdamFirstMoment,
@@ -569,7 +569,8 @@ impl PortableModelStateDict {
             };
 
             match &group.optimizer_state {
-                TrainingOptimizerState::Sgd { momentum_buffer } => {
+                TrainingOptimizerState::Sgd { momentum_buffer }
+                | TrainingOptimizerState::Lars { momentum_buffer } => {
                     if let Some(momentum_buffer) = momentum_buffer {
                         let state_key = format!("optimizer.{}.momentum_buffer", group.group_id);
                         insert_state_entry(
@@ -591,7 +592,15 @@ impl PortableModelStateDict {
                         assignment.momentum_buffer_key = Some(state_key);
                     }
                 }
-                TrainingOptimizerState::AdamW {
+                TrainingOptimizerState::Adam {
+                    first_moment,
+                    second_moment,
+                }
+                | TrainingOptimizerState::AdamW {
+                    first_moment,
+                    second_moment,
+                }
+                | TrainingOptimizerState::Lamb {
                     first_moment,
                     second_moment,
                 } => {
@@ -691,9 +700,13 @@ impl PortableModelStateDict {
                     })?,
             )?;
 
-            let optimizer_state = match assignment.optimizer.kind {
-                TrainingOptimizerKind::Sgd => {
-                    let momentum_buffer = assignment
+            let mut optimizer_state = assignment
+                .optimizer
+                .initialize_state(parameter.spec.storage_size());
+            match &mut optimizer_state {
+                TrainingOptimizerState::Sgd { momentum_buffer }
+                | TrainingOptimizerState::Lars { momentum_buffer } => {
+                    *momentum_buffer = assignment
                         .momentum_buffer_key
                         .as_ref()
                         .map(|state_key| {
@@ -708,45 +721,59 @@ impl PortableModelStateDict {
                             .map(ToOwned::to_owned)
                         })
                         .transpose()?;
-                    TrainingOptimizerState::Sgd { momentum_buffer }
                 }
-                TrainingOptimizerKind::AdamW => {
+                TrainingOptimizerState::Adam {
+                    first_moment,
+                    second_moment,
+                }
+                | TrainingOptimizerState::AdamW {
+                    first_moment,
+                    second_moment,
+                }
+                | TrainingOptimizerState::Lamb {
+                    first_moment,
+                    second_moment,
+                } => {
                     let first_moment_key =
                         assignment.first_moment_key.as_ref().ok_or_else(|| {
                             ModelIoError::InvalidGroupAssignment {
                                 group_id: assignment.group_id.clone(),
-                                message: String::from("AdamW group is missing `first_moment_key`"),
+                                message: format!(
+                                    "{:?} group is missing `first_moment_key`",
+                                    assignment.optimizer.kind
+                                ),
                             }
                         })?;
                     let second_moment_key =
                         assignment.second_moment_key.as_ref().ok_or_else(|| {
                             ModelIoError::InvalidGroupAssignment {
                                 group_id: assignment.group_id.clone(),
-                                message: String::from("AdamW group is missing `second_moment_key`"),
+                                message: format!(
+                                    "{:?} group is missing `second_moment_key`",
+                                    assignment.optimizer.kind
+                                ),
                             }
                         })?;
-                    TrainingOptimizerState::AdamW {
-                        first_moment: dense_f32_values(
-                            first_moment_key.as_str(),
-                            self.tensors.get(first_moment_key.as_str()).ok_or_else(|| {
-                                ModelIoError::MissingTensor {
-                                    state_key: first_moment_key.clone(),
-                                }
+                    *first_moment = dense_f32_values(
+                        first_moment_key.as_str(),
+                        self.tensors.get(first_moment_key.as_str()).ok_or_else(|| {
+                            ModelIoError::MissingTensor {
+                                state_key: first_moment_key.clone(),
+                            }
+                        })?,
+                    )?
+                    .to_vec();
+                    *second_moment = dense_f32_values(
+                        second_moment_key.as_str(),
+                        self.tensors
+                            .get(second_moment_key.as_str())
+                            .ok_or_else(|| ModelIoError::MissingTensor {
+                                state_key: second_moment_key.clone(),
                             })?,
-                        )?
-                        .to_vec(),
-                        second_moment: dense_f32_values(
-                            second_moment_key.as_str(),
-                            self.tensors
-                                .get(second_moment_key.as_str())
-                                .ok_or_else(|| ModelIoError::MissingTensor {
-                                    state_key: second_moment_key.clone(),
-                                })?,
-                        )?
-                        .to_vec(),
-                    }
+                    )?
+                    .to_vec();
                 }
-            };
+            }
 
             groups.push(TrainingParameterGroupState {
                 group_id: assignment.group_id.clone(),
@@ -1358,12 +1385,12 @@ fn validate_state_groups(
         )?;
 
         match group.optimizer.kind {
-            TrainingOptimizerKind::Sgd => {
+            TrainingOptimizerKind::Sgd | TrainingOptimizerKind::Lars => {
                 if group.first_moment_key.is_some() || group.second_moment_key.is_some() {
                     return Err(ModelIoError::InvalidGroupAssignment {
                         group_id: group.group_id.clone(),
                         message: String::from(
-                            "SGD group may not carry Adam first/second moment keys",
+                            "momentum-buffer optimizer group may not carry Adam-family first/second moment keys",
                         ),
                     });
                 }
@@ -1376,25 +1403,33 @@ fn validate_state_groups(
                     )?;
                 }
             }
-            TrainingOptimizerKind::AdamW => {
+            TrainingOptimizerKind::Adam
+            | TrainingOptimizerKind::AdamW
+            | TrainingOptimizerKind::Lamb => {
                 if group.momentum_buffer_key.is_some() {
                     return Err(ModelIoError::InvalidGroupAssignment {
                         group_id: group.group_id.clone(),
                         message: String::from(
-                            "AdamW group may not carry an SGD momentum buffer key",
+                            "Adam-family optimizer group may not carry a momentum buffer key",
                         ),
                     });
                 }
                 let first_moment_key = group.first_moment_key.as_ref().ok_or_else(|| {
                     ModelIoError::InvalidGroupAssignment {
                         group_id: group.group_id.clone(),
-                        message: String::from("AdamW group is missing `first_moment_key`"),
+                        message: format!(
+                            "{:?} group is missing `first_moment_key`",
+                            group.optimizer.kind
+                        ),
                     }
                 })?;
                 let second_moment_key = group.second_moment_key.as_ref().ok_or_else(|| {
                     ModelIoError::InvalidGroupAssignment {
                         group_id: group.group_id.clone(),
-                        message: String::from("AdamW group is missing `second_moment_key`"),
+                        message: format!(
+                            "{:?} group is missing `second_moment_key`",
+                            group.optimizer.kind
+                        ),
                     }
                 })?;
                 validate_assignment_tensor(
@@ -1732,6 +1767,90 @@ mod tests {
         assert_eq!(imported.to_training_groups()?, groups);
         assert_eq!(imported.tokenizer, bundle.tokenizer);
         assert_eq!(imported.chat_template_digest, bundle.chat_template_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn portable_model_bundle_roundtrips_new_optimizer_family_variants_through_safetensors()
+    -> Result<(), Box<dyn Error>> {
+        let mut adam = TrainingParameterGroupState::new(
+            "adam.block",
+            TrainingParameterClass::Matrix,
+            TrainingTensorBuffer::from_f32(
+                "adam.block",
+                TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+                vec![1.0, -1.0],
+            )?,
+            TrainingOptimizerConfig::adam(0.01, 0.9, 0.999, 1e-8),
+            TrainingOptimizerResidencyPolicy::new(
+                OptimizerStateResidency::DeviceResident,
+                OptimizerStateResidency::HostResident,
+            ),
+        )?;
+        adam.optimizer_state = TrainingOptimizerState::Adam {
+            first_moment: vec![0.01, -0.02],
+            second_moment: vec![0.03, 0.04],
+        };
+        adam.applied_steps = 2;
+
+        let mut lars = TrainingParameterGroupState::new(
+            "lars.block",
+            TrainingParameterClass::Matrix,
+            TrainingTensorBuffer::from_f32(
+                "lars.block",
+                TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+                vec![0.25, -0.5],
+            )?,
+            TrainingOptimizerConfig::lars(0.02, 0.9, 0.001, 1e-8).with_weight_decay(0.01),
+            TrainingOptimizerResidencyPolicy::new(
+                OptimizerStateResidency::DeviceResident,
+                OptimizerStateResidency::HostResident,
+            ),
+        )?;
+        lars.optimizer_state = TrainingOptimizerState::Lars {
+            momentum_buffer: Some(vec![0.001, -0.002]),
+        };
+        lars.optimizer_residency = OptimizerStateResidency::HostResident;
+        lars.applied_steps = 3;
+
+        let mut lamb = TrainingParameterGroupState::new(
+            "lamb.head",
+            TrainingParameterClass::Head,
+            TrainingTensorBuffer::from_f32(
+                "lamb.head",
+                TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+                vec![0.75, -0.25],
+            )?,
+            TrainingOptimizerConfig::lamb(0.015, 0.9, 0.999, 1e-6).with_weight_decay(0.02),
+            TrainingOptimizerResidencyPolicy::new(
+                OptimizerStateResidency::DeviceResident,
+                OptimizerStateResidency::Offloaded,
+            ),
+        )?;
+        lamb.optimizer_state = TrainingOptimizerState::Lamb {
+            first_moment: vec![0.02, -0.03],
+            second_moment: vec![0.04, 0.05],
+        };
+        lamb.optimizer_residency = OptimizerStateResidency::Offloaded;
+        lamb.applied_steps = 4;
+
+        let groups = vec![adam, lars, lamb];
+        let bundle = PortableModelBundle::from_training_groups(
+            "weather-agent",
+            "optimizer-r1",
+            "weather-checkpoints",
+            Some(String::from("checkpoint://weather/optimizer")),
+            groups.as_slice(),
+            sample_tokenizer_binding(),
+            Some(String::from("chat-template-digest")),
+        )?;
+
+        let (bytes, receipt) = bundle.export_safetensors()?;
+        assert_eq!(receipt.format, ModelArtifactFormat::Safetensors);
+        assert_eq!(receipt.tensor_count, 8);
+
+        let imported = PortableModelBundle::import_safetensors(bytes.as_slice())?;
+        assert_eq!(imported.to_training_groups()?, groups);
         Ok(())
     }
 
