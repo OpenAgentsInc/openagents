@@ -103,9 +103,12 @@ run_category() {
       ;;
     autodiff-optimizer)
       run_filtered_test psionic-train lib core_loop::tests::fixed_budget_training_loop_applies_updates_and_tracks_telemetry
+      run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_advances_small_model_with_sgd_and_adam
+      run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_supports_all_declared_optimizer_families
+      run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_refuses_state_kind_mismatch
       run_filtered_test psionic-train lib distributed_optimizer::tests::distributed_optimizer_contract_surfaces_precision_and_memory_truth
       run_filtered_test psionic-train lib distributed_optimizer::tests::distributed_optimizer_contract_refuses_incomplete_shard_coverage
-      run_note "open gap: #3602 and #3603 remain open; current hooks validate explicit-gradient training core and train-owned optimizer contracts, not general reverse-mode autodiff or reusable optimizer primitives"
+      run_note "open gap: #3602 remains open; current hooks validate explicit-gradient training core, reusable optimizer primitives, and train-owned distributed optimizer contracts, not general reverse-mode autodiff or detach semantics"
       ;;
     model-state-io)
       run_filtered_test psionic-train lib model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest
@@ -154,4 +157,4 @@ echo
 echo "Psionic framework-core acceptance hooks completed."
 echo "Open framework-core gap categories remain explicit:"
 echo "- autodiff-optimizer"
-echo "Do not treat this runner as proof of Tinygrad-class framework-core closure while #3602 and #3603 remain open."
+echo "Do not treat this runner as proof of Tinygrad-class framework-core closure while #3602 remains open."

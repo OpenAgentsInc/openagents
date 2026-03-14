@@ -105,6 +105,14 @@ pub enum TrainingCoreError {
         /// Stable checkpoint family.
         checkpoint_family: String,
     },
+    /// The reusable optimizer layer refused one group update.
+    #[error("training optimizer step failed for group `{group_id}`: {message}")]
+    OptimizerStepFailed {
+        /// Stable parameter-group identifier.
+        group_id: String,
+        /// Optimizer failure detail.
+        message: String,
+    },
 }
 
 /// Stable parameter-group family used by the training core.
@@ -129,8 +137,14 @@ pub enum TrainingParameterClass {
 pub enum TrainingOptimizerKind {
     /// Vanilla stochastic gradient descent with optional momentum.
     Sgd,
+    /// Adam with coupled weight decay semantics.
+    Adam,
     /// AdamW with decoupled weight decay.
     AdamW,
+    /// Layer-wise adaptive rate scaling with optional momentum.
+    Lars,
+    /// Layer-wise adaptive moments.
+    Lamb,
 }
 
 /// Typed optimizer configuration for one parameter group.
@@ -157,6 +171,9 @@ pub struct TrainingOptimizerConfig {
     /// AdamW epsilon.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub epsilon: Option<f32>,
+    /// LARS/LAMB trust coefficient when the family uses one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_coefficient: Option<f32>,
 }
 
 impl TrainingOptimizerConfig {
@@ -172,6 +189,23 @@ impl TrainingOptimizerConfig {
             beta1: None,
             beta2: None,
             epsilon: None,
+            trust_coefficient: None,
+        }
+    }
+
+    /// Creates an Adam optimizer config.
+    #[must_use]
+    pub fn adam(learning_rate: f32, beta1: f32, beta2: f32, epsilon: f32) -> Self {
+        Self {
+            kind: TrainingOptimizerKind::Adam,
+            learning_rate,
+            weight_decay: 0.0,
+            gradient_clip_norm: None,
+            momentum: None,
+            beta1: Some(beta1),
+            beta2: Some(beta2),
+            epsilon: Some(epsilon),
+            trust_coefficient: None,
         }
     }
 
@@ -187,6 +221,39 @@ impl TrainingOptimizerConfig {
             beta1: Some(beta1),
             beta2: Some(beta2),
             epsilon: Some(epsilon),
+            trust_coefficient: None,
+        }
+    }
+
+    /// Creates a LARS optimizer config.
+    #[must_use]
+    pub fn lars(learning_rate: f32, momentum: f32, trust_coefficient: f32, epsilon: f32) -> Self {
+        Self {
+            kind: TrainingOptimizerKind::Lars,
+            learning_rate,
+            weight_decay: 0.0,
+            gradient_clip_norm: None,
+            momentum: Some(momentum),
+            beta1: None,
+            beta2: None,
+            epsilon: Some(epsilon),
+            trust_coefficient: Some(trust_coefficient),
+        }
+    }
+
+    /// Creates a LAMB optimizer config.
+    #[must_use]
+    pub fn lamb(learning_rate: f32, beta1: f32, beta2: f32, epsilon: f32) -> Self {
+        Self {
+            kind: TrainingOptimizerKind::Lamb,
+            learning_rate,
+            weight_decay: 0.0,
+            gradient_clip_norm: None,
+            momentum: None,
+            beta1: Some(beta1),
+            beta2: Some(beta2),
+            epsilon: Some(epsilon),
+            trust_coefficient: Some(1.0),
         }
     }
 
@@ -208,6 +275,13 @@ impl TrainingOptimizerConfig {
     #[must_use]
     pub fn with_momentum(mut self, momentum: f32) -> Self {
         self.momentum = Some(momentum);
+        self
+    }
+
+    /// Attaches a trust coefficient for LARS or LAMB style optimizers.
+    #[must_use]
+    pub fn with_trust_coefficient(mut self, trust_coefficient: f32) -> Self {
+        self.trust_coefficient = Some(trust_coefficient);
         self
     }
 }
@@ -368,8 +442,28 @@ pub enum TrainingOptimizerState {
         #[serde(skip_serializing_if = "Option::is_none")]
         momentum_buffer: Option<Vec<f32>>,
     },
+    /// Adam state with first and second moments.
+    Adam {
+        /// Exponential moving average of gradients.
+        first_moment: Vec<f32>,
+        /// Exponential moving average of squared gradients.
+        second_moment: Vec<f32>,
+    },
     /// AdamW state with first and second moments.
     AdamW {
+        /// Exponential moving average of gradients.
+        first_moment: Vec<f32>,
+        /// Exponential moving average of squared gradients.
+        second_moment: Vec<f32>,
+    },
+    /// LARS state with optional momentum buffer.
+    Lars {
+        /// Optional momentum buffer.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        momentum_buffer: Option<Vec<f32>>,
+    },
+    /// LAMB state with first and second moments.
+    Lamb {
         /// Exponential moving average of gradients.
         first_moment: Vec<f32>,
         /// Exponential moving average of squared gradients.
@@ -378,12 +472,27 @@ pub enum TrainingOptimizerState {
 }
 
 impl TrainingOptimizerState {
-    fn new(kind: TrainingOptimizerKind, parameter_len: usize, momentum: Option<f32>) -> Self {
+    pub(crate) fn new(
+        kind: TrainingOptimizerKind,
+        parameter_len: usize,
+        momentum: Option<f32>,
+    ) -> Self {
         match kind {
             TrainingOptimizerKind::Sgd => Self::Sgd {
                 momentum_buffer: momentum.map(|_| vec![0.0; parameter_len]),
             },
+            TrainingOptimizerKind::Adam => Self::Adam {
+                first_moment: vec![0.0; parameter_len],
+                second_moment: vec![0.0; parameter_len],
+            },
             TrainingOptimizerKind::AdamW => Self::AdamW {
+                first_moment: vec![0.0; parameter_len],
+                second_moment: vec![0.0; parameter_len],
+            },
+            TrainingOptimizerKind::Lars => Self::Lars {
+                momentum_buffer: momentum.map(|_| vec![0.0; parameter_len]),
+            },
+            TrainingOptimizerKind::Lamb => Self::Lamb {
                 first_moment: vec![0.0; parameter_len],
                 second_moment: vec![0.0; parameter_len],
             },
@@ -970,15 +1079,19 @@ fn apply_group_step(
     let gradient_norm_l2 = norm_l2(gradient_values);
     let (clipped_gradients, clipped_gradient_norm_l2, clipping_ratio) =
         clipped_gradients(gradient_values, group.optimizer.gradient_clip_norm);
-    let update_values = apply_optimizer_update(
+    let optimizer_report = crate::optimizer::apply_training_optimizer_step(
         parameter_values,
         clipped_gradients.as_slice(),
         &group.optimizer,
         &mut group.optimizer_state,
         group.applied_steps.saturating_add(1),
-    );
-    let update_norm_l2 = norm_l2(update_values.as_slice());
-    let parameter_norm_l2 = norm_l2(parameter_values);
+    )
+    .map_err(|error| TrainingCoreError::OptimizerStepFailed {
+        group_id: group.group_id.clone(),
+        message: error.to_string(),
+    })?;
+    let update_norm_l2 = optimizer_report.update_norm_l2;
+    let parameter_norm_l2 = optimizer_report.parameter_norm_l2_after;
     group.applied_steps = group.applied_steps.saturating_add(1);
 
     maybe_transition_group(
@@ -1041,60 +1154,6 @@ fn clipped_gradients(gradients: &[f32], clip_norm: Option<f32>) -> (Vec<f32>, f3
         clip_norm,
         Some(scale),
     )
-}
-
-fn apply_optimizer_update(
-    parameter_values: &mut [f32],
-    gradient_values: &[f32],
-    optimizer: &TrainingOptimizerConfig,
-    optimizer_state: &mut TrainingOptimizerState,
-    step_number: u64,
-) -> Vec<f32> {
-    match optimizer_state {
-        TrainingOptimizerState::Sgd { momentum_buffer } => {
-            let mut updates = vec![0.0; parameter_values.len()];
-            for index in 0..parameter_values.len() {
-                let effective_gradient =
-                    gradient_values[index] + (optimizer.weight_decay * parameter_values[index]);
-                let velocity = if let Some(buffer) = momentum_buffer.as_mut() {
-                    let momentum = optimizer.momentum.unwrap_or(0.0);
-                    buffer[index] = (momentum * buffer[index]) + effective_gradient;
-                    buffer[index]
-                } else {
-                    effective_gradient
-                };
-                let update = optimizer.learning_rate * velocity;
-                parameter_values[index] -= update;
-                updates[index] = update;
-            }
-            updates
-        }
-        TrainingOptimizerState::AdamW {
-            first_moment,
-            second_moment,
-        } => {
-            let beta1 = optimizer.beta1.unwrap_or(0.9);
-            let beta2 = optimizer.beta2.unwrap_or(0.999);
-            let epsilon = optimizer.epsilon.unwrap_or(1e-8);
-            let bias_correction1 = 1.0 - beta1.powf(step_number as f32);
-            let bias_correction2 = 1.0 - beta2.powf(step_number as f32);
-            let mut updates = vec![0.0; parameter_values.len()];
-            for index in 0..parameter_values.len() {
-                let gradient = gradient_values[index];
-                first_moment[index] = (beta1 * first_moment[index]) + ((1.0 - beta1) * gradient);
-                second_moment[index] =
-                    (beta2 * second_moment[index]) + ((1.0 - beta2) * gradient * gradient);
-                let m_hat = first_moment[index] / bias_correction1.max(f32::EPSILON);
-                let v_hat = second_moment[index] / bias_correction2.max(f32::EPSILON);
-                let update = optimizer.learning_rate
-                    * ((m_hat / (v_hat.sqrt() + epsilon))
-                        + (optimizer.weight_decay * parameter_values[index]));
-                parameter_values[index] -= update;
-                updates[index] = update;
-            }
-            updates
-        }
-    }
 }
 
 fn norm_l2(values: &[f32]) -> f32 {

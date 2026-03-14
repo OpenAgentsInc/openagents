@@ -1237,14 +1237,12 @@ fn distribute_master_weight_bytes(
 
 fn optimizer_state_multiplier(kind: TrainingOptimizerConfigKind, momentum: Option<f32>) -> u64 {
     match kind {
-        TrainingOptimizerConfigKind::Sgd => {
-            if momentum.is_some() {
-                1
-            } else {
-                0
-            }
+        TrainingOptimizerConfigKind::Sgd | TrainingOptimizerConfigKind::Lars => {
+            if momentum.is_some() { 1 } else { 0 }
         }
-        TrainingOptimizerConfigKind::AdamW => 2,
+        TrainingOptimizerConfigKind::Adam
+        | TrainingOptimizerConfigKind::AdamW
+        | TrainingOptimizerConfigKind::Lamb => 2,
     }
 }
 

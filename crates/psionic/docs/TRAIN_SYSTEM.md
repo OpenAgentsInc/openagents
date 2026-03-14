@@ -92,6 +92,8 @@ It already has real substrate for:
 - resumable dataset and checkpoint transport
 - typed fixed-budget trainer steps
 - per-group optimizer state and residency policy
+- reusable optimizer contracts plus typed SGD, Adam, AdamW, LARS, and LAMB
+  state/update semantics
 - machine-legible step telemetry and checkpoint-anchored restore lineage
 - checkpoint-aware policy revisions
 - proof-bearing rollout artifacts and trainer-batch assembly
@@ -188,7 +190,7 @@ shape already includes at least:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
-| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, reusable SGD/Adam/AdamW/LARS/LAMB optimizer contracts, explicit optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
@@ -1139,6 +1141,11 @@ Added `psionic-train` fixed-budget training-core types and behavior for:
 - visible window and cadence scheduling
 - checkpoint-anchored restore via `TrainingSessionState`
 
+Issue `#3603` extends that core with a reusable optimizer layer in
+`src/optimizer.rs` so SGD, Adam, AdamW, LARS, and LAMB step semantics are no
+longer trainer-private. The fixed-budget loop now composes with the reusable
+optimizer surface instead of carrying its own ad hoc update implementation.
+
 The canonical runbook and harness are now:
 
 - `crates/psionic/docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md`
@@ -1146,8 +1153,9 @@ The canonical runbook and harness are now:
 
 The current step path is intentionally an explicit-gradient reference loop over
 `f32` tensor payloads. That is enough to make trainer-step truth real without
-pretending the later tensor, autodiff, distributed-optimizer, and orchestrator
-issues are already solved.
+pretending the later tensor and autodiff issues are already solved, while still
+keeping optimizer behavior reusable across trainer loops, research loops, and
+future fine-tune programs.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
@@ -1718,6 +1726,10 @@ preserving the higher-level distributed receipt.
 This does not claim that the full multi-device runtime already exists. It does
 mean the distributed optimizer, precision, and memory-sharding model is now
 typed and inspectable instead of implied by future plans.
+
+The distributed layer now composes with the reusable optimizer surface in
+`src/optimizer.rs`, so local optimizer-family step semantics are inspectable
+without being trapped inside one trainer implementation.
 
 ### 24. `Model IO: add Rust-native checkpoint, tokenizer, and model-format interoperability`
 
