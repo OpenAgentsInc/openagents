@@ -13,13 +13,15 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CpuGgufGptOssTextGenerationService, GenerationEventStream, GenerationInput,
-    GenerationModelHandle, GenerationRequest, GenerationResponse, GenerationStepOutput,
-    GenerationStreamChunk, GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
-    GenerationStreamingPolicy, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
-    LoadedModelView, LoadedModelsObservation, LocalRuntimeObservability,
-    ManagedTextGenerationRuntime, ReferenceTextGenerationError, SessionId, SharedPrefixStore,
-    StreamingTextGenerationExecutor, TextGenerationExecutor, default_generation_streaming_policy,
+    ContinuousBatchGenerationResult, CpuGgufGptOssTextGenerationService, GenerationEventStream,
+    GenerationInput, GenerationModelHandle, GenerationRequest, GenerationResponse,
+    GenerationStepOutput, GenerationStreamChunk, GenerationStreamEvent, GenerationStreamStatus,
+    GenerationStreamTerminal, GenerationStreamingPolicy, InMemoryGenerationModelRegistry,
+    InMemoryGenerationSessionStore, LoadedModelView, LoadedModelsObservation,
+    LocalRuntimeObservability, ManagedTextGenerationRuntime, ReferenceTextGenerationError,
+    SessionId, SharedPrefixStore, StreamingTextGenerationExecutor, TextGenerationExecutor,
+    continuous_batch_text_generation_execution_profile, default_generation_scheduler_policy,
+    default_generation_streaming_policy,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +137,16 @@ impl CpuGgufTextGenerationService {
         match &mut self.inner {
             CpuGgufServiceKind::GptOss(service) => service.loaded_model_views(),
             CpuGgufServiceKind::Dense(service) => service.loaded_model_views(),
+        }
+    }
+
+    pub fn generate_continuous_batch(
+        &mut self,
+        requests: Vec<GenerationRequest>,
+    ) -> ContinuousBatchGenerationResult {
+        match &mut self.inner {
+            CpuGgufServiceKind::GptOss(service) => service.generate_continuous_batch(requests),
+            CpuGgufServiceKind::Dense(service) => service.generate_continuous_batch(requests),
         }
     }
 }
@@ -288,7 +300,12 @@ impl CpuDenseGgufTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe("cpu", self.backend.health(), now_millis);
-        super::generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        super::generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            continuous_batch_text_generation_execution_profile(),
+        )
     }
 
     #[must_use]
@@ -338,6 +355,20 @@ impl CpuDenseGgufTextGenerationService {
         session_id: &SessionId,
     ) -> Result<crate::GenerationSession, ReferenceTextGenerationError> {
         Ok(self.sessions.close(session_id)?)
+    }
+
+    fn generate_continuous_batch(
+        &mut self,
+        requests: Vec<GenerationRequest>,
+    ) -> ContinuousBatchGenerationResult {
+        super::run_continuous_batch_generation_requests(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            requests,
+            default_generation_scheduler_policy(),
+        )
     }
 }
 

@@ -53,17 +53,19 @@ use psionic_runtime::{
 use sha2::{Digest, Sha256};
 
 use super::{
-    BackendHealthTracker, CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor,
-    GenerationEventStream, GenerationModelHandle, GenerationOptions, GenerationResponse,
-    GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
-    GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
-    GgufDecoderLayerTensorLayout, GptOssMetalDecodeLogitsMetrics, GptOssMetalLogitsOutputMode,
-    GptOssPerformanceMetrics, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
-    LoadedModelRegistryError, LoadedModelView, LocalRuntimeObservability,
-    ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode, ReferenceTextGenerationError,
-    SharedPrefixStore, TextGenerationExecutor, TokenId, TokenSequence, TokenizerBoundary,
-    current_time_millis, default_prefix_cache_policy, generation_runtime_observability,
-    prefix_compatibility, run_generation_request,
+    BackendHealthTracker, CompiledWordGenerationModel, ContinuousBatchGenerationResult,
+    DecodeStrategy, DecoderModelDescriptor, GenerationEventStream, GenerationModelHandle,
+    GenerationOptions, GenerationResponse, GenerationStreamEvent, GenerationStreamStatus,
+    GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
+    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssMetalDecodeLogitsMetrics,
+    GptOssMetalLogitsOutputMode, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
+    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
+    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
+    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
+    TokenSequence, TokenizerBoundary, continuous_batch_text_generation_execution_profile,
+    current_time_millis, default_generation_scheduler_policy, default_prefix_cache_policy,
+    generation_runtime_observability, prefix_compatibility,
+    run_continuous_batch_generation_requests, run_generation_request,
 };
 use thiserror::Error;
 
@@ -494,7 +496,12 @@ impl CpuGgufGptOssTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe(GPT_OSS_CPU_BACKEND, self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            continuous_batch_text_generation_execution_profile(),
+        )
     }
 
     /// Returns runtime observability after applying idle expiry.
@@ -558,6 +565,20 @@ impl CpuGgufGptOssTextGenerationService {
         session_id: &super::SessionId,
     ) -> Result<super::GenerationSession, ReferenceTextGenerationError> {
         Ok(self.sessions.close(session_id)?)
+    }
+
+    pub fn generate_continuous_batch(
+        &mut self,
+        requests: Vec<super::GenerationRequest>,
+    ) -> ContinuousBatchGenerationResult {
+        run_continuous_batch_generation_requests(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            requests,
+            default_generation_scheduler_policy(),
+        )
     }
 }
 
@@ -985,7 +1006,12 @@ impl MetalGgufGptOssTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe(GPT_OSS_METAL_BACKEND, self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            super::default_text_generation_execution_profile(),
+        )
     }
 
     pub fn warm_model(
@@ -1303,7 +1329,12 @@ impl CudaGgufGptOssTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe(GPT_OSS_CUDA_BACKEND, self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            super::default_text_generation_execution_profile(),
+        )
     }
 }
 
@@ -1858,6 +1889,7 @@ fn run_cuda_generation_request(
                 &previous_kv_state,
                 prefix_state,
             ),
+            scheduler: None,
             structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
@@ -2249,6 +2281,7 @@ fn run_cuda_hybrid_generation_request(
                 &previous_kv_state,
                 prefix_state,
             ),
+            scheduler: None,
             structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
@@ -2866,6 +2899,7 @@ fn run_metal_generation_request(
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
             ),
             cache_observations,
+            scheduler: None,
             structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
