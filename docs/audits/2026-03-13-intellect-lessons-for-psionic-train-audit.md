@@ -98,6 +98,15 @@ The right OpenAgents reading is:
 > needs explicit training control-plane contracts, validator-aware rollout
 > flows, and environment-native sandboxes.
 
+The separate `2026-03-13` Opentensor / Covenant read reinforces the same
+permissionless-train conclusions:
+
+- active participants do not need to equal contributing participants each round
+- validator policy should mix cheap universal checks with sampled expensive
+  checks plus duplicate or copycat detection
+- heavy rollout, checkpoint, and weight payloads should live on a distinct data
+  plane rather than inside the control or economic coordination path
+
 ## Current OpenAgents Gap, Precisely
 
 The repo already widened the schema in the right direction:
@@ -141,12 +150,20 @@ If the requirement is:
 then yes, there are still prerequisite gaps beyond the architectural issue set
 above.
 
-The most important one is simple:
+The most important clarification is historical:
 
-- there is no `psionic-train` crate in the workspace today
+At the time of the original March 13 audit, there was no `psionic-train` crate
+in the workspace yet.
 
-The current workspace members include runtime, serve, sandbox, datastream,
-cluster, provider, and backend crates, but not a Rust-native training crate.
+That is no longer true. The current tree now includes:
+
+- `psionic-train`
+- `psionic-collectives`
+- `psionic-adapters`
+
+But the underlying gap analysis remains valid because those crates still do not
+add up to a full Rust-native training core, orchestrator, environment runtime,
+or eval runtime.
 
 The repo also already states this directly in
 `crates/psionic/docs/AUTORESEARCH_INTEGRATION_PLAN.md`:

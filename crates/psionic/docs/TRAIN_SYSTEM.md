@@ -12,7 +12,7 @@
 > `crates/psionic/psionic-train/src/lib.rs`,
 > `crates/psionic/psionic-adapters/src/lib.rs`, and
 > `crates/psionic/psionic-sandbox/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3563`.
+> recently closed issue backlog through `#3593`.
 
 ## Why This Doc Exists
 
@@ -40,6 +40,21 @@ This doc answers that question.
 The train system assumes the execution substrate defined in
 `ARCHITECTURE.md` and does not redefine runtime, cluster, sandbox, or artifact
 transport behavior.
+
+## Doc Authority
+
+- `crates/psionic/docs/TRAIN_SYSTEM.md` is the canonical training subsystem
+  spec.
+- `crates/psionic/docs/ARCHITECTURE.md` is the canonical Psionic-wide system
+  spec that defines the lower execution substrate this doc builds on.
+- `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md` is
+  research rationale, not the canonical current-state spec.
+
+## Status Vocabulary
+
+This doc uses the canonical status vocabulary defined in `ARCHITECTURE.md`:
+`implemented`, `implemented_early`, `partial`, `partial_outside_psionic`, and
+`planned`.
 
 ## Short Definition
 
@@ -91,16 +106,16 @@ stable vocabulary for train-class execution.
 
 | Object | Purpose | Current Repo Status |
 | --- | --- | --- |
-| `TrainingRun` | Root identity for one training program | Planned |
-| `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | Planned |
-| `TrainerStep` | One optimizer update over one trainer batch | Planned |
-| `PolicyRevision` | Versioned policy or weight state used by workers and trainer | Planned |
-| `RolloutArtifact` | One worker-produced trajectory or completion bundle | Planned |
-| `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | Planned |
-| `EnvironmentPackage` | One versioned environment definition used by training and eval | Planned |
-| `EvalRun` | One online or offline evaluation execution | Planned |
-| `Checkpoint` | Recoverable training state and lineage anchor | Partially implemented through `TrainingCheckpointReference` plus datastream checkpoint manifests |
-| `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | Planned |
+| `TrainingRun` | Root identity for one training program | `planned` |
+| `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
+| `TrainerStep` | One optimizer update over one trainer batch | `planned` |
+| `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `planned` |
+| `RolloutArtifact` | One worker-produced trajectory or completion bundle | `planned` |
+| `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `planned` |
+| `EnvironmentPackage` | One versioned environment definition used by training and eval | `planned` |
+| `EvalRun` | One online or offline evaluation execution | `planned` |
+| `Checkpoint` | Recoverable training state and lineage anchor | `partial` |
+| `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | `planned` |
 
 Today the concrete object vocabulary is strongest around:
 
@@ -109,6 +124,9 @@ Today the concrete object vocabulary is strongest around:
 - `TrainingDeviceMeshContext`
 - `TrainingCollectiveContext`
 - `DatastreamManifest` and `DatastreamManifestRef`
+
+Current checkpoint substrate is carried today by
+`TrainingCheckpointReference` plus checkpoint-scoped datastream manifests.
 
 The rest of the train object model still needs to be built explicitly.
 
@@ -132,19 +150,19 @@ shape should include at least:
 
 | Subsystem | Current Status | What Is Real Today |
 | --- | --- | --- |
-| Runtime training truth | Implemented, early | `TrainingRecoveryContext`, checkpoint refs, elastic-membership context, device-mesh context, collective context |
-| Datastream | Implemented, early | resumable manifests, checkpoint bindings, dataset bindings, delivery receipts |
-| Collectives | Implemented, early | elastic mesh observation, benchmark-gated quantized collective planning |
-| Train session state | Implemented, early | membership observation, async checkpoint state, durability transitions, live-recovery planning |
-| Adapters | Implemented, early | adapter identity, package manifests, hosted adapter binding lineage |
-| Sandbox for RL/train workloads | Partial | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
-| Training core | Not implemented | no backward/autodiff training substrate, optimizer state machine, or trainer step loop |
-| Orchestrator | Not implemented | no first-class rollout scheduler, batch assembler, or policy propagation engine |
-| Environment ABI | Partial outside Psionic | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
-| Eval runtime | Partial outside Psionic | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
-| Synthetic-data flows | Partial outside Psionic | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
-| Rollout artifacts | Not implemented | no typed rollout record, reward, advantage, or trainer-batch artifact model |
-| Validator-aware RL verification | Not implemented | no rollout verification bundle family or sampled adjudication loop |
+| Runtime training truth | `implemented_early` | `TrainingRecoveryContext`, checkpoint refs, elastic-membership context, device-mesh context, collective context |
+| Datastream | `implemented_early` | resumable manifests, checkpoint bindings, dataset bindings, delivery receipts |
+| Collectives | `implemented_early` | elastic mesh observation, benchmark-gated quantized collective planning |
+| Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
+| Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
+| Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
+| Training core | `planned` | no backward/autodiff training substrate, optimizer state machine, or trainer step loop |
+| Orchestrator | `planned` | no first-class rollout scheduler, batch assembler, or policy propagation engine |
+| Environment ABI | `partial_outside_psionic` | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
+| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
+| Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
+| Rollout artifacts | `planned` | no typed rollout record, reward, advantage, or trainer-batch artifact model |
+| Validator-aware RL verification | `planned` | no rollout verification bundle family or sampled adjudication loop |
 
 ## Current Crate Ownership
 
@@ -539,6 +557,8 @@ Trusted control plane responsible for:
 
 - scheduling rollouts
 - assigning workers
+- maintaining persistent participant ranking
+- selecting bounded contributor sets from a wider active population
 - enforcing freshness windows
 - assembling trainer batches
 - coordinating evaluation
@@ -560,6 +580,8 @@ Integrity checkers responsible for:
 - sampling-shape checks
 - termination checks
 - stale-policy checks
+- duplicate or copycat detection
+- contribution normalization and ranking feedback
 - sampled high-cost verification when economics justify it
 
 ### Environment runtime
@@ -581,18 +603,52 @@ Responsible for:
 - manifest and digest verification
 - freshness and retention policy
 
+### Contributor Selection And Ranking
+
+The mature train system should treat active participants and contributing
+participants as different sets.
+
+That means:
+
+- the system may keep a wider population admitted and heartbeat-visible
+- only a bounded contributor set should actually produce work in a given round,
+  interval, or trainer window
+- contributor selection should consider freshness, persistent ranking, topology,
+  and diversity rather than only "who asked first"
+- duplicate or copycat behavior should reduce effective contribution weight and
+  feed back into future participant ranking
+
+This is the cleanest way to keep elastic membership open without letting every
+active participant distort batch quality or network cost.
+
+### Control Plane Versus Heavy Artifact Plane
+
+The train control plane should not carry the heavy payloads.
+
+The intended split is:
+
+- the orchestrator, validators, and operator surfaces exchange run ids,
+  artifact refs, digests, policy ids, and receipts
+- checkpoints, policy weights, datasets, rollout payloads, and eval bundles
+  move through the heavy artifact plane in `psionic-datastream`
+
+This keeps control messages lightweight and replayable while the actual bytes
+stay in the resumable artifact substrate.
+
 ## Canonical Planned Lifecycle
 
 The mature Psionic train lifecycle should look like this:
 
 1. A training run is created with stable run identity, policy, environment, and
    checkpoint lineage.
-2. The orchestrator forms or revises the participant topology.
+2. The orchestrator forms or revises the participant topology and contributor
+   set.
 3. The collective planner materializes the device mesh and collective posture.
-4. The data plane stages the active checkpoint, policy weights, and dataset or
-   environment artifacts.
-5. Rollout workers or trainer participants begin work under explicit policy and
-   freshness constraints.
+4. The heavy artifact plane stages the active checkpoint, policy weights, and
+   dataset or environment artifacts while the control plane carries only refs,
+   digests, and policy posture.
+5. Only the selected contributor subset begins rollout or trainer work under
+   explicit policy and freshness constraints.
 6. Rollout artifacts or trainer-step inputs are validated and assembled into
    trainer batches.
 7. The trainer advances one or more steps and emits step-level metrics,
@@ -633,6 +689,7 @@ The most important ones are:
 - policy freshness windows
 - rollout expiry windows
 - checkpoint cadence
+- contributor reselection intervals
 - validator sampling or adjudication intervals
 - environment timeout limits
 - sandbox reuse and pool lifetime limits
@@ -670,6 +727,9 @@ The most important design rule is simple:
 > every economically or operationally important train event should have a typed
 > receipt family, not only a log line or an in-memory state transition.
 
+Train objects define the durable execution vocabulary; receipts record accepted
+state transitions and outcomes over those objects.
+
 ## Policy Surfaces
 
 The full train system should make the configurable policy surfaces explicit.
@@ -678,9 +738,9 @@ controllers are allowed to tune.
 
 | Policy Surface | What It Governs |
 | --- | --- |
-| `TrainingPolicy` | trainer step budget, checkpoint cadence, optimizer posture, gradient clipping, stage transitions, halt policy |
+| `TrainingPolicy` | trainer step budget, checkpoint cadence, optimizer posture, gradient clipping, contributor caps, stage transitions, halt policy |
 | `EnvironmentPolicy` | admissible environment packages, tool access, state persistence, reward and rubric posture |
-| `ValidatorPolicy` | universal checks, sampled expensive checks, stale-policy tolerances, rejection posture, penalty posture |
+| `ValidatorPolicy` | universal checks, sampled expensive checks, stale-policy tolerances, duplicate-detection posture, contribution normalization, rejection posture, penalty posture |
 | `CollectivePolicy` | mesh layout, sync cadence, quantization mode, replan triggers, communication class |
 | `SandboxPolicy` | allowed profiles, warm-pool behavior, runtime limits, filesystem or network posture, retry behavior |
 | `ArtifactPolicy` | artifact freshness windows, retention classes, replay rules, archival posture, provenance requirements |
@@ -706,6 +766,7 @@ concrete examples.
 | `gradient_clip_norm` | `1.0` |
 | `halt_on_entropy_drop` | `true` |
 | `max_rollout_age_ms` | `30000` |
+| `max_contributing_workers` | `256` |
 
 ### Policy Revision Propagation
 
@@ -722,6 +783,9 @@ The intended model is:
 
 This keeps policy lineage replay-safe and validator-reviewable.
 
+Control-plane coordination should carry refs, digests, and policy ids rather
+than embedding the heavy policy payloads directly in orchestration messages.
+
 ## Training Failure Semantics
 
 The train system needs explicit failure handling, not only a list of failure
@@ -732,6 +796,7 @@ system.
 | --- | --- |
 | rollout worker crash | replay or reassign the rollout task and mark prior claim incomplete |
 | stale or mismatched policy revision | reject the rollout artifact and emit a stale-policy receipt |
+| duplicate or copied rollout | reject or deweight the artifact, emit duplicate-detection reason codes, and update participant ranking |
 | validator rejection | discard or quarantine the referenced rollout or batch and record reason codes |
 | checkpoint flush failure | block any state transition that requires durability and keep the run in non-durable posture |
 | orchestrator crash | resume from durable orchestrator state and latest accepted checkpoint lineage |
@@ -743,6 +808,9 @@ system.
 
 The system should never collapse these into one generic "training failed"
 outcome. Failure handling is part of train truth.
+
+Orchestrator durability and trainer durability are related but distinct; loss
+of one must not silently imply loss of the other.
 
 ## Security Model
 
@@ -756,6 +824,7 @@ the threat model belongs in the spec and not only in later issue descriptions.
 | checkpoint tampering | datastream manifest verification plus checkpoint-family and writer identity linkage |
 | environment compromise | signed or pinned packages, sandbox policy, version pinning, package admissibility policy |
 | policy drift | explicit policy revisions, freshness windows, off-policy budget enforcement |
+| copied or replayed rollouts | duplicate detection, artifact-digest lineage, contribution normalization, and participant-ranking penalties |
 | worker spam or flooding | task-claim limits, admission control, rate limiting, and orchestrator-side pruning |
 | orchestrator inconsistency | durable orchestrator state and replay-safe receipts |
 | validator abuse or misconfiguration | validator policy versioning, sampled check receipts, adjudication reason codes |
@@ -860,6 +929,10 @@ the Rust subtree:
 
 The current repo only has the lower-level substrate for that system.
 
+Psionic cannot honestly claim an all-Rust train system until trainer steps,
+optimizer ownership, rollout artifacts, environment execution, eval runtime,
+and crash-safe runner boundaries all exist inside the Rust subtree.
+
 ## Planned Crate Shape
 
 The most likely mature crate shape is:
@@ -883,6 +956,10 @@ The most likely mature crate shape is:
   - later train-output lineage for adapters and promoted derived artifacts
 
 This is the architectural direction. It is not all implemented today.
+
+The planned crate shape is canonical for current ownership direction, but it is
+not a guarantee that every future subsystem lands under exactly these final
+crate names.
 
 ## Current-To-Target Matrix
 

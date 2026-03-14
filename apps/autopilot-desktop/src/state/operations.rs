@@ -15,7 +15,10 @@ use crate::nip90_compute_semantics::{
 };
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
-use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
+use openagents_kernel_core::compute::{
+    ComputeBackendFamily, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
+    ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -632,6 +635,10 @@ pub struct SpotComputeCapabilityConstraints {
     pub min_throughput_per_minute: Option<u32>,
     pub model_policy: Option<String>,
     pub model_family: Option<String>,
+    pub topology_kind: Option<String>,
+    pub proof_posture: Option<String>,
+    pub environment_ref: Option<String>,
+    pub sandbox_profile_ref: Option<String>,
 }
 
 impl SpotComputeCapabilityConstraints {
@@ -657,6 +664,18 @@ impl SpotComputeCapabilityConstraints {
         }
         if let Some(model_family) = self.model_family.as_deref() {
             parts.push(format!("model_family={model_family}"));
+        }
+        if let Some(topology_kind) = self.topology_kind.as_deref() {
+            parts.push(format!("topology_kind={topology_kind}"));
+        }
+        if let Some(proof_posture) = self.proof_posture.as_deref() {
+            parts.push(format!("proof_posture={proof_posture}"));
+        }
+        if let Some(environment_ref) = self.environment_ref.as_deref() {
+            parts.push(format!("environment_ref={environment_ref}"));
+        }
+        if let Some(sandbox_profile_ref) = self.sandbox_profile_ref.as_deref() {
+            parts.push(format!("sandbox_profile_ref={sandbox_profile_ref}"));
         }
         if parts.is_empty() {
             "none".to_string()
@@ -780,8 +799,14 @@ pub struct SpotComputeQuoteCandidate {
     pub product_id: String,
     pub capacity_lot_id: String,
     pub provider_id: String,
-    pub backend_family: ComputeBackendFamily,
+    pub backend_family: Option<ComputeBackendFamily>,
     pub compute_family: ComputeFamily,
+    pub execution_kind: Option<ComputeExecutionKind>,
+    pub topology_kind: Option<ComputeTopologyKind>,
+    pub provisioning_kind: Option<ComputeProvisioningKind>,
+    pub proof_posture: Option<ComputeProofPosture>,
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    pub sandbox_profile_ref: Option<String>,
     pub available_quantity: u64,
     pub requested_quantity: u64,
     pub price_sats: u64,
@@ -794,8 +819,10 @@ pub struct SpotComputeQuoteCandidate {
 impl SpotComputeQuoteCandidate {
     pub const fn backend_label(&self) -> &'static str {
         match self.backend_family {
-            ComputeBackendFamily::GptOss => "gpt_oss",
-            ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
+            Some(ComputeBackendFamily::GptOss) => "gpt_oss",
+            Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            None if matches!(self.compute_family, ComputeFamily::SandboxExecution) => "sandbox",
+            None => "unknown",
         }
     }
 
@@ -809,6 +836,45 @@ impl SpotComputeQuoteCandidate {
             ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
+
+    pub const fn execution_label(&self) -> &'static str {
+        match self.execution_kind {
+            Some(ComputeExecutionKind::LocalInference) => "local_inference",
+            Some(ComputeExecutionKind::ClusteredInference) => "clustered_inference",
+            Some(ComputeExecutionKind::SandboxExecution) => "sandbox_execution",
+            Some(ComputeExecutionKind::EvaluationRun) => "evaluation_run",
+            Some(ComputeExecutionKind::TrainingJob) => "training_job",
+            None => "unspecified",
+        }
+    }
+
+    pub const fn topology_label(&self) -> &'static str {
+        match self.topology_kind {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub const fn provisioning_label(&self) -> &'static str {
+        match self.provisioning_kind {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub const fn proof_posture_label(&self) -> &'static str {
+        match self.proof_posture {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub fn environment_ref(&self) -> Option<&str> {
+        self.environment_binding
+            .as_ref()
+            .map(|binding| binding.environment_ref.as_str())
+            .filter(|value| !value.trim().is_empty())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -818,8 +884,14 @@ pub struct ForwardComputeQuoteCandidate {
     pub product_id: String,
     pub capacity_lot_id: String,
     pub provider_id: String,
-    pub backend_family: ComputeBackendFamily,
+    pub backend_family: Option<ComputeBackendFamily>,
     pub compute_family: ComputeFamily,
+    pub execution_kind: Option<ComputeExecutionKind>,
+    pub topology_kind: Option<ComputeTopologyKind>,
+    pub provisioning_kind: Option<ComputeProvisioningKind>,
+    pub proof_posture: Option<ComputeProofPosture>,
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    pub sandbox_profile_ref: Option<String>,
     pub available_quantity: u64,
     pub requested_quantity: u64,
     pub price_sats: u64,
@@ -836,8 +908,10 @@ pub struct ForwardComputeQuoteCandidate {
 impl ForwardComputeQuoteCandidate {
     pub const fn backend_label(&self) -> &'static str {
         match self.backend_family {
-            ComputeBackendFamily::GptOss => "gpt_oss",
-            ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
+            Some(ComputeBackendFamily::GptOss) => "gpt_oss",
+            Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            None if matches!(self.compute_family, ComputeFamily::SandboxExecution) => "sandbox",
+            None => "unknown",
         }
     }
 
@@ -851,6 +925,45 @@ impl ForwardComputeQuoteCandidate {
             ComputeFamily::AdapterHosting => "adapter_hosting",
         }
     }
+
+    pub const fn execution_label(&self) -> &'static str {
+        match self.execution_kind {
+            Some(ComputeExecutionKind::LocalInference) => "local_inference",
+            Some(ComputeExecutionKind::ClusteredInference) => "clustered_inference",
+            Some(ComputeExecutionKind::SandboxExecution) => "sandbox_execution",
+            Some(ComputeExecutionKind::EvaluationRun) => "evaluation_run",
+            Some(ComputeExecutionKind::TrainingJob) => "training_job",
+            None => "unspecified",
+        }
+    }
+
+    pub const fn topology_label(&self) -> &'static str {
+        match self.topology_kind {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub const fn provisioning_label(&self) -> &'static str {
+        match self.provisioning_kind {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub const fn proof_posture_label(&self) -> &'static str {
+        match self.proof_posture {
+            Some(value) => value.label(),
+            None => "unspecified",
+        }
+    }
+
+    pub fn environment_ref(&self) -> Option<&str> {
+        self.environment_binding
+            .as_ref()
+            .map(|binding| binding.environment_ref.as_str())
+            .filter(|value| !value.trim().is_empty())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -862,8 +975,14 @@ pub struct AcceptedSpotComputeOrder {
     pub product_id: String,
     pub capacity_lot_id: String,
     pub provider_id: String,
-    pub backend_family: ComputeBackendFamily,
+    pub backend_family: Option<ComputeBackendFamily>,
     pub compute_family: ComputeFamily,
+    pub execution_kind: Option<ComputeExecutionKind>,
+    pub topology_kind: Option<ComputeTopologyKind>,
+    pub provisioning_kind: Option<ComputeProvisioningKind>,
+    pub proof_posture: Option<ComputeProofPosture>,
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    pub sandbox_profile_ref: Option<String>,
     pub quantity: u64,
     pub price_sats: u64,
     pub delivery_window_label: String,
@@ -880,8 +999,14 @@ pub struct AcceptedForwardComputeOrder {
     pub product_id: String,
     pub capacity_lot_id: String,
     pub provider_id: String,
-    pub backend_family: ComputeBackendFamily,
+    pub backend_family: Option<ComputeBackendFamily>,
     pub compute_family: ComputeFamily,
+    pub execution_kind: Option<ComputeExecutionKind>,
+    pub topology_kind: Option<ComputeTopologyKind>,
+    pub provisioning_kind: Option<ComputeProvisioningKind>,
+    pub proof_posture: Option<ComputeProofPosture>,
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    pub sandbox_profile_ref: Option<String>,
     pub quantity: u64,
     pub price_sats: u64,
     pub delivery_start_ms: i64,

@@ -11,7 +11,7 @@
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`, and
 > `crates/psionic/psionic-adapters/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3563`.
+> recently closed issue backlog through `#3593`.
 
 ## Why This Doc Exists
 
@@ -41,6 +41,28 @@ This doc should be read together with:
 The Psionic Train system builds on Psionic runtime, cluster, datastream,
 sandbox, and collective layers defined in this document.
 
+## Doc Authority
+
+- `crates/psionic/README.md` is the entrypoint and map.
+- `crates/psionic/docs/ARCHITECTURE.md` is the canonical Psionic-wide system
+  spec.
+- `crates/psionic/docs/TRAIN_SYSTEM.md` is the canonical training subsystem
+  spec.
+- research audits explain why the system should move in a given direction, but
+  they are not the authoritative current-state spec.
+
+## Status Vocabulary
+
+The status labels in Psionic docs use these meanings:
+
+| Label | Meaning |
+| --- | --- |
+| `implemented` | landed and materially usable as a current substrate |
+| `implemented_early` | landed, real, and usable, but still clearly early or incomplete |
+| `partial` | some of the subsystem exists, but major required pieces are still missing |
+| `partial_outside_psionic` | the broader OpenAgents stack has the authority or control surface, but Psionic does not yet own the native runtime or execution layer |
+| `planned` | still a design target rather than a landed subsystem |
+
 ## Short Definition
 
 Psionic is the Rust-native execution substrate for compute workloads inside
@@ -52,6 +74,8 @@ Psionic owns reusable substrate for:
 - backend capability and execution planning
 - clustered topology and ordered state
 - artifact staging and resumable transport
+- runtime and environment manifest binding
+- session-bound execution identity for networked lanes
 - sandbox execution
 - serving contracts
 - training-class recovery and collective planning
@@ -71,6 +95,8 @@ Psionic owns the machine-facing execution truth for compute lanes.
 In practical terms that means:
 
 - what artifacts were bound to execution
+- what runtime or environment manifest package was actually used
+- what transport or session identity claims were attached to execution
 - what backend or topology ran the work
 - what staged data was transferred and verified
 - what proof posture or evidence was available
@@ -92,22 +118,31 @@ It must not own:
 That boundary is intentional. Psionic explains what happened at execution time.
 It does not decide what the market counts or what the product UI should do.
 
+## Non-Goals
+
+Psionic is also not:
+
+- final market or settlement authority
+- a home for app workflows
+- a claim that every compute lane is mature today
+- a hidden Python control plane behind Rust wrappers
+
 ## System Status At A Glance
 
 | Area | Current Status | Current Repo Truth |
 | --- | --- | --- |
-| Local inference substrate | Implemented, early | runtime, backend, model, and serve crates exist with CPU and partial Metal lanes |
-| Clustered serving substrate | Implemented, early | `psionic-cluster` owns ordered state, placement, catch-up, and sharded serving topology truth |
-| Datastream and artifact staging | Implemented, early | resumable manifests, chunk transport, and delivery receipts exist in `psionic-datastream` |
-| Sandbox execution | Implemented, early | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
-| Execution proof bundles | Implemented, early | canonical execution-proof bundles live in `psionic-runtime` |
-| Collectives | Implemented, early | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
-| Train recovery substrate | Implemented, early | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
-| Adapter lineage | Implemented, early | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
-| Eval runtime | Partial outside Psionic | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate exists yet |
-| Environment package runtime | Partial outside Psionic | environment package descriptors, registry, and binding flows now exist in kernel/Nexus, but no canonical Psionic-native runtime ABI exists yet |
-| Full training core | Not implemented | no Rust-native trainer-step and optimizer substrate yet |
-| Full synthetic-data or research loop | Partial outside Psionic | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
+| Local inference substrate | `implemented_early` | runtime, backend, model, and serve crates exist with CPU and partial Metal lanes |
+| Clustered serving substrate | `implemented_early` | `psionic-cluster` owns ordered state, placement, catch-up, and sharded serving topology truth |
+| Datastream and artifact staging | `implemented_early` | resumable manifests, chunk transport, and delivery receipts exist in `psionic-datastream` |
+| Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
+| Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
+| Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
+| Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
+| Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
+| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate exists yet |
+| Environment package runtime | `partial_outside_psionic` | environment package descriptors, registry, and binding flows now exist in kernel/Nexus, but no canonical Psionic-native runtime ABI exists yet |
+| Full training core | `planned` | no Rust-native trainer-step and optimizer substrate yet |
+| Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
 
 Recent issue closure changed one important reading of this table:
 
@@ -142,29 +177,6 @@ Applications / Operators / Authority
         |
         v
  psionic-runtime / psionic-compiler / psionic-ir / psionic-core
-```
-
-```text
-Apps / operator surfaces / authority
-  consume typed Psionic state
-
-psionic-provider
-  provider-facing capability and receipt adapters
-
-psionic-serve / psionic-models
-  served compute contracts and model metadata
-
-psionic-train / psionic-collectives / psionic-adapters
-  train-class recovery, collective policy, adapter lineage
-
-psionic-cluster / psionic-datastream / psionic-sandbox / psionic-net
-  clustered state, artifact movement, bounded execution, transport
-
-backend crates
-  concrete execution implementations over runtime traits
-
-psionic-runtime / psionic-compiler / psionic-ir / psionic-core
-  runtime, lowering, IR, tensor and device primitives
 ```
 
 ### Layering By Crate
@@ -206,6 +218,10 @@ psionic-runtime / psionic-compiler / psionic-ir / psionic-core
    - provider-facing capability, readiness, and receipt types at the OpenAgents
      boundary
 
+The crate list and layering are canonical for current ownership and dependency
+direction, but they are not a guarantee that every planned subsystem will land
+under exactly these final crate names.
+
 ### Dependency Direction
 
 - lower crates must not depend on higher product-facing crates
@@ -224,16 +240,16 @@ Psionic needs two different notions of work class:
 
 | Work Class | Meaning | Current Status |
 | --- | --- | --- |
-| Inference | generate model outputs for served requests | Implemented, early |
-| Embeddings | generate vectors or embedding outputs | Implemented, early |
-| Clustered serving | execute inference across replicas or sharded topology | Implemented, early |
-| Sandbox execution | run bounded remote or local sandbox jobs | Implemented, early |
-| Artifact staging | move datasets, checkpoints, served artifacts, and adapter bundles | Implemented, early |
-| Training-class coordination | coordinate checkpoints, recovery, collectives, and elastic membership | Implemented, early |
-| Full training | execute trainer-step and optimizer updates | Planned |
-| Eval | run shared held-out or online evaluation | Planned |
-| Synthetic-data generation | generate or score new data under the same substrate | Planned |
-| Adapter-backed serving | serve a base artifact plus attributed adapter lineage | Implemented, early |
+| Inference | generate model outputs for served requests | `implemented_early` |
+| Embeddings | generate vectors or embedding outputs | `implemented_early` |
+| Clustered serving | execute inference across replicas or sharded topology | `implemented_early` |
+| Sandbox execution | run bounded remote or local sandbox jobs | `implemented_early` |
+| Artifact staging | move datasets, checkpoints, served artifacts, and adapter bundles | `implemented_early` |
+| Training-class coordination | coordinate checkpoints, recovery, collectives, and elastic membership | `implemented_early` |
+| Full training | execute trainer-step and optimizer updates | `planned` |
+| Eval | run shared held-out or online evaluation | `planned` |
+| Synthetic-data generation | generate or score new data under the same substrate | `planned` |
+| Adapter-backed serving | serve a base artifact plus attributed adapter lineage | `implemented_early` |
 
 ### Low-Level Runtime Work Classes
 
@@ -260,22 +276,24 @@ training subsystems.
 
 | Object | Owner | Purpose | Current Status |
 | --- | --- | --- | --- |
-| `RuntimeWorkItem` | `psionic-runtime` | one low-level schedulable unit of work | Implemented |
-| `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | Implemented |
-| `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | Implemented |
-| `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts | Implemented |
-| `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | Implemented |
-| `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | Implemented |
-| `TrainingCheckpointReference` | `psionic-runtime` | stable identity for one training checkpoint | Implemented |
-| `TrainingRecoveryContext` | `psionic-runtime` | runtime-visible recovery posture for training-class execution | Implemented |
-| `TrainingDeviceMeshContext` | `psionic-runtime` | runtime-visible elastic device-mesh posture | Implemented |
-| `TrainingCollectiveContext` | `psionic-runtime` | runtime-visible collective posture and benchmark evidence | Implemented |
-| `AdapterArtifactIdentity` | `psionic-adapters` | stable identity for one adapter artifact | Implemented |
-| `AdapterPackageManifest` | `psionic-adapters` | package manifest for adapter bytes tied to datastream | Implemented |
-| `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | Implemented |
-| `TrainingRun` | planned train layer | root identity for one training program | Planned |
-| `EnvironmentPackage` | planned environment layer | reusable task, rubric, and tool environment package | Planned |
-| `EvalRun` | planned eval layer | one evaluation execution over a declared environment and artifact set | Planned |
+| `RuntimeWorkItem` | `psionic-runtime` | one low-level schedulable unit of work | `implemented` |
+| `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | `implemented` |
+| `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | `implemented` |
+| `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts | `implemented` |
+| `RuntimeManifest` | planned proof/environment layer | digest-bound package for artifact, static-config, and runtime lineage used at execution time | `planned` |
+| `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |
+| `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | `implemented` |
+| `SessionClaimsBundle` | planned `psionic-net` / proof layer | signed claims that bind session identity to runtime, environment, and artifact digests | `planned` |
+| `TrainingCheckpointReference` | `psionic-runtime` | stable identity for one training checkpoint | `implemented` |
+| `TrainingRecoveryContext` | `psionic-runtime` | runtime-visible recovery posture for training-class execution | `implemented` |
+| `TrainingDeviceMeshContext` | `psionic-runtime` | runtime-visible elastic device-mesh posture | `implemented` |
+| `TrainingCollectiveContext` | `psionic-runtime` | runtime-visible collective posture and benchmark evidence | `implemented` |
+| `AdapterArtifactIdentity` | `psionic-adapters` | stable identity for one adapter artifact | `implemented` |
+| `AdapterPackageManifest` | `psionic-adapters` | package manifest for adapter bytes tied to datastream | `implemented` |
+| `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
+| `TrainingRun` | planned train layer | root identity for one training program | `planned` |
+| `EnvironmentPackage` | planned environment layer | reusable task, rubric, and tool environment package | `planned` |
+| `EvalRun` | planned eval layer | one evaluation execution over a declared environment and artifact set | `planned` |
 
 The important point is not that every object already exists. The important
 point is that Psionic should converge on a typed object model rather than
@@ -284,6 +302,24 @@ passing loosely structured blobs between subsystems.
 Psionic enforces capability envelopes at runtime, while higher-level compute
 products define the admissible execution contract exposed to buyers, operators,
 and authority layers.
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| execution truth | what the Psionic runtime and cluster can honestly say happened at execution time |
+| authority truth | what higher-level OpenAgents services accept as canonical outcome |
+| artifact truth | what manifests, digests, package refs, and staged bytes were actually bound to execution |
+| runtime identity | the verified execution origin responsible for a work item |
+| session claims bundle | the signed session-scoped claim set that ties peer or session keys to runtime and artifact identity |
+| checkpoint lineage | the chain of checkpoint identities, manifests, and durability transitions that define recoverable train state |
+| policy revision | the specific weight or policy version a worker, trainer, or eval run consumed |
+| environment package | a versioned task, rubric, tool, and sandbox contract used by training or eval |
+| proof posture | the declared strength and availability of execution evidence |
+| validator posture | the declared verification policy and adjudication expectations for a workload |
+| manifest registry | a versioned allowlist or policy registry for manifests, proof profiles, or environment packages |
+| receipt | the typed record of an accepted state transition or outcome |
+| collective posture | the mesh, communication, quantization, and benchmark facts attached to one collective step |
 
 ## Artifact Model
 
@@ -307,8 +343,12 @@ Psionic is also an artifact system, not only an execution engine.
 - artifacts should be digest-bound
 - artifacts should be referenceable through compact manifest refs where
   possible
+- runtime and environment identity should distinguish digest-bound measured or
+  static config from mutable runtime variables
 - artifacts should carry enough lineage to explain what execution actually
   consumed
+- policy-meaningful lanes should reference versioned manifest or profile
+  registries rather than opaque free-form strings
 - Psionic should not rely on unnamed side files for economically or
   operationally important artifacts
 
@@ -342,16 +382,31 @@ Runtime identity matters because it anchors:
 - validator checks
 - receipt lineage
 
+### Session Claims And Manifest Discipline
+
+For proof-bearing networked execution, transport identity should carry a signed
+session-claims bundle that references runtime, environment, and artifact
+digests.
+
+Psionic should also distinguish:
+
+- digest-bound measured or static config
+- mutable runtime variables
+- higher-level policy profiles or manifest registries evaluated outside Psionic
+
+That split keeps runtime truth honest without collapsing execution evidence and
+policy authority into one crate.
+
 ### Canonical Receipt Families
 
 | Receipt Family | Current Status | Producer |
 | --- | --- | --- |
-| runtime execution proof bundles | Implemented | `psionic-runtime` |
-| datastream delivery receipts | Implemented | `psionic-datastream` |
-| sandbox execution receipts | Implemented | `psionic-sandbox` |
-| clustered execution evidence | Implemented, early | `psionic-cluster` |
-| training run, trainer step, and eval receipts | Planned | future `psionic-train` and `psionic-eval` layers |
-| adapter package and hosted binding lineage | Implemented, early | `psionic-adapters` |
+| runtime execution proof bundles | `implemented` | `psionic-runtime` |
+| datastream delivery receipts | `implemented` | `psionic-datastream` |
+| sandbox execution receipts | `implemented` | `psionic-sandbox` |
+| clustered execution evidence | `implemented_early` | `psionic-cluster` |
+| training run, trainer step, and eval receipts | `planned` | future `psionic-train` and `psionic-eval` layers |
+| adapter package and hosted binding lineage | `implemented_early` | `psionic-adapters` |
 
 ## Canonical Execution Lifecycle
 
@@ -389,7 +444,9 @@ For serving lanes this typically means:
 
 - served artifact resolution
 - backend and capability gating
-- low-level runtime batching and decode work
+- queue admission, fairness, and mixed prefill/decode work
+- structured outputs, tool or response-state semantics, and optional multi-model
+  routing
 - optional clustered placement and shard handoff
 - response and proof emission
 
@@ -426,8 +483,11 @@ The desktop app and `autopilotctl` should consume Psionic truth for:
 
 - capability and readiness
 - runtime or cluster state
+- manifest refs and session-claims posture
 - artifact staging progress
+- queue or admission posture, shard or cache placement, and sandbox pool health
 - sandbox job state
+- challenge or validator status when the lane uses one
 - training and eval diagnostics, once those exist
 
 ### Authority Plane
@@ -461,6 +521,7 @@ Psionic should handle failure explicitly and typefully.
 | checkpoint flush failure | keep checkpoint non-durable and block any state transition that requires durability |
 | sandbox crash | emit bounded execution failure receipt and apply retry or quarantine policy outside the sandbox engine |
 | cluster membership mismatch | reject the state transition rather than silently rebasing to a different cluster |
+| detached or invalid session claims | reject policy-meaningful networked execution rather than treating transport identity alone as sufficient |
 | unapproved quantized collective request | reject planning rather than silently downgrade without record |
 | stale artifact or policy revision | reject or quarantine the work item under explicit freshness rules |
 | proof augmentation unavailable | emit explicit proof posture rather than pretending strong proof exists |
@@ -489,8 +550,10 @@ security surfaces.
 | artifact tampering | manifest digests, chunk digests, object digests, provenance linkage |
 | checkpoint tampering | checkpoint-family binding, writer identity, manifest verification, durable checkpoint posture |
 | cluster spoofing or false membership | peer identity, admission policy, ordered-state truth, cluster mismatch rejection |
+| detached transport identity or forged proof-bearing sessions | session-claims bundles bound to peer or session keys plus manifest refs and policy checks |
 | sandbox escape or undeclared runtime behavior | bounded profiles, explicit runtime detection, execution receipts |
 | proof opacity | explicit proof augmentation posture instead of hidden assumptions |
+| manifest or policy-registry drift | versioned manifest registries and explicit profile identifiers carried through receipts and authority integrations |
 | stale or mismatched policy artifacts | freshness windows and policy-revision binding in planned train layer |
 | malicious rollout workers | planned validator sampling and train-layer admission control |
 | transport degradation or relay ambiguity | explicit transport observations and candidate state in `psionic-net` and `psionic-cluster` |
