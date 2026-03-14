@@ -6,6 +6,7 @@
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use psionic_data::DatasetKey;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,30 @@ pub enum EnvironmentPackageFamily {
     Agentic,
 }
 
+/// Product workload classes admitted by one environment package.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentWorkloadClass {
+    /// Supervised fine-tuning sample generation.
+    Sft,
+    /// Reinforcement-learning rollout generation.
+    Rl,
+    /// Online evaluation during training or serving.
+    OnlineEval,
+    /// Offline held-out evaluation.
+    OfflineEval,
+    /// Validator-owned benchmark execution.
+    ValidatorBenchmark,
+}
+
+impl fmt::Display for EnvironmentWorkloadClass {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            std::str::from_utf8(environment_workload_class_label(*self)).unwrap_or("unknown"),
+        )
+    }
+}
+
 /// Execution runtime family for an environment package.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +118,30 @@ pub enum EnvironmentToolInterface {
     Mcp,
     /// Sandbox shell command tool seam.
     ShellCommand,
+}
+
+/// Policy family referenced by one environment package.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentPolicyKind {
+    /// Training or optimization policy.
+    Training,
+    /// Reward or rubric policy.
+    Reward,
+    /// Safety or tool-allowlist policy.
+    Safety,
+    /// Verification or artifact policy.
+    Verification,
+    /// Validator-owned benchmark policy.
+    Benchmark,
+}
+
+impl fmt::Display for EnvironmentPolicyKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            std::str::from_utf8(environment_policy_kind_label(*self)).unwrap_or("unknown"),
+        )
+    }
 }
 
 /// Rubric score family surfaced by the runtime contract.
@@ -183,6 +232,56 @@ pub struct EnvironmentArtifactExpectation {
     pub verification_policy_ref: Option<String>,
 }
 
+/// Typed policy reference attached to the environment package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentPolicyReference {
+    /// Policy family.
+    pub kind: EnvironmentPolicyKind,
+    /// Stable policy reference.
+    pub policy_ref: String,
+    /// Whether the policy is mandatory.
+    pub required: bool,
+}
+
+/// Difficulty and filtering metadata for one environment package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentDifficultyMetadata {
+    /// Stable tier or ladder label.
+    pub difficulty_tier: String,
+    /// Optional minimum model or agent level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_agent_level: Option<u32>,
+    /// Optional difficulty tags.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+/// Verification posture for benchmark-style packages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentVerificationPosture {
+    /// Normal runtime-only package.
+    RuntimeOnly,
+    /// Validator checks are optional.
+    ValidatorOptional,
+    /// Validator checks are required.
+    ValidatorRequired,
+}
+
+/// Benchmark profile bundled with the environment package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentBenchmarkProfile {
+    /// Stable benchmark profile reference.
+    pub benchmark_profile_ref: String,
+    /// Stable runtime profile reference.
+    pub runtime_profile_ref: String,
+    /// Validator or benchmark verification posture.
+    pub verification_posture: EnvironmentVerificationPosture,
+    /// Expected execution strategy when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_execution_strategy: Option<String>,
+}
+
 /// Full runtime-facing environment package contract.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EnvironmentPackageContract {
@@ -196,6 +295,9 @@ pub struct EnvironmentPackageContract {
     pub display_name: String,
     /// Runtime execution entrypoint.
     pub execution: EnvironmentExecutionEntrypoint,
+    /// Supported workload classes for the same environment artifact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_workloads: Vec<EnvironmentWorkloadClass>,
     /// Dataset bindings visible to the runtime.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub datasets: Vec<EnvironmentDatasetBinding>,
@@ -208,6 +310,15 @@ pub struct EnvironmentPackageContract {
     /// Expected artifacts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expected_artifacts: Vec<EnvironmentArtifactExpectation>,
+    /// Typed policy references for training, reward, safety, or validation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_references: Vec<EnvironmentPolicyReference>,
+    /// Optional difficulty metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<EnvironmentDifficultyMetadata>,
+    /// Optional benchmark or validator profiles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub benchmark_profiles: Vec<EnvironmentBenchmarkProfile>,
     /// Extension metadata.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, Value>,
@@ -229,12 +340,26 @@ impl EnvironmentPackageContract {
             family,
             display_name: display_name.into(),
             execution,
+            supported_workloads: default_workloads_for_family(family),
             datasets: Vec::new(),
             tools: Vec::new(),
             rubric_hooks: Vec::new(),
             expected_artifacts: Vec::new(),
+            policy_references: Vec::new(),
+            difficulty: None,
+            benchmark_profiles: Vec::new(),
             metadata: BTreeMap::new(),
         }
+    }
+
+    /// Attaches supported workload classes.
+    #[must_use]
+    pub fn with_supported_workloads(
+        mut self,
+        supported_workloads: Vec<EnvironmentWorkloadClass>,
+    ) -> Self {
+        self.supported_workloads = supported_workloads;
+        self
     }
 
     /// Attaches dataset bindings.
@@ -265,6 +390,33 @@ impl EnvironmentPackageContract {
         expected_artifacts: Vec<EnvironmentArtifactExpectation>,
     ) -> Self {
         self.expected_artifacts = expected_artifacts;
+        self
+    }
+
+    /// Attaches typed policy references.
+    #[must_use]
+    pub fn with_policy_references(
+        mut self,
+        policy_references: Vec<EnvironmentPolicyReference>,
+    ) -> Self {
+        self.policy_references = policy_references;
+        self
+    }
+
+    /// Attaches difficulty metadata.
+    #[must_use]
+    pub fn with_difficulty(mut self, difficulty: EnvironmentDifficultyMetadata) -> Self {
+        self.difficulty = Some(difficulty);
+        self
+    }
+
+    /// Attaches benchmark profiles.
+    #[must_use]
+    pub fn with_benchmark_profiles(
+        mut self,
+        benchmark_profiles: Vec<EnvironmentBenchmarkProfile>,
+    ) -> Self {
+        self.benchmark_profiles = benchmark_profiles;
         self
     }
 
@@ -308,6 +460,10 @@ impl EnvironmentPackageContract {
             hasher.update(b"|budget|");
             hasher.update(time_budget_ms.to_string().as_bytes());
         }
+        for workload in &self.supported_workloads {
+            hasher.update(b"|workload|");
+            hasher.update(environment_workload_class_label(*workload));
+        }
         for dataset in &self.datasets {
             hasher.update(b"|dataset|");
             hasher.update(dataset.dataset.storage_key().as_bytes());
@@ -339,6 +495,43 @@ impl EnvironmentPackageContract {
                 b"|optional"
             });
         }
+        for policy in &self.policy_references {
+            hasher.update(b"|policy|");
+            hasher.update(environment_policy_kind_label(policy.kind));
+            hasher.update(b"|");
+            hasher.update(policy.policy_ref.as_bytes());
+            hasher.update(if policy.required {
+                b"|required"
+            } else {
+                b"|optional"
+            });
+        }
+        if let Some(difficulty) = &self.difficulty {
+            hasher.update(b"|difficulty|");
+            hasher.update(difficulty.difficulty_tier.as_bytes());
+            if let Some(min_agent_level) = difficulty.min_agent_level {
+                hasher.update(b"|");
+                hasher.update(min_agent_level.to_string().as_bytes());
+            }
+            for tag in &difficulty.tags {
+                hasher.update(b"|tag|");
+                hasher.update(tag.as_bytes());
+            }
+        }
+        for benchmark in &self.benchmark_profiles {
+            hasher.update(b"|benchmark|");
+            hasher.update(benchmark.benchmark_profile_ref.as_bytes());
+            hasher.update(b"|");
+            hasher.update(benchmark.runtime_profile_ref.as_bytes());
+            hasher.update(b"|");
+            hasher.update(environment_verification_posture_label(
+                benchmark.verification_posture,
+            ));
+            if let Some(strategy) = &benchmark.expected_execution_strategy {
+                hasher.update(b"|");
+                hasher.update(strategy.as_bytes());
+            }
+        }
         hex::encode(hasher.finalize())
     }
 
@@ -357,6 +550,9 @@ impl EnvironmentPackageContract {
         }
         if self.display_name.trim().is_empty() {
             return Err(EnvironmentContractError::MissingDisplayName);
+        }
+        if self.supported_workloads.is_empty() {
+            return Err(EnvironmentContractError::MissingSupportedWorkload);
         }
         if self.execution.entrypoint.trim().is_empty() {
             return Err(EnvironmentContractError::MissingEntrypoint);
@@ -379,6 +575,14 @@ impl EnvironmentPackageContract {
         }
 
         let mut tool_names = BTreeSet::new();
+        let mut workload_classes = BTreeSet::new();
+        for workload in &self.supported_workloads {
+            if !workload_classes.insert(*workload) {
+                return Err(EnvironmentContractError::DuplicateSupportedWorkload {
+                    workload: *workload,
+                });
+            }
+        }
         for dataset in &self.datasets {
             if dataset.dataset.dataset_ref.trim().is_empty() {
                 return Err(EnvironmentContractError::MissingDatasetRef);
@@ -434,6 +638,41 @@ impl EnvironmentPackageContract {
                 });
             }
         }
+        let mut policy_refs = BTreeSet::new();
+        for policy in &self.policy_references {
+            if policy.policy_ref.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingPolicyRef { kind: policy.kind });
+            }
+            if !policy_refs.insert((policy.kind, policy.policy_ref.clone())) {
+                return Err(EnvironmentContractError::DuplicatePolicyRef {
+                    kind: policy.kind,
+                    policy_ref: policy.policy_ref.clone(),
+                });
+            }
+        }
+        if let Some(difficulty) = &self.difficulty {
+            if difficulty.difficulty_tier.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingDifficultyTier);
+            }
+        }
+        let mut benchmark_refs = BTreeSet::new();
+        for benchmark in &self.benchmark_profiles {
+            if benchmark.benchmark_profile_ref.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingBenchmarkProfileRef);
+            }
+            if benchmark.runtime_profile_ref.trim().is_empty() {
+                return Err(
+                    EnvironmentContractError::MissingBenchmarkRuntimeProfileRef {
+                        benchmark_profile_ref: benchmark.benchmark_profile_ref.clone(),
+                    },
+                );
+            }
+            if !benchmark_refs.insert(benchmark.benchmark_profile_ref.clone()) {
+                return Err(EnvironmentContractError::DuplicateBenchmarkProfile {
+                    benchmark_profile_ref: benchmark.benchmark_profile_ref.clone(),
+                });
+            }
+        }
         Ok(())
     }
 
@@ -485,6 +724,9 @@ pub enum EnvironmentContractError {
     /// The package omitted the display name.
     #[error("environment package is missing `display_name`")]
     MissingDisplayName,
+    /// The package omitted supported workload classes.
+    #[error("environment package must declare at least one supported workload class")]
+    MissingSupportedWorkload,
     /// The package omitted the execution entrypoint.
     #[error("environment package is missing the execution entrypoint")]
     MissingEntrypoint,
@@ -521,6 +763,12 @@ pub enum EnvironmentContractError {
         /// Repeated tool name.
         tool_name: String,
     },
+    /// Duplicate supported workload class.
+    #[error("environment package workload `{workload}` was defined more than once")]
+    DuplicateSupportedWorkload {
+        /// Repeated workload class.
+        workload: EnvironmentWorkloadClass,
+    },
     /// One rubric hook omitted the rubric ref.
     #[error("environment package rubric hook is missing `rubric_ref`")]
     MissingRubricRef,
@@ -544,6 +792,42 @@ pub enum EnvironmentContractError {
     DuplicateArtifactKind {
         /// Repeated artifact kind.
         artifact_kind: String,
+    },
+    /// One policy reference omitted the policy ref.
+    #[error("environment package policy `{kind}` is missing `policy_ref`")]
+    MissingPolicyRef {
+        /// Policy family with missing ref.
+        kind: EnvironmentPolicyKind,
+    },
+    /// Duplicate policy reference.
+    #[error("environment package policy `{kind}` ref `{policy_ref}` was defined more than once")]
+    DuplicatePolicyRef {
+        /// Repeated policy family.
+        kind: EnvironmentPolicyKind,
+        /// Repeated policy ref.
+        policy_ref: String,
+    },
+    /// Difficulty metadata omitted the tier label.
+    #[error("environment package difficulty metadata is missing `difficulty_tier`")]
+    MissingDifficultyTier,
+    /// Benchmark profile omitted the profile ref.
+    #[error("environment package benchmark profile is missing `benchmark_profile_ref`")]
+    MissingBenchmarkProfileRef,
+    /// Benchmark profile omitted the runtime profile ref.
+    #[error(
+        "environment package benchmark profile `{benchmark_profile_ref}` is missing `runtime_profile_ref`"
+    )]
+    MissingBenchmarkRuntimeProfileRef {
+        /// Benchmark profile ref with missing runtime profile.
+        benchmark_profile_ref: String,
+    },
+    /// Duplicate benchmark profile ref.
+    #[error(
+        "environment package benchmark profile `{benchmark_profile_ref}` was defined more than once"
+    )]
+    DuplicateBenchmarkProfile {
+        /// Repeated benchmark profile ref.
+        benchmark_profile_ref: String,
     },
 }
 
@@ -1174,19 +1458,60 @@ fn environment_tool_interface_label(tool_interface: EnvironmentToolInterface) ->
     }
 }
 
+fn environment_workload_class_label(workload: EnvironmentWorkloadClass) -> &'static [u8] {
+    match workload {
+        EnvironmentWorkloadClass::Sft => b"sft",
+        EnvironmentWorkloadClass::Rl => b"rl",
+        EnvironmentWorkloadClass::OnlineEval => b"online_eval",
+        EnvironmentWorkloadClass::OfflineEval => b"offline_eval",
+        EnvironmentWorkloadClass::ValidatorBenchmark => b"validator_benchmark",
+    }
+}
+
+fn environment_policy_kind_label(kind: EnvironmentPolicyKind) -> &'static [u8] {
+    match kind {
+        EnvironmentPolicyKind::Training => b"training",
+        EnvironmentPolicyKind::Reward => b"reward",
+        EnvironmentPolicyKind::Safety => b"safety",
+        EnvironmentPolicyKind::Verification => b"verification",
+        EnvironmentPolicyKind::Benchmark => b"benchmark",
+    }
+}
+
+fn environment_verification_posture_label(
+    posture: EnvironmentVerificationPosture,
+) -> &'static [u8] {
+    match posture {
+        EnvironmentVerificationPosture::RuntimeOnly => b"runtime_only",
+        EnvironmentVerificationPosture::ValidatorOptional => b"validator_optional",
+        EnvironmentVerificationPosture::ValidatorRequired => b"validator_required",
+    }
+}
+
+fn default_workloads_for_family(family: EnvironmentPackageFamily) -> Vec<EnvironmentWorkloadClass> {
+    match family {
+        EnvironmentPackageFamily::Sft => vec![EnvironmentWorkloadClass::Sft],
+        EnvironmentPackageFamily::Rl => vec![EnvironmentWorkloadClass::Rl],
+        EnvironmentPackageFamily::Evaluation => vec![EnvironmentWorkloadClass::OfflineEval],
+        EnvironmentPackageFamily::Agentic => vec![EnvironmentWorkloadClass::Rl],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use psionic_data::DatasetKey;
     use serde_json::json;
 
     use super::{
-        ENVIRONMENT_ABI_VERSION, EnvironmentArtifactExpectation, EnvironmentArtifactOutput,
-        EnvironmentContractError, EnvironmentDatasetBinding, EnvironmentExecutionEntrypoint,
-        EnvironmentPackageContract, EnvironmentPackageFamily, EnvironmentPackageKey,
+        EnvironmentArtifactExpectation, EnvironmentArtifactOutput, EnvironmentBenchmarkProfile,
+        EnvironmentContractError, EnvironmentDatasetBinding, EnvironmentDifficultyMetadata,
+        EnvironmentExecutionEntrypoint, EnvironmentPackageContract, EnvironmentPackageFamily,
+        EnvironmentPackageKey, EnvironmentPolicyKind, EnvironmentPolicyReference,
         EnvironmentRubricHook, EnvironmentRubricOutcome, EnvironmentRubricScoreKind,
         EnvironmentRuntimeError, EnvironmentRuntimeFamily, EnvironmentStateMode,
         EnvironmentToolContract, EnvironmentToolInterface, EnvironmentToolResult,
-        EnvironmentTurnInput,
+        EnvironmentTurnInput, EnvironmentVerificationPosture, EnvironmentWorkloadClass,
+        ENVIRONMENT_ABI_VERSION,
     };
 
     fn weather_package() -> EnvironmentPackageContract {
@@ -1204,6 +1529,12 @@ mod tests {
                 time_budget_ms: Some(30_000),
             },
         )
+        .with_supported_workloads(vec![
+            EnvironmentWorkloadClass::Rl,
+            EnvironmentWorkloadClass::OnlineEval,
+            EnvironmentWorkloadClass::OfflineEval,
+            EnvironmentWorkloadClass::ValidatorBenchmark,
+        ])
         .with_datasets(vec![EnvironmentDatasetBinding {
             dataset: DatasetKey::new("dataset://openagents/weather-dialog", "2026.03.14"),
             split: Some(String::from("train")),
@@ -1242,6 +1573,29 @@ mod tests {
             required: true,
             verification_policy_ref: Some(String::from("verify://trace")),
         }])
+        .with_policy_references(vec![
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Training,
+                policy_ref: String::from("policy://weather/train"),
+                required: true,
+            },
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Benchmark,
+                policy_ref: String::from("policy://weather/benchmark"),
+                required: true,
+            },
+        ])
+        .with_difficulty(EnvironmentDifficultyMetadata {
+            difficulty_tier: String::from("intermediate"),
+            min_agent_level: Some(2),
+            tags: vec![String::from("tool_use"), String::from("weather")],
+        })
+        .with_benchmark_profiles(vec![EnvironmentBenchmarkProfile {
+            benchmark_profile_ref: String::from("benchmark://weather/default"),
+            runtime_profile_ref: String::from("runtime://weather/dialog"),
+            verification_posture: EnvironmentVerificationPosture::ValidatorRequired,
+            expected_execution_strategy: Some(String::from("single_node")),
+        }])
     }
 
     #[test]
@@ -1259,6 +1613,9 @@ mod tests {
         let digest_a = package.stable_digest();
         let digest_b = package.stable_digest();
         assert_eq!(digest_a, digest_b);
+        assert_eq!(package.supported_workloads.len(), 4);
+        assert_eq!(package.policy_references.len(), 2);
+        assert_eq!(package.benchmark_profiles.len(), 1);
     }
 
     #[test]
@@ -1288,8 +1645,34 @@ mod tests {
     }
 
     #[test]
-    fn environment_runtime_session_tracks_tools_artifacts_and_rubrics()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_contract_carries_package_shape_for_train_and_benchmark(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let package = weather_package();
+        package.validate()?;
+        assert!(package
+            .supported_workloads
+            .contains(&EnvironmentWorkloadClass::ValidatorBenchmark));
+        assert_eq!(
+            package.policy_references[0].policy_ref,
+            String::from("policy://weather/train")
+        );
+        assert_eq!(
+            package
+                .difficulty
+                .as_ref()
+                .map(|difficulty| difficulty.difficulty_tier.as_str()),
+            Some("intermediate")
+        );
+        assert_eq!(
+            package.benchmark_profiles[0].benchmark_profile_ref,
+            String::from("benchmark://weather/default")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn environment_runtime_session_tracks_tools_artifacts_and_rubrics(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let package = weather_package();
         let expected_storage_key = package.storage_key();
         let mut session = package.open_session("session-weather", "task-paris")?;
@@ -1337,8 +1720,8 @@ mod tests {
     }
 
     #[test]
-    fn environment_runtime_requires_declared_rubric_and_artifact()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_runtime_requires_declared_rubric_and_artifact(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let package = weather_package();
         let mut session = package.open_session("session-missing", "task-missing")?;
         session.begin_turn(EnvironmentTurnInput::new("hello"))?;
