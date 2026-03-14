@@ -125,6 +125,26 @@ At the broadest level, this market is intended to cover:
 The active MVP only productizes a subset of that. The market definition is
 broader than the current user-facing release.
 
+## What The Compute Market Is Not
+
+The Compute Market is not:
+
+- generic job orchestration without economic state
+- only provider runtime health
+- only wallet payout bookkeeping
+- the Labor Market under another name
+- raw dataset or context access
+- risk pricing itself, even though it feeds the Risk Market
+
+The clean boundary is:
+
+- if the thing being sold is bounded machine execution capacity, it belongs here
+- if the thing being sold is open-ended agent work, it belongs in Labor
+- if the thing being sold is permissioned context or data access, it belongs in
+  Data
+- if the thing being priced is uncertainty, liability, or coverage, it belongs
+  in Risk
+
 ## What "Complete" Means
 
 The current canonical implementation plan now treats a complete compute market
@@ -152,12 +172,141 @@ spot lots, forward obligations, and a few proof records. It must also own the
 execution, proof, and evaluation substrate that makes those promises
 economically meaningful.
 
+## Canonical Market Lifecycle
+
+The canonical compute-market lifecycle should be read as the end-to-end state
+machine for a compute promise.
+
+1. Product definition: a `ComputeProduct` defines what kind of machine
+   execution is admissible, how it settles, whether it is index-eligible, and
+   what capability envelope, environment binding, or proof posture applies.
+2. Supply declaration: a provider publishes or materializes a `CapacityLot`
+   with quantity, delivery window, optional floor price, region hint,
+   environment binding, and offer expiry.
+3. Discoverability: that lot becomes discoverable through authority read models
+   and market views rather than existing only as hidden runtime state.
+4. Procurement or allocation: a buyer or market flow creates a
+   `CapacityInstrument` against a product or specific lot. That instrument is
+   the actual economic claim: spot, forward physical, future cash, or
+   reservation.
+5. Runtime execution: provider, Psionic, sandbox, or cluster runtime truth
+   records what actually happened during execution.
+6. Delivery recording: a `DeliveryProof` is recorded with metered quantity,
+   accepted quantity, promised versus observed capability envelope, and any
+   topology, sandbox, or verification evidence.
+7. Verification or challenge: if the proof posture requires it, validator runs
+   and challenge windows apply before the market can treat delivery as
+   economically final.
+8. Economic closure: the instrument moves toward settlement, default,
+   cancellation, expiry, or correction depending on the proof, payment, and
+   policy outcome.
+9. Index and downstream reference: accepted delivery observations may feed
+   compute indices, later corrections, risk triggers, or structured instrument
+   settlement.
+
+The code already contains much of this lifecycle as explicit statuses.
+
+Current canonical status surfaces:
+
+- `ComputeProductStatus`: `active`, `retired`
+- `CapacityLotStatus`: `open`, `reserved`, `delivering`, `delivered`,
+  `cancelled`, `expired`
+- `CapacityInstrumentStatus`: `open`, `active`, `delivering`,
+  `cash_settling`, `settled`, `defaulted`, `cancelled`, `expired`
+- `StructuredCapacityInstrumentStatus`: `open`, `active`,
+  `partially_closed`, `settled`, `defaulted`, `cancelled`, `expired`
+- `DeliveryProofStatus`: `recorded`, `accepted`, `rejected`
+- `ComputeIndexStatus`: `published`, `superseded`
+
+That is the clearest current answer to "what is the compute-market state
+machine here?"
+
+## Truth Boundaries
+
+The compute market spans multiple truth domains. The doc should state them
+explicitly because they are not interchangeable.
+
+- Authority truth: canonical market records, receipts, settlement state,
+  corrections, and policy outcomes owned by the kernel authority layer.
+- Runtime truth: what Psionic, provider runtimes, clusters, and sandboxes
+  actually observed during execution.
+- Wallet and payment truth: what funds movement and payout confirmation say
+  about economic completion.
+- Validator truth: challenge outcomes, proof verification artifacts, and
+  verification verdicts produced by validator infrastructure.
+
+Those truths meet, but they are not the same thing.
+
+Examples:
+
+- a runtime can say execution finished, but authority can still reject or
+  default the market claim
+- a delivery proof can be recorded, but wallet settlement can still fail
+- a payment can land, but later correction or dispute logic can still supersede
+  market interpretation
+- a validator can reject a challenge-eligible delivery even if the provider
+  believes the runtime result was correct
+
+The canonical rule is:
+
+> runtime truth explains what happened, but authority truth decides what the
+> market counts.
+
+## Settlement Boundary And Economic Closure
+
+The compute market needs a sharper settlement boundary than "the job ran."
+
+The relevant milestones are:
+
+- execution completion: the runtime finished or terminated
+- delivery recording: a `DeliveryProof` was submitted
+- delivery acceptance: the proof was accepted rather than merely recorded
+- economic acceptance: the authority recognizes the execution as conforming
+  enough to advance the market claim
+- final settlement: the instrument reaches `settled`, or the structured
+  instrument reaches its own terminal state
+- adverse closure: the claim reaches `defaulted`, `cancelled`, `expired`, or a
+  settlement-failure path instead
+- correction: later index or authority correction supersedes an earlier market
+  view where policy allows it
+
+That distinction matters because these are not synonyms:
+
+- "compute ran"
+- "delivery was proven"
+- "delivery was accepted"
+- "the market position is economically closed"
+
+Current settlement modes already in code:
+
+- `physical`: the market centers on physical delivery of compute
+- `cash`: the market centers on cash settlement against a reference
+- `buyer_election`: the buyer may have a bounded settlement choice under policy
+
+Current instrument kinds already in code:
+
+- `spot`
+- `forward_physical`
+- `future_cash`
+- `reservation`
+
+So the compute market is not only "did the runtime finish?" It is also "what
+kind of economic claim existed, and how did that claim close?"
+
 ## Status Legend
 
 - `implemented`: shipped in current repo behavior or authoritative services
 - `partial`: real code exists, but it is not yet the default end-to-end market
   path or not yet fully productized
 - `planned`: target architecture or market lane, not yet credibly landed
+
+Operational meaning of those labels:
+
+- `partial` becomes `implemented` when the dimension has canonical authority
+  objects, real delivery or settlement linkage, and product or operator surfaces
+  that use that truth instead of bypassing it.
+- `implemented, early` becomes truly mature only when adversarial handling,
+  correction paths, operator inspection, and clear acceptance criteria exist.
 
 ## Comprehensive Status Matrix
 
@@ -214,6 +363,298 @@ It is important to separate current repo truth from older planning language:
 - older long-horizon compute planning documents may still reference `Ollama`
   from pre-prune work; treat that as historical planning context rather than
   the current retained MVP code truth
+
+## Pricing And Procurement Semantics
+
+The compute market is not defined only by supply objects. It is also defined by
+what buyers can procure against and how price can be formed.
+
+At minimum, buyers should be able to procure against:
+
+- a product family
+- a specific lot
+- a delivery window
+- a quantity
+- a provider or provider class
+- an environment binding
+- a proof posture
+- a validator posture
+- a deliverability envelope such as latency, throughput, or concurrency limits
+
+The repo already contains some of the pricing fields needed for that:
+
+- `CapacityLot.min_unit_price`
+- `CapacityInstrument.fixed_price`
+- `CapacityInstrument.reference_index_id`
+- `ComputeProduct.settlement_mode`
+
+So the intended compute-market pricing family already includes:
+
+- posted ask-like inventory
+- direct quote and accept flows
+- fixed-price spot procurement
+- negotiated forward physical windows
+- index-referenced settlement for cash-oriented instruments
+
+What is not yet fully productized is the buyer-facing UX and matching layer that
+make those semantics ordinary.
+
+Exchange-like books or richer auction mechanics may belong later, but they are
+not prerequisites for the market definition itself.
+
+## Deliverability Contract Dimensions
+
+The compute market only works if "machine capacity" means something specific.
+
+A real compute offer can vary along these deliverability dimensions:
+
+- product family
+- backend family
+- execution kind
+- topology kind
+- provisioning kind
+- model policy or model family
+- environment binding
+- artifact or checkpoint binding
+- region and delivery window
+- proof posture
+- validator requirements
+- latency expectation
+- throughput expectation
+- concurrency limit
+- performance band
+
+Several of these already exist explicitly in the code through
+`ComputeCapabilityEnvelope`, `ComputeEnvironmentBinding`, product fields, and
+lot fields.
+
+That means a buyer is not just procuring "compute." They are procuring a
+machine promise under a bounded deliverability contract.
+
+## Trust Classes, Proof Postures, And Admissibility
+
+The compute market needs explicit trust classes because not all supply should be
+treated as equally trustworthy or equally interchangeable.
+
+The current code already exposes the core axes for this:
+
+- provisioning kind:
+  `desktop_local`, `cluster_attached`, `remote_sandbox`,
+  `reserved_cluster_window`
+- topology kind:
+  `single_node`, `remote_whole_request`, `replicated`, `pipeline_sharded`,
+  `layer_sharded`, `tensor_sharded`, `sandbox_isolated`,
+  `training_elastic`
+- proof posture:
+  `none`, `delivery_proof_only`, `topology_and_delivery`,
+  `toploc_augmented`, `challenge_eligible`
+
+That gives the market a practical trust taxonomy:
+
+- trusted local retail compute: simple local lanes with light proof posture
+- delivery-proof compute: execution is accepted primarily through delivery
+  records and bounded conformance checks
+- topology-sensitive clustered compute: the market requires topology truth in
+  addition to delivery
+- proof-augmented compute: topology plus compact proof material such as
+  activation-fingerprint references
+- challenge-eligible compute: market claims remain exposed to validator
+  challenge and challenge-window outcomes
+- environment-bound compute: admissibility depends on matching environment,
+  dataset, rubric, or evaluator policy bindings
+
+Admissibility is therefore not just "is a provider online?" It also includes:
+
+- whether the product family is allowed
+- whether the proof posture is allowed
+- whether the validator policy is sufficient
+- whether the environment binding is admissible
+- whether the runtime and capability envelope actually match the market claim
+
+## Failure, Dispute, And Settlement Taxonomy
+
+The doc should name the main failure classes plainly.
+
+The compute market failure family includes:
+
+- no delivery
+- partial delivery
+- non-conforming delivery
+- stale, missing, or invalid proof material
+- environment mismatch
+- runtime identity mismatch
+- sandbox execution failure
+- provider cancellation
+- buyer cancellation
+- timeout or expiry
+- challenge rejection or challenge timeout
+- settlement failure
+
+The current code already carries much of this as explicit reason families.
+
+Current reason-code surfaces include:
+
+- lot cancellation:
+  `provider_unavailable`, `policy_disabled`, `market_halt`, `superseded`,
+  `offer_expired`
+- instrument closure:
+  `filled`, `buyer_cancelled`, `provider_cancelled`, `curtailed`, `expired`,
+  `defaulted`
+- non-delivery:
+  `provider_offline`, `capability_mismatch`, `policy_blocked`, `missed_window`
+- settlement failure:
+  `payment_timeout`, `receipt_rejected`, `non_delivery`,
+  `cost_attestation_missing`, `adjudication_required`
+- delivery variance:
+  `capability_envelope_mismatch`, `partial_quantity`, `latency_breach`,
+  `throughput_shortfall`, `model_policy_drift`
+- delivery rejection:
+  `attestation_missing`, `cost_proof_missing`, `runtime_identity_mismatch`,
+  `non_conforming_delivery`
+- index correction:
+  `data_quality`, `manipulation_filter`, `methodology_bug`,
+  `late_observation`
+
+This is important because a compute market is not defined only by happy-path
+delivery. It is defined equally by how it handles failure without lying.
+
+## Instrument Semantics
+
+The two central economic object families after products and lots are
+`CapacityInstrument` and `StructuredCapacityInstrument`.
+
+`CapacityInstrument` is the primary market claim. In practice it can represent:
+
+- a spot claim on near-term physical execution
+- a forward physical claim on future execution capacity
+- a future-cash exposure settled against a compute index
+- a reservation right with bounded delivery or exercise semantics
+
+The important point is that an instrument is not just metadata about a job. It
+is the thing that says what economic right existed.
+
+`StructuredCapacityInstrument` is the grouped exposure layer. In code it already
+supports:
+
+- `reservation`
+- `swap`
+- `strip`
+
+And the current leg roles already encode meanings such as:
+
+- `reservation_right`
+- `swap_pay`
+- `swap_receive`
+- `strip_segment`
+
+The UI does not yet fully explain these instruments to ordinary users, but the
+kernel already treats them as more than theoretical placeholders.
+
+## Comparability And Inventory Normalization
+
+One of the hardest unsolved problems in the compute market is not just creating
+offers. It is making different offers comparable.
+
+Two compute offers are not interchangeable merely because both say "inference"
+or both say "sandbox."
+
+Comparability has to account for at least:
+
+- compute family
+- execution kind
+- topology kind
+- provisioning kind
+- proof posture
+- validator requirements
+- environment binding
+- model policy or model family
+- host capability
+- latency, throughput, and concurrency limits
+- settlement mode
+- delivery window
+- artifact lineage
+
+This is why the capability envelope matters so much. It is the normalization
+surface that lets the market compare claims without collapsing unlike things
+into one fake commodity bucket.
+
+Examples:
+
+- local inference and clustered serving are not equivalent supply
+- proof-light and challenge-eligible products are not equivalent supply
+- sandbox execution and model-serving execution are not equivalent supply
+- two environment-bound offers are not equivalent if their environment or rubric
+  lineage differs
+
+The market therefore has to own comparability as a first-class problem, not as
+an afterthought in UX.
+
+## Artifact Lineage As Market Truth
+
+For the compute market, artifact lineage is part of the economic claim.
+
+Some compute products are only meaningful if the system can say exactly which
+artifacts, versions, and policy surfaces were involved.
+
+That lineage can include:
+
+- model family or model policy
+- adapter version
+- environment package version
+- dataset and rubric bindings
+- sandbox profile and runtime image
+- checkpoint family
+- proof bundle family
+- benchmark harness version
+
+This is already visible in the current data model through:
+
+- `ComputeEnvironmentBinding`
+- `ComputeCheckpointBinding`
+- sandbox evidence refs
+- verification evidence refs
+- promised versus observed capability envelopes
+
+That is why the compute market is broader than "CPU/GPU time." It is really a
+market in machine execution under a specific artifact lineage.
+
+## Governance And Policy Ownership
+
+The compute market also needs a plain statement about who governs admissibility
+and corrections.
+
+The current canonical answer is:
+
+- kernel authority governs canonical market truth, receipts, lifecycle, and
+  settlement outcomes
+- policy refs and registries govern product admissibility, validator posture,
+  environment admissibility, and related operating rules
+- environment and eval registries govern package and evaluation lineage
+- validator systems govern challenge execution and verification results
+- index publication and correction remain authority-owned even when informed by
+  external data or validator evidence
+
+Not every governance surface is fully productized yet, but this is the owner
+split the doc should make explicit.
+
+## All-Rust And Psionic-Native Implications
+
+The Prime/Psionic widening also changes what "implemented" must mean for future
+compute families.
+
+For clustered, sandboxed, environment-linked, eval-linked, and later
+training-class products, mature implementation increasingly means:
+
+- Psionic-native execution truth instead of opaque foreign runtime state
+- receipt-bearing artifact lineage
+- proof-aware and validator-aware control paths
+- operator-inspectable runtime state
+- settlement semantics that consume the same runtime and proof facts rather than
+  bypassing them
+
+In other words, later compute families should not merely be "supported by a
+runtime." They should be legible market products inside a Rust-native authority,
+proof, and execution stack.
 
 ## What Is Implemented Right Now
 
