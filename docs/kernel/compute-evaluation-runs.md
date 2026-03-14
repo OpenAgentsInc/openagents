@@ -107,3 +107,7 @@ Receipt types:
 - `#3520`: benchmark adapters now terminate in this lifecycle rather than
   inventing parallel result stores
   - landed in `docs/kernel/compute-benchmark-adapters.md`
+- `#3568`: `psionic-eval` now reuses the same environment-bound scoring shape
+  for held-out local eval runs, benchmark packages, repeat-run aggregation, and
+  operator-local validator simulation, while this kernel lifecycle remains the
+  canonical authority surface
