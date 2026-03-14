@@ -1,6 +1,6 @@
 # Psionic Roadmap
 
-> Status: updated 2026-03-10 after re-verifying live GitHub issue state with
+> Status: updated 2026-03-14 after re-verifying live GitHub issue state with
 > `gh issue list --state all` / `gh issue view`, after confirming the generic
 > Psionic replacement track through `PSI-178` and `OA-203` is landed on `main`,
 > after confirming the Psionic-only GPT-OSS enablement track `PSI-179` through
@@ -86,6 +86,13 @@
 > host-to-device
 > selected4 expert staging inside that hybrid path, not the already-ruled-out
 > registered-host-buffer experiments or more cache-slot reshaping.
+>
+> Inference generalization note: the post-`PSI-183` inference-completion block
+> `PSI-232` through `PSI-258` now has one canonical planning source in
+> `crates/psionic/docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md`. `PSI-232` is the
+> documentation authority issue for that block and closes when that spec is
+> explicit enough to drive later implementation and review; `PSI-233` onward
+> own the runtime, server, router, and validation work itself.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -105,6 +112,11 @@ before moving to the next issue so it reflects the new GitHub state, landed
 commit link or hash, shipped-status notes, and current execution queue. Commit
 and push that roadmap update as well; do not leave the roadmap stale after an
 issue lands.
+
+Inference-generalization rule: when working the `PSI-232` through `PSI-258`
+block, use `docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md` for the source split,
+owner split, dependency order, and definition of done. Do not infer those from
+older throughput or host-specific sections of this roadmap.
 
 Reference-first implementation rule: for any issue that touches externally
 defined semantics such as GGUF/GGML parsing, quantization or block layouts,

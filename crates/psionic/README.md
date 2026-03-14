@@ -117,8 +117,8 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   Rust-native train stack, now tracked as GitHub issues `#3564` through
   `#3593`.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
-  active inference-completion spec and issue-program source for the current
-  `PSI-232` through `PSI-258` backlog.
+  canonical source split, owner matrix, completion matrix, and issue-program
+  authority for the current `PSI-232` through `PSI-258` inference backlog.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
