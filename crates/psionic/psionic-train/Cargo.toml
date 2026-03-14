@@ -22,9 +22,14 @@ psionic-data = { path = "../psionic-data" }
 psionic-datastream = { path = "../psionic-datastream" }
 psionic-environments = { path = "../psionic-environments" }
 psionic-eval = { path = "../psionic-eval" }
+psionic-models = { path = "../psionic-models" }
 psionic-runtime = { path = "../psionic-runtime" }
 psionic-sandbox = { path = "../psionic-sandbox" }
+safetensors = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1718,11 +1718,27 @@ typed and inspectable instead of implied by future plans.
 
 ### 24. `Model IO: add Rust-native checkpoint, tokenizer, and model-format interoperability`
 
-A train system that cannot interoperate with serving and artifact ecosystems
-will strand its outputs. This issue should add import and export contracts for
-checkpoint formats, tokenizer assets, serving-compatible model formats, and
-adapter merge or unmerge flows. It should make trained artifacts portable
-without relying on bespoke conversion scripts.
+Implemented on Saturday, March 14, 2026.
+
+`psionic-train` now owns a typed model-IO portability layer in
+`src/model_io.rs`.
+
+The new layer makes these train-to-serve seams explicit:
+
+- named state-dict traversal and assignment contracts
+- portable training-group reconstruction from state-dict artifacts
+- tokenizer family, digest, special-token, and version binding
+- dense safetensors export and import with embedded Psionic manifest metadata
+- JSON torch-style state-dict artifacts for Rust-native portability
+- GGUF import with tensor inventory, tokenizer binding, and chat-template
+  digest extraction
+- additive adapter merge and unmerge over parameter tensors
+
+The scope is still intentionally bounded. The current torch-compatible surface
+is typed JSON rather than opaque Python checkpoint loading, and GGUF support is
+currently import-focused rather than full re-export. That is still a material
+shift: trained or served artifacts are now portable through one Rust-owned
+contract instead of bespoke scripts or disconnected side files.
 
 ### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
 
