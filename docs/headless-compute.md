@@ -53,6 +53,8 @@ It can:
 - list NIP-28 groups, channels, and recent messages
 - send or retry NIP-28 chat messages
 - start and stop Buy Mode against the same in-app state used by the GUI
+- pull a daily or explicit-window NIP-90 sent-payments report backed by the
+  app-owned buyer payment-attempt ledger instead of raw relay rows
 
 `autopilot-compute-mcp` is the model-facing companion surface for the same
 desktop-control contract. It speaks MCP over stdio and intentionally sits on
@@ -102,6 +104,8 @@ autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
+autopilotctl nip90-payments daily --date 2026-03-14
+autopilotctl nip90-payments window --start 2026-03-14T05:00:00+00:00 --end 2026-03-15T05:00:00+00:00 --json
 autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
@@ -158,6 +162,15 @@ runtime/session identity refs when those are present in kernel truth.
 same kernel objects: linked delivery proofs, verdicts, reason codes, challenge
 result refs, and the current settlement impact summary for the challenged
 delivery.
+
+`autopilotctl nip90-payments daily --date YYYY-MM-DD` interprets the supplied
+date as the local calendar day on the machine running the CLI, converts it into
+an explicit `[start, end)` epoch window, and asks desktop control for the same
+wallet-authoritative NIP-90 send report the app can use elsewhere. The payload
+includes exact window start/end timestamps, top-line `payment_count` and
+`total_sats_sent`, fees and wallet debit totals, the currently connected relay
+URLs considered, and the degraded-binding count for any recovered non-top-line
+rows.
 
 Useful MCP starting point:
 

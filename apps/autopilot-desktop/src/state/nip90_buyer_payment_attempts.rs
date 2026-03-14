@@ -1221,6 +1221,56 @@ mod tests {
     }
 
     #[test]
+    fn window_report_uses_start_inclusive_end_exclusive_boundaries() {
+        let path = unique_temp_path("boundaries");
+        let mut ledger = Nip90BuyerPaymentAttemptLedgerState::from_path_for_tests(path);
+        let mut requests = NetworkRequestsState::default();
+        let mut wallet = SparkPaneState::default();
+        requests.submitted.push(request_with_attempts(
+            "req-boundary-start",
+            &[(
+                "wallet-boundary-start",
+                1_762_700_100,
+                Some(1_762_700_100),
+                None,
+            )],
+        ));
+        requests.submitted.push(request_with_attempts(
+            "req-boundary-end",
+            &[(
+                "wallet-boundary-end",
+                1_762_700_200,
+                Some(1_762_700_200),
+                None,
+            )],
+        ));
+        wallet.recent_payments.push(wallet_payment(
+            "wallet-boundary-start",
+            "settled",
+            1_762_700_100,
+            10,
+        ));
+        wallet.recent_payments.push(wallet_payment(
+            "wallet-boundary-end",
+            "settled",
+            1_762_700_200,
+            10,
+        ));
+
+        ledger.sync_from_current_truth(
+            &requests,
+            &wallet,
+            &empty_payment_facts("boundary-facts"),
+            Some("buyer-001"),
+        );
+
+        let report = ledger.window_report(1_762_700_100, 1_762_700_200);
+        assert_eq!(report.payment_count, 1);
+        assert_eq!(report.total_sats_sent, 10);
+        assert_eq!(report.deduped_request_count, 1);
+    }
+
+    #[test]
     fn degraded_fact_backfill_rows_are_marked_and_excluded_from_topline() {
         let path = unique_temp_path("degraded");
         let mut ledger = Nip90BuyerPaymentAttemptLedgerState::from_path_for_tests(path);

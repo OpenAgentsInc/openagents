@@ -13,6 +13,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{TimeZone, Utc};
 use openagents_kernel_core::authority::KernelAuthority;
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentKind, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
@@ -55,7 +56,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 10;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 11;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -198,6 +199,25 @@ pub struct DesktopControlWalletStatus {
     pub withdraw_block_reason: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlNip90SentPaymentsReport {
+    pub report_date: Option<String>,
+    pub window_start_epoch_seconds: u64,
+    pub window_end_epoch_seconds: u64,
+    pub window_start_rfc3339: String,
+    pub window_end_rfc3339: String,
+    pub payment_count: usize,
+    pub total_sats_sent: u64,
+    pub total_fee_sats: u64,
+    pub total_wallet_debit_sats: u64,
+    pub connected_relay_count: usize,
+    pub relay_urls_considered: Vec<String>,
+    pub deduped_request_count: usize,
+    pub degraded_binding_count: usize,
+    pub generated_at_epoch_seconds: u64,
+    pub generated_at_rfc3339: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -782,6 +802,11 @@ pub enum DesktopControlActionRequest {
     WarmGptOss,
     UnloadGptOss,
     RefreshWallet,
+    GetNip90SentPaymentsReport {
+        start_epoch_seconds: u64,
+        end_epoch_seconds: u64,
+        report_date: Option<String>,
+    },
     StartBuyMode,
     StopBuyMode,
     GetActiveJob,
@@ -838,6 +863,7 @@ impl DesktopControlActionRequest {
             Self::WarmGptOss => "gpt-oss-warm",
             Self::UnloadGptOss => "gpt-oss-unload",
             Self::RefreshWallet => "wallet-refresh",
+            Self::GetNip90SentPaymentsReport { .. } => "nip90-sent-payments-report",
             Self::StartBuyMode => "buy-mode-start",
             Self::StopBuyMode => "buy-mode-stop",
             Self::GetActiveJob => "active-job",
@@ -1627,6 +1653,16 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::SelectNip28MainChannel => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::GetNip90SentPaymentsReport {
+            start_epoch_seconds,
+            end_epoch_seconds,
+            report_date,
+        } => json!({
+            "command_label": action.label(),
+            "start_epoch_seconds": start_epoch_seconds,
+            "end_epoch_seconds": end_epoch_seconds,
+            "report_date": report_date,
+        }),
         DesktopControlActionRequest::SelectNip28Group { group_id } => json!({
             "command_label": action.label(),
             "group_id": group_id,
@@ -2429,6 +2465,17 @@ fn apply_action_request(
         DesktopControlActionRequest::RefreshWallet => {
             wallet_action_response(state, SparkPaneAction::Refresh, "Queued wallet refresh").into()
         }
+        DesktopControlActionRequest::GetNip90SentPaymentsReport {
+            start_epoch_seconds,
+            end_epoch_seconds,
+            report_date,
+        } => nip90_sent_payments_report_response(
+            state,
+            *start_epoch_seconds,
+            *end_epoch_seconds,
+            report_date.as_deref(),
+        )
+        .into(),
         DesktopControlActionRequest::WarmGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::WarmConfiguredModel,
@@ -3147,6 +3194,81 @@ fn active_job_payload_response(state: &RenderState) -> DesktopControlActionOutco
             DesktopControlActionResponse::ok_with_payload("Captured active job state", payload),
             snapshot,
         )
+    }
+}
+
+fn nip90_sent_payments_report_response(
+    state: &mut RenderState,
+    start_epoch_seconds: u64,
+    end_epoch_seconds: u64,
+    report_date: Option<&str>,
+) -> DesktopControlActionResponse {
+    if end_epoch_seconds <= start_epoch_seconds {
+        return DesktopControlActionResponse::error(
+            "NIP-90 sent-payments report window end must be greater than start",
+        );
+    }
+
+    let _ = state.refresh_nip90_payment_facts();
+    let _ = state.refresh_nip90_buyer_payment_attempts();
+
+    let report = state
+        .nip90_buyer_payment_attempts
+        .window_report(start_epoch_seconds, end_epoch_seconds);
+    let relay_urls_considered = state
+        .relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == crate::state::operations::RelayConnectionStatus::Connected)
+        .map(|relay| relay.url.clone())
+        .collect::<Vec<_>>();
+    let generated_at_epoch_seconds = current_epoch_seconds();
+    let payload = build_nip90_sent_payments_report_payload(
+        &report,
+        relay_urls_considered,
+        start_epoch_seconds,
+        end_epoch_seconds,
+        report_date,
+        generated_at_epoch_seconds,
+    );
+    match serde_json::to_value(&payload) {
+        Ok(value) => DesktopControlActionResponse::ok_with_payload(
+            "Captured NIP-90 sent-payments report",
+            value,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode NIP-90 sent-payments report: {error}"
+        )),
+    }
+}
+
+fn build_nip90_sent_payments_report_payload(
+    report: &crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentWindowReport,
+    relay_urls_considered: Vec<String>,
+    start_epoch_seconds: u64,
+    end_epoch_seconds: u64,
+    report_date: Option<&str>,
+    generated_at_epoch_seconds: u64,
+) -> DesktopControlNip90SentPaymentsReport {
+    DesktopControlNip90SentPaymentsReport {
+        report_date: report_date
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        window_start_epoch_seconds: start_epoch_seconds,
+        window_end_epoch_seconds: end_epoch_seconds,
+        window_start_rfc3339: epoch_seconds_rfc3339(start_epoch_seconds),
+        window_end_rfc3339: epoch_seconds_rfc3339(end_epoch_seconds),
+        payment_count: report.payment_count,
+        total_sats_sent: report.total_sats_sent,
+        total_fee_sats: report.total_fee_sats,
+        total_wallet_debit_sats: report.total_wallet_debit_sats,
+        connected_relay_count: relay_urls_considered.len(),
+        relay_urls_considered,
+        deduped_request_count: report.deduped_request_count,
+        degraded_binding_count: report.degraded_binding_count,
+        generated_at_epoch_seconds,
+        generated_at_rfc3339: epoch_seconds_rfc3339(generated_at_epoch_seconds),
     }
 }
 
@@ -5627,6 +5749,13 @@ fn current_epoch_seconds() -> u64 {
         .unwrap_or(0)
 }
 
+fn epoch_seconds_rfc3339(epoch_seconds: u64) -> String {
+    Utc.timestamp_opt(epoch_seconds as i64, 0)
+        .single()
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| "1970-01-01T00:00:00+00:00".to_string())
+}
+
 fn write_control_manifest(
     path: &std::path::Path,
     manifest: &DesktopControlManifest,
@@ -5911,13 +6040,14 @@ mod tests {
         DesktopControlEventDraft, DesktopControlGptOssStatus,
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
-        DesktopControlMissionControlStatus, DesktopControlProofStatus,
-        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
-        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
-        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
-        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
-        DesktopControlWalletStatus, apply_response_snapshot_metadata, build_settlement_history,
+        DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
+        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
+        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
+        DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
+        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, apply_response_snapshot_metadata,
+        build_nip90_sent_payments_report_payload, build_settlement_history,
         challenges_by_delivery_proof, command_outcome_event, command_received_event,
         desktop_control_challenge_history_status, desktop_control_proof_history_status,
         snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
@@ -5934,6 +6064,7 @@ mod tests {
         ProviderNip90PublishRole,
     };
     use crate::spark_wallet::SparkPaneState;
+    use crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentWindowReport;
     use crate::state::operations::{BuyerResolutionMode, NetworkRequestStatus};
     use crate::state::provider_runtime::{ProviderMode, ProviderRuntimeState};
     use futures_util::{SinkExt, StreamExt};
@@ -7988,6 +8119,60 @@ mod tests {
         assert_eq!(
             DesktopControlActionRequest::RunAppleFmSmokeTest.provider_mode_online_target(),
             None
+        );
+        assert_eq!(
+            DesktopControlActionRequest::GetNip90SentPaymentsReport {
+                start_epoch_seconds: 1,
+                end_epoch_seconds: 2,
+                report_date: Some("2026-03-14".to_string()),
+            }
+            .label(),
+            "nip90-sent-payments-report"
+        );
+    }
+
+    #[test]
+    fn nip90_sent_payments_report_payload_encodes_daily_window_totals() {
+        let payload = build_nip90_sent_payments_report_payload(
+            &Nip90BuyerPaymentWindowReport {
+                start_epoch_seconds: 1_773_464_400,
+                end_epoch_seconds: 1_773_550_800,
+                payment_count: 2,
+                total_sats_sent: 42,
+                total_fee_sats: 3,
+                total_wallet_debit_sats: 45,
+                deduped_request_count: 1,
+                degraded_binding_count: 0,
+            },
+            vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            1_773_464_400,
+            1_773_550_800,
+            Some("2026-03-14"),
+            1_773_550_801,
+        );
+
+        assert_eq!(
+            payload,
+            DesktopControlNip90SentPaymentsReport {
+                report_date: Some("2026-03-14".to_string()),
+                window_start_epoch_seconds: 1_773_464_400,
+                window_end_epoch_seconds: 1_773_550_800,
+                window_start_rfc3339: "2026-03-14T05:00:00+00:00".to_string(),
+                window_end_rfc3339: "2026-03-15T05:00:00+00:00".to_string(),
+                payment_count: 2,
+                total_sats_sent: 42,
+                total_fee_sats: 3,
+                total_wallet_debit_sats: 45,
+                connected_relay_count: 2,
+                relay_urls_considered: vec![
+                    "wss://relay.one".to_string(),
+                    "wss://relay.two".to_string(),
+                ],
+                deduped_request_count: 1,
+                degraded_binding_count: 0,
+                generated_at_epoch_seconds: 1_773_550_801,
+                generated_at_rfc3339: "2026-03-15T05:00:01+00:00".to_string(),
+            }
         );
     }
 
