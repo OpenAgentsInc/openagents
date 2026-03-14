@@ -898,6 +898,14 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     ) {
         changed = true;
     }
+    if record_runtime_changed_op(
+        state,
+        "post_loop",
+        "nip90_buyer_payment_attempts::background_tick",
+        |state| state.sync_nip90_buyer_payment_attempts_background_tick(now),
+    ) {
+        changed = true;
+    }
     record_runtime_observer_op(state, "post_loop", "network_aggregate::refresh", |state| {
         refresh_network_aggregate_counters(state, now);
     });
