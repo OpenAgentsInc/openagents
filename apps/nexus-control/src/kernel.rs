@@ -43,11 +43,11 @@ use openagents_kernel_core::compute::{
     ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
     StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_environment_package,
-    validate_compute_evaluation_artifact, validate_compute_evaluation_run,
-    validate_compute_evaluation_sample, validate_compute_synthetic_data_job,
-    validate_compute_synthetic_data_sample, validate_delivery_proof,
-    validate_launch_compute_product,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_capability_envelope,
+    validate_compute_environment_package, validate_compute_evaluation_artifact,
+    validate_compute_evaluation_run, validate_compute_evaluation_sample,
+    validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
+    validate_delivery_proof, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -473,6 +473,21 @@ struct ComputeIndexObservation {
     accepted_quantity: u64,
     unit_price_value: f64,
     fixed_price: Money,
+    proof_posture: Option<openagents_kernel_core::compute::ComputeProofPosture>,
+    topology_kind: Option<openagents_kernel_core::compute::ComputeTopologyKind>,
+    provisioning_kind: Option<openagents_kernel_core::compute::ComputeProvisioningKind>,
+    environment_ref: Option<String>,
+    environment_version: Option<String>,
+    challenge_summary: ComputeIndexChallengeSummary,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ComputeIndexChallengeSummary {
+    challenge_count: u64,
+    open_count: u64,
+    verified_count: u64,
+    rejected_count: u64,
+    timed_out_count: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -484,6 +499,8 @@ struct ComputeIndexObservationSet {
     excluded_missing_instrument: u64,
     excluded_unpriced: u64,
     excluded_currency_mismatch: u64,
+    excluded_rejected_challenges: u64,
+    excluded_timed_out_challenges: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -1383,6 +1400,146 @@ fn cluster_delivery_contract_metadata(
             "remedy_profile": remedy_profile,
         },
     })
+}
+
+fn compute_index_family_id(product: &ComputeProduct) -> &'static str {
+    match product
+        .capability_envelope
+        .as_ref()
+        .and_then(|envelope| envelope.execution_kind)
+    {
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::LocalInference) => {
+            "local_inference"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference) => {
+            "clustered_inference"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::SandboxExecution) => {
+            "sandbox_execution"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::EvaluationRun) => {
+            "evaluation_run"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::TrainingJob) => "training_job",
+        None => "generic_compute",
+    }
+}
+
+fn compute_index_methodology_id(product: &ComputeProduct) -> &'static str {
+    match compute_index_family_id(product) {
+        "clustered_inference" => {
+            "clustered_inference.challenge_adjusted_trimmed_weighted_average.v1"
+        }
+        "sandbox_execution" => "sandbox_execution.challenge_adjusted_trimmed_weighted_average.v1",
+        "training_job" => "training_job.challenge_adjusted_trimmed_weighted_average.v1",
+        "evaluation_run" => "evaluation_run.accepted_delivery_trimmed_weighted_average.v1",
+        "local_inference" => "local_inference.accepted_delivery_trimmed_weighted_average.v1",
+        _ => "accepted_delivery_trimmed_weighted_average.v1",
+    }
+}
+
+fn compute_index_minimum_proof_posture(
+    product: &ComputeProduct,
+) -> Option<openagents_kernel_core::compute::ComputeProofPosture> {
+    match compute_index_family_id(product) {
+        "clustered_inference" => {
+            Some(openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery)
+        }
+        "sandbox_execution" => {
+            Some(openagents_kernel_core::compute::ComputeProofPosture::DeliveryProofOnly)
+        }
+        "training_job" => {
+            Some(openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible)
+        }
+        _ => None,
+    }
+}
+
+fn proof_posture_score(
+    posture: Option<openagents_kernel_core::compute::ComputeProofPosture>,
+) -> f64 {
+    match posture {
+        Some(openagents_kernel_core::compute::ComputeProofPosture::None) => 0.1,
+        Some(openagents_kernel_core::compute::ComputeProofPosture::DeliveryProofOnly) => 0.45,
+        Some(openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery) => 0.75,
+        Some(openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented) => 0.9,
+        Some(openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible) => 1.0,
+        None => 0.25,
+    }
+}
+
+fn proof_posture_meets_floor(
+    posture: Option<openagents_kernel_core::compute::ComputeProofPosture>,
+    minimum: Option<openagents_kernel_core::compute::ComputeProofPosture>,
+) -> bool {
+    match minimum {
+        None => posture != Some(openagents_kernel_core::compute::ComputeProofPosture::None),
+        Some(openagents_kernel_core::compute::ComputeProofPosture::DeliveryProofOnly) => {
+            posture != Some(openagents_kernel_core::compute::ComputeProofPosture::None)
+        }
+        Some(openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery) => {
+            matches!(
+                posture,
+                Some(
+                    openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery
+                        | openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented
+                        | openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible
+                )
+            )
+        }
+        Some(openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented) => matches!(
+            posture,
+            Some(
+                openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented
+                    | openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible
+            )
+        ),
+        Some(openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible) => {
+            posture == Some(openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible)
+        }
+        Some(openagents_kernel_core::compute::ComputeProofPosture::None) => true,
+    }
+}
+
+fn challenge_summary_for_proof(
+    challenges: &[ValidatorChallengeSnapshot],
+    proof: &DeliveryProof,
+) -> ComputeIndexChallengeSummary {
+    let challenge_result_refs = proof
+        .verification_evidence
+        .as_ref()
+        .map(|verification| verification.challenge_result_refs.as_slice())
+        .unwrap_or(&[]);
+    let mut summary = ComputeIndexChallengeSummary::default();
+    for snapshot in challenges {
+        let matches_delivery = snapshot.request.context.delivery_proof_id.as_deref()
+            == Some(proof.delivery_proof_id.as_str());
+        let matches_result_ref = snapshot
+            .final_result
+            .as_ref()
+            .is_some_and(|result| challenge_result_refs.contains(&result.challenge_result_ref));
+        if !matches_delivery && !matches_result_ref {
+            continue;
+        }
+        summary.challenge_count = summary.challenge_count.saturating_add(1);
+        match snapshot.status {
+            ValidatorChallengeStatus::Queued
+            | ValidatorChallengeStatus::Leased
+            | ValidatorChallengeStatus::Retrying => {
+                summary.open_count = summary.open_count.saturating_add(1);
+            }
+            ValidatorChallengeStatus::Verified => {
+                summary.verified_count = summary.verified_count.saturating_add(1);
+            }
+            ValidatorChallengeStatus::Rejected => {
+                summary.rejected_count = summary.rejected_count.saturating_add(1);
+            }
+            ValidatorChallengeStatus::TimedOut => {
+                summary.timed_out_count = summary.timed_out_count.saturating_add(1);
+            }
+        }
+    }
+    summary
 }
 
 impl KernelState {
@@ -6029,8 +6186,6 @@ impl KernelState {
         lot: &CapacityLot,
         instrument: Option<&CapacityInstrument>,
     ) -> Result<(), String> {
-        let spec = validate_launch_compute_product(product)
-            .map_err(|reason| format!("compute_product_invalid:{reason}"))?;
         let promised_capability_envelope = instrument
             .and_then(|instrument| {
                 instrument
@@ -6046,7 +6201,29 @@ impl KernelState {
             .transpose()?
             .or_else(|| product.capability_envelope.clone())
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
-        let metering_rule_id = match canonical_compute_product_id(product.product_id.as_str())
+        let launch_spec = match validate_launch_compute_product(product) {
+            Ok(spec) => Some(spec),
+            Err(reason) if reason == "compute_product_launch_product_id_unsupported" => {
+                validate_compute_capability_envelope(&promised_capability_envelope)
+                    .map_err(|inner| format!("compute_product_invalid:{inner}"))?;
+                None
+            }
+            Err(reason) => return Err(format!("compute_product_invalid:{reason}")),
+        };
+        let committed_backend_family = launch_spec
+            .as_ref()
+            .map(|spec| spec.backend_family)
+            .or(promised_capability_envelope.backend_family)
+            .ok_or_else(|| "compute_product_backend_family_missing".to_string())?;
+        let committed_compute_family = launch_spec
+            .as_ref()
+            .map(|spec| spec.compute_family)
+            .or(promised_capability_envelope.compute_family)
+            .ok_or_else(|| "compute_product_compute_family_missing".to_string())?;
+        let metering_rule_id = match launch_spec
+            .as_ref()
+            .map(|spec| spec.product_id)
+            .or_else(|| canonical_compute_product_id(product.product_id.as_str()))
             .unwrap_or(product.product_id.as_str())
         {
             "psionic.local.inference.gpt_oss.single_node" => "meter.ollama.inference.v1",
@@ -6054,9 +6231,24 @@ impl KernelState {
             "psionic.local.inference.apple_foundation_models.single_node" => {
                 "meter.apple_fm.inference.v1"
             }
-            _ => "meter.compute.unknown",
+            _ => match promised_capability_envelope.execution_kind {
+                Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference) => {
+                    "meter.psionic.clustered_inference.v1"
+                }
+                Some(openagents_kernel_core::compute::ComputeExecutionKind::SandboxExecution) => {
+                    "meter.psionic.sandbox_execution.v1"
+                }
+                Some(openagents_kernel_core::compute::ComputeExecutionKind::EvaluationRun) => {
+                    "meter.psionic.evaluation_run.v1"
+                }
+                Some(openagents_kernel_core::compute::ComputeExecutionKind::TrainingJob) => {
+                    "meter.psionic.training_job.v1"
+                }
+                Some(openagents_kernel_core::compute::ComputeExecutionKind::LocalInference)
+                | None => "meter.compute.unknown",
+            },
         };
-        let settlement_class = match spec.compute_family {
+        let settlement_class = match committed_compute_family {
             openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
             openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
             openagents_kernel_core::compute::ComputeFamily::SandboxExecution => "sandbox_execution",
@@ -6076,9 +6268,10 @@ impl KernelState {
         proof.rejection_reason = None;
         proof.status = DeliveryProofStatus::Accepted;
 
-        if spec.backend_family
+        if committed_backend_family
             == openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels
-            && spec.compute_family == openagents_kernel_core::compute::ComputeFamily::Embeddings
+            && committed_compute_family
+                == openagents_kernel_core::compute::ComputeFamily::Embeddings
         {
             reject_delivery_proof(
                 proof,
@@ -6118,17 +6311,17 @@ impl KernelState {
                 );
                 return Ok(());
             };
-            if observed.backend_family != Some(spec.backend_family) {
+            if observed.backend_family != Some(committed_backend_family) {
                 reject_delivery_proof(
                     proof,
                     DeliveryRejectionReason::RuntimeIdentityMismatch,
-                    "observed backend family did not match committed launch product",
+                    "observed backend family did not match committed product",
                 );
-            } else if observed.compute_family != Some(spec.compute_family) {
+            } else if observed.compute_family != Some(committed_compute_family) {
                 reject_delivery_proof(
                     proof,
                     DeliveryRejectionReason::NonConformingDelivery,
-                    "observed compute family did not match committed launch product",
+                    "observed compute family did not match committed product",
                 );
             } else {
                 if proof.accepted_quantity == 0 {
@@ -7176,6 +7369,7 @@ impl KernelState {
         observation_window_end_ms: i64,
     ) -> ComputeIndexObservationSet {
         let mut set = ComputeIndexObservationSet::default();
+        let validator_challenges = self.validator_challenges.list();
         for record in self.delivery_proofs.values() {
             let proof = &record.delivery_proof;
             if proof.product_id != product_id
@@ -7209,7 +7403,57 @@ impl KernelState {
                 set.excluded_unpriced = set.excluded_unpriced.saturating_add(1);
                 continue;
             };
+            let challenge_summary = challenge_summary_for_proof(&validator_challenges, proof);
+            if challenge_summary.rejected_count > 0 {
+                set.excluded_rejected_challenges =
+                    set.excluded_rejected_challenges.saturating_add(1);
+                continue;
+            }
+            if challenge_summary.timed_out_count > 0 {
+                set.excluded_timed_out_challenges =
+                    set.excluded_timed_out_challenges.saturating_add(1);
+                continue;
+            }
             let committed_quantity = instrument_record.instrument.quantity.max(1);
+            let promised = proof.promised_capability_envelope.as_ref();
+            let observed = proof.observed_capability_envelope.as_ref();
+            let proof_posture = promised
+                .and_then(|envelope| envelope.proof_posture)
+                .or_else(|| observed.and_then(|envelope| envelope.proof_posture));
+            let topology_kind = promised
+                .and_then(|envelope| envelope.topology_kind)
+                .or_else(|| observed.and_then(|envelope| envelope.topology_kind));
+            let provisioning_kind = promised
+                .and_then(|envelope| envelope.provisioning_kind)
+                .or_else(|| observed.and_then(|envelope| envelope.provisioning_kind));
+            let environment_ref = proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|verification| verification.environment_ref.clone())
+                .or_else(|| {
+                    promised
+                        .and_then(|envelope| envelope.environment_binding.as_ref())
+                        .map(|binding| binding.environment_ref.clone())
+                })
+                .or_else(|| {
+                    observed
+                        .and_then(|envelope| envelope.environment_binding.as_ref())
+                        .map(|binding| binding.environment_ref.clone())
+                });
+            let environment_version = proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|verification| verification.environment_version.clone())
+                .or_else(|| {
+                    promised
+                        .and_then(|envelope| envelope.environment_binding.as_ref())
+                        .and_then(|binding| binding.environment_version.clone())
+                })
+                .or_else(|| {
+                    observed
+                        .and_then(|envelope| envelope.environment_binding.as_ref())
+                        .and_then(|binding| binding.environment_version.clone())
+                });
             set.observations.push(ComputeIndexObservation {
                 delivery_proof_id: proof.delivery_proof_id.clone(),
                 instrument_id: instrument_record.instrument.instrument_id.clone(),
@@ -7220,6 +7464,12 @@ impl KernelState {
                 unit_price_value: money_amount_value(&fixed_price) as f64
                     / committed_quantity as f64,
                 fixed_price,
+                proof_posture,
+                topology_kind,
+                provisioning_kind,
+                environment_ref,
+                environment_version,
+                challenge_summary,
             });
         }
         set
@@ -7232,6 +7482,9 @@ impl KernelState {
         correction_reason: Option<ComputeIndexCorrectionReason>,
         corrected_from_index_id: Option<&str>,
     ) -> Result<ComputeIndexPublication, String> {
+        let methodology_id = compute_index_methodology_id(&product_record.product);
+        let family_id = compute_index_family_id(&product_record.product);
+        let minimum_proof_posture = compute_index_minimum_proof_posture(&product_record.product);
         let mut observation_set = self.collect_compute_index_observations(
             template.product_id.as_str(),
             template.observation_window_start_ms,
@@ -7274,9 +7527,40 @@ impl KernelState {
             .filter(|provider_id| !provider_id.is_empty())
             .collect::<BTreeSet<_>>()
             .len() as u64;
+        let used_environment_refs = used_observations
+            .iter()
+            .filter_map(|observation| observation.environment_ref.as_deref())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let used_environment_versions = used_observations
+            .iter()
+            .filter_map(|observation| observation.environment_version.as_deref())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
         let used_quantity = used_observations.iter().fold(0u64, |total, observation| {
             total.saturating_add(observation.accepted_quantity)
         });
+        let used_verified_challenges = used_observations.iter().fold(0u64, |total, observation| {
+            total.saturating_add(observation.challenge_summary.verified_count)
+        });
+        let used_open_challenges = used_observations.iter().fold(0u64, |total, observation| {
+            total.saturating_add(observation.challenge_summary.open_count)
+        });
+        let proof_floor_failures = used_observations
+            .iter()
+            .filter(|observation| {
+                !proof_posture_meets_floor(observation.proof_posture, minimum_proof_posture)
+            })
+            .count() as u64;
+        let proof_score = if used_observations.is_empty() {
+            0.0
+        } else {
+            used_observations
+                .iter()
+                .map(|observation| proof_posture_score(observation.proof_posture))
+                .sum::<f64>()
+                / used_observations.len() as f64
+        };
         let thin_market_reason = if used_observations.len() < 2 {
             Some("insufficient_observations")
         } else if used_provider_count < 2 {
@@ -7287,10 +7571,18 @@ impl KernelState {
         let observation_score = (used_observations.len().min(5) as f64) / 5.0;
         let provider_score = (used_provider_count.min(3) as f64) / 3.0;
         let trim_score = if trim_each_side > 0 { 1.0 } else { 0.5 };
-        let quality_score = if thin_market_reason.is_some() {
-            (observation_score + provider_score) / 6.0
+        let challenge_score = if used_observations.is_empty() {
+            0.0
         } else {
-            ((observation_score + provider_score + trim_score) / 3.0).min(1.0)
+            (used_verified_challenges.min(used_observations.len() as u64) as f64)
+                / used_observations.len() as f64
+        };
+        let quality_score = if thin_market_reason.is_some() {
+            (observation_score + provider_score + proof_score) / 9.0
+        } else {
+            ((observation_score + provider_score + trim_score + proof_score + challenge_score)
+                / 5.0)
+                .min(1.0)
         };
         let quality_band = if thin_market_reason.is_some() {
             "thin"
@@ -7306,7 +7598,10 @@ impl KernelState {
         } else {
             weighted_reference_price(&used_observations)
         };
-        let settlement_eligible = thin_market_reason.is_none() && reference_price.is_some();
+        let settlement_eligible = thin_market_reason.is_none()
+            && reference_price.is_some()
+            && used_open_challenges == 0
+            && proof_floor_failures == 0;
         let mut metadata = template.metadata.clone();
         let metadata_object = ensure_metadata_object(&mut metadata)?;
         metadata_object.insert(
@@ -7322,6 +7617,7 @@ impl KernelState {
             "market_slice".to_string(),
             json!({
                 "product_id": template.product_id,
+                "index_family": family_id,
                 "backend_family": product_record
                     .product
                     .capability_envelope
@@ -7340,12 +7636,40 @@ impl KernelState {
                     .as_ref()
                     .and_then(|capability| capability.compute_family)
                     .map(compute_family_label),
+                "topology_kind": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.topology_kind)
+                    .map(|value| value.label()),
+                "provisioning_kind": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.provisioning_kind)
+                    .map(|value| value.label()),
+                "proof_posture": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.proof_posture)
+                    .map(|value| value.label()),
+                "environment_binding": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.environment_binding.as_ref())
+                    .map(|binding| json!({
+                        "environment_ref": binding.environment_ref,
+                        "environment_version": binding.environment_version,
+                    })),
             }),
         );
         metadata_object.insert(
             "observation_summary".to_string(),
             json!({
-                "methodology_version": "accepted_delivery_trimmed_weighted_average.v1",
+                "methodology_version": methodology_id,
+                "index_family": family_id,
                 "delivery_records_examined": observation_set.delivery_records_examined,
                 "eligible_observation_count": observation_set.observations.len(),
                 "used_observation_count": used_observations.len(),
@@ -7356,7 +7680,21 @@ impl KernelState {
                 "excluded_missing_instrument_count": observation_set.excluded_missing_instrument,
                 "excluded_unpriced_count": observation_set.excluded_unpriced,
                 "excluded_currency_mismatch_count": observation_set.excluded_currency_mismatch,
+                "excluded_rejected_challenge_count": observation_set.excluded_rejected_challenges,
+                "excluded_timed_out_challenge_count": observation_set.excluded_timed_out_challenges,
                 "provider_diversity": used_provider_count,
+                "topology_kind_count": used_observations
+                    .iter()
+                    .filter_map(|observation| observation.topology_kind.map(|value| value.label()))
+                    .collect::<BTreeSet<_>>()
+                    .len(),
+                "provisioning_kind_count": used_observations
+                    .iter()
+                    .filter_map(|observation| observation.provisioning_kind.map(|value| value.label()))
+                    .collect::<BTreeSet<_>>()
+                    .len(),
+                "environment_ref_count": used_environment_refs.len(),
+                "environment_version_count": used_environment_versions.len(),
                 "used_delivery_proof_ids": used_observations
                     .iter()
                     .map(|observation| observation.delivery_proof_id.clone())
@@ -7365,6 +7703,43 @@ impl KernelState {
                     .iter()
                     .map(|observation| observation.instrument_id.clone())
                     .collect::<Vec<_>>(),
+            }),
+        );
+        metadata_object.insert(
+            "proof_quality".to_string(),
+            json!({
+                "minimum_required_proof_posture": minimum_proof_posture.map(|value| value.label()),
+                "proof_floor_failures": proof_floor_failures,
+                "average_proof_score": proof_score,
+                "used_delivery_only_count": used_observations
+                    .iter()
+                    .filter(|observation| observation.proof_posture == Some(openagents_kernel_core::compute::ComputeProofPosture::DeliveryProofOnly))
+                    .count(),
+                "used_topology_bound_count": used_observations
+                    .iter()
+                    .filter(|observation| matches!(
+                        observation.proof_posture,
+                        Some(
+                            openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery
+                                | openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented
+                                | openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible
+                        )
+                    ))
+                    .count(),
+                "used_challenge_eligible_count": used_observations
+                    .iter()
+                    .filter(|observation| observation.proof_posture == Some(openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible))
+                    .count(),
+            }),
+        );
+        metadata_object.insert(
+            "challenge_quality".to_string(),
+            json!({
+                "used_verified_count": used_verified_challenges,
+                "used_open_count": used_open_challenges,
+                "excluded_rejected_count": observation_set.excluded_rejected_challenges,
+                "excluded_timed_out_count": observation_set.excluded_timed_out_challenges,
+                "challenge_adjustment_applied": family_id != "local_inference",
             }),
         );
         metadata_object.insert(
@@ -7381,6 +7756,8 @@ impl KernelState {
             json!({
                 "settlement_eligible": settlement_eligible,
                 "quote_inputs_used": false,
+                "open_challenges_blocking": used_open_challenges > 0,
+                "proof_floor_blocking": proof_floor_failures > 0,
                 "correction_reason": correction_reason.map(|reason| reason.label()),
                 "corrected_from_index_id": corrected_from_index_id,
             }),
@@ -7425,7 +7802,7 @@ impl KernelState {
                 observation_count: used_observations.len() as u64,
                 total_accepted_quantity: used_quantity,
                 reference_price,
-                methodology: Some("accepted_delivery_trimmed_weighted_average.v1".to_string()),
+                methodology: Some(methodology_id.to_string()),
                 status: ComputeIndexStatus::Published,
                 correction_reason,
                 corrected_from_index_id: corrected_from_index_id.map(str::to_owned),
@@ -11870,7 +12247,8 @@ mod tests {
     use super::{
         ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
         FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
-        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, decode_metadata_struct,
+        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, compute_index_family_id,
+        compute_index_methodology_id, compute_index_minimum_proof_posture, decode_metadata_struct,
         floor_to_minute_utc, money_amount_value,
     };
     use openagents_kernel_core::authority::{
@@ -12466,6 +12844,49 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    fn clustered_delivery_proof_request(
+        delivery_proof_id: &str,
+        instrument_id: &str,
+        capacity_lot_id: &str,
+        created_at_ms: i64,
+    ) -> RecordDeliveryProofRequest {
+        let mut request = delivery_proof_request(created_at_ms);
+        let clustered_capability = clustered_compute_product_request(created_at_ms)
+            .product
+            .capability_envelope;
+        request.idempotency_key = format!("idemp.compute.delivery.{delivery_proof_id}");
+        request.delivery_proof.delivery_proof_id = delivery_proof_id.to_string();
+        request.delivery_proof.product_id = "psionic.cluster.inference.replicated".to_string();
+        request.delivery_proof.capacity_lot_id = capacity_lot_id.to_string();
+        request.delivery_proof.instrument_id = Some(instrument_id.to_string());
+        request.delivery_proof.created_at_ms = created_at_ms;
+        request.delivery_proof.performance_band_observed = Some("clustered".to_string());
+        request.delivery_proof.topology_evidence = Some(DeliveryTopologyEvidence {
+            topology_kind: Some(ComputeTopologyKind::Replicated),
+            topology_digest: Some(format!("topology:{delivery_proof_id}")),
+            scheduler_node_ref: Some("node://scheduler/cluster.alpha".to_string()),
+            transport_class: Some("wider_network_stream".to_string()),
+            selected_node_refs: vec![
+                "node://worker/cluster.alpha".to_string(),
+                "node://worker/cluster.beta".to_string(),
+            ],
+            replica_node_refs: vec!["node://worker/cluster.gamma".to_string()],
+        });
+        request.delivery_proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: Some(format!("proof_bundle:{delivery_proof_id}")),
+            activation_fingerprint_ref: None,
+            validator_pool_ref: Some("validator-pool.cluster.alpha".to_string()),
+            validator_run_ref: None,
+            challenge_result_refs: Vec::new(),
+            environment_ref: Some("env.openagents.math.basic".to_string()),
+            environment_version: Some("2026.03.13".to_string()),
+            eval_run_ref: None,
+        });
+        request.delivery_proof.promised_capability_envelope = clustered_capability.clone();
+        request.delivery_proof.observed_capability_envelope = clustered_capability;
+        request
     }
 
     fn close_capacity_instrument_request(closed_at_ms: i64) -> CloseCapacityInstrumentRequest {
@@ -13880,7 +14301,7 @@ mod tests {
         assert_eq!(published.response.index.reference_price, None);
         assert_eq!(
             published.response.index.methodology.as_deref(),
-            Some("accepted_delivery_trimmed_weighted_average.v1")
+            Some("local_inference.accepted_delivery_trimmed_weighted_average.v1")
         );
         assert_eq!(
             quality.get("thin_market").and_then(Value::as_bool),
@@ -13900,6 +14321,392 @@ mod tests {
         assert_eq!(metrics.compute_indices_published_24h, 1);
         assert_eq!(metrics.compute_index_thin_windows_24h, 1);
         assert_eq!(metrics.compute_index_settlement_eligible_24h, 0);
+    }
+
+    #[test]
+    fn compute_index_methodology_matrix_covers_major_compute_lanes() {
+        let local = compute_product_request(1).product;
+        let clustered = clustered_compute_product_request(1).product;
+        let mut sandbox = compute_product_request(1).product;
+        sandbox.product_id =
+            "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated".to_string();
+        sandbox.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: None,
+            execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+            compute_family: Some(ComputeFamily::SandboxExecution),
+            topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+            provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            validator_requirements: None,
+            artifact_residency: None,
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: None,
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            }),
+            checkpoint_binding: None,
+            model_policy: Some("psionic.sandbox.exec.v1".to_string()),
+            model_family: None,
+            host_capability: None,
+            apple_platform: None,
+            gpt_oss_runtime: None,
+            latency_ms_p50: None,
+            throughput_per_minute: None,
+            concurrency_limit: Some(4),
+        });
+        let mut training = compute_product_request(1).product;
+        training.product_id = "psionic.training.gradient.elastic".to_string();
+        training.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::TrainingJob),
+            compute_family: Some(ComputeFamily::Training),
+            topology_kind: Some(ComputeTopologyKind::TrainingElastic),
+            provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+            proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            validator_requirements: Some(ComputeValidatorRequirements {
+                validator_pool_ref: Some("validator-pool.training".to_string()),
+                policy_ref: Some("policy://validator/training".to_string()),
+                minimum_validator_count: Some(3),
+                challenge_window_ms: Some(300_000),
+            }),
+            artifact_residency: None,
+            environment_binding: None,
+            checkpoint_binding: None,
+            model_policy: Some("psionic.training.v1".to_string()),
+            model_family: Some("llama3.2:latest".to_string()),
+            host_capability: None,
+            apple_platform: None,
+            gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some("llama3.2:latest".to_string()),
+                quantization: None,
+            }),
+            latency_ms_p50: None,
+            throughput_per_minute: None,
+            concurrency_limit: Some(16),
+        });
+
+        assert_eq!(compute_index_family_id(&local), "local_inference");
+        assert_eq!(
+            compute_index_methodology_id(&local),
+            "local_inference.accepted_delivery_trimmed_weighted_average.v1"
+        );
+        assert_eq!(compute_index_minimum_proof_posture(&local), None);
+
+        assert_eq!(compute_index_family_id(&clustered), "clustered_inference");
+        assert_eq!(
+            compute_index_methodology_id(&clustered),
+            "clustered_inference.challenge_adjusted_trimmed_weighted_average.v1"
+        );
+        assert_eq!(
+            compute_index_minimum_proof_posture(&clustered),
+            Some(ComputeProofPosture::TopologyAndDelivery)
+        );
+
+        assert_eq!(compute_index_family_id(&sandbox), "sandbox_execution");
+        assert_eq!(
+            compute_index_methodology_id(&sandbox),
+            "sandbox_execution.challenge_adjusted_trimmed_weighted_average.v1"
+        );
+        assert_eq!(
+            compute_index_minimum_proof_posture(&sandbox),
+            Some(ComputeProofPosture::DeliveryProofOnly)
+        );
+
+        assert_eq!(compute_index_family_id(&training), "training_job");
+        assert_eq!(
+            compute_index_methodology_id(&training),
+            "training_job.challenge_adjusted_trimmed_weighted_average.v1"
+        );
+        assert_eq!(
+            compute_index_minimum_proof_posture(&training),
+            Some(ComputeProofPosture::ChallengeEligible)
+        );
+    }
+
+    #[test]
+    fn clustered_compute_index_correction_tracks_challenge_quality() {
+        let created_at_ms = 1_762_000_405_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("environment");
+        let product = clustered_compute_product_request(created_at_ms as i64).product;
+        kernel.compute_products.insert(
+            product.product_id.clone(),
+            ComputeProductRecord {
+                product,
+                receipt_id: "receipt.compute.product.clustered".to_string(),
+            },
+        );
+
+        let mut first_lot = clustered_capacity_lot_request(created_at_ms as i64 + 1_000);
+        first_lot.lot.delivery_start_ms = created_at_ms as i64 + 1_000;
+        first_lot.lot.delivery_end_ms = created_at_ms as i64 + 120_000;
+        first_lot.lot.offer_expires_at_ms = created_at_ms as i64 + 500;
+        kernel
+            .create_capacity_lot(&fixture_context(created_at_ms + 1_000), first_lot)
+            .expect("first lot");
+
+        let mut second_lot = clustered_capacity_lot_request(created_at_ms as i64 + 1_500);
+        second_lot.idempotency_key = "idemp.compute.lot.clustered.beta".to_string();
+        second_lot.lot.capacity_lot_id = "lot.compute.clustered.beta".to_string();
+        second_lot.lot.provider_id = "provider.cluster.beta".to_string();
+        second_lot.lot.delivery_start_ms = created_at_ms as i64 + 1_500;
+        second_lot.lot.delivery_end_ms = created_at_ms as i64 + 120_500;
+        second_lot.lot.offer_expires_at_ms = created_at_ms as i64 + 750;
+        kernel
+            .create_capacity_lot(&fixture_context(created_at_ms + 1_500), second_lot)
+            .expect("second lot");
+
+        let mut first_instrument = capacity_instrument_request(created_at_ms as i64 + 2_000);
+        first_instrument.idempotency_key = "idemp.compute.instrument.clustered.alpha".to_string();
+        first_instrument.instrument.instrument_id =
+            "instrument.compute.clustered.alpha".to_string();
+        first_instrument.instrument.product_id = "psionic.cluster.inference.replicated".to_string();
+        first_instrument.instrument.capacity_lot_id =
+            Some("lot.compute.clustered.alpha".to_string());
+        first_instrument.instrument.provider_id = Some("provider.cluster.alpha".to_string());
+        first_instrument.instrument.delivery_start_ms = created_at_ms as i64 + 3_000;
+        first_instrument.instrument.delivery_end_ms = created_at_ms as i64 + 33_000;
+        first_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_500),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 2_000), first_instrument)
+            .expect("first instrument");
+
+        let mut second_instrument = capacity_instrument_request(created_at_ms as i64 + 2_500);
+        second_instrument.idempotency_key = "idemp.compute.instrument.clustered.beta".to_string();
+        second_instrument.instrument.instrument_id =
+            "instrument.compute.clustered.beta".to_string();
+        second_instrument.instrument.product_id =
+            "psionic.cluster.inference.replicated".to_string();
+        second_instrument.instrument.capacity_lot_id =
+            Some("lot.compute.clustered.beta".to_string());
+        second_instrument.instrument.provider_id = Some("provider.cluster.beta".to_string());
+        second_instrument.instrument.delivery_start_ms = created_at_ms as i64 + 3_500;
+        second_instrument.instrument.delivery_end_ms = created_at_ms as i64 + 33_500;
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 2_500), second_instrument)
+            .expect("second instrument");
+
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 4_000),
+                clustered_delivery_proof_request(
+                    "delivery.compute.clustered.alpha",
+                    "instrument.compute.clustered.alpha",
+                    "lot.compute.clustered.alpha",
+                    created_at_ms as i64 + 4_000,
+                ),
+            )
+            .expect("first delivery");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 4_500),
+                clustered_delivery_proof_request(
+                    "delivery.compute.clustered.beta",
+                    "instrument.compute.clustered.beta",
+                    "lot.compute.clustered.beta",
+                    created_at_ms as i64 + 4_500,
+                ),
+            )
+            .expect("second delivery");
+
+        let mut challenge_request = validator_challenge_request(
+            "challenge.compute.clustered.alpha",
+            Some("delivery.compute.clustered.alpha"),
+            created_at_ms + 5_000,
+        );
+        challenge_request.challenge.context.product_id =
+            "psionic.cluster.inference.replicated".to_string();
+        challenge_request.challenge.context.validator_pool_ref =
+            Some("validator-pool.cluster.alpha".to_string());
+        let schedule = kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 5_000),
+                challenge_request,
+            )
+            .expect("schedule challenge");
+        assert_eq!(
+            schedule.response.challenge.status,
+            ValidatorChallengeStatus::Queued
+        );
+
+        let published = kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 6_000),
+                PublishComputeIndexRequest {
+                    idempotency_key: "idemp.compute.index.clustered.alpha".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    index: ComputeIndex {
+                        index_id: "index.compute.clustered.alpha".to_string(),
+                        product_id: "psionic.cluster.inference.replicated".to_string(),
+                        observation_window_start_ms: created_at_ms as i64,
+                        observation_window_end_ms: created_at_ms as i64 + 10_000,
+                        published_at_ms: created_at_ms as i64 + 6_000,
+                        observation_count: 0,
+                        total_accepted_quantity: 0,
+                        reference_price: None,
+                        methodology: None,
+                        status: ComputeIndexStatus::Published,
+                        correction_reason: None,
+                        corrected_from_index_id: None,
+                        metadata: json!({}),
+                    },
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("publish clustered index");
+        assert_eq!(
+            published.response.index.methodology.as_deref(),
+            Some("clustered_inference.challenge_adjusted_trimmed_weighted_average.v1")
+        );
+        assert!(published.response.index.reference_price.is_some());
+        assert_eq!(
+            published
+                .response
+                .index
+                .metadata
+                .get("governance")
+                .and_then(Value::as_object)
+                .and_then(|governance| governance.get("settlement_eligible"))
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            published
+                .response
+                .index
+                .metadata
+                .get("governance")
+                .and_then(Value::as_object)
+                .and_then(|governance| governance.get("open_challenges_blocking"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            published
+                .response
+                .index
+                .metadata
+                .get("challenge_quality")
+                .and_then(Value::as_object)
+                .and_then(|quality| quality.get("used_open_count"))
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+
+        let lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 7_000),
+                validator_lease_request(
+                    "challenge.compute.clustered.alpha",
+                    "validator.cluster.alpha",
+                    created_at_ms + 7_000,
+                    "idemp.compute.validator.lease.clustered.alpha",
+                ),
+            )
+            .expect("lease challenge");
+        let finalize = kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 8_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.clustered.alpha".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: lease.response.lease.clone(),
+                    result: validator_result(
+                        "challenge.compute.clustered.alpha",
+                        created_at_ms + 8_000,
+                        lease.response.lease.attempt,
+                        ValidatorChallengeStatus::Verified,
+                        ValidatorChallengeVerdict::Verified,
+                        "clustered index proof verified cleanly",
+                    ),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize challenge");
+        assert_eq!(
+            finalize.response.challenge.status,
+            ValidatorChallengeStatus::Verified
+        );
+
+        let corrected = kernel
+            .correct_compute_index(
+                &fixture_context(created_at_ms + 9_000),
+                CorrectComputeIndexRequest {
+                    idempotency_key: "idemp.compute.index.clustered.corrected".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    superseded_index_id: "index.compute.clustered.alpha".to_string(),
+                    corrected_index: ComputeIndex {
+                        index_id: "index.compute.clustered.alpha.v2".to_string(),
+                        product_id: "psionic.cluster.inference.replicated".to_string(),
+                        observation_window_start_ms: 0,
+                        observation_window_end_ms: 0,
+                        published_at_ms: created_at_ms as i64 + 9_000,
+                        observation_count: 0,
+                        total_accepted_quantity: 0,
+                        reference_price: None,
+                        methodology: None,
+                        status: ComputeIndexStatus::Published,
+                        correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                        corrected_from_index_id: Some("index.compute.clustered.alpha".to_string()),
+                        metadata: json!({}),
+                    },
+                    correction_reason: ComputeIndexCorrectionReason::LateObservation,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("correct clustered index");
+        assert_eq!(
+            corrected.response.corrected_index.methodology.as_deref(),
+            Some("clustered_inference.challenge_adjusted_trimmed_weighted_average.v1")
+        );
+        assert_eq!(
+            corrected
+                .response
+                .corrected_index
+                .metadata
+                .get("governance")
+                .and_then(Value::as_object)
+                .and_then(|governance| governance.get("settlement_eligible"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            corrected
+                .response
+                .corrected_index
+                .metadata
+                .get("challenge_quality")
+                .and_then(Value::as_object)
+                .and_then(|quality| quality.get("used_verified_count"))
+                .and_then(Value::as_u64),
+            Some(1)
+        );
     }
 
     #[test]

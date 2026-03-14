@@ -1012,6 +1012,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should reuse the widened delivery and proof posture rather than inventing separate futures-only logic.
 
 43. **Nexus: publish compute indices for local, clustered, sandbox, and later training lanes**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3527`.
    - Add market-wide price references and methodology that understand delivery proof quality and challenge outcomes.
    - This is required before any serious derivative or reservation market can be honest.
 
