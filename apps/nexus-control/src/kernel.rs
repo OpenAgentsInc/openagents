@@ -1269,6 +1269,122 @@ fn forward_remedy_profile(product_id: &str) -> &'static str {
     }
 }
 
+fn capability_envelope_is_clustered(
+    envelope: &openagents_kernel_core::compute::ComputeCapabilityEnvelope,
+) -> bool {
+    envelope.execution_kind
+        == Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference)
+        || envelope.topology_kind.is_some_and(topology_kind_is_cluster)
+}
+
+fn clustered_market_proof_posture_credible(
+    envelope: &openagents_kernel_core::compute::ComputeCapabilityEnvelope,
+) -> bool {
+    matches!(
+        envelope.proof_posture,
+        Some(
+            openagents_kernel_core::compute::ComputeProofPosture::TopologyAndDelivery
+                | openagents_kernel_core::compute::ComputeProofPosture::ToplocAugmented
+                | openagents_kernel_core::compute::ComputeProofPosture::ChallengeEligible
+        )
+    )
+}
+
+fn forward_remedy_profile_for_product(product: &ComputeProduct) -> &'static str {
+    let capability = product.capability_envelope.as_ref();
+    if capability.is_some_and(capability_envelope_is_clustered) {
+        "forward_physical.clustered.v1"
+    } else {
+        forward_remedy_profile(product.product_id.as_str())
+    }
+}
+
+fn reservation_remedy_profile_for_product(product: &ComputeProduct) -> &'static str {
+    let capability = product.capability_envelope.as_ref();
+    if capability.is_some_and(capability_envelope_is_clustered) {
+        "reservation.clustered.v1"
+    } else {
+        "reservation.standard.v1"
+    }
+}
+
+fn environment_binding_summary(
+    binding: Option<&ComputeEnvironmentBinding>,
+) -> Option<serde_json::Value> {
+    binding.map(|binding| {
+        json!({
+            "environment_ref": binding.environment_ref,
+            "environment_version": binding.environment_version,
+            "dataset_ref": binding.dataset_ref,
+            "rubric_ref": binding.rubric_ref,
+            "evaluator_policy_ref": binding.evaluator_policy_ref,
+        })
+    })
+}
+
+fn topology_kind_is_cluster(value: openagents_kernel_core::compute::ComputeTopologyKind) -> bool {
+    matches!(
+        value,
+        openagents_kernel_core::compute::ComputeTopologyKind::RemoteWholeRequest
+            | openagents_kernel_core::compute::ComputeTopologyKind::Replicated
+            | openagents_kernel_core::compute::ComputeTopologyKind::PipelineSharded
+            | openagents_kernel_core::compute::ComputeTopologyKind::LayerSharded
+            | openagents_kernel_core::compute::ComputeTopologyKind::TensorSharded
+            | openagents_kernel_core::compute::ComputeTopologyKind::TrainingElastic
+    )
+}
+
+fn cluster_delivery_contract_metadata(
+    market_class: &str,
+    delivery_start_ms: i64,
+    delivery_end_ms: i64,
+    envelope: &openagents_kernel_core::compute::ComputeCapabilityEnvelope,
+    environment_binding: Option<&ComputeEnvironmentBinding>,
+    remedy_profile: &str,
+) -> serde_json::Value {
+    json!({
+        "market_class": market_class,
+        "delivery_window": {
+            "start_ms": delivery_start_ms,
+            "end_ms": delivery_end_ms,
+        },
+        "compute_family": envelope.compute_family.map(compute_family_label),
+        "execution_kind": envelope.execution_kind.map(execution_kind_label),
+        "topology_kind": envelope.topology_kind.map(|value| value.label()),
+        "provisioning_kind": envelope.provisioning_kind.map(|value| value.label()),
+        "proof_posture": envelope.proof_posture.map(|value| value.label()),
+        "validator_posture": envelope.validator_requirements.as_ref().map(|requirements| {
+            json!({
+                "validator_pool_ref": requirements.validator_pool_ref,
+                "policy_ref": requirements.policy_ref,
+                "minimum_validator_count": requirements.minimum_validator_count,
+                "challenge_window_ms": requirements.challenge_window_ms,
+            })
+        }),
+        "environment_binding": environment_binding_summary(environment_binding),
+        "substitution_rules": {
+            "compute_family": "must_match",
+            "topology_kind": "must_match",
+            "proof_posture": "must_not_degrade",
+            "validator_posture": envelope
+                .validator_requirements
+                .as_ref()
+                .map(|_| "must_preserve")
+                .unwrap_or("not_applicable"),
+            "environment_binding": if environment_binding.is_some() {
+                "must_match"
+            } else {
+                "unspecified"
+            },
+        },
+        "non_delivery_posture": {
+            "explicit_default_reason_required": true,
+            "proof_or_challenge_gap_is_defaultable": true,
+            "remedy_profile": remedy_profile,
+        },
+    })
+}
+
 impl KernelState {
     pub fn new_with_persistence(persistence_path: Option<PathBuf>) -> Self {
         let mut state = Self {
@@ -1991,6 +2107,26 @@ impl KernelState {
                         .collect::<Vec<_>>()
                 ),
             );
+            if structured_instrument.kind == StructuredCapacityInstrumentKind::Reservation
+                && let Some(leg) = legs.first()
+            {
+                metadata.insert(
+                    "delivery_contract".to_string(),
+                    leg.metadata
+                        .get("delivery_contract")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                );
+                metadata.insert(
+                    "reservation_right_summary".to_string(),
+                    json!({
+                        "premium_price": leg.fixed_price,
+                        "exercise_terms": leg.metadata.get("reservation_terms").cloned(),
+                        "remedy_profile": leg.metadata.get("remedy_profile").cloned(),
+                        "environment_binding": leg.environment_binding,
+                    }),
+                );
+            }
         }
         Ok(structured_instrument)
     }
@@ -4616,6 +4752,43 @@ impl KernelState {
             .capability_envelope
             .clone()
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
+        let clustered_advanced_market =
+            capability_envelope_is_clustered(&committed_capability_envelope)
+                && matches!(
+                    req.instrument.kind,
+                    openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                        | openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
+                );
+        if clustered_advanced_market
+            && committed_capability_envelope
+                .topology_kind
+                .is_none_or(|value| !topology_kind_is_cluster(value))
+        {
+            return Err(match req.instrument.kind {
+                openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical => {
+                    "clustered_forward_topology_required"
+                }
+                openagents_kernel_core::compute::CapacityInstrumentKind::Reservation => {
+                    "clustered_reservation_topology_required"
+                }
+                _ => unreachable!("clustered advanced market only matches forward/reservation"),
+            }
+            .to_string());
+        }
+        if clustered_advanced_market
+            && !clustered_market_proof_posture_credible(&committed_capability_envelope)
+        {
+            return Err(match req.instrument.kind {
+                openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical => {
+                    "clustered_forward_proof_posture_insufficient"
+                }
+                openagents_kernel_core::compute::CapacityInstrumentKind::Reservation => {
+                    "clustered_reservation_proof_posture_insufficient"
+                }
+                _ => unreachable!("clustered advanced market only matches forward/reservation"),
+            }
+            .to_string());
+        }
         if req.instrument.kind
             == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
             && !self.compute_runtime_policy.enable_forward_physical
@@ -4799,6 +4972,7 @@ impl KernelState {
         if req.instrument.kind
             == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
         {
+            let remedy_profile = forward_remedy_profile_for_product(&product_record.product);
             metadata.insert(
                 "market_phase".to_string(),
                 Value::String("forward_physical".to_string()),
@@ -4823,17 +4997,31 @@ impl KernelState {
                     "provider_bond_required": true,
                     "bond_mode": "performance_bond",
                     "buyer_prepay_required": false,
-                    "remedy_profile": forward_remedy_profile(product_id.as_str()),
+                    "remedy_profile": remedy_profile,
                 }),
             );
             metadata.insert(
                 "remedy_profile".to_string(),
-                Value::String(forward_remedy_profile(product_id.as_str()).to_string()),
+                Value::String(remedy_profile.to_string()),
             );
+            if capability_envelope_is_clustered(&committed_capability_envelope) {
+                metadata.insert(
+                    "delivery_contract".to_string(),
+                    cluster_delivery_contract_metadata(
+                        "clustered_forward_physical",
+                        req.instrument.delivery_start_ms,
+                        req.instrument.delivery_end_ms,
+                        &committed_capability_envelope,
+                        req.instrument.environment_binding.as_ref(),
+                        remedy_profile,
+                    ),
+                );
+            }
         }
         if req.instrument.kind
             == openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
         {
+            let remedy_profile = reservation_remedy_profile_for_product(&product_record.product);
             metadata.insert(
                 "market_phase".to_string(),
                 Value::String("reservation_right".to_string()),
@@ -4854,6 +5042,23 @@ impl KernelState {
                     "exercise_style": "buyer_election",
                 }),
             );
+            metadata.insert(
+                "remedy_profile".to_string(),
+                Value::String(remedy_profile.to_string()),
+            );
+            if capability_envelope_is_clustered(&committed_capability_envelope) {
+                metadata.insert(
+                    "delivery_contract".to_string(),
+                    cluster_delivery_contract_metadata(
+                        "clustered_reservation",
+                        req.instrument.delivery_start_ms,
+                        req.instrument.delivery_end_ms,
+                        &committed_capability_envelope,
+                        req.instrument.environment_binding.as_ref(),
+                        remedy_profile,
+                    ),
+                );
+            }
         }
         if let Some(reference_index) = future_cash_reference_index.as_ref() {
             let strike_price = req
@@ -11663,10 +11868,10 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputeBondDraw, ComputeRiskTrigger, FinalizeValidatorChallengeRequest,
-        KernelMutationContext, KernelState, LeaseValidatorChallengeRequest,
-        ScheduleValidatorChallengeRequest, decode_metadata_struct, floor_to_minute_utc,
-        money_amount_value,
+        ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
+        FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
+        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, decode_metadata_struct,
+        floor_to_minute_utc, money_amount_value,
     };
     use openagents_kernel_core::authority::{
         AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
@@ -11692,11 +11897,12 @@ mod tests {
         ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
         ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
-        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
-        ComputeSyntheticDataSampleStatus, ComputeTopologyKind, DeliveryProof, DeliveryProofStatus,
-        DeliveryRejectionReason, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
+        ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+        ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
@@ -11781,6 +11987,50 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    fn clustered_compute_product_request(created_at_ms: i64) -> CreateComputeProductRequest {
+        let mut request = compute_product_request(created_at_ms);
+        request.idempotency_key = "idemp.compute.product.clustered".to_string();
+        request.product.product_id = "psionic.cluster.inference.replicated".to_string();
+        request.product.performance_band = Some("clustered".to_string());
+        request.product.sla_terms_ref = Some("sla.autopilot.clustered.v1".to_string());
+        request.product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::ClusteredInference),
+            compute_family: Some(ComputeFamily::Inference),
+            topology_kind: Some(ComputeTopologyKind::Replicated),
+            provisioning_kind: Some(ComputeProvisioningKind::ReservedClusterWindow),
+            proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            validator_requirements: Some(ComputeValidatorRequirements {
+                validator_pool_ref: Some("validator-pool.cluster.alpha".to_string()),
+                policy_ref: Some("policy://validator/clustered".to_string()),
+                minimum_validator_count: Some(2),
+                challenge_window_ms: Some(120_000),
+            }),
+            artifact_residency: None,
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            }),
+            checkpoint_binding: None,
+            model_policy: Some("psionic.cluster.inference.v1".to_string()),
+            model_family: Some("llama3.2:latest".to_string()),
+            host_capability: None,
+            apple_platform: None,
+            gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some("llama3.2:latest".to_string()),
+                quantization: Some("q4_k_m".to_string()),
+            }),
+            latency_ms_p50: Some(40),
+            throughput_per_minute: Some(240),
+            concurrency_limit: Some(8),
+        });
+        request
     }
 
     fn environment_package_request(
@@ -12106,6 +12356,25 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    fn clustered_capacity_lot_request(created_at_ms: i64) -> CreateCapacityLotRequest {
+        let mut request = capacity_lot_request(created_at_ms);
+        request.idempotency_key = "idemp.compute.lot.clustered".to_string();
+        request.lot.capacity_lot_id = "lot.compute.clustered.alpha".to_string();
+        request.lot.product_id = "psionic.cluster.inference.replicated".to_string();
+        request.lot.provider_id = "provider.cluster.alpha".to_string();
+        request.lot.delivery_start_ms = created_at_ms + 21_600_000;
+        request.lot.delivery_end_ms = request.lot.delivery_start_ms + 3_600_000;
+        request.lot.offer_expires_at_ms = request.lot.delivery_start_ms - 1_000;
+        request.lot.environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: Some("2026.03.13".to_string()),
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        request
     }
 
     fn capacity_instrument_request(created_at_ms: i64) -> CreateCapacityInstrumentRequest {
@@ -15282,6 +15551,257 @@ mod tests {
         let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 5_000);
         assert_eq!(metrics.compute_forward_physical_instruments_active, 1);
         assert_eq!(metrics.compute_forward_physical_open_quantity, 256);
+    }
+
+    #[test]
+    fn clustered_forward_requires_credible_proof_posture() {
+        let created_at_ms = 1_762_000_365_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("environment");
+        let mut product_request = clustered_compute_product_request(created_at_ms as i64);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("clustered capability")
+            .proof_posture = Some(ComputeProofPosture::DeliveryProofOnly);
+        let product = product_request.product;
+        kernel.compute_products.insert(
+            product.product_id.clone(),
+            ComputeProductRecord {
+                product,
+                receipt_id: "receipt.compute.product.clustered".to_string(),
+            },
+        );
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                clustered_capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("lot");
+        let mut instrument_request = forward_instrument_request(
+            "instrument.compute.clustered.forward",
+            created_at_ms as i64 + 2_000,
+            created_at_ms as i64 + 21_610_000,
+            "lot.compute.clustered.alpha",
+        );
+        instrument_request.instrument.product_id =
+            "psionic.cluster.inference.replicated".to_string();
+        instrument_request.instrument.provider_id = Some("provider.cluster.alpha".to_string());
+
+        let error = kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 2_000), instrument_request)
+            .expect_err("clustered forward should require topology-grade proof posture");
+        assert_eq!(error, "clustered_forward_proof_posture_insufficient");
+    }
+
+    #[test]
+    fn clustered_forward_and_reservation_capture_delivery_contract_truth() {
+        let created_at_ms = 1_762_000_367_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("environment");
+        let product = clustered_compute_product_request(created_at_ms as i64).product;
+        kernel.compute_products.insert(
+            product.product_id.clone(),
+            ComputeProductRecord {
+                product,
+                receipt_id: "receipt.compute.product.clustered".to_string(),
+            },
+        );
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                clustered_capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("lot");
+
+        let mut forward_request = forward_instrument_request(
+            "instrument.compute.clustered.forward",
+            created_at_ms as i64 + 2_000,
+            created_at_ms as i64 + 21_610_000,
+            "lot.compute.clustered.alpha",
+        );
+        forward_request.instrument.product_id = "psionic.cluster.inference.replicated".to_string();
+        forward_request.instrument.provider_id = Some("provider.cluster.alpha".to_string());
+        forward_request.instrument.environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: Some("2026.03.13".to_string()),
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 2_000), forward_request)
+            .expect("clustered forward");
+
+        let mut reservation_request = reservation_instrument_request(
+            "instrument.compute.clustered.reservation",
+            created_at_ms as i64 + 3_000,
+        );
+        reservation_request.instrument.product_id =
+            "psionic.cluster.inference.replicated".to_string();
+        reservation_request.instrument.capacity_lot_id =
+            Some("lot.compute.clustered.alpha".to_string());
+        reservation_request.instrument.provider_id = Some("provider.cluster.alpha".to_string());
+        reservation_request.instrument.delivery_start_ms = created_at_ms as i64 + 21_620_000;
+        reservation_request.instrument.delivery_end_ms = created_at_ms as i64 + 21_650_000;
+        reservation_request.instrument.environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: Some("2026.03.13".to_string()),
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        reservation_request.instrument.metadata = json!({
+            "reservation_terms": {
+                "exercise_window_start_ms": created_at_ms as i64 + 21_625_000,
+                "exercise_window_end_ms": created_at_ms as i64 + 21_645_000,
+                "exercise_price": serde_json::to_value(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1_500),
+                }).expect("clustered reservation exercise price"),
+            }
+        });
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 3_000),
+                reservation_request,
+            )
+            .expect("clustered reservation");
+
+        let forward = kernel
+            .get_capacity_instrument("instrument.compute.clustered.forward")
+            .expect("forward instrument");
+        let forward_contract = forward
+            .metadata
+            .get("delivery_contract")
+            .and_then(Value::as_object)
+            .expect("forward delivery contract");
+        assert_eq!(
+            forward
+                .metadata
+                .get("remedy_profile")
+                .and_then(Value::as_str),
+            Some("forward_physical.clustered.v1")
+        );
+        assert_eq!(
+            forward_contract.get("market_class").and_then(Value::as_str),
+            Some("clustered_forward_physical")
+        );
+        assert_eq!(
+            forward_contract
+                .get("topology_kind")
+                .and_then(Value::as_str),
+            Some("replicated")
+        );
+        assert_eq!(
+            forward_contract
+                .get("proof_posture")
+                .and_then(Value::as_str),
+            Some("challenge_eligible")
+        );
+        assert_eq!(
+            forward_contract
+                .get("environment_binding")
+                .and_then(Value::as_object)
+                .and_then(|binding| binding.get("environment_version"))
+                .and_then(Value::as_str),
+            Some("2026.03.13")
+        );
+
+        let reservation = kernel
+            .get_capacity_instrument("instrument.compute.clustered.reservation")
+            .expect("reservation instrument");
+        let reservation_contract = reservation
+            .metadata
+            .get("delivery_contract")
+            .and_then(Value::as_object)
+            .expect("reservation delivery contract");
+        assert_eq!(
+            reservation
+                .metadata
+                .get("remedy_profile")
+                .and_then(Value::as_str),
+            Some("reservation.clustered.v1")
+        );
+        assert_eq!(
+            reservation_contract
+                .get("market_class")
+                .and_then(Value::as_str),
+            Some("clustered_reservation")
+        );
+
+        kernel
+            .create_structured_capacity_instrument(
+                &fixture_context(created_at_ms + 4_000),
+                CreateStructuredCapacityInstrumentRequest {
+                    idempotency_key: "idemp.compute.structured.reservation.clustered".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    structured_instrument: StructuredCapacityInstrument {
+                        structured_instrument_id: "structured.compute.clustered.reservation"
+                            .to_string(),
+                        product_id: "psionic.cluster.inference.replicated".to_string(),
+                        buyer_id: Some("buyer.alpha".to_string()),
+                        provider_id: Some("provider.cluster.alpha".to_string()),
+                        kind: StructuredCapacityInstrumentKind::Reservation,
+                        created_at_ms: created_at_ms as i64 + 4_000,
+                        status: StructuredCapacityInstrumentStatus::Open,
+                        lifecycle_reason_detail: None,
+                        legs: vec![StructuredCapacityLeg {
+                            instrument_id: "instrument.compute.clustered.reservation".to_string(),
+                            role: StructuredCapacityLegRole::ReservationRight,
+                            leg_order: 1,
+                            metadata: json!({"summary": "clustered reservation right"}),
+                        }],
+                        metadata: json!({}),
+                    },
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("structured clustered reservation");
+        let structured = kernel
+            .get_structured_capacity_instrument("structured.compute.clustered.reservation")
+            .expect("materialized structured clustered reservation");
+        let summary = structured
+            .metadata
+            .get("reservation_right_summary")
+            .and_then(Value::as_object)
+            .expect("reservation right summary");
+        assert_eq!(
+            structured
+                .metadata
+                .get("delivery_contract")
+                .and_then(Value::as_object)
+                .and_then(|value| value.get("topology_kind"))
+                .and_then(Value::as_str),
+            Some("replicated")
+        );
+        assert_eq!(
+            summary.get("remedy_profile").and_then(Value::as_str),
+            Some("reservation.clustered.v1")
+        );
     }
 
     #[test]
