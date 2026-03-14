@@ -1,5 +1,7 @@
 # Labor Market
 
+> Canonical market-status doc: [markets/labor-market.md](./markets/labor-market.md)
+
 ## Purpose
 
 The Labor Market buys and sells machine work.

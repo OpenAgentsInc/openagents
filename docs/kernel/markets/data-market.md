@@ -1,0 +1,88 @@
+# Data Market
+
+This is the canonical status doc for the `Data Market`.
+
+## Purpose
+
+The Data Market prices access to useful context under explicit permissions.
+
+Kernel-facing objects:
+
+- `DataAsset`
+- `AccessGrant`
+- `PermissionPolicy`
+- `DeliveryBundle`
+- `RevocationReceipt`
+
+The data market exists so access to artifacts, datasets, local context, and
+private knowledge is explicit, permissioned, and receipted rather than being
+smuggled through opaque prompt state.
+
+## Current repo verdict
+
+| Dimension | Status | Notes |
+| --- | --- | --- |
+| Product surface | not productized | there is no dedicated data-market buyer or seller UX in the desktop app today |
+| Kernel authority | `implemented` starter slice | authority flows exist in `openagents-kernel-core` and `apps/nexus-control` |
+| Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
+| Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
+| Planned | yes | broader discovery, pricing, payouts, provider economics, and product-facing UX remain planned |
+
+## Implemented now
+
+- register a `DataAsset`
+- create an `AccessGrant`
+- accept an access grant
+- issue a `DeliveryBundle`
+- revoke access and emit a `RevocationReceipt`
+
+The starter authority slice is real in:
+
+- `crates/openagents-kernel-core/src/data.rs`
+- `crates/openagents-kernel-core/src/authority.rs`
+- `apps/nexus-control/src/lib.rs`
+- `apps/nexus-control/src/kernel.rs`
+
+Authenticated HTTP mutation routes are live under:
+
+- `POST /v1/kernel/data/assets`
+- `POST /v1/kernel/data/grants`
+- `POST /v1/kernel/data/grants/{grant_id}/accept`
+- `POST /v1/kernel/data/grants/{grant_id}/deliveries`
+- `POST /v1/kernel/data/grants/{grant_id}/revoke`
+
+## Local prototype or partial only
+
+- richer provenance modeling beyond the starter permission and delivery objects
+- private-data packaging and policy detail beyond the current starter shapes
+- local or adjacent desktop concepts for context packaging, but not a
+  generalized canonical data-market product surface
+- broader discovery and indexing ideas still live in docs rather than in a
+  full authority or read-model surface
+
+## Not implemented yet
+
+- a user-facing data market in Autopilot
+- dedicated seller inventory UX for data assets
+- discovery, listing, and pricing surfaces for data buyers
+- payout and provider-economics flows specific to data access
+- a dedicated checked-in `openagents.data.v1` proto package
+- fuller read-model APIs for browsing the market rather than only mutating
+  starter objects
+
+## Current repo truth lives in
+
+- `crates/openagents-kernel-core/src/data.rs`
+- `crates/openagents-kernel-core/src/authority.rs`
+- `apps/nexus-control/src/lib.rs`
+- `apps/nexus-control/src/kernel.rs`
+- [../economy-kernel.md](../economy-kernel.md)
+- [../economy-kernel-proto.md](../economy-kernel-proto.md)
+
+## Boundary notes
+
+- data sells permissioned access to context
+- compute sells bounded machine capacity
+- labor sells machine work and outcome delivery
+- liquidity moves value between rails and participants
+- risk prices uncertainty, verification difficulty, and liability

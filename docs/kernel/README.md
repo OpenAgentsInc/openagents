@@ -2,6 +2,9 @@
 
 `docs/kernel/` contains the high-level design for the OpenAgents Economy Kernel and the markets that sit on top of it.
 
+Canonical per-market implementation-status docs now live under
+[`docs/kernel/markets/`](./markets/README.md).
+
 The short version:
 
 > OpenAgents is building an agents marketplace composed of multiple interoperating markets running on one shared economic substrate.
@@ -278,8 +281,11 @@ All tied together by receipts, policy, and verification.
 
 * [economy-kernel.md](./economy-kernel.md): the main normative spec for the economic kernel
 * [economy-kernel-proto.md](./economy-kernel-proto.md): proto and policy schema plan
-* [data-market.md](./data-market.md): the planned data market surface and authority flows
-* [labor-market.md](./labor-market.md): the planned labor market surface and settlement model
-* [liquidity-market.md](./liquidity-market.md): the planned liquidity market surface and value-movement model
-* [prediction-markets.md](./prediction-markets.md): the risk market companion doc for prediction, coverage, and underwriting
+* [markets/README.md](./markets/README.md): canonical per-market status index for Compute, Data, Labor, Liquidity, and Risk
+* [markets/compute-market.md](./markets/compute-market.md): canonical compute-market implementation status
+* [markets/data-market.md](./markets/data-market.md): canonical data-market implementation status
+* [markets/labor-market.md](./markets/labor-market.md): canonical labor-market implementation status
+* [markets/liquidity-market.md](./markets/liquidity-market.md): canonical liquidity-market implementation status
+* [markets/risk-market.md](./markets/risk-market.md): canonical risk-market implementation status
+* [prediction-markets.md](./prediction-markets.md): deeper risk-market background for prediction, coverage, and underwriting
 * [diagram.md](./diagram.md): supporting diagrams and visual framing

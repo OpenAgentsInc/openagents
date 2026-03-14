@@ -1,5 +1,7 @@
 # Liquidity Market
 
+> Canonical market-status doc: [markets/liquidity-market.md](./markets/liquidity-market.md)
+
 ## Purpose
 
 The Liquidity Market moves value through the system.

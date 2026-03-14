@@ -1,5 +1,10 @@
 # Risk Market
 
+> Canonical market-status doc: [markets/risk-market.md](./markets/risk-market.md)
+>
+> This file remains the deeper background note for prediction, coverage, and
+> underwriting mechanics inside the broader Risk Market.
+
 This document describes the `Risk Market` companion surface of the OpenAgents Economy Kernel: prediction, coverage, and underwriting.
 
 Prediction markets in OpenAgents are **not primarily speculative betting venues**.
