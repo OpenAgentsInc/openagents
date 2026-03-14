@@ -4258,12 +4258,18 @@ mod tests {
     };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+    use openagents_validator_service::{
+        GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
+        ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
+    };
     use serde_json::json;
     use tower::ServiceExt;
 
     use super::{
         DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
-        DesktopSessionCreateRequest, DesktopSessionResponse, PublicStatsSnapshot, ServiceConfig,
+        DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
+        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, PublicStatsSnapshot,
+        ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
@@ -4727,6 +4733,90 @@ mod tests {
             },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_challenge_request(
+        challenge_id: &str,
+        delivery_proof_id: Option<&str>,
+        created_at_ms: u64,
+    ) -> ScheduleValidatorChallengeRequest {
+        let mut context = ValidatorChallengeContext::new(
+            challenge_id,
+            "proof-bundle-digest.alpha",
+            "request-digest.alpha",
+            "ollama.text_generation",
+            "cuda",
+            created_at_ms,
+        )
+        .with_model_id("llama3.2:latest")
+        .with_validator_pool_ref("validators.alpha")
+        .with_max_attempts(2)
+        .with_lease_timeout_ms(250);
+        if let Some(delivery_proof_id) = delivery_proof_id {
+            context = context.with_delivery_proof_id(delivery_proof_id);
+        }
+        ScheduleValidatorChallengeRequest {
+            idempotency_key: format!("idemp.compute.validator.schedule.{challenge_id}"),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            challenge: ValidatorChallengeRequest::new(
+                context,
+                GpuFreivaldsMerkleWitness::from_matrices(
+                    &[vec![1, 2], vec![3, 4]],
+                    &[vec![5, 6], vec![7, 8]],
+                    &[vec![19, 22], vec![43, 50]],
+                )
+                .expect("challenge witness"),
+            ),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_lease_request(
+        challenge_id: &str,
+        validator_id: &str,
+        requested_at_ms: u64,
+        idempotency_key: &str,
+    ) -> LeaseValidatorChallengeRequest {
+        LeaseValidatorChallengeRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            challenge_id: challenge_id.to_string(),
+            validator_id: validator_id.to_string(),
+            requested_at_ms,
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_result(
+        challenge_id: &str,
+        finalized_at_ms: u64,
+        attempt: u32,
+        status: ValidatorChallengeStatus,
+        verdict: ValidatorChallengeVerdict,
+        detail: &str,
+    ) -> ValidatorChallengeResult {
+        ValidatorChallengeResult {
+            challenge_id: challenge_id.to_string(),
+            proof_bundle_digest: "proof-bundle-digest.alpha".to_string(),
+            protocol_id: "openagents.validator.gpu_freivalds_merkle.v1".to_string(),
+            attempt,
+            status,
+            verdict,
+            reason_code: None,
+            detail: detail.to_string(),
+            created_at_ms: 0,
+            finalized_at_ms,
+            challenge_seed_digest: None,
+            verified_row_count: None,
+            result_digest: format!("sha256:result:{challenge_id}:{attempt}:{finalized_at_ms}"),
+            challenge_result_ref: format!(
+                "validator_challenge_result:{challenge_id}:{attempt}:{finalized_at_ms}"
+            ),
         }
     }
 
@@ -6671,6 +6761,261 @@ mod tests {
                 .iter()
                 .any(|receipt| { receipt.receipt_type == "kernel.compute.delivery.recorded" })
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn validator_challenge_routes_schedule_lease_finalize_and_list() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(30_000);
+
+        let product = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.validator-route",
+                            created_at_ms,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(product.status(), StatusCode::OK);
+
+        let lot = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
+                        "lot.compute.validator-route",
+                        "ollama.text_generation",
+                        "idemp.compute.lot.validator-route",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lot.status(), StatusCode::OK);
+
+        let instrument = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &capacity_instrument_wire_request(
+                            "instrument.compute.validator-route",
+                            "ollama.text_generation",
+                            "lot.compute.validator-route",
+                            "idemp.compute.instrument.validator-route",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(instrument.status(), StatusCode::OK);
+
+        let mut delivery_request = delivery_proof_request(
+            "delivery.compute.validator-route",
+            "ollama.text_generation",
+            "lot.compute.validator-route",
+            "instrument.compute.validator-route",
+            "idemp.compute.delivery.validator-route",
+            created_at_ms + 3_000,
+        );
+        delivery_request.delivery_proof.verification_evidence = Some(
+            openagents_kernel_core::compute::DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            },
+        );
+        let delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.validator-route/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::record_delivery_proof_request_to_proto(
+                            &delivery_request,
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(delivery.status(), StatusCode::OK);
+
+        let schedule = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/validator_challenges")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &validator_challenge_request(
+                            "challenge.compute.validator-route",
+                            Some("delivery.compute.validator-route"),
+                            (created_at_ms + 4_000) as u64,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(schedule.status(), StatusCode::OK);
+        let scheduled: ScheduleValidatorChallengeResponse = response_json(schedule).await?;
+        assert_eq!(scheduled.challenge.status, ValidatorChallengeStatus::Queued);
+
+        let queued_list = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/validator_challenges?status=queued")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(queued_list.status(), StatusCode::OK);
+        let queued: Vec<openagents_validator_service::ValidatorChallengeSnapshot> =
+            response_json(queued_list).await?;
+        assert_eq!(queued.len(), 1);
+        assert_eq!(
+            queued[0].request.context.challenge_id,
+            "challenge.compute.validator-route"
+        );
+
+        let lease = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/validator_challenges/challenge.compute.validator-route/lease")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&validator_lease_request(
+                        "challenge.compute.validator-route",
+                        "validator.route",
+                        (created_at_ms + 5_000) as u64,
+                        "idemp.compute.validator.lease.route",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lease.status(), StatusCode::OK);
+        let leased: LeaseValidatorChallengeResponse = response_json(lease).await?;
+        assert_eq!(leased.challenge.status, ValidatorChallengeStatus::Leased);
+
+        let finalize = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/validator_challenges/challenge.compute.validator-route/finalize")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &FinalizeValidatorChallengeRequest {
+                            idempotency_key: "idemp.compute.validator.finalize.route".to_string(),
+                            trace: TraceContext::default(),
+                            policy: kernel_policy(),
+                            lease: leased.lease.clone(),
+                            result: validator_result(
+                                "challenge.compute.validator-route",
+                                (created_at_ms + 6_000) as u64,
+                                leased.lease.attempt,
+                                ValidatorChallengeStatus::Verified,
+                                ValidatorChallengeVerdict::Verified,
+                                "validator verified the claimed matrix product",
+                            ),
+                            evidence: Vec::new(),
+                            hints: ReceiptHints::default(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalize.status(), StatusCode::OK);
+        let finalized: super::FinalizeValidatorChallengeResponse = response_json(finalize).await?;
+        assert_eq!(
+            finalized.challenge.status,
+            ValidatorChallengeStatus::Verified
+        );
+
+        let challenge = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(
+                        "/v1/kernel/compute/validator_challenges/challenge.compute.validator-route",
+                    )
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(challenge.status(), StatusCode::OK);
+        let challenge: openagents_validator_service::ValidatorChallengeSnapshot =
+            response_json(challenge).await?;
+        assert_eq!(challenge.status, ValidatorChallengeStatus::Verified);
+        assert_eq!(
+            challenge.final_result.as_ref().map(|result| result.verdict),
+            Some(ValidatorChallengeVerdict::Verified)
+        );
+
+        let delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/delivery_proofs/delivery.compute.validator-route")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(delivery.status(), StatusCode::OK);
+        let delivery = compute_contracts::get_delivery_proof_response_from_proto(
+            &response_json::<proto_compute::GetDeliveryProofResponse>(delivery).await?,
+        )?;
+        assert_eq!(delivery.status, DeliveryProofStatus::Accepted);
+        assert_eq!(
+            delivery
+                .verification_evidence
+                .as_ref()
+                .map(|evidence| evidence.challenge_result_refs.len()),
+            Some(1)
+        );
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.compute_validator_challenges_verified_24h, 1);
 
         Ok(())
     }
