@@ -86,6 +86,11 @@ Implemented now:
   one shared request shape, explicit per-model capability reporting, response
   headers, and machine-readable structured values instead of hidden
   prompt-only conventions or string re-parsing.
+- Psionic-owned tool-calling contracts on the generic server via `tools` plus
+  `tool_choice`, with explicit `none` / `auto` / `required` / named modes,
+  tagged tool envelopes, schema-backed argument validation, and
+  machine-readable tool-call surfaces on both normal and streaming chat
+  responses.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded

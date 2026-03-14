@@ -835,14 +835,20 @@ too through a widened generic serving surface: real `/v1/embeddings` on the
 existing embeddings substrate, a first Psionic-owned `/v1/responses` contract,
 heterogeneous model inventory across decoder and embeddings artifacts, and
 truthful per-model endpoint support in `/v1/models` and `/health`. The next
-dependency-ordered issue in that chain is now `PSI-245` /
-[#3550](https://github.com/OpenAgentsInc/openagents/issues/3550). `PSI-244` /
+dependency-ordered issue in that chain is now `PSI-246` /
+[#3551](https://github.com/OpenAgentsInc/openagents/issues/3551). `PSI-244` /
 [#3549](https://github.com/OpenAgentsInc/openagents/issues/3549) is now landed
 too through one widened structured-output contract covering choice, regex,
 grammar, JSON schema, JSON object, and tagged structure cases, explicit
 fallback-vs-unsupported capability reporting on the generic server, and
 machine-readable structured values that survive `/v1/chat/completions` and
-`/v1/responses` instead of forcing callers to re-parse raw strings.
+`/v1/responses` instead of forcing callers to re-parse raw strings. `PSI-245` /
+[#3550](https://github.com/OpenAgentsInc/openagents/issues/3550) is now landed
+too through first-class `tools` / `tool_choice` contracts on the generic
+server, explicit `none` / `auto` / `required` / named tool modes, tagged
+structured-output tool envelopes with parser-backed JSON-schema validation, and
+truthful tool-calling capability reporting plus streaming/non-streaming
+machine-readable tool-call surfaces.
 
 ## Current Reality
 
