@@ -1866,11 +1866,31 @@ the final train-program gap.
 
 ### 30. `Benchmarking: define performance acceptance thresholds for trainer, sandbox, datastream, and validation`
 
-The final production gap is quantitative acceptance. This issue should define
-trainer throughput, rollout ingestion throughput, sandbox reuse latency,
-checkpoint recovery latency, validator-cost targets, and scaling curves under
-elastic membership. It should answer not only "does it work?" but "is it good
-enough to run seriously?"
+Status: implemented on 2026-03-14 via GitHub issue `#3593`.
+
+`psionic-train` now owns a typed quantitative acceptance layer in
+`src/benchmarking.rs` instead of leaving train performance closure to ad hoc
+notes or one-off benchmark scripts.
+
+The new benchmark contract makes these production thresholds explicit:
+
+- fixed-budget trainer throughput
+- rollout ingestion throughput at the orchestrator boundary
+- warm sandbox reuse latency and reuse ratio
+- checkpoint restore latency plus resumable datastream recovery throughput
+- validator verification cost and sampled benchmark-check share
+- elastic scaling curves from two to four members, including degraded transport
+  fallback
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_BENCHMARK_ACCEPTANCE_REFERENCE.md`
+- `scripts/release/check-psionic-train-benchmark-acceptance.sh`
+
+This issue closes the last train-system gap called out at the end of the issue
+program: Psionic now has both chaos-style reliability drills and one owned
+acceptance profile for deciding whether the current train substrate is fast and
+stable enough to claim seriously.
 
 ## Later-Scope Issues
 

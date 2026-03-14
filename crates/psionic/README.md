@@ -337,6 +337,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_RELIABILITY_REFERENCE.md](docs/TRAIN_RELIABILITY_REFERENCE.md)** —
   canonical chaos-scenario, failure-injection, and recovery-suite runbook for
   the train reliability layer in `psionic-train`.
+- **[docs/TRAIN_BENCHMARK_ACCEPTANCE_REFERENCE.md](docs/TRAIN_BENCHMARK_ACCEPTANCE_REFERENCE.md)** —
+  canonical threshold profile, benchmark categories, and runnable acceptance
+  harness for the quantitative train completion layer in `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
