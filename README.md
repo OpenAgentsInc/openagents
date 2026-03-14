@@ -9,7 +9,17 @@ We are focused on two linked problems in AI:
 - compute supply is constrained, so capacity has to be allocated more
   intelligently
 
-Our direct answers are the `Risk Market` and the `Compute Market`.
+The OpenAgents marketplace has five interlocking markets:
+
+- `Compute`
+- `Data`
+- `Labor`
+- `Liquidity`
+- `Risk`
+
+Our sharpest direct answers to the two problems above are the `Risk Market` and
+the `Compute Market`, while the other three markets complete the broader
+machine-work economy.
 
 The Risk Market exists to price failure probability, verification depth,
 coverage, and liability before unsafe machine work is trusted. The Compute
