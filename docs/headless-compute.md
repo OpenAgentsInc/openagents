@@ -267,6 +267,26 @@ Repeatable scripted form:
 scripts/release/check-gpt-oss-nvidia-mission-control.sh
 ```
 
+Canonical seller-lane perf harness:
+
+```bash
+scripts/release/check-gpt-oss-nvidia-seller-lane-perf.sh
+```
+
+That harness launches the desktop app with the configured CUDA GGUF, captures
+the cold app-owned local-runtime preflight snapshot, runs the canonical
+Psionic-only CUDA benchmark pass, warms the seller lane through `autopilotctl`,
+and writes a machine-readable artifact at:
+
+```text
+target/gpt-oss-nvidia-seller-lane-perf/seller-lane-perf.json
+```
+
+The run directory also preserves raw desktop-control snapshots, benchmark case
+summaries, app logs, and a short `summary.txt`. Set
+`OPENAGENTS_GPT_OSS_NVIDIA_BASELINE_ARTIFACT=/absolute/path/to/prior/seller-lane-perf.json`
+to include a baseline/regression comparison section in the new artifact.
+
 Cross-stack launch validation:
 
 ```bash
@@ -285,8 +305,9 @@ Operational notes:
 - `autopilotctl local-runtime status` now surfaces seller-lane execution
   posture (`cold`, `warming`, `warm`, `compile_failed`, `cache_invalidated`),
   scheduler posture, last compile-path temperature, execution-plan/kernel-cache
-  occupancy, last cold-compile or warm-refresh duration, typed cache
-  invalidation reason, and the last compile-failure summary when one exists
+  occupancy, selected device inventory, last cold-compile or warm-refresh
+  duration, typed cache invalidation reason, and the last compile-failure
+  summary when one exists
 - `gpt-oss warm` and `gpt-oss unload` act directly on the configured GGUF model
 - `local-runtime refresh` re-reads `OPENAGENTS_GPT_OSS_BACKEND` and
   `OPENAGENTS_GPT_OSS_MODEL_PATH`; if the backend, configured model, or local

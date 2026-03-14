@@ -57,7 +57,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 12;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 13;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
