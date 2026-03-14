@@ -795,6 +795,14 @@ The active NVIDIA queue is now `#3345 -> #3360`, focused only on the GPT-OSS
 not use proxy-mode benchmark results to claim closure for any of those Metal
 issues.
 
+The inference-generalization queue from
+`docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md` is now active too: `PSI-233` /
+[#3538](https://github.com/OpenAgentsInc/openagents/issues/3538) is now landed
+in-tree through a generic GGUF CPU runtime that executes Llama, Qwen, and
+Mistral families through Psionic-owned paths, and the next dependency-ordered
+issue in that chain is `PSI-234` /
+[#3539](https://github.com/OpenAgentsInc/openagents/issues/3539).
+
 ## Current Reality
 
 The checked-in repo is no longer at "phase 0 bootstrap." The current truthful
@@ -804,6 +812,10 @@ baseline on `main` is:
   path is now landed too: Psionic loads `gpt-oss` / OpenAI-MoE GGUFs, executes the
   real decoder path, preserves mixed `MXFP4` / `Q8_0` storage truth, and now
   exposes a real GGUF-backed NVIDIA text-generation path
+- Psionic now also has a generic CPU GGUF execution entrypoint for dense
+  decoder families beyond GPT-OSS, with real runtime tokenization plus
+  representative executed Llama, Qwen, and Mistral paths instead of treating
+  those families as metadata-only adapters
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through

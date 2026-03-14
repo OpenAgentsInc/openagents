@@ -17,6 +17,7 @@
 )]
 
 mod conformance;
+mod gguf;
 mod gpt_oss;
 mod openai_http;
 
@@ -26,6 +27,7 @@ use std::{
 };
 
 pub use conformance::*;
+pub use gguf::*;
 pub use gpt_oss::*;
 pub use openai_http::*;
 pub use psionic_adapters::*;
