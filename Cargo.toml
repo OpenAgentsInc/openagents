@@ -10,6 +10,7 @@ members = [
     "crates/openagents-kernel-core",
     "crates/openagents-kernel-proto",
     "crates/openagents-provider-substrate",
+    "crates/openagents-validator-service",
     "crates/nostr/client",
     "crates/nostr/core",
     "crates/openagents-ios-domain",

@@ -933,6 +933,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Keep the proof posture explicit so products can declare whether they require, support, or ignore this layer.
 
 28. **Validator Service: implement Freivalds/Merkle-style GPU challenge protocol**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3512`.
    - Rebuild the useful `gpu-challenge` pattern as an OpenAgents validator service with challenge queues, commitments, and result receipts.
    - The output should be usable by settlement and risk systems, not just a benchmark script.
 

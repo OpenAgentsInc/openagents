@@ -1,0 +1,19 @@
+[package]
+name = "openagents-validator-service"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Validator challenge execution substrate for OpenAgents compute"
+
+[lints]
+workspace = true
+
+[dependencies]
+hex = { workspace = true }
+psionic-runtime = { path = "../psionic/psionic-runtime" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
