@@ -30,6 +30,7 @@ members = [
     "crates/psionic/psionic-environments",
     "crates/psionic/psionic-data",
     "crates/psionic/psionic-eval",
+    "crates/psionic/psionic-research",
     "crates/psionic/psionic-train",
     "crates/psionic/psionic-adapters",
     "crates/psionic/psionic-models",
