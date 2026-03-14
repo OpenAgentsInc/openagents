@@ -114,6 +114,9 @@ pub(crate) use tool_bridge::{
     resolve_pane_kind_for_runtime as desktop_control_resolve_pane_kind_for_runtime,
 };
 
+const BACKGROUND_FAST_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const BACKGROUND_COARSE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
 }
@@ -242,10 +245,6 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     let Some(state) = &mut app.state else {
         return;
     };
-
-    if pump_background_state(state) {
-        state.window.request_redraw();
-    }
 
     match event {
         WindowEvent::CloseRequested => {
@@ -496,9 +495,6 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::RedrawRequested => {
-            // Keep background lanes advancing even during redraw-heavy periods.
-            // Without this, Codex notifications can backlog until the next input event.
-            let _ = pump_background_state(state);
             match render_frame(state) {
                 Ok(report) => state.frame_debugger.record_frame(report),
                 Err(error) => {
@@ -800,8 +796,49 @@ fn background_poll_interval(
 }
 
 fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
-    let mut changed = false;
     let now = std::time::Instant::now();
+    let mut changed = pump_background_every_loop(state, now);
+    if cadence_due(
+        &mut state.background_cadence.last_fast_poll_at,
+        now,
+        BACKGROUND_FAST_POLL_INTERVAL,
+    ) {
+        state.background_cadence.fast_poll_runs =
+            state.background_cadence.fast_poll_runs.saturating_add(1);
+        if pump_background_fast_interval(state) {
+            changed = true;
+        }
+    }
+    if cadence_due(
+        &mut state.background_cadence.last_coarse_poll_at,
+        now,
+        BACKGROUND_COARSE_POLL_INTERVAL,
+    ) {
+        state.background_cadence.coarse_poll_runs =
+            state.background_cadence.coarse_poll_runs.saturating_add(1);
+        if pump_background_coarse_interval(state) {
+            changed = true;
+        }
+    }
+    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+    if state.sync_nip90_payment_facts_background_tick(now) {
+        changed = true;
+    }
+    refresh_network_aggregate_counters(state, now);
+    refresh_earnings_scoreboard(state, now);
+    refresh_sync_health(state);
+    mirror_ui_errors_to_console(state);
+    changed
+}
+
+fn pump_background_every_loop(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    // Cheap drains and local state machines that must keep advancing every loop.
+    state.background_cadence.every_loop_runs =
+        state.background_cadence.every_loop_runs.saturating_add(1);
+    let mut changed = false;
     if reducers::drain_spark_worker_updates(state) {
         changed = true;
     }
@@ -811,22 +848,19 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::drain_runtime_lane_updates(state) {
         changed = true;
     }
-    if crate::provider_admin::pump_runtime(state) {
+    if crate::provider_admin::drain_runtime_updates(state) {
         changed = true;
     }
-    if crate::desktop_control::pump_runtime(state) {
+    if crate::desktop_control::drain_runtime_updates(state) {
         changed = true;
     }
-    if crate::codex_remote::pump_runtime(state) {
+    if crate::codex_remote::drain_runtime_updates(state) {
         changed = true;
     }
     if crate::chat_terminal::pump_runtime(state) {
         changed = true;
     }
     if crate::kernel_control::drain_kernel_projection_updates(state) {
-        changed = true;
-    }
-    if crate::kernel_control::refresh_provider_inventory_rows(state) {
         changed = true;
     }
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
@@ -898,15 +932,39 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if state.log_stream.has_pending_mirrored_trace_logs() {
         changed = true;
     }
-    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
-    if state.sync_nip90_payment_facts_background_tick(now) {
+    changed
+}
+
+fn pump_background_fast_interval(state: &mut crate::app_state::RenderState) -> bool {
+    // Mirrored control surfaces and derived inventory can tolerate a short poll cadence.
+    let mut changed = false;
+    if crate::desktop_control::poll_runtime(state) {
         changed = true;
     }
-    refresh_network_aggregate_counters(state, now);
-    refresh_earnings_scoreboard(state, now);
-    refresh_sync_health(state);
-    mirror_ui_errors_to_console(state);
+    if crate::codex_remote::poll_runtime(state) {
+        changed = true;
+    }
+    if crate::kernel_control::refresh_provider_inventory_rows(state) {
+        changed = true;
+    }
     changed
+}
+
+fn pump_background_coarse_interval(state: &mut crate::app_state::RenderState) -> bool {
+    // Provider admin sync is intentionally slower than the UI/control mirrors.
+    crate::provider_admin::poll_runtime(state)
+}
+
+fn cadence_due(
+    last_ran_at: &mut Option<std::time::Instant>,
+    now: std::time::Instant,
+    interval: std::time::Duration,
+) -> bool {
+    let due = last_ran_at.is_none_or(|last| now.saturating_duration_since(last) >= interval);
+    if due {
+        *last_ran_at = Some(now);
+    }
+    due
 }
 
 fn run_startup_spark_wallet_convergence_tick(state: &mut crate::app_state::RenderState) -> bool {
@@ -3800,7 +3858,7 @@ mod tests {
         build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
-        cad_turn_approval_policy, format_provider_blockers_for_display,
+        cad_turn_approval_policy, cadence_due, format_provider_blockers_for_display,
         goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
         is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
         provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
@@ -4073,6 +4131,25 @@ mod tests {
         assert!(rive_preview_cadence_active(true, true));
         assert!(!rive_preview_cadence_active(false, true));
         assert!(!rive_preview_cadence_active(true, false));
+    }
+
+    #[test]
+    fn cadence_due_runs_immediately_then_waits_for_interval() {
+        let now = std::time::Instant::now();
+        let mut last_ran_at = None;
+        let interval = Duration::from_millis(250);
+
+        assert!(cadence_due(&mut last_ran_at, now, interval));
+        assert!(!cadence_due(
+            &mut last_ran_at,
+            now + Duration::from_millis(100),
+            interval
+        ));
+        assert!(cadence_due(
+            &mut last_ran_at,
+            now + Duration::from_millis(250),
+            interval
+        ));
     }
 
     #[test]

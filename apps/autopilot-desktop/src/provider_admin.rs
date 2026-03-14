@@ -36,19 +36,16 @@ pub fn set_desired_mode(state: &mut RenderState, desired_mode: ProviderDesiredMo
 
 pub fn pump_runtime(state: &mut RenderState) -> bool {
     let mut changed = false;
-    if state.provider_runtime.refresh_sandbox_supply_if_due() {
-        changed = true;
-    }
     if drain_runtime_updates(state) {
         changed = true;
     }
-    if sync_runtime_snapshot(state) {
+    if poll_runtime(state) {
         changed = true;
     }
     changed
 }
 
-fn drain_runtime_updates(state: &mut RenderState) -> bool {
+pub fn drain_runtime_updates(state: &mut RenderState) -> bool {
     let updates = match state.provider_admin_runtime.as_mut() {
         Some(runtime) => runtime.drain_updates(),
         None => return false,
@@ -66,6 +63,17 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
                 changed = true;
             }
         }
+    }
+    changed
+}
+
+pub fn poll_runtime(state: &mut RenderState) -> bool {
+    let mut changed = false;
+    if state.provider_runtime.refresh_sandbox_supply_if_due() {
+        changed = true;
+    }
+    if sync_runtime_snapshot(state) {
+        changed = true;
     }
     changed
 }

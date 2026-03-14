@@ -505,13 +505,13 @@ pub fn pump_runtime(state: &mut RenderState) -> bool {
     if drain_runtime_updates(state) {
         changed = true;
     }
-    if sync_runtime_snapshot(state) {
+    if poll_runtime(state) {
         changed = true;
     }
     changed
 }
 
-fn drain_runtime_updates(state: &mut RenderState) -> bool {
+pub fn drain_runtime_updates(state: &mut RenderState) -> bool {
     let updates = match state.codex_remote_runtime.as_mut() {
         Some(runtime) => runtime.drain_updates(),
         None => return false,
@@ -531,6 +531,10 @@ fn drain_runtime_updates(state: &mut RenderState) -> bool {
         }
     }
     changed
+}
+
+pub fn poll_runtime(state: &mut RenderState) -> bool {
+    sync_runtime_snapshot(state)
 }
 
 fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
