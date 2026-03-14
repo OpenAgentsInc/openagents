@@ -32,6 +32,9 @@ This document is the canonical system spec for Psionic as a whole. It answers:
 
 This doc should be read together with:
 
+- `crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`
+  - framework-core completion bar for tensor, compiler, IO, replay, and local
+    multi-device behavior, distinct from serving or train product acceptance
 - `crates/psionic/docs/TRAIN_SYSTEM.md`
   - deep subsystem spec for training-class execution
 - `crates/psionic/docs/INFERENCE_ENGINE.md`

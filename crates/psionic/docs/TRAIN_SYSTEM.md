@@ -48,6 +48,9 @@ transport behavior.
   spec.
 - `crates/psionic/docs/ARCHITECTURE.md` is the canonical Psionic-wide system
   spec that defines the lower execution substrate this doc builds on.
+- `crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md` is the canonical
+  framework-core acceptance split; train acceptance must not be used as a
+  substitute for framework-core parity claims.
 - `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md` is
   research rationale, not the canonical current-state spec.
 - `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`
