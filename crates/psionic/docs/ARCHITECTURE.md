@@ -11,7 +11,8 @@ Psionic is structured as a layered engine subtree.
 3. `psionic-compiler`
    Lowering, scheduling, and plan construction boundaries over IR.
 4. `psionic-runtime`
-   Runtime traits for devices, buffers, allocators, and execution.
+   Runtime traits for devices, buffers, allocators, execution, low-level
+   quantization dispatch, and worker batching/parking decisions.
 5. `psionic-net`
    Peer identity, direct/NAT/relay session lifecycle, relay-backed rendezvous,
    durable trust/candidate state, logical-stream reservation, bounded HTTP
