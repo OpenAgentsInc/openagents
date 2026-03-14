@@ -804,6 +804,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     }
 
     let provider_blockers = state.provider_blockers();
+    let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
@@ -1130,6 +1131,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.credit_settlement_ledger,
             &state.cad_demo,
             &state.spark_wallet,
+            &provider_inventory,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
             &mut state.create_invoice_inputs,

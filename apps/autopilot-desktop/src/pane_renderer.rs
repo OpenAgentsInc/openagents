@@ -146,6 +146,7 @@ impl PaneRenderer {
         credit_settlement_ledger: &CreditSettlementLedgerPaneState,
         cad_demo: &CadDemoPaneState,
         spark_wallet: &SparkPaneState,
+        provider_inventory: &crate::provider_inventory::DesktopControlInventoryStatus,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
@@ -268,6 +269,7 @@ impl PaneRenderer {
                         provider_blockers,
                         backend_kernel_authority,
                         spark_wallet,
+                        provider_inventory,
                         paint,
                     );
                 }

@@ -24,6 +24,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
+pub use crate::provider_inventory::{
+    DesktopControlInventoryProductStatus, DesktopControlInventoryProjectionStatus,
+    DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
+};
+
 use crate::app_state::{
     DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
@@ -39,7 +44,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 6;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 7;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -68,6 +73,7 @@ pub struct DesktopControlSnapshot {
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
     pub tunnels: DesktopControlTunnelsStatus,
+    pub inventory: DesktopControlInventoryStatus,
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub proofs: DesktopControlProofStatus,
@@ -1356,6 +1362,16 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.wallet).ok(),
         });
     }
+    if previous.is_none_or(|snapshot| snapshot.inventory != current.inventory) {
+        changed_domains.push("inventory");
+        events.push(DesktopControlEventDraft {
+            event_type: "inventory.state.changed".to_string(),
+            summary: inventory_status_summary(&current.inventory),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.inventory).ok(),
+        });
+    }
     if previous.is_none_or(|snapshot| snapshot.cluster != current.cluster) {
         changed_domains.push("cluster");
         events.push(DesktopControlEventDraft {
@@ -1681,6 +1697,10 @@ fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
         status.balance_reconciling,
         status.can_withdraw
     )
+}
+
+fn inventory_status_summary(status: &DesktopControlInventoryStatus) -> String {
+    crate::provider_inventory::inventory_status_summary(status)
 }
 
 fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
@@ -2880,9 +2900,7 @@ fn desktop_control_cluster_status() -> DesktopControlClusterStatus {
         topology_label: "not_integrated".to_string(),
         member_count: 0,
         members: Vec::new(),
-        last_error: Some(
-            "cluster transport is not integrated into the desktop control plane yet".to_string(),
-        ),
+        last_error: Some(crate::provider_inventory::CLUSTER_NOT_INTEGRATED_REASON.to_string()),
     }
 }
 
@@ -3025,6 +3043,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         .map(desktop_control_buy_mode_request_status)
         .collect::<Vec<_>>();
     let local_runtime = desktop_control_local_runtime_status(state);
+    let inventory = crate::provider_inventory::inventory_status_for_state(state);
     let gpt_oss = desktop_control_gpt_oss_status(state);
 
     let mut snapshot = DesktopControlSnapshot {
@@ -3085,6 +3104,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.spark_wallet.last_error.clone(),
         },
         tunnels: DesktopControlTunnelsStatus::default(),
+        inventory,
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         proofs: desktop_control_proof_status(),
@@ -3770,14 +3790,15 @@ mod tests {
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
         DesktopControlBuyModeTargetSelectionStatus, DesktopControlChallengeStatus,
         DesktopControlClusterStatus, DesktopControlEventBatch, DesktopControlEventDraft,
-        DesktopControlGptOssStatus, DesktopControlLocalRuntimeStatus,
-        DesktopControlMissionControlStatus, DesktopControlProofStatus,
-        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
-        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
-        DesktopControlWalletStatus, apply_response_snapshot_metadata, command_outcome_event,
-        command_received_event, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlGptOssStatus, DesktopControlInventoryProjectionStatus,
+        DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
+        DesktopControlLocalRuntimeStatus, DesktopControlMissionControlStatus,
+        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
+        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
+        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, apply_response_snapshot_metadata,
+        command_outcome_event, command_received_event, snapshot_change_events,
+        snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -3927,15 +3948,69 @@ mod tests {
                 }],
                 tunnels: Vec::new(),
             },
+            inventory: DesktopControlInventoryStatus {
+                authority: "kernel_projected".to_string(),
+                projection: DesktopControlInventoryProjectionStatus {
+                    source: "kernel_projection".to_string(),
+                    latest_snapshot_id: Some("snapshot.compute.1".to_string()),
+                    compute_products_active: 2,
+                    compute_capacity_lots_open: 2,
+                    compute_capacity_lots_delivering: 0,
+                    compute_inventory_quantity_open: 1024,
+                    compute_inventory_quantity_reserved: 0,
+                    compute_inventory_quantity_delivering: 0,
+                    compute_delivery_proofs_24h: 8,
+                    compute_validator_challenges_open: 1,
+                },
+                sections: vec![
+                    DesktopControlInventorySectionStatus {
+                        section_id: "local".to_string(),
+                        label: "Local".to_string(),
+                        available: true,
+                        blocker_reason: None,
+                        summary: "products=1 ready=1 eligible=1 open_quantity=1024".to_string(),
+                        product_count: 1,
+                        ready_product_count: 1,
+                        eligible_product_count: 1,
+                        open_quantity: 1024,
+                        products: Vec::new(),
+                    },
+                    DesktopControlInventorySectionStatus {
+                        section_id: "cluster".to_string(),
+                        label: "Cluster".to_string(),
+                        available: false,
+                        blocker_reason: Some(
+                            crate::provider_inventory::CLUSTER_NOT_INTEGRATED_REASON.to_string(),
+                        ),
+                        summary: "topology=not_integrated members=0".to_string(),
+                        product_count: 0,
+                        ready_product_count: 0,
+                        eligible_product_count: 0,
+                        open_quantity: 0,
+                        products: Vec::new(),
+                    },
+                    DesktopControlInventorySectionStatus {
+                        section_id: "sandbox".to_string(),
+                        label: "Sandbox".to_string(),
+                        available: true,
+                        blocker_reason: None,
+                        summary:
+                            "profiles=1 ready_profiles=1 products=1 ready=1 eligible=1 open_quantity=32"
+                                .to_string(),
+                        product_count: 1,
+                        ready_product_count: 1,
+                        eligible_product_count: 1,
+                        open_quantity: 32,
+                        products: Vec::new(),
+                    },
+                ],
+            },
             cluster: DesktopControlClusterStatus {
                 available: false,
                 topology_label: "not_integrated".to_string(),
                 member_count: 0,
                 members: Vec::new(),
-                last_error: Some(
-                    "cluster transport is not integrated into the desktop control plane yet"
-                        .to_string(),
-                ),
+                last_error: Some(crate::provider_inventory::CLUSTER_NOT_INTEGRATED_REASON.to_string()),
             },
             sandbox: DesktopControlSandboxStatus {
                 available: true,
@@ -3988,6 +4063,24 @@ mod tests {
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
             last_command: None,
         }
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_inventory_event_when_inventory_truth_changes() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        current.inventory.authority = "local_only".to_string();
+        current.inventory.projection.source = "local_only".to_string();
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        let inventory = events
+            .iter()
+            .find(|event| event.event_type == "inventory.state.changed")
+            .expect("inventory change event should be emitted");
+
+        assert!(inventory.summary.contains("inventory authority=local_only"));
+        assert_eq!(inventory.command_label, None);
+        assert_eq!(inventory.success, None);
     }
 
     #[test]
