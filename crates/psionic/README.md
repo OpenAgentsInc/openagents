@@ -53,12 +53,13 @@ This subtree now has a tested CPU product baseline, a first Metal-backed
 for direct/NAT/relay connectivity, durable ordered-state persistence, policy-
 driven wider-network candidate admission, truthful remote whole-request
 scheduling, replica-routed clustered serving with explicit replica evidence,
-layer-sharded clustered serving with explicit handoff evidence, and restart-safe
-catch-up in `psionic-cluster`, tensor-sharded clustered serving with explicit
-collective evidence, and artifact residency/staging truth for clustered
-placement, plus sharded-model manifest and pre-shard artifact support across
-runtime, serve, and clustered execution evidence. AMD execution support is
-still future work.
+public-network pipeline-parallel clustered serving with explicit stage timing
+and transport evidence, layer-sharded clustered serving with explicit handoff
+evidence, and restart-safe catch-up in `psionic-cluster`, tensor-sharded
+clustered serving with explicit collective evidence, and artifact
+residency/staging truth for clustered placement, plus sharded-model manifest
+and pre-shard artifact support across runtime, serve, and clustered execution
+evidence. AMD execution support is still future work.
 
 ## Docs
 

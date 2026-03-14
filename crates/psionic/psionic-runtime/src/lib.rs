@@ -272,6 +272,8 @@ pub enum ClusterTransportClass {
     TrustedLanDatagram,
     /// Trusted-LAN stream transport such as TCP or QUIC.
     TrustedLanStream,
+    /// Wider-network authenticated stream transport such as public-network TCP or QUIC.
+    WiderNetworkStream,
     /// Multiple transport classes participated in the request path.
     Mixed,
 }
@@ -799,6 +801,8 @@ pub enum ClusterCommunicationClass {
     RemoteDispatch,
     /// Route the request through one warm replica lane without model partitioning.
     ReplicaRouting,
+    /// Stream stage handoff state across pipeline-parallel boundaries.
+    PipelineStageHandoff,
     /// Stream activation or KV state across layer-sharded boundaries.
     LayerShardHandoff,
     /// Exchange mesh-style tensor collectives across tensor shards.
@@ -813,6 +817,8 @@ pub enum ClusterExecutionLane {
     RemoteWholeRequest,
     /// Replica-routed serving to one warm lane.
     ReplicaRouted,
+    /// Pipeline-parallel execution across ordered stage boundaries.
+    PipelineSharded,
     /// Layer-sharded execution with cross-node activation or KV handoff.
     LayerSharded,
     /// Tensor-sharded execution with cross-node collectives.
@@ -826,6 +832,7 @@ impl ClusterExecutionLane {
         match self {
             Self::RemoteWholeRequest => "remote_whole_request",
             Self::ReplicaRouted => "replica_routed",
+            Self::PipelineSharded => "pipeline_sharded",
             Self::LayerSharded => "layer_sharded",
             Self::TensorSharded => "tensor_sharded",
         }
@@ -837,6 +844,7 @@ impl ClusterExecutionLane {
         match self {
             Self::RemoteWholeRequest => ClusterCommunicationClass::RemoteDispatch,
             Self::ReplicaRouted => ClusterCommunicationClass::ReplicaRouting,
+            Self::PipelineSharded => ClusterCommunicationClass::PipelineStageHandoff,
             Self::LayerSharded => ClusterCommunicationClass::LayerShardHandoff,
             Self::TensorSharded => ClusterCommunicationClass::TensorCollectiveMesh,
         }
@@ -1086,6 +1094,7 @@ impl ClusterExecutionCapabilityProfile {
             hasher.update(match lane {
                 ClusterExecutionLane::RemoteWholeRequest => b"remote_whole_request".as_slice(),
                 ClusterExecutionLane::ReplicaRouted => b"replica_routed".as_slice(),
+                ClusterExecutionLane::PipelineSharded => b"pipeline_sharded".as_slice(),
                 ClusterExecutionLane::LayerSharded => b"layer_sharded".as_slice(),
                 ClusterExecutionLane::TensorSharded => b"tensor_sharded".as_slice(),
             });
@@ -1095,6 +1104,9 @@ impl ClusterExecutionCapabilityProfile {
             hasher.update(match communication_class {
                 ClusterCommunicationClass::RemoteDispatch => b"remote_dispatch".as_slice(),
                 ClusterCommunicationClass::ReplicaRouting => b"replica_routing".as_slice(),
+                ClusterCommunicationClass::PipelineStageHandoff => {
+                    b"pipeline_stage_handoff".as_slice()
+                }
                 ClusterCommunicationClass::LayerShardHandoff => b"layer_shard_handoff".as_slice(),
                 ClusterCommunicationClass::TensorCollectiveMesh => {
                     b"tensor_collective_mesh".as_slice()
@@ -1273,6 +1285,102 @@ impl ClusterFallbackStep {
     }
 }
 
+/// Ordered role of one stage in a pipeline-parallel plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterPipelineStageRole {
+    /// Entry stage that receives prompt input first.
+    Entry,
+    /// Middle stage that relays intermediate state onward.
+    Middle,
+    /// Exit stage that produces the final decode output.
+    Exit,
+}
+
+/// Machine-checkable timing and transport facts for one pipeline stage.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterPipelineStage {
+    /// Stable stage index inside the pipeline.
+    pub stage_index: usize,
+    /// Node that owns this stage.
+    pub node_id: String,
+    /// High-level role of the stage in the pipeline.
+    pub role: ClusterPipelineStageRole,
+    /// Inclusive starting layer index.
+    pub start_layer: usize,
+    /// Exclusive ending layer index.
+    pub end_layer: usize,
+    /// Estimated startup cost before this stage is warm enough to serve.
+    pub startup_cost_ms: u64,
+    /// Estimated prompt/prefill latency attributable to this stage.
+    pub prefill_latency_ms: u64,
+    /// Estimated per-token decode latency attributable to this stage.
+    pub decode_latency_ms: u64,
+    /// Transport used when handing off to the next stage, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handoff_transport: Option<ClusterTransportClass>,
+    /// Median or configured handoff latency to the next stage, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handoff_latency_ms: Option<u64>,
+    /// Observed or configured handoff bandwidth to the next stage, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handoff_bandwidth_mbps: Option<u64>,
+    /// Optional plain-language stage detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterPipelineStage {
+    /// Creates one pipeline-stage record from explicit timing and layer bounds.
+    #[must_use]
+    pub fn new(
+        stage_index: usize,
+        node_id: impl Into<String>,
+        role: ClusterPipelineStageRole,
+        start_layer: usize,
+        end_layer: usize,
+        startup_cost_ms: u64,
+        prefill_latency_ms: u64,
+        decode_latency_ms: u64,
+    ) -> Self {
+        Self {
+            stage_index,
+            node_id: node_id.into(),
+            role,
+            start_layer,
+            end_layer,
+            startup_cost_ms,
+            prefill_latency_ms,
+            decode_latency_ms,
+            handoff_transport: None,
+            handoff_latency_ms: None,
+            handoff_bandwidth_mbps: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches handoff transport facts to the next stage.
+    #[must_use]
+    pub fn with_handoff(
+        mut self,
+        handoff_transport: ClusterTransportClass,
+        handoff_latency_ms: Option<u64>,
+        handoff_bandwidth_mbps: Option<u64>,
+    ) -> Self {
+        self.handoff_transport = Some(handoff_transport);
+        self.handoff_latency_ms = handoff_latency_ms;
+        self.handoff_bandwidth_mbps = handoff_bandwidth_mbps;
+        self
+    }
+
+    /// Attaches plain-language stage detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
 /// Runtime-owned clustered execution evidence shared by capability, provenance, and receipt types.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterExecutionContext {
@@ -1321,6 +1429,9 @@ pub struct ClusterExecutionContext {
     /// Explicit cross-node activation or KV handoffs for sharded execution.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shard_handoffs: Vec<ClusterShardHandoff>,
+    /// Explicit stage timing and transport facts for pipeline-parallel execution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline_stages: Vec<ClusterPipelineStage>,
     /// Authorized command provenance facts that admitted or fenced this request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command_provenance: Vec<ClusterCommandProvenanceEvidence>,
@@ -1361,6 +1472,7 @@ impl ClusterExecutionContext {
             selected_nodes: Vec::new(),
             replica_nodes: Vec::new(),
             shard_handoffs: Vec::new(),
+            pipeline_stages: Vec::new(),
             command_provenance: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
@@ -1457,6 +1569,13 @@ impl ClusterExecutionContext {
         self
     }
 
+    /// Replaces the explicit pipeline-stage set.
+    #[must_use]
+    pub fn with_pipeline_stages(mut self, pipeline_stages: Vec<ClusterPipelineStage>) -> Self {
+        self.pipeline_stages = pipeline_stages;
+        self
+    }
+
     /// Replaces the command-provenance set for this clustered execution path.
     #[must_use]
     pub fn with_command_provenance(
@@ -1517,6 +1636,8 @@ pub enum ExecutionTopologyKind {
     SingleDevice,
     /// Multiple devices each hold a full replica of the executable state.
     Replicated,
+    /// Model layers are partitioned into ordered pipeline stages.
+    PipelineSharded,
     /// Model layers are partitioned across multiple devices.
     LayerSharded,
     /// One tensor axis is partitioned across multiple devices.
@@ -1616,6 +1737,33 @@ impl ExecutionTopologyPlan {
         }
     }
 
+    /// Creates a pipeline-sharded topology from explicit per-stage layer ranges.
+    #[must_use]
+    pub fn pipeline_sharded(
+        effective_backend: impl Into<String>,
+        stages: Vec<(DeviceInventoryQualifiers, usize, usize)>,
+    ) -> Self {
+        let assignments = stages
+            .iter()
+            .enumerate()
+            .map(
+                |(index, (device, start_layer, end_layer))| ExecutionShardAssignment {
+                    shard_id: index,
+                    device: ExecutionDevicePlacement::from_inventory(device, index),
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: *start_layer,
+                        end_layer: *end_layer,
+                    },
+                },
+            )
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::PipelineSharded,
+            assignments,
+        }
+    }
+
     /// Creates a layer-sharded topology from explicit per-device layer ranges.
     #[must_use]
     pub fn layer_sharded(
@@ -1679,6 +1827,7 @@ impl ExecutionTopologyPlan {
         hasher.update(match self.kind {
             ExecutionTopologyKind::SingleDevice => b"single_device".as_slice(),
             ExecutionTopologyKind::Replicated => b"replicated".as_slice(),
+            ExecutionTopologyKind::PipelineSharded => b"pipeline_sharded".as_slice(),
             ExecutionTopologyKind::LayerSharded => b"layer_sharded".as_slice(),
             ExecutionTopologyKind::TensorSharded => b"tensor_sharded".as_slice(),
         });

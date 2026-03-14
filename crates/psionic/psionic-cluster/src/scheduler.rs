@@ -253,6 +253,17 @@ pub fn layer_shard_handoff_communication_eligibility(
     )
 }
 
+/// Returns communication-class eligibility for one pipeline stage-handoff lane.
+#[must_use]
+pub fn pipeline_stage_handoff_communication_eligibility(
+    capability_profile: &ClusterExecutionCapabilityProfile,
+) -> ClusterCommunicationEligibility {
+    ClusterCommunicationEligibility::from_capability_profile_lane(
+        capability_profile,
+        ClusterExecutionLane::PipelineSharded,
+    )
+}
+
 /// Returns communication-class eligibility for one tensor-collective mesh lane.
 #[must_use]
 pub fn tensor_collective_communication_eligibility(
@@ -1080,9 +1091,8 @@ fn runtime_transport_class(transport: ClusterTransportClass) -> RuntimeClusterTr
     match transport {
         ClusterTransportClass::LoopbackUdp => RuntimeClusterTransportClass::Loopback,
         ClusterTransportClass::LanUdp => RuntimeClusterTransportClass::TrustedLanDatagram,
-        ClusterTransportClass::Tcp | ClusterTransportClass::Rdma => {
-            RuntimeClusterTransportClass::TrustedLanStream
-        }
+        ClusterTransportClass::Tcp => RuntimeClusterTransportClass::WiderNetworkStream,
+        ClusterTransportClass::Rdma => RuntimeClusterTransportClass::TrustedLanStream,
         ClusterTransportClass::Unknown => RuntimeClusterTransportClass::Mixed,
     }
 }
