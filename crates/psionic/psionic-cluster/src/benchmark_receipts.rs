@@ -24,6 +24,8 @@ pub enum ClusterBenchmarkId {
     RecoveryCatchup,
     /// Replicated serving planning benchmark gate.
     ReplicatedServing,
+    /// Pipeline-sharded planner benchmark gate.
+    PipelineShardedPlanner,
     /// Layer-sharded planner benchmark gate.
     LayerShardedPlanner,
     /// Tensor-sharded planner benchmark gate.
@@ -38,6 +40,7 @@ impl ClusterBenchmarkId {
             Self::WholeRequestScheduler => "whole_request_scheduler",
             Self::RecoveryCatchup => "recovery_catchup",
             Self::ReplicatedServing => "replicated_serving",
+            Self::PipelineShardedPlanner => "pipeline_sharded_planner",
             Self::LayerShardedPlanner => "layer_sharded_planner",
             Self::TensorShardedPlanner => "tensor_sharded_planner",
         }

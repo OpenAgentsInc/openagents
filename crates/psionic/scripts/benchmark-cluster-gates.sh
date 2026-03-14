@@ -18,6 +18,7 @@ Notes:
       whole_request_scheduler.json
       recovery_catchup.json
       replicated_serving.json
+      pipeline_sharded_planner.json
       layer_sharded_planner.json
       tensor_sharded_planner.json
 EOF
@@ -30,6 +31,7 @@ RECEIPT_IDS=(
   whole_request_scheduler
   recovery_catchup
   replicated_serving
+  pipeline_sharded_planner
   layer_sharded_planner
   tensor_sharded_planner
 )
@@ -62,6 +64,7 @@ echo "running=psionic-cluster release benchmark gates"
 echo "whole_request_max_ms=${PSIONIC_CLUSTER_BENCH_WHOLE_REQUEST_MAX_MS:-2500}"
 echo "recovery_max_ms=${PSIONIC_CLUSTER_BENCH_RECOVERY_MAX_MS:-2500}"
 echo "replicated_max_ms=${PSIONIC_CLUSTER_BENCH_REPLICATED_MAX_MS:-4000}"
+echo "pipeline_max_ms=${PSIONIC_CLUSTER_BENCH_PIPELINE_MAX_MS:-5000}"
 echo "layer_max_ms=${PSIONIC_CLUSTER_BENCH_LAYER_MAX_MS:-4000}"
 echo "tensor_max_ms=${PSIONIC_CLUSTER_BENCH_TENSOR_MAX_MS:-4000}"
 

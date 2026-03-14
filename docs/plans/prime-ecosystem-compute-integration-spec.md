@@ -870,6 +870,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The output should be explicit shard manifests and artifact refs, not implicit filesystem conventions.
 
 17. **Psionic Serve: support public-network pipeline-parallel inference**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3501`.
    - Recreate the valuable `prime-vllm` and `prime-pipeline` execution modes with explicit prefill/decode timing, transport lanes, and intermediate-result routing.
    - This must integrate with `psionic-cluster` topology and proof surfaces rather than bypassing them.
 

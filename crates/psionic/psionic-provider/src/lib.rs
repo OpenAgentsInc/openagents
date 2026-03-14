@@ -2306,8 +2306,9 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use psionic_cluster::{
         ClusterTrustPolicy, ConfiguredClusterPeer, LayerShardedExecutionRequest,
-        NodeAttestationRequirement, NodeId, TensorShardedExecutionRequest,
-        TensorShardedModelEligibility, WholeRequestSchedulingRequest,
+        NodeAttestationRequirement, NodeId, PipelineShardedExecutionRequest,
+        TensorShardedExecutionRequest, TensorShardedModelEligibility,
+        WholeRequestSchedulingRequest,
     };
     use psionic_core::{
         BackendExtensionKind, DType, Device, DeviceKind,
@@ -2324,18 +2325,19 @@ mod tests {
         ClusterCommitAuthorityEvidence, ClusterComputeMarketTrustAssessment,
         ClusterComputeMarketTrustDisposition, ClusterComputeMarketTrustRefusalReason,
         ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof,
-        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
-        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
-        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
-        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage,
+        ClusterPipelineStageRole, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
+        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
@@ -3817,6 +3819,46 @@ mod tests {
     }
 
     #[test]
+    fn text_generation_capability_envelope_publishes_pipeline_sharded_profile_from_cluster_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_decoder_descriptor();
+        let request = PipelineShardedExecutionRequest::new(
+            sample_scheduler_node_id(),
+            "served-artifact",
+            80,
+            2,
+        );
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            cuda_backend_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("pipeline-sharded cluster capability advertised"),
+        )
+        .with_cluster_execution_capability_profile(request.capability_profile.clone());
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            envelope
+                .backend_selection
+                .cluster_execution_capability_profile,
+            Some(request.capability_profile.clone())
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request", "pipeline_sharded"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch", "pipeline_stage_handoff"])
+        );
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
     fn sandbox_capability_envelope_publishes_tensor_sharded_profile_from_cluster_request()
     -> Result<(), Box<dyn std::error::Error>> {
         let request = TensorShardedExecutionRequest::new(
@@ -4967,6 +5009,111 @@ mod tests {
     }
 
     #[test]
+    fn text_generation_receipt_surfaces_pipeline_sharded_cluster_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "gen-cluster-pipeline-sharded-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-cluster-pipeline-sharded-1")),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let cluster_execution = sample_pipeline_sharded_cluster_execution_context();
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            psionic_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(95),
+                load_duration_ns: Some(40),
+                prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(25),
+                context_window: None,
+                eval_count: Some(1),
+                eval_duration_ns: Some(70),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
+            },
+            GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
+                execution_plan_digest: String::from("cluster-plan-pipeline-sharded"),
+                cluster_execution: Some(cluster_execution.clone()),
+                load_state: GenerationLoadState::Warm,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+                streaming_policy: None,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: None,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+                compile_path: None,
+                delivery_proof: None,
+                cache_observations: Vec::new(),
+            },
+        );
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            "cluster-plan-pipeline-sharded",
+            10,
+            85,
+        );
+
+        assert_eq!(
+            receipt.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(psionic_runtime::ExecutionTopologyKind::PipelineSharded)
+        );
+        assert_eq!(receipt.selected_devices.len(), 2);
+        assert_eq!(receipt.cluster_execution, Some(cluster_execution.clone()));
+
+        let encoded = serde_json::to_value(&receipt)?;
+        assert_eq!(
+            encoded["execution_topology"]["kind"],
+            json!("pipeline_sharded")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["pipeline_stages"][0]["role"],
+            json!("entry")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["pipeline_stages"][0]["handoff_transport"],
+            json!("wider_network_stream")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["pipeline_stages"][0]["handoff_latency_ms"],
+            json!(32)
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["sharded_model_manifest_digest"],
+            json!("pipeline-manifest-digest")
+        );
+        assert_eq!(
+            encoded["selected_devices"][0]["stable_device_id"],
+            json!(first.stable_device_id)
+        );
+        assert_eq!(
+            encoded["selected_devices"][1]["stable_device_id"],
+            json!(second.stable_device_id)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth()
     -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
@@ -5850,6 +5997,17 @@ mod tests {
             )
     }
 
+    fn cuda_pipeline_sharded_capability_profile() -> ClusterExecutionCapabilityProfile {
+        ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::PipelineSharded,
+            ])
+            .with_detail(
+                "backend `cuda` declares whole-request dispatch plus public-network pipeline-parallel stage handoff support under explicit timing policy",
+            )
+    }
+
     fn cuda_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProfile {
         ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![
@@ -6043,6 +6201,101 @@ mod tests {
             .with_detail("forward kv cache across the shard boundary"),
         ])
         .with_degraded_reason("layer-sharded lane uses mixed scheduler and handoff transport")
+    }
+
+    fn sample_pipeline_sharded_cluster_execution_context() -> ClusterExecutionContext {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let second = sample_cuda_device_1().inventory_qualifiers();
+        let capability_profile = cuda_pipeline_sharded_capability_profile();
+        ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::WiderNetworkStream,
+            ClusterExecutionDisposition::Sharded,
+        )
+        .with_communication_eligibility(
+            capability_profile
+                .lane_communication_eligibility(ClusterExecutionLane::PipelineSharded),
+        )
+        .with_artifact_residency_digest("artifact-residency-digest")
+        .with_sharded_model_manifest_digest("pipeline-manifest-digest")
+        .with_execution_topology(ExecutionTopologyPlan::pipeline_sharded(
+            "cuda",
+            vec![(first.clone(), 0, 20), (second.clone(), 20, 40)],
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Sharding,
+            "pipeline-policy-digest",
+        ))
+        .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_device_inventory(first.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+            ClusterSelectedNode::new("worker-b", "cuda")
+                .with_role("worker")
+                .with_device_inventory(second.clone())
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ])
+        .with_shard_handoffs(vec![
+            psionic_runtime::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                psionic_runtime::ClusterShardHandoffKind::Activation,
+                ClusterTransportClass::WiderNetworkStream,
+                20,
+                8192,
+            )
+            .with_detail("forward pipeline activations across the stage boundary"),
+            psionic_runtime::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                psionic_runtime::ClusterShardHandoffKind::KvCache,
+                ClusterTransportClass::WiderNetworkStream,
+                20,
+                4096,
+            )
+            .with_detail("forward pipeline KV across the stage boundary"),
+        ])
+        .with_pipeline_stages(vec![
+            ClusterPipelineStage::new(
+                0,
+                "worker-a",
+                ClusterPipelineStageRole::Entry,
+                0,
+                20,
+                30,
+                60,
+                20,
+            )
+            .with_handoff(
+                ClusterTransportClass::WiderNetworkStream,
+                Some(32),
+                Some(3000),
+            )
+            .with_detail("pipeline entry stage owns layers [0..20)"),
+            ClusterPipelineStage::new(
+                1,
+                "worker-b",
+                ClusterPipelineStageRole::Exit,
+                20,
+                40,
+                35,
+                70,
+                25,
+            )
+            .with_detail("pipeline exit stage owns layers [20..40)"),
+        ])
+        .with_degraded_reason("pipeline handoff adds 32 ms public-network latency to decode")
     }
 
     fn sample_tensor_sharded_cluster_execution_context() -> ClusterExecutionContext {

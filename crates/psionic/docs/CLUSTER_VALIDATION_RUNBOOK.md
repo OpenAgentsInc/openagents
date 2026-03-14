@@ -230,7 +230,7 @@ future payout/dispute story built on cluster provenance:
 
 1. Run `cargo test -p psionic-cluster --test cluster_validation_matrix authorization_validation_covers_allowed_and_refused_cluster_commands`.
 2. Run `cargo test -p psionic-cluster --test cluster_validation_matrix scheduling_validation_covers_staging_and_degraded_candidate sharding_validation_covers_layer_and_tensor_evidence`.
-3. Run `cargo test -p psionic-provider text_generation_receipt_preserves_cluster_execution_from_provenance text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth`.
+3. Run `cargo test -p psionic-provider text_generation_receipt_preserves_cluster_execution_from_provenance text_generation_receipt_surfaces_pipeline_sharded_cluster_execution_truth text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth`.
 4. If any step fails, do not claim payout-grade cluster provenance or stronger operator-facing authorization auditability for the current build.
 
 Interpretation:
@@ -281,7 +281,7 @@ publish declared clustered-lane support before any request executes:
 
 1. Run `cargo test -p psionic-runtime backend_selection_can_publish_declared_cluster_capability_profile_truth`.
 2. Run `cargo test -p psionic-provider capability_envelope_can_publish_declared_cluster_capability_profile_without_execution`.
-3. Run `cargo test -p psionic-provider capability_envelope_publishes_whole_request_cluster_profile_from_cluster_request text_generation_capability_envelope_publishes_replica_profile_from_cluster_request text_generation_capability_envelope_publishes_layer_sharded_profile_from_cluster_request sandbox_capability_envelope_publishes_tensor_sharded_profile_from_cluster_request`.
+3. Run `cargo test -p psionic-provider capability_envelope_publishes_whole_request_cluster_profile_from_cluster_request text_generation_capability_envelope_publishes_replica_profile_from_cluster_request text_generation_capability_envelope_publishes_pipeline_sharded_profile_from_cluster_request text_generation_capability_envelope_publishes_layer_sharded_profile_from_cluster_request sandbox_capability_envelope_publishes_tensor_sharded_profile_from_cluster_request`.
 4. Run `cargo test -p psionic-provider capability_envelope_can_surface_cluster_execution_context text_generation_receipt_preserves_cluster_execution_from_provenance`.
 5. If any step fails, do not claim advertised capability-profile publication truth for the current build.
 
@@ -362,6 +362,7 @@ Stable receipt artifacts written into that directory:
 - `whole_request_scheduler.json`
 - `recovery_catchup.json`
 - `replicated_serving.json`
+- `pipeline_sharded_planner.json`
 - `layer_sharded_planner.json`
 - `tensor_sharded_planner.json`
 
@@ -391,7 +392,7 @@ typed benchmark receipts rather than by ad hoc timing notes:
 
 1. Run `crates/psionic/scripts/benchmark-cluster-gates.sh --json-out /tmp/psionic-cluster-bench`.
 2. Confirm the script reports `benchmark_receipt_json_out=/tmp/psionic-cluster-bench`.
-3. Confirm the directory contains `whole_request_scheduler.json`, `recovery_catchup.json`, `replicated_serving.json`, `layer_sharded_planner.json`, and `tensor_sharded_planner.json`.
+3. Confirm the directory contains `whole_request_scheduler.json`, `recovery_catchup.json`, `replicated_serving.json`, `pipeline_sharded_planner.json`, `layer_sharded_planner.json`, and `tensor_sharded_planner.json`.
 4. Inspect one receipt directly, for example `sed -n '1,80p' /tmp/psionic-cluster-bench/whole_request_scheduler.json`, and confirm it includes `schema_version`, the matching `benchmark_id`, and `outcome: "passed"`.
 5. If any step fails, do not claim benchmark-receipt-backed performance truth for the current build.
 

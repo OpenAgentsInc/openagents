@@ -14,8 +14,9 @@ use psionic_cluster::{
     ClusterIntroductionVerificationError, ClusterLeaseTick, ClusterRecoveryDisposition,
     ClusterRecoveryReason, ClusterReplicaLifecyclePolicy, ClusterServingPolicy, ClusterTerm,
     IndexedClusterEvent, LayerShardedSchedulingFailureCode, NodeId, NodeRole,
-    SignedClusterIntroductionEnvelope, TensorShardedSchedulingFailureCode,
-    WholeRequestSchedulingFailureCode, plan_replicated_serving, schedule_layer_sharded_execution,
+    PipelineShardedSchedulingFailureCode, SignedClusterIntroductionEnvelope,
+    TensorShardedSchedulingFailureCode, WholeRequestSchedulingFailureCode, plan_replicated_serving,
+    schedule_layer_sharded_execution, schedule_pipeline_sharded_execution,
     schedule_remote_whole_request, schedule_tensor_sharded_execution,
 };
 use psionic_runtime::{
@@ -495,6 +496,46 @@ fn sharding_validation_covers_layer_and_tensor_evidence() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn pipeline_validation_covers_public_network_stage_truth() -> Result<(), Box<dyn std::error::Error>>
+{
+    let fixture = ClusterValidationFixture::new();
+    let state = fixture.public_pipeline_state();
+    let schedule = schedule_pipeline_sharded_execution(
+        &state,
+        &fixture.pipeline_request(),
+        &fixture.pipeline_policy(),
+    )
+    .map_err(|error| {
+        fixture_error(format!(
+            "expected public-network pipeline schedule: {error:?}"
+        ))
+    })?;
+
+    assert_eq!(
+        schedule.execution_topology.kind,
+        ExecutionTopologyKind::PipelineSharded
+    );
+    assert_eq!(
+        schedule
+            .cluster_execution
+            .communication_eligibility
+            .as_ref()
+            .map(|eligibility| eligibility.required_class),
+        Some(ClusterCommunicationClass::PipelineStageHandoff)
+    );
+    assert_eq!(schedule.pipeline_stages.len(), 3);
+    assert_eq!(
+        schedule.pipeline_stages[0].handoff_transport,
+        Some(psionic_runtime::ClusterTransportClass::WiderNetworkStream)
+    );
+    assert_eq!(
+        schedule.cluster_execution.pipeline_stages,
+        schedule.pipeline_stages
+    );
+    Ok(())
+}
+
+#[test]
 fn authorization_validation_covers_allowed_and_refused_cluster_commands()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = ClusterValidationFixture::new();
@@ -576,6 +617,37 @@ fn fault_injection_covers_mesh_refusal_for_sharded_paths() -> Result<(), Box<dyn
     assert_eq!(
         tensor_failure.code,
         TensorShardedSchedulingFailureCode::MeshLinkUnsuitable
+    );
+    let pipeline_fixture = ClusterValidationFixture::new();
+    let mut pipeline_snapshot = pipeline_fixture.public_pipeline_state().snapshot();
+    for (left, right) in [
+        ("worker-a", "worker-b"),
+        ("worker-a", "worker-c"),
+        ("worker-b", "worker-c"),
+    ] {
+        pipeline_snapshot.links.insert(
+            support::link_key(left, right),
+            psionic_cluster::ClusterLink::new(
+                NodeId::new(left),
+                NodeId::new(right),
+                psionic_cluster::ClusterTransportClass::Tcp,
+                psionic_cluster::ClusterLinkStatus::Healthy,
+            )
+            .with_link_class(psionic_cluster::ClusterLinkClass::Ethernet)
+            .with_latency_us(180_000)
+            .with_bandwidth_mbps(3_000),
+        );
+    }
+    let pipeline_state = psionic_cluster::ClusterState::from_snapshot(pipeline_snapshot);
+    let pipeline_failure = schedule_pipeline_sharded_execution(
+        &pipeline_state,
+        &pipeline_fixture.pipeline_request(),
+        &pipeline_fixture.pipeline_policy(),
+    )
+    .expect_err("high-latency public stage mesh should refuse pipeline sharding");
+    assert_eq!(
+        pipeline_failure.code,
+        PipelineShardedSchedulingFailureCode::TimingEnvelopeExceeded
     );
     Ok(())
 }

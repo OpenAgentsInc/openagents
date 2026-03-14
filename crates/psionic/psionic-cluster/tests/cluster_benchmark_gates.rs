@@ -8,8 +8,8 @@ use psionic_cluster::{
     ClusterBenchmarkContext, ClusterBenchmarkId, ClusterBenchmarkReceipt,
     ClusterRecoveryBenchmarkContext, ClusterRecoveryDisposition, ClusterReplicaLifecyclePolicy,
     ClusterServingPolicy, ClusterTopologyBenchmarkContext, plan_replicated_serving,
-    schedule_layer_sharded_execution, schedule_remote_whole_request,
-    schedule_tensor_sharded_execution,
+    schedule_layer_sharded_execution, schedule_pipeline_sharded_execution,
+    schedule_remote_whole_request, schedule_tensor_sharded_execution,
 };
 use support::{
     ClusterValidationFixture, recovery_policy, sample_cluster_id, sample_recovery_log,
@@ -108,6 +108,31 @@ fn replicated_serving_release_gate() {
                 &scheduling_request,
             );
             assert!(decision.is_ok(), "replicated serving should remain valid");
+        },
+    );
+}
+
+#[test]
+#[ignore = "release benchmark gate"]
+fn pipeline_sharded_release_gate() {
+    let fixture = ClusterValidationFixture::new();
+    let state = fixture.public_pipeline_state();
+    let request = fixture.pipeline_request();
+    let policy = fixture.pipeline_policy();
+    run_gate(
+        ClusterBenchmarkId::PipelineShardedPlanner,
+        ClusterBenchmarkContext::Topology(ClusterTopologyBenchmarkContext::from_state(
+            fixture.cluster_id.clone(),
+            &state,
+        )),
+        env_usize("PSIONIC_CLUSTER_BENCH_PIPELINE_ITERATIONS", 2_000),
+        env_u128("PSIONIC_CLUSTER_BENCH_PIPELINE_MAX_MS", 5_000),
+        || {
+            let schedule = schedule_pipeline_sharded_execution(&state, &request, &policy);
+            assert!(
+                schedule.is_ok(),
+                "pipeline-sharded planner should remain valid"
+            );
         },
     );
 }

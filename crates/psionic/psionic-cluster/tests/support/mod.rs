@@ -10,8 +10,8 @@ use psionic_cluster::{
     ClusterServingLoadSnapshot, ClusterServingRequest, ClusterServingWorkClass, ClusterSnapshot,
     ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
     LayerShardedExecutionPolicy, LayerShardedExecutionRequest, NodeEpoch, NodeId, NodeRole,
-    TensorShardedExecutionRequest, TensorShardedModelEligibility, TensorShardedTransportPolicy,
-    WholeRequestSchedulingRequest,
+    PipelineShardedExecutionPolicy, PipelineShardedExecutionRequest, TensorShardedExecutionRequest,
+    TensorShardedModelEligibility, TensorShardedTransportPolicy, WholeRequestSchedulingRequest,
 };
 use psionic_runtime::{
     ClusterExecutionCapabilityProfile, ClusterExecutionLane, ClusterReplicaWarmState,
@@ -152,6 +152,60 @@ impl ClusterValidationFixture {
     #[must_use]
     pub fn layer_policy(&self) -> LayerShardedExecutionPolicy {
         LayerShardedExecutionPolicy::cuda_default()
+    }
+
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn pipeline_request(&self) -> PipelineShardedExecutionRequest {
+        PipelineShardedExecutionRequest::new(NodeId::new("scheduler"), ARTIFACT_DIGEST, 60, 3)
+            .with_minimum_free_memory_bytes_per_stage(16 * 1024 * 1024 * 1024)
+            .with_handoff_bytes_per_token(8_192, 4_096)
+            .with_stage_timing_costs(30, 3, 1)
+    }
+
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn pipeline_policy(&self) -> PipelineShardedExecutionPolicy {
+        PipelineShardedExecutionPolicy::public_network_default()
+    }
+
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn public_pipeline_state(&self) -> ClusterState {
+        let mut snapshot = self.snapshot.clone();
+        for worker in ["worker-a", "worker-b", "worker-c"] {
+            snapshot.links.insert(
+                link_key("scheduler", worker),
+                ClusterLink::new(
+                    NodeId::new("scheduler"),
+                    NodeId::new(worker),
+                    ClusterTransportClass::Tcp,
+                    ClusterLinkStatus::Healthy,
+                )
+                .with_link_class(ClusterLinkClass::Ethernet)
+                .with_latency_us(18_000)
+                .with_bandwidth_mbps(2_500),
+            );
+        }
+        for (left, right) in [
+            ("worker-a", "worker-b"),
+            ("worker-a", "worker-c"),
+            ("worker-b", "worker-c"),
+        ] {
+            snapshot.links.insert(
+                link_key(left, right),
+                ClusterLink::new(
+                    NodeId::new(left),
+                    NodeId::new(right),
+                    ClusterTransportClass::Tcp,
+                    ClusterLinkStatus::Healthy,
+                )
+                .with_link_class(ClusterLinkClass::Ethernet)
+                .with_latency_us(32_000)
+                .with_bandwidth_mbps(3_000),
+            );
+        }
+        ClusterState::from_snapshot(snapshot)
     }
 
     #[must_use]
