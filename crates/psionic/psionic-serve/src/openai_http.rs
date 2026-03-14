@@ -36,7 +36,7 @@ use psionic_runtime::{
     PrefixCacheControl, PrefixCacheRefusalReason, PrefixCacheState, StructuredGrammarSyntax,
     StructuredOutputCapability, StructuredOutputExecutionReport, StructuredOutputMatcher,
     StructuredOutputParser, StructuredOutputRequest, StructuredOutputValue,
-    local_structured_output_capabilities, local_structured_output_parsers,
+    StructuredTaggedVariant, local_structured_output_capabilities, local_structured_output_parsers,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -86,6 +86,92 @@ fn unsupported_structured_output_capabilities(detail: &str) -> Vec<StructuredOut
         .into_iter()
         .map(|capability| StructuredOutputCapability::unsupported(capability.kind, detail))
         .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ToolCallingSupportLevel {
+    Fallback,
+    Unsupported,
+}
+
+impl ToolCallingSupportLevel {
+    #[cfg(test)]
+    fn label(self) -> &'static str {
+        match self {
+            Self::Fallback => "fallback",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct ToolCallingCapability {
+    support_level: ToolCallingSupportLevel,
+    supported_modes: Vec<&'static str>,
+    parser: &'static str,
+    argument_validation: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolChoiceMode {
+    None,
+    Auto,
+    Required,
+    Named,
+}
+
+#[derive(Clone, Debug)]
+struct ToolCallingContract {
+    tools: BTreeMap<String, ToolDefinitionRequest>,
+    mode: ToolChoiceMode,
+    named_tool: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct ToolCallOutcome {
+    content: Option<String>,
+    tool_calls: Vec<ResolvedToolCall>,
+}
+
+#[derive(Clone, Debug)]
+struct ResolvedToolCall {
+    id: String,
+    name: String,
+    arguments: serde_json::Value,
+}
+
+impl ResolvedToolCall {
+    fn raw_arguments(&self) -> Result<String, OpenAiCompatHttpError> {
+        serde_json::to_string(&self.arguments).map_err(|error| {
+            OpenAiCompatHttpError::Internal(format!(
+                "failed to serialize validated tool arguments for `{}`: {error}",
+                self.name
+            ))
+        })
+    }
+
+    fn into_chat_tool_call(self) -> Result<ChatCompletionToolCall, OpenAiCompatHttpError> {
+        let raw_arguments = self.raw_arguments()?;
+        Ok(ChatCompletionToolCall {
+            id: self.id,
+            kind: "function",
+            function: ChatCompletionToolCallFunction {
+                name: self.name,
+                arguments: raw_arguments,
+            },
+        })
+    }
+
+    fn into_psionic_tool_call(self) -> Result<PsionicToolCall, OpenAiCompatHttpError> {
+        let raw_arguments = self.raw_arguments()?;
+        Ok(PsionicToolCall {
+            id: self.id,
+            name: self.name,
+            arguments: self.arguments,
+            raw_arguments,
+        })
+    }
 }
 
 fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
@@ -618,6 +704,24 @@ impl OpenAiCompatLoadedModel {
             unsupported_structured_output_capabilities(
                 "structured outputs are unavailable on embeddings-only models",
             )
+        }
+    }
+
+    fn tool_calling_capability(&self) -> ToolCallingCapability {
+        if self.decoder().is_some() {
+            ToolCallingCapability {
+                support_level: ToolCallingSupportLevel::Fallback,
+                supported_modes: vec!["none", "auto", "required", "named"],
+                parser: "tagged_json_schema",
+                argument_validation: "json_schema_subset",
+            }
+        } else {
+            ToolCallingCapability {
+                support_level: ToolCallingSupportLevel::Unsupported,
+                supported_modes: vec!["none"],
+                parser: "not_available",
+                argument_validation: "not_available",
+            }
         }
     }
 
@@ -1389,6 +1493,8 @@ struct ModelCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_structured_output_capabilities: Option<Vec<StructuredOutputCapability>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_tool_calling: Option<ToolCallingCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     psionic_execution_profile: Option<ExecutionCapabilityProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_scheduler_policy: Option<GenerationSchedulerPolicy>,
@@ -1413,6 +1519,7 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             psionic_performance_class: None,
             psionic_structured_outputs: None,
             psionic_structured_output_capabilities: None,
+            psionic_tool_calling: None,
             psionic_execution_profile: None,
             psionic_scheduler_policy: None,
             psionic_embedding_dimensions: None,
@@ -1443,6 +1550,8 @@ struct GenericHealthResponse {
     structured_output_fallbacks: Option<Vec<&'static str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     structured_output_capabilities: Option<Vec<StructuredOutputCapability>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calling: Option<ToolCallingCapability>,
     execution_profile: ExecutionCapabilityProfile,
     #[serde(skip_serializing_if = "Option::is_none")]
     scheduler_policy: Option<GenerationSchedulerPolicy>,
@@ -1474,6 +1583,7 @@ async fn generic_health(
         supported_endpoints: union_supported_endpoint_paths(state.as_ref()),
         structured_output_fallbacks: default_model.structured_output_labels(),
         structured_output_capabilities: Some(default_model.structured_output_capabilities()),
+        tool_calling: Some(default_model.tool_calling_capability()),
         execution_profile: default_model.execution_profile().clone(),
         scheduler_policy: default_model.scheduler_policy().cloned(),
     })
@@ -1499,6 +1609,7 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 psionic_structured_output_capabilities: Some(
                     model.structured_output_capabilities(),
                 ),
+                psionic_tool_calling: Some(model.tool_calling_capability()),
                 psionic_execution_profile: Some(model.execution_profile().clone()),
                 psionic_scheduler_policy: model.scheduler_policy().cloned(),
                 psionic_embedding_dimensions: model.embedding_dimensions(),
@@ -1521,6 +1632,10 @@ struct ChatCompletionRequest {
     stop: Option<StopSequences>,
     #[serde(default)]
     stream: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinitionEnvelope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoiceRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     response_format: Option<ChatCompletionResponseFormatRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1529,6 +1644,41 @@ struct ChatCompletionRequest {
     psionic_structured_output: Option<StructuredOutputRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_prefix_cache: Option<PrefixCacheControl>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ToolDefinitionEnvelope {
+    #[serde(rename = "type")]
+    kind: String,
+    function: ToolDefinitionRequest,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ToolDefinitionRequest {
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parameters: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ToolChoiceRequest {
+    Mode(String),
+    Named(NamedToolChoiceRequest),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct NamedToolChoiceRequest {
+    #[serde(rename = "type")]
+    kind: String,
+    function: NamedToolChoiceFunction,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct NamedToolChoiceFunction {
+    name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1615,6 +1765,10 @@ struct ResponsesRequest {
     stop: Option<StopSequences>,
     #[serde(default)]
     stream: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinitionEnvelope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoiceRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_response_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1718,6 +1872,365 @@ fn validate_structured_output_request(
     Ok(structured_output)
 }
 
+fn tool_contract_from_chat_request(
+    request: &ChatCompletionRequest,
+    structured_output_requested: bool,
+) -> Result<Option<ToolCallingContract>, OpenAiCompatHttpError> {
+    validate_tool_contract(
+        request.tools.as_slice(),
+        request.tool_choice.as_ref(),
+        structured_output_requested,
+    )
+}
+
+fn tool_contract_from_responses_request(
+    request: &ResponsesRequest,
+    structured_output_requested: bool,
+) -> Result<Option<ToolCallingContract>, OpenAiCompatHttpError> {
+    validate_tool_contract(
+        request.tools.as_slice(),
+        request.tool_choice.as_ref(),
+        structured_output_requested,
+    )
+}
+
+fn validate_tool_contract(
+    tools: &[ToolDefinitionEnvelope],
+    tool_choice: Option<&ToolChoiceRequest>,
+    structured_output_requested: bool,
+) -> Result<Option<ToolCallingContract>, OpenAiCompatHttpError> {
+    if tools.is_empty() {
+        if tool_choice.is_some() {
+            return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                "`tool_choice` requires at least one declared tool",
+            )));
+        }
+        return Ok(None);
+    }
+
+    let mut tool_map = BTreeMap::new();
+    for tool in tools {
+        if tool.kind != "function" {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "unsupported tool type `{}`; only `function` is supported",
+                tool.kind
+            )));
+        }
+        if tool.function.name.trim().is_empty() {
+            return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                "tool function names must not be empty",
+            )));
+        }
+        if tool_map
+            .insert(tool.function.name.clone(), tool.function.clone())
+            .is_some()
+        {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "duplicate tool definition `{}`",
+                tool.function.name
+            )));
+        }
+        let _ = normalized_tool_parameters_schema(&tool.function)?;
+    }
+
+    let (mode, named_tool) = match tool_choice {
+        None => (ToolChoiceMode::Auto, None),
+        Some(ToolChoiceRequest::Mode(value)) => match value.as_str() {
+            "none" => (ToolChoiceMode::None, None),
+            "auto" => (ToolChoiceMode::Auto, None),
+            "required" => (ToolChoiceMode::Required, None),
+            other => {
+                return Err(OpenAiCompatHttpError::BadRequest(format!(
+                    "unsupported `tool_choice` mode `{other}`"
+                )));
+            }
+        },
+        Some(ToolChoiceRequest::Named(named)) => {
+            if named.kind != "function" {
+                return Err(OpenAiCompatHttpError::BadRequest(format!(
+                    "unsupported named tool choice type `{}`",
+                    named.kind
+                )));
+            }
+            if !tool_map.contains_key(named.function.name.as_str()) {
+                return Err(OpenAiCompatHttpError::BadRequest(format!(
+                    "named tool choice `{}` does not match a declared tool",
+                    named.function.name
+                )));
+            }
+            (ToolChoiceMode::Named, Some(named.function.name.clone()))
+        }
+    };
+
+    if structured_output_requested && !matches!(mode, ToolChoiceMode::None) {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "tool-calling modes cannot be combined with `psionic_structured_output`, `response_format`, or `psionic_grammar` on the same request",
+        )));
+    }
+
+    Ok(Some(ToolCallingContract {
+        tools: tool_map,
+        mode,
+        named_tool,
+    }))
+}
+
+fn normalized_tool_parameters_schema(
+    tool: &ToolDefinitionRequest,
+) -> Result<serde_json::Value, OpenAiCompatHttpError> {
+    let mut schema = match tool.parameters.clone() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(_) => {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "tool `{}` parameters must be a JSON object schema",
+                tool.name
+            )));
+        }
+        None => serde_json::Map::new(),
+    };
+    match schema.get("type") {
+        Some(serde_json::Value::String(kind)) if kind == "object" => {}
+        Some(_) => {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "tool `{}` parameters must describe an object schema",
+                tool.name
+            )));
+        }
+        None => {
+            schema.insert(
+                String::from("type"),
+                serde_json::Value::String(String::from("object")),
+            );
+        }
+    }
+    if !schema.contains_key("properties") {
+        schema.insert(
+            String::from("properties"),
+            serde_json::Value::Object(serde_json::Map::new()),
+        );
+    }
+    if !schema.contains_key("additionalProperties") {
+        schema.insert(
+            String::from("additionalProperties"),
+            serde_json::Value::Bool(false),
+        );
+    }
+    Ok(serde_json::Value::Object(schema))
+}
+
+fn tool_prompt_message(contract: &ToolCallingContract) -> PromptMessage {
+    let mut lines = vec![String::from(
+        "When tools are enabled, respond with exactly one JSON object that matches the declared Psionic tool contract.",
+    )];
+    match contract.mode {
+        ToolChoiceMode::None => lines.push(String::from(
+            "Tool use is disabled for this request. Answer normally.",
+        )),
+        ToolChoiceMode::Auto => lines.push(String::from(
+            "Use `{ \"kind\": \"message\", \"content\": \"...\" }` for a normal answer, or `{ \"kind\": \"tool:<name>\", ...tool arguments... }` to call exactly one tool.",
+        )),
+        ToolChoiceMode::Required => lines.push(String::from(
+            "You must call exactly one tool using `{ \"kind\": \"tool:<name>\", ...tool arguments... }`.",
+        )),
+        ToolChoiceMode::Named => lines.push(format!(
+            "You must call exactly one tool using `{{ \"kind\": \"tool:{}\", ...tool arguments... }}`.",
+            contract.named_tool.as_deref().unwrap_or_default()
+        )),
+    }
+    lines.push(String::from("Declared tools:"));
+    for tool in contract.tools.values() {
+        let schema =
+            normalized_tool_parameters_schema(tool).unwrap_or_else(|_| serde_json::json!({}));
+        lines.push(format!(
+            "- {}: {} | schema={}",
+            tool.name,
+            tool.description
+                .clone()
+                .unwrap_or_else(|| String::from("no description")),
+            schema
+        ));
+    }
+    PromptMessage::new(PromptMessageRole::Developer, lines.join("\n"))
+}
+
+fn apply_tool_contract_to_prompt_messages(
+    mut messages: Vec<PromptMessage>,
+    contract: Option<&ToolCallingContract>,
+) -> Vec<PromptMessage> {
+    if let Some(contract) = contract
+        && !matches!(contract.mode, ToolChoiceMode::None)
+    {
+        messages.insert(0, tool_prompt_message(contract));
+    }
+    messages
+}
+
+fn structured_output_from_tool_contract(
+    contract: Option<&ToolCallingContract>,
+) -> Result<Option<StructuredOutputRequest>, OpenAiCompatHttpError> {
+    let Some(contract) = contract else {
+        return Ok(None);
+    };
+    if matches!(contract.mode, ToolChoiceMode::None) {
+        return Ok(None);
+    }
+
+    let mut variants = Vec::new();
+    if matches!(contract.mode, ToolChoiceMode::Auto) {
+        variants.push(StructuredTaggedVariant {
+            tag: String::from("message"),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": { "type": "string", "minLength": 1 }
+                },
+                "required": ["content"],
+                "additionalProperties": false
+            }),
+        });
+    }
+
+    match contract.mode {
+        ToolChoiceMode::Named => {
+            let name = contract.named_tool.as_ref().ok_or_else(|| {
+                OpenAiCompatHttpError::Internal(String::from(
+                    "named tool mode is missing the selected tool",
+                ))
+            })?;
+            let tool = contract.tools.get(name).ok_or_else(|| {
+                OpenAiCompatHttpError::Internal(format!(
+                    "named tool `{name}` is missing from the validated tool map"
+                ))
+            })?;
+            variants.push(StructuredTaggedVariant {
+                tag: tool_variant_tag(name),
+                schema: normalized_tool_parameters_schema(tool)?,
+            });
+        }
+        ToolChoiceMode::Auto | ToolChoiceMode::Required => {
+            for (name, tool) in &contract.tools {
+                variants.push(StructuredTaggedVariant {
+                    tag: tool_variant_tag(name),
+                    schema: normalized_tool_parameters_schema(tool)?,
+                });
+            }
+        }
+        ToolChoiceMode::None => {}
+    }
+
+    validate_structured_output_request(StructuredOutputRequest::TaggedStructure {
+        name: Some(String::from("psionic_tool_call")),
+        discriminator: String::from("kind"),
+        variants,
+    })
+    .map(Some)
+}
+
+fn tool_variant_tag(name: &str) -> String {
+    format!("tool:{name}")
+}
+
+fn tool_call_outcome_from_response(
+    request_id: &str,
+    response: &crate::GenerationResponse,
+    contract: Option<&ToolCallingContract>,
+) -> Result<Option<ToolCallOutcome>, OpenAiCompatHttpError> {
+    let Some(contract) = contract else {
+        return Ok(None);
+    };
+    if matches!(contract.mode, ToolChoiceMode::None) {
+        return Ok(None);
+    }
+
+    let Some(StructuredOutputValue::TaggedStructure {
+        discriminator,
+        tag,
+        value,
+    }) = response.output.structured.clone()
+    else {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "tool-calling request completed without a machine-readable tool envelope",
+        )));
+    };
+    if discriminator != "kind" {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "unexpected tool envelope discriminator `{discriminator}`"
+        )));
+    }
+
+    if tag == "message" {
+        let content = value
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                OpenAiCompatHttpError::BadRequest(String::from(
+                    "tool auto-mode message envelope is missing string `content`",
+                ))
+            })?
+            .to_string();
+        return Ok(Some(ToolCallOutcome {
+            content: Some(content),
+            tool_calls: Vec::new(),
+        }));
+    }
+
+    let Some(tool_name) = tag.strip_prefix("tool:") else {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "unexpected tool envelope tag `{tag}`"
+        )));
+    };
+    let tool = contract.tools.get(tool_name).ok_or_else(|| {
+        OpenAiCompatHttpError::BadRequest(format!("model selected undeclared tool `{tool_name}`"))
+    })?;
+    let mut arguments = match value {
+        serde_json::Value::Object(map) => map,
+        _ => {
+            return Err(OpenAiCompatHttpError::BadRequest(format!(
+                "tool envelope for `{tool_name}` must be a JSON object"
+            )));
+        }
+    };
+    let _ = arguments.remove("kind");
+    let arguments = serde_json::Value::Object(arguments);
+    validate_tool_arguments(tool, &arguments)?;
+    Ok(Some(ToolCallOutcome {
+        content: None,
+        tool_calls: vec![ResolvedToolCall {
+            id: format!("{request_id}-tool-0"),
+            name: tool_name.to_string(),
+            arguments,
+        }],
+    }))
+}
+
+fn validate_tool_arguments(
+    tool: &ToolDefinitionRequest,
+    arguments: &serde_json::Value,
+) -> Result<(), OpenAiCompatHttpError> {
+    let schema = normalized_tool_parameters_schema(tool)?;
+    let matcher = StructuredOutputMatcher::compile(StructuredOutputRequest::JsonSchema {
+        name: Some(format!("tool:{} arguments", tool.name)),
+        schema,
+    })
+    .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))?;
+    let raw = serde_json::to_string(arguments).map_err(|error| {
+        OpenAiCompatHttpError::BadRequest(format!(
+            "failed to serialize arguments for tool `{}`: {error}",
+            tool.name
+        ))
+    })?;
+    matcher
+        .materialize(raw.as_str())
+        .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))?
+        .ok_or_else(|| {
+            OpenAiCompatHttpError::BadRequest(format!(
+                "arguments for tool `{}` did not satisfy the declared schema",
+                tool.name
+            ))
+        })?;
+    Ok(())
+}
+
 async fn chat_completions(
     State(state): State<Arc<GptOssOpenAiCompatState>>,
     Json(request): Json<ChatCompletionRequest>,
@@ -1732,6 +2245,15 @@ async fn handle_chat_completions(
     state: Arc<GptOssOpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
+    let tool_contract = tool_contract_from_chat_request(&request, false)?;
+    if tool_contract
+        .as_ref()
+        .is_some_and(|contract| !matches!(contract.mode, ToolChoiceMode::None))
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "tool-calling modes are only available on the generic Psionic server today",
+        )));
+    }
     if structured_output_from_chat_request(&request)?.is_some() {
         return Err(OpenAiCompatHttpError::BadRequest(String::from(
             "structured output fallback is only available on `psionic-openai-server` today",
@@ -1810,12 +2332,14 @@ async fn handle_chat_completions(
             request_id.as_str(),
             &response_model_name,
             response.termination,
+            Some(choice.finish_reason),
             unix_timestamp_secs(),
         );
         let delta_chunk = serialize_event_data(&completion_delta_chunk(
             request_id.as_str(),
             response_model_name.as_str(),
-            choice.content.as_str(),
+            choice.content.clone(),
+            (!choice.tool_calls.is_empty()).then_some(choice.tool_calls.clone()),
             unix_timestamp_secs(),
         ))?;
         let terminal_chunk = serialize_event_data(&terminal_chunk)?;
@@ -1868,6 +2392,7 @@ async fn handle_chat_completions(
         }),
         psionic_structured_output: None,
         psionic_structured_value: None,
+        psionic_tool_calls: None,
         psionic_scheduler: None,
     })
     .into_response();
@@ -1901,8 +2426,11 @@ async fn handle_generic_chat_completions(
         ))
     })?;
     let structured_output = structured_output_from_chat_request(&request)?;
-    let prompt_messages =
-        chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
+    let tool_contract = tool_contract_from_chat_request(&request, structured_output.is_some())?;
+    let prompt_messages = apply_tool_contract_to_prompt_messages(
+        chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?,
+        tool_contract.as_ref(),
+    );
     let rendered = render_prompt_for_model(loaded_model, prompt_messages.as_slice())?;
     let request_id = next_generic_request_id(&state, "psionic-chatcmpl");
     let response_model_name = request
@@ -1915,7 +2443,8 @@ async fn handle_generic_chat_completions(
         rendered.stop_sequences.as_slice(),
     );
     let mut options = options;
-    options.structured_output = structured_output;
+    options.structured_output =
+        structured_output_from_tool_contract(tool_contract.as_ref())?.or(structured_output);
     let generation_request = GenerationRequest::new_text(
         request_id.clone(),
         model.descriptor.clone(),
@@ -1945,7 +2474,26 @@ async fn handle_generic_chat_completions(
         } else {
             None
         };
-    let choice = completion_choice_for_family(model.family, &response, parsed.clone());
+    let tool_outcome =
+        tool_call_outcome_from_response(request_id.as_str(), &response, tool_contract.as_ref())?;
+    let choice = completion_choice_for_family(
+        model.family,
+        &response,
+        parsed.clone(),
+        tool_outcome.as_ref(),
+    )?;
+    let psionic_tool_calls = tool_outcome
+        .as_ref()
+        .map(|outcome| {
+            outcome
+                .tool_calls
+                .clone()
+                .into_iter()
+                .map(ResolvedToolCall::into_psionic_tool_call)
+                .collect::<Result<Vec<_>, OpenAiCompatHttpError>>()
+        })
+        .transpose()?
+        .filter(|tool_calls| !tool_calls.is_empty());
     let structured_output_report = response
         .provenance
         .as_ref()
@@ -1982,12 +2530,14 @@ async fn handle_generic_chat_completions(
             request_id.as_str(),
             &response_model_name,
             response.termination,
+            Some(choice.finish_reason),
             unix_timestamp_secs(),
         );
         let delta_chunk = serialize_event_data(&completion_delta_chunk(
             request_id.as_str(),
             response_model_name.as_str(),
-            choice.content.as_str(),
+            choice.content.clone(),
+            (!choice.tool_calls.is_empty()).then_some(choice.tool_calls.clone()),
             unix_timestamp_secs(),
         ))?;
         let terminal_chunk = serialize_event_data(&terminal_chunk)?;
@@ -2053,6 +2603,7 @@ async fn handle_generic_chat_completions(
             .as_ref()
             .and_then(|value| value.structured_output.clone()),
         psionic_structured_value: structured_output_value,
+        psionic_tool_calls,
         psionic_scheduler: state
             .include_psionic_fields
             .then(|| scheduler_receipt.clone())
@@ -2105,7 +2656,12 @@ async fn handle_generic_responses(
         ))
     })?;
     let structured_output = structured_output_from_responses_request(&request)?;
-    let prompt_messages = response_input_to_prompt_messages(&request, model.family)?;
+    let tool_contract =
+        tool_contract_from_responses_request(&request, structured_output.is_some())?;
+    let prompt_messages = apply_tool_contract_to_prompt_messages(
+        response_input_to_prompt_messages(&request, model.family)?,
+        tool_contract.as_ref(),
+    );
     let rendered = render_prompt_for_model(loaded_model, prompt_messages.as_slice())?;
     let request_id = next_generic_request_id(&state, "psionic-resp");
     let response_model_name = request
@@ -2117,7 +2673,8 @@ async fn handle_generic_responses(
         model.family,
         rendered.stop_sequences.as_slice(),
     );
-    options.structured_output = structured_output;
+    options.structured_output =
+        structured_output_from_tool_contract(tool_contract.as_ref())?.or(structured_output);
     let generation_request = GenerationRequest::new_text(
         request_id.clone(),
         model.descriptor.clone(),
@@ -2147,7 +2704,27 @@ async fn handle_generic_responses(
         } else {
             None
         };
-    let content = completion_choice_for_family(model.family, &response, parsed.clone()).content;
+    let tool_outcome =
+        tool_call_outcome_from_response(request_id.as_str(), &response, tool_contract.as_ref())?;
+    let choice = completion_choice_for_family(
+        model.family,
+        &response,
+        parsed.clone(),
+        tool_outcome.as_ref(),
+    )?;
+    let content = choice.content.clone().unwrap_or_default();
+    let psionic_tool_calls = tool_outcome
+        .as_ref()
+        .map(|outcome| {
+            outcome
+                .tool_calls
+                .clone()
+                .into_iter()
+                .map(ResolvedToolCall::into_psionic_tool_call)
+                .collect::<Result<Vec<_>, OpenAiCompatHttpError>>()
+        })
+        .transpose()?
+        .filter(|tool_calls| !tool_calls.is_empty());
     let structured_output_report = response
         .provenance
         .as_ref()
@@ -2185,16 +2762,20 @@ async fn handle_generic_responses(
         created_at: unix_timestamp_secs(),
         status: "completed",
         model: response_model_name,
-        output: vec![ResponsesOutputItem {
-            id: format!("{request_id}-msg-0"),
-            kind: "message",
-            status: "completed",
-            role: "assistant",
-            content: vec![ResponsesOutputContent {
-                kind: "output_text",
-                text: content.clone(),
-            }],
-        }],
+        output: if content.is_empty() {
+            Vec::new()
+        } else {
+            vec![ResponsesOutputItem {
+                id: format!("{request_id}-msg-0"),
+                kind: "message",
+                status: "completed",
+                role: "assistant",
+                content: vec![ResponsesOutputContent {
+                    kind: "output_text",
+                    text: content.clone(),
+                }],
+            }]
+        },
         output_text: content,
         usage: ResponsesUsage {
             input_tokens: response.usage.input_tokens,
@@ -2224,6 +2805,7 @@ async fn handle_generic_responses(
             .as_ref()
             .and_then(|value| value.structured_output.clone()),
         psionic_structured_value: structured_output_value,
+        psionic_tool_calls,
         psionic_scheduler: state
             .include_psionic_fields
             .then(|| scheduler_receipt.clone())
@@ -2422,6 +3004,8 @@ struct ChatCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_structured_value: Option<StructuredOutputValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_tool_calls: Option<Vec<PsionicToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     psionic_scheduler: Option<GenerationSchedulerRequestReceipt>,
 }
 
@@ -2449,6 +3033,8 @@ struct ResponsesResponse {
     psionic_structured_output: Option<StructuredOutputExecutionReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_structured_value: Option<StructuredOutputValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_tool_calls: Option<Vec<PsionicToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_scheduler: Option<GenerationSchedulerRequestReceipt>,
 }
@@ -2487,7 +3073,24 @@ struct ChatCompletionChoice {
 #[derive(Clone, Debug, Serialize)]
 struct ChatCompletionResponseMessage {
     role: &'static str,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ChatCompletionToolCall>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ChatCompletionToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    function: ChatCompletionToolCallFunction,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ChatCompletionToolCallFunction {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2546,11 +3149,14 @@ struct ChatCompletionChunkDelta {
     role: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ChatCompletionToolCall>>,
 }
 
 #[derive(Clone, Debug)]
 struct ParsedCompletionChoice {
-    content: String,
+    content: Option<String>,
+    tool_calls: Vec<ChatCompletionToolCall>,
     finish_reason: &'static str,
 }
 
@@ -2561,10 +3167,19 @@ impl ParsedCompletionChoice {
             message: ChatCompletionResponseMessage {
                 role: "assistant",
                 content: self.content,
+                tool_calls: (!self.tool_calls.is_empty()).then_some(self.tool_calls),
             },
             finish_reason: self.finish_reason,
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PsionicToolCall {
+    id: String,
+    name: String,
+    arguments: serde_json::Value,
+    raw_arguments: String,
 }
 
 fn completion_choice(
@@ -2575,7 +3190,8 @@ fn completion_choice(
         .or_else(|| parsed.as_ref().and_then(final_assistant_content))
         .unwrap_or_else(|| response.output.text.clone());
     ParsedCompletionChoice {
-        content,
+        content: Some(content),
+        tool_calls: Vec::new(),
         finish_reason: finish_reason(response.termination),
     }
 }
@@ -2584,6 +3200,7 @@ fn completion_terminal_chunk(
     request_id: &str,
     model: &str,
     termination: TerminationReason,
+    finish_reason_override: Option<&'static str>,
     created: u64,
 ) -> ChatCompletionChunk {
     ChatCompletionChunk {
@@ -2594,7 +3211,7 @@ fn completion_terminal_chunk(
         choices: vec![ChatCompletionChunkChoice {
             index: 0,
             delta: ChatCompletionChunkDelta::default(),
-            finish_reason: Some(finish_reason(termination)),
+            finish_reason: Some(finish_reason_override.unwrap_or(finish_reason(termination))),
         }],
     }
 }
@@ -2602,7 +3219,8 @@ fn completion_terminal_chunk(
 fn completion_delta_chunk(
     request_id: &str,
     model: &str,
-    content: &str,
+    content: Option<String>,
+    tool_calls: Option<Vec<ChatCompletionToolCall>>,
     created: u64,
 ) -> ChatCompletionChunk {
     ChatCompletionChunk {
@@ -2614,7 +3232,8 @@ fn completion_delta_chunk(
             index: 0,
             delta: ChatCompletionChunkDelta {
                 role: Some("assistant"),
-                content: Some(content.to_string()),
+                content,
+                tool_calls,
             },
             finish_reason: None,
         }],
@@ -3010,14 +3629,33 @@ fn completion_choice_for_family(
     family: GgufDecoderFamily,
     response: &crate::GenerationResponse,
     parsed: Option<GptOssHarmonyParsedOutput>,
-) -> ParsedCompletionChoice {
+    tool_outcome: Option<&ToolCallOutcome>,
+) -> Result<ParsedCompletionChoice, OpenAiCompatHttpError> {
+    if let Some(tool_outcome) = tool_outcome {
+        let tool_calls = tool_outcome
+            .tool_calls
+            .clone()
+            .into_iter()
+            .map(ResolvedToolCall::into_chat_tool_call)
+            .collect::<Result<Vec<_>, OpenAiCompatHttpError>>()?;
+        return Ok(ParsedCompletionChoice {
+            content: tool_outcome.content.clone(),
+            finish_reason: if tool_calls.is_empty() {
+                finish_reason(response.termination)
+            } else {
+                "tool_calls"
+            },
+            tool_calls,
+        });
+    }
     if matches!(family, GgufDecoderFamily::GptOss) {
-        return completion_choice(response, parsed);
+        return Ok(completion_choice(response, parsed));
     }
-    ParsedCompletionChoice {
-        content: response.output.text.clone(),
+    Ok(ParsedCompletionChoice {
+        content: Some(response.output.text.clone()),
+        tool_calls: Vec::new(),
         finish_reason: finish_reason(response.termination),
-    }
+    })
 }
 
 fn prompt_request_cache_key(messages: &[PromptMessage]) -> String {
@@ -3348,10 +3986,11 @@ mod tests {
         ChatCompletionJsonSchemaRequest, ChatCompletionMessage, ChatCompletionRequest,
         ChatCompletionResponseFormatRequest, EmbeddingsInput, EmbeddingsRequest,
         GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, HARMONY_CALL_STOP,
-        HARMONY_RETURN_STOP, OpenAiCompatConfig, OpenAiCompatServer, PromptTokenCache,
-        PsionicGrammarRequest, ResponsesInput, ResponsesRequest, chat_messages_to_prompt_messages,
-        chat_messages_to_prompt_messages_for_family, ensure_harmony_stop_sequences,
-        fast_final_assistant_content, final_assistant_content,
+        HARMONY_RETURN_STOP, NamedToolChoiceFunction, NamedToolChoiceRequest, OpenAiCompatConfig,
+        OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, ResponsesInput,
+        ResponsesRequest, ToolChoiceRequest, ToolDefinitionEnvelope, ToolDefinitionRequest,
+        chat_messages_to_prompt_messages, chat_messages_to_prompt_messages_for_family,
+        ensure_harmony_stop_sequences, fast_final_assistant_content, final_assistant_content,
         generation_options_from_chat_request, generation_options_from_chat_request_for_family,
         generic_embeddings, generic_health, generic_list_models, handle_generic_chat_completions,
         handle_generic_responses, prompt_request_cache_key, render_prompt_for_model,
@@ -3505,6 +4144,8 @@ mod tests {
             max_tokens: Some(64),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
@@ -3758,6 +4399,20 @@ mod tests {
             ])
         );
         assert_eq!(
+            health.0.tool_calling.as_ref().map(|capability| (
+                capability.support_level.label(),
+                capability.supported_modes.clone(),
+                capability.parser,
+                capability.argument_validation,
+            )),
+            Some((
+                "fallback",
+                vec!["none", "auto", "required", "named"],
+                "tagged_json_schema",
+                "json_schema_subset",
+            ))
+        );
+        assert_eq!(
             health.0.execution_profile.batch_posture,
             BatchExecutionPosture::ContinuousBatch
         );
@@ -3809,6 +4464,16 @@ mod tests {
         }));
         assert!(models.0.data.iter().all(|model| {
             model
+                .psionic_tool_calling
+                .as_ref()
+                .is_some_and(|capability| {
+                    capability.support_level.label() == "fallback"
+                        && capability.supported_modes == vec!["none", "auto", "required", "named"]
+                        && capability.parser == "tagged_json_schema"
+                })
+        }));
+        assert!(models.0.data.iter().all(|model| {
+            model
                 .psionic_execution_profile
                 .as_ref()
                 .map(|profile| profile.batch_posture)
@@ -3833,6 +4498,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
@@ -3889,6 +4556,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: None,
@@ -3993,6 +4662,8 @@ mod tests {
                 max_output_tokens: Some(1),
                 stop: None,
                 stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
                 previous_response_id: Some(String::from("resp-prev-1")),
                 psionic_structured_output: None,
                 psionic_prefix_cache: None,
@@ -4059,6 +4730,8 @@ mod tests {
                     max_output_tokens: Some(1),
                     stop: None,
                     stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
                     previous_response_id: None,
                     psionic_structured_output: None,
                     psionic_prefix_cache: None,
@@ -4101,6 +4774,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: Some(PsionicGrammarRequest {
                 grammar: String::from("root ::= \"psionic\"\n"),
@@ -4185,6 +4860,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: Some(ChatCompletionResponseFormatRequest {
                 kind: String::from("json_schema"),
                 json_schema: Some(ChatCompletionJsonSchemaRequest {
@@ -4281,6 +4958,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: Some(StructuredOutputRequest::Choice {
@@ -4341,6 +5020,8 @@ mod tests {
                 max_output_tokens: Some(1),
                 stop: None,
                 stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
                 previous_response_id: None,
                 psionic_structured_output: Some(StructuredOutputRequest::Regex {
                     pattern: String::from("w[a-z]{4}"),
@@ -4395,6 +5076,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: None,
             psionic_grammar: None,
             psionic_structured_output: Some(StructuredOutputRequest::TaggedStructure {
@@ -4451,6 +5134,293 @@ mod tests {
     }
 
     #[test]
+    fn generic_server_tool_choice_none_preserves_plain_text_generation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-none-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny tool none llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-tool-none-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: vec![weather_tool_definition()],
+                    tool_choice: Some(ToolChoiceRequest::Mode(String::from("none"))),
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(
+            payload["choices"][0]["message"]["content"],
+            serde_json::json!("world")
+        );
+        assert!(payload["choices"][0]["message"]["tool_calls"].is_null());
+        assert!(payload["psionic_tool_calls"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_tool_choice_auto_can_return_message_envelope()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-auto-llama.gguf");
+        write_test_gguf(
+            &path,
+            auto_tool_message_llama_metadata("tiny tool auto llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-tool-auto-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: vec![weather_tool_definition()],
+                    tool_choice: Some(ToolChoiceRequest::Mode(String::from("auto"))),
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(
+            payload["choices"][0]["message"]["content"],
+            serde_json::json!("world")
+        );
+        assert_eq!(
+            payload["psionic_structured_value"],
+            serde_json::json!({
+                "kind": "tagged_structure",
+                "discriminator": "kind",
+                "tag": "message",
+                "value": {
+                    "kind": "message",
+                    "content": "world"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_required_tool_call_is_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-call-llama.gguf");
+        write_test_gguf(
+            &path,
+            tool_call_llama_metadata("tiny tool call llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-tool-call-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: vec![weather_tool_definition()],
+                    tool_choice: Some(ToolChoiceRequest::Mode(String::from("required"))),
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(
+            payload["choices"][0]["finish_reason"],
+            serde_json::json!("tool_calls")
+        );
+        assert!(payload["choices"][0]["message"]["content"].is_null());
+        assert_eq!(
+            payload["choices"][0]["message"]["tool_calls"][0]["function"]["name"],
+            serde_json::json!("get_weather")
+        );
+        assert_eq!(
+            payload["psionic_tool_calls"][0]["arguments"],
+            serde_json::json!({
+                "latitude": 48.8566,
+                "longitude": 2.3522
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_named_tool_choice_surfaces_tool_call()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-response-llama.gguf");
+        write_test_gguf(
+            &path,
+            tool_call_llama_metadata("tiny tool response llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response = tokio::runtime::Runtime::new()?.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-tool-response-llama")),
+                instructions: None,
+                input: ResponsesInput::Text(String::from("hello")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: vec![weather_tool_definition()],
+                tool_choice: Some(ToolChoiceRequest::Named(NamedToolChoiceRequest {
+                    kind: String::from("function"),
+                    function: NamedToolChoiceFunction {
+                        name: String::from("get_weather"),
+                    },
+                })),
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["output_text"], serde_json::json!(""));
+        assert!(
+            payload["output"]
+                .as_array()
+                .is_some_and(|items| items.is_empty())
+        );
+        assert_eq!(
+            payload["psionic_tool_calls"][0]["name"],
+            serde_json::json!("get_weather")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_tool_call_validation_refuses_invalid_arguments()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-invalid-llama.gguf");
+        write_test_gguf(
+            &path,
+            invalid_tool_call_llama_metadata("tiny tool invalid llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response = tokio::runtime::Runtime::new()?.block_on(super::generic_chat_completions(
+            State(std::sync::Arc::clone(&server.state)),
+            Json(ChatCompletionRequest {
+                model: Some(String::from("tiny-tool-invalid-llama")),
+                messages: vec![ChatCompletionMessage {
+                    role: String::from("user"),
+                    content: String::from("hello"),
+                    name: None,
+                }],
+                temperature: Some(0.0),
+                max_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: vec![weather_tool_definition()],
+                tool_choice: Some(ToolChoiceRequest::Mode(String::from("required"))),
+                response_format: None,
+                psionic_grammar: None,
+                psionic_structured_output: None,
+                psionic_prefix_cache: None,
+            }),
+        ));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .len()
+                > 8,
+            "validation failures should surface through parser-backed refusal"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_streaming_tool_calls_preserve_machine_envelope()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-stream-llama.gguf");
+        write_test_gguf(
+            &path,
+            tool_call_llama_metadata("tiny tool stream llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-tool-stream-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: true,
+                    tools: vec![weather_tool_definition()],
+                    tool_choice: Some(ToolChoiceRequest::Mode(String::from("required"))),
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
+        let body = tokio::runtime::Runtime::new()?.block_on(response_text(response))?;
+        assert!(body.contains("\"tool_calls\""));
+        assert!(body.contains("\"finish_reason\":\"tool_calls\""));
+        assert!(body.contains("[DONE]"));
+        Ok(())
+    }
+
+    #[test]
     fn generic_server_prefix_cache_headers_are_machine_checkable()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
@@ -4475,6 +5445,8 @@ mod tests {
                 max_tokens: Some(1),
                 stop: None,
                 stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
                 response_format: None,
                 psionic_grammar: None,
                 psionic_structured_output: None,
@@ -4572,6 +5544,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
             response_format: Some(ChatCompletionResponseFormatRequest {
                 kind: String::from("json_schema"),
                 json_schema: Some(ChatCompletionJsonSchemaRequest {
@@ -4610,6 +5584,11 @@ mod tests {
     ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         let body = to_bytes(response.into_body(), usize::MAX).await?;
         Ok(serde_json::from_slice(body.as_ref())?)
+    }
+
+    async fn response_text(response: Response) -> Result<String, Box<dyn std::error::Error>> {
+        let body = to_bytes(response.into_body(), usize::MAX).await?;
+        Ok(String::from_utf8(body.to_vec())?)
     }
 
     fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -4677,10 +5656,82 @@ mod tests {
         metadata
     }
 
+    fn auto_tool_message_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("llama", name);
+        set_context_length(&mut metadata, "llama", 256);
+        metadata.extend(sentencepiece_tokenizer_metadata_entries_with_tokens(vec![
+            "<unk>",
+            "<s>",
+            "</s>",
+            "hello",
+            "{\"kind\":\"message\",\"content\":\"world\"}",
+            "world",
+        ]));
+        metadata
+    }
+
+    fn tool_call_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("llama", name);
+        set_context_length(&mut metadata, "llama", 256);
+        metadata.extend(sentencepiece_tokenizer_metadata_entries_with_tokens(vec![
+            "<unk>",
+            "<s>",
+            "</s>",
+            "hello",
+            "{\"kind\":\"tool:get_weather\",\"latitude\":48.8566,\"longitude\":2.3522}",
+            "world",
+        ]));
+        metadata
+    }
+
+    fn invalid_tool_call_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("llama", name);
+        set_context_length(&mut metadata, "llama", 256);
+        metadata.extend(sentencepiece_tokenizer_metadata_entries_with_tokens(vec![
+            "<unk>",
+            "<s>",
+            "</s>",
+            "hello",
+            "{\"kind\":\"tool:get_weather\",\"latitude\":\"oops\",\"longitude\":2.3522}",
+            "world",
+        ]));
+        metadata
+    }
+
+    fn weather_tool_definition() -> ToolDefinitionEnvelope {
+        ToolDefinitionEnvelope {
+            kind: String::from("function"),
+            function: ToolDefinitionRequest {
+                name: String::from("get_weather"),
+                description: Some(String::from("Get the weather for one coordinate pair.")),
+                parameters: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "latitude": { "type": "number" },
+                        "longitude": { "type": "number" }
+                    },
+                    "required": ["latitude", "longitude"],
+                    "additionalProperties": false
+                })),
+            },
+        }
+    }
+
     fn dense_qwen_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
         let mut metadata = dense_family_header("qwen2", name);
         metadata.extend(qwen_tokenizer_metadata_entries());
         metadata
+    }
+
+    fn set_context_length(
+        metadata: &mut [(String, GgufMetadataValue)],
+        architecture: &str,
+        context_length: u32,
+    ) {
+        let key = format!("{architecture}.context_length");
+        if let Some((_, value)) = metadata.iter_mut().find(|(candidate, _)| candidate == &key) {
+            *value = GgufMetadataValue::U32(context_length);
+        }
     }
 
     fn dense_family_header(architecture: &str, name: &str) -> Vec<(String, GgufMetadataValue)> {
