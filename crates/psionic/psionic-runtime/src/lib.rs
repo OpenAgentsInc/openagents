@@ -5754,6 +5754,16 @@ pub enum RuntimeWorkClass {
     DecodeToken,
     /// One batched prefill or compile-time preparation step.
     PrefillBatch,
+    /// One trainer-step workload.
+    TrainingStep,
+    /// One rollout-generation workload.
+    RolloutStep,
+    /// One evaluation workload.
+    EvalStep,
+    /// One sandbox execution workload.
+    SandboxStep,
+    /// One validator-owned verification workload.
+    ValidatorStep,
     /// One datastream chunk transfer.
     DatastreamChunk,
     /// One collective or shard synchronization step.

@@ -1812,11 +1812,31 @@ economic accounting remain the next layer.
 
 ### 28. `Scheduling and Accounting: add budget, priority, preemption, and cost attribution`
 
-Once the stack is shared or decentralized, it needs operator economics. This
-issue should add budget caps, queue classes, preemption rules, validator cost
-visibility, environment cost attribution, and role-aware accounting across
-trainer, rollout, eval, and sandbox workloads. The goal is to make the system
-operable under real capacity constraints rather than only functionally correct.
+Status: implemented on 2026-03-14 via GitHub issue `#3591`.
+
+`psionic-train` now owns an explicit scheduling and accounting layer in
+`src/scheduling_accounting.rs`, and `psionic-runtime` now surfaces train-owned
+runtime work classes for trainer, rollout, eval, sandbox, and validator work.
+
+The new contract makes these operator seams explicit:
+
+- global active-work budget caps over work units, bytes, and estimated cost
+- queue classes with inspectable priority and preemption policy
+- role-specific cost rates for trainer, rollout, eval, sandbox, and validator
+  work
+- typed admission, preemption, queueing, completion, and snapshot receipts
+- validator-scoped and environment-scoped cost attribution
+- queue draining after completion so queued work becomes active through typed
+  state transitions rather than implicit retries
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_SCHEDULING_ACCOUNTING_REFERENCE.md`
+- `scripts/release/check-psionic-train-scheduling-accounting.sh`
+
+This issue makes train-side operator economics first-class typed Psionic truth.
+Chaos testing and benchmark thresholds remain the final follow-on issues in the
+train program.
 
 ### 29. `Reliability: add chaos and failure-injection suites for topology, checkpoint, and validator flows`
 
