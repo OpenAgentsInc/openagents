@@ -6,6 +6,7 @@ use std::{
 };
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use psionic_datastream::DatastreamManifestRef;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -961,6 +962,8 @@ impl ClusterArtifactReference {
 pub enum ClusterArtifactTransferMethod {
     /// Peer-to-peer artifact copy from another node.
     PeerCopy,
+    /// Resumable transfer over the Psionic datastream data plane.
+    Datastream,
     /// OCI or registry pull.
     OciPull,
     /// Unknown or not-yet-classified transfer method.
@@ -1013,6 +1016,9 @@ pub struct ClusterArtifactResidencyRecord {
     /// Transfer method required for staging, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_method: Option<ClusterArtifactTransferMethod>,
+    /// Optional resumable datastream offer for the artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datastream_offer: Option<DatastreamManifestRef>,
     /// Machine-checkable detail explaining the current staging state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -1031,6 +1037,7 @@ impl ClusterArtifactResidencyRecord {
             artifact,
             status,
             transfer_method: None,
+            datastream_offer: None,
             detail: None,
         }
     }
@@ -1042,6 +1049,13 @@ impl ClusterArtifactResidencyRecord {
         transfer_method: ClusterArtifactTransferMethod,
     ) -> Self {
         self.transfer_method = Some(transfer_method);
+        self
+    }
+
+    /// Attaches a resumable datastream offer for staged delivery.
+    #[must_use]
+    pub fn with_datastream_offer(mut self, datastream_offer: DatastreamManifestRef) -> Self {
+        self.datastream_offer = Some(datastream_offer);
         self
     }
 
@@ -2654,6 +2668,10 @@ impl ClusterSnapshot {
                     .map_or(b"".as_slice(), artifact_transfer_label),
             );
             hasher.update(b"|");
+            if let Some(datastream_offer) = &residency.datastream_offer {
+                update_datastream_offer_digest(&mut hasher, datastream_offer);
+            }
+            hasher.update(b"|");
             hasher.update(residency.detail.as_deref().unwrap_or_default().as_bytes());
         }
         hex::encode(hasher.finalize())
@@ -4044,8 +4062,79 @@ fn artifact_residency_label(status: ClusterArtifactResidencyStatus) -> &'static 
 fn artifact_transfer_label(transfer_method: ClusterArtifactTransferMethod) -> &'static [u8] {
     match transfer_method {
         ClusterArtifactTransferMethod::PeerCopy => b"peer_copy",
+        ClusterArtifactTransferMethod::Datastream => b"datastream",
         ClusterArtifactTransferMethod::OciPull => b"oci_pull",
         ClusterArtifactTransferMethod::Unknown => b"unknown",
+    }
+}
+
+fn update_datastream_offer_digest(hasher: &mut Sha256, datastream_offer: &DatastreamManifestRef) {
+    hasher.update(datastream_offer.stream_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.manifest_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.subject.as_str().as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.object_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.total_bytes.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.chunk_count.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.chunk_bytes.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(datastream_offer.encoding.as_str().as_bytes());
+    hasher.update(b"|");
+    hasher.update(
+        datastream_offer
+            .compression
+            .map_or(b"".as_slice(), |compression| {
+                compression.as_str().as_bytes()
+            }),
+    );
+    hasher.update(b"|");
+    hasher.update(
+        datastream_offer
+            .provenance_digest
+            .as_deref()
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    if let Some(dataset_binding) = &datastream_offer.dataset_binding {
+        hasher.update(b"|dataset|");
+        hasher.update(dataset_binding.dataset_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(
+            dataset_binding
+                .split
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            dataset_binding
+                .shard_key
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+    }
+    if let Some(checkpoint_binding) = &datastream_offer.checkpoint_binding {
+        hasher.update(b"|checkpoint|");
+        hasher.update(checkpoint_binding.checkpoint_family.as_bytes());
+        hasher.update(b"|");
+        hasher.update(
+            checkpoint_binding
+                .checkpoint_ref
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        if let Some(step) = checkpoint_binding.step {
+            hasher.update(step.to_string().as_bytes());
+        }
     }
 }
 
@@ -4056,6 +4145,9 @@ mod tests {
     use std::{fs, net::SocketAddr};
 
     use ed25519_dalek::SigningKey;
+    use psionic_datastream::{
+        DatastreamCheckpointBinding, DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind,
+    };
     use tempfile::tempdir;
 
     use crate::{
@@ -5622,6 +5714,46 @@ mod tests {
 
         assert_eq!(state.topology_digest(), topology_digest_before);
         assert_ne!(state.stable_digest(), stable_digest_before);
+    }
+
+    #[test]
+    fn artifact_residency_digest_changes_when_datastream_offer_changes() {
+        let cluster_id = sample_cluster_id();
+        let node_id = crate::NodeId::new("worker-a");
+        let mut left = ClusterSnapshot::new(cluster_id.clone());
+        let mut right = ClusterSnapshot::new(cluster_id);
+        let base = ClusterArtifactResidencyRecord::new(
+            node_id.clone(),
+            ClusterArtifactReference::new("checkpoint-17", "artifact-digest")
+                .with_provenance_digest("prov-digest"),
+            ClusterArtifactResidencyStatus::CopyRequired,
+        )
+        .with_transfer_method(ClusterArtifactTransferMethod::Datastream)
+        .with_detail("checkpoint staging pending");
+        let datastream_offer = DatastreamManifest::from_bytes(
+            "checkpoint-stream-17",
+            DatastreamSubjectKind::Checkpoint,
+            b"checkpoint-payload",
+            8,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_checkpoint_binding(
+            DatastreamCheckpointBinding::new("train.decoder")
+                .with_checkpoint_ref("checkpoint://train/17")
+                .with_step(17),
+        )
+        .manifest_ref();
+        left.artifact_residency
+            .insert(base.key.clone(), base.clone());
+        right.artifact_residency.insert(
+            base.key.clone(),
+            base.with_datastream_offer(datastream_offer),
+        );
+
+        assert_ne!(
+            left.artifact_residency_digest(),
+            right.artifact_residency_digest()
+        );
     }
 
     #[test]
