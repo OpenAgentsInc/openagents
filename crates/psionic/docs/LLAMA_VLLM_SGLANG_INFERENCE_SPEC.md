@@ -651,6 +651,15 @@ Psionic-owned JSON-schema matchers instead of hidden string parsing, and
 preserves machine-readable tool-call envelopes across both non-streaming
 responses and the current single-shot streaming SSE path.
 
+Implemented now: `PSI-246` is materially landed in-tree too. `psionic-models`
+now exposes a first Psionic-owned reasoning-parser registry plus typed
+parsed-response envelopes, starting with GPT-OSS / Harmony. `psionic-serve`
+now uses that seam for parser-backed final/reasoning separation, surfaces
+`reasoning_content` on chat responses plus typed reasoning-aware envelopes on
+chat and responses contracts, and accepts explicit `psionic_reasoning` policy
+requests to separate or suppress reasoning instead of relying on raw-string
+scraping.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
@@ -677,7 +686,7 @@ responses and the current single-shot streaming SSE path.
 | `PSI-243` | Psionic Serve: add `/v1/embeddings`, `/v1/responses`, and a broader generic serving surface | `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3548`. The generic server now fronts real embeddings and a first Psionic-owned responses contract, with truthful per-model endpoint support and heterogeneous decoder/embeddings model inventory. | `PSI-234` |
 | `PSI-244` | Psionic Serve: add structured outputs for choice, regex, JSON schema, grammar, and tagged structure | `psionic-serve`, `psionic-runtime` | `SGLang` plus `vLLM` plus `llama.cpp` | Status: implemented on 2026-03-14 via GitHub issue `#3549`. Added one Psionic-owned structured-output contract across choice, regex, grammar, JSON schema, JSON object, and tagged-structure cases, plus explicit capability reporting and machine-readable structured value surfaces on the generic server. | `PSI-243`, `PSI-236` |
 | `PSI-245` | Psionic Serve: add named, auto, required, and none tool-calling modes with parser-backed validation | `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3550`. Added first-class `tools` / `tool_choice` contracts, tagged structured-output tool envelopes, parser-backed argument validation, streaming/non-streaming tool-call surfaces, and explicit per-model tool-calling capability truth. | `PSI-243`, `PSI-244` |
-| `PSI-246` | Psionic Serve: add reasoning-parser seam and explicit reasoning/content separation | `psionic-serve`, `psionic-models` | `SGLang` | Rebuild the `SGLang` lesson that reasoning-bearing models need explicit parser handling and response fields instead of stringly typed conventions. | `PSI-243`, `PSI-244` |
+| `PSI-246` | Psionic Serve: add reasoning-parser seam and explicit reasoning/content separation | `psionic-serve`, `psionic-models` | `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3551`. Added a first reasoning-parser registry and typed parsed-response envelopes in `psionic-models`, plus parser-backed reasoning/content separation and explicit `psionic_reasoning` policy surfaces on chat and responses contracts. | `PSI-243`, `PSI-244` |
 | `PSI-247` | Psionic Serve: add response-state and conversation contracts for multi-turn agent loops | `psionic-serve` | `SGLang` | Move beyond stateless repeated chat-completions by giving Psionic explicit response-stateful and conversation-stateful runtime contracts. | `PSI-243`, `PSI-245`, `PSI-246` |
 | `PSI-248` | Psionic Adapters: add LoRA and adapter import, merge/unmerge, batching, and hosted serving | `psionic-models`, `psionic-serve`, backend crates | `SGLang` plus `llama.cpp` | Replace today's explicit adapter refusal posture with a truthful Rust-native adapter runtime shaped by `SGLang` multi-LoRA and `llama.cpp` adapter ecosystem lessons. | `PSI-233`, `PSI-244`, `PSI-245` |
 
