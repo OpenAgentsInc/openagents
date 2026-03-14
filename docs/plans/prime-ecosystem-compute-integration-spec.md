@@ -901,6 +901,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The old crate should remain the descriptor layer; the new crate should own execution.
 
 22. **Psionic Sandbox: implement container, python, node, and posix execution runners**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3506`.
    - Rebuild the current local sandbox execution shapes as a reusable runtime with clear profile digests, file transfer rules, and evidence bundles.
    - This is the foundation for a Prime-sandboxes-quality Rust API.
 

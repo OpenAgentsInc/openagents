@@ -1083,6 +1083,41 @@ mod tests {
     }
 
     #[test]
+    fn node_runner_executes_inline_payload_and_emits_artifact()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let runtime = fake_binary(
+            temp.path(),
+            "runtime",
+            "#!/bin/sh\nscript=\"$1\"\nshift\n/bin/sh \"$script\" \"$@\"\n",
+        )?;
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace)?;
+        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::NodeExec);
+        let request = request(&workspace, ProviderSandboxExecutionClass::NodeExec);
+
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
+
+        ensure(
+            result.receipt.final_state == ProviderSandboxExecutionState::Succeeded,
+            "sandbox node job should succeed",
+        )?;
+        ensure(
+            result.receipt.evidence.artifact_digests.len() == 1,
+            "sandbox node job should emit one artifact digest",
+        )?;
+        ensure(
+            result.receipt.evidence.profile_id.contains("nodeexec"),
+            "sandbox node job should retain node profile identity",
+        )?;
+        Ok(())
+    }
+
+    #[test]
     fn container_adapter_passes_workspace_and_network_policy()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
@@ -1111,6 +1146,47 @@ mod tests {
         ensure(
             result.receipt.evidence.artifact_digests.len() == 1,
             "sandbox container job should emit one artifact digest",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn mismatched_execution_class_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let runtime = fake_binary(
+            temp.path(),
+            "runtime",
+            "#!/bin/sh\nscript=\"$1\"\nshift\n/bin/sh \"$script\" \"$@\"\n",
+        )?;
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace)?;
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
+        let request = request(&workspace, ProviderSandboxExecutionClass::NodeExec);
+
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
+
+        ensure(
+            result.receipt.final_state == ProviderSandboxExecutionState::Rejected,
+            "sandbox class mismatch should be rejected",
+        )?;
+        ensure(
+            result.receipt.evidence.termination_reason
+                == ProviderSandboxTerminationReason::PolicyRejected,
+            "sandbox class mismatch should retain policy rejection",
+        )?;
+        ensure(
+            result
+                .receipt
+                .evidence
+                .policy_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("execution class")),
+            "sandbox class mismatch should preserve an explicit refusal detail",
         )?;
         Ok(())
     }
