@@ -80,6 +80,10 @@ Implemented now:
   non-GPT-OSS GGUF families on one `/v1/chat/completions` surface, plus
   safetensors-backed embeddings on `/v1/embeddings` and a first Psionic-owned
   `/v1/responses` surface, with per-model endpoint support reported explicitly.
+- a first explicit non-GPT-OSS generic-server pilot for the Qwen family, with a
+  dedicated end-to-end runbook and harness proving family inventory, scheduler
+  headers, and scheduler receipts survive the same Psionic-owned runtime and
+  server path as GPT-OSS.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
 - explicit local-backend truth on the GPT-OSS server surface too, including
@@ -205,6 +209,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical split between local portability, high-throughput serving, and
   structured-agent acceptance, plus the runnable category harness that keeps
   those product claims from collapsing into one benchmark headline.
+- **[docs/NON_GPT_OSS_QWEN_PILOT.md](docs/NON_GPT_OSS_QWEN_PILOT.md)** —
+  canonical first non-GPT-OSS generic-server pilot, including the Qwen runbook,
+  pass criteria, expected signals, and current limitations.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
