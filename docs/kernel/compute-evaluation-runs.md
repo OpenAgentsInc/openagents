@@ -104,5 +104,6 @@ Receipt types:
 - `#3519`: synthetic-data pipelines now emit directly into these eval-run
   objects
   - landed in `docs/kernel/compute-synthetic-data.md`
-- `#3520`: benchmark adapters should terminate in this lifecycle rather than
+- `#3520`: benchmark adapters now terminate in this lifecycle rather than
   inventing parallel result stores
+  - landed in `docs/kernel/compute-benchmark-adapters.md`

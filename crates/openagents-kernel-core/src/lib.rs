@@ -12,6 +12,7 @@
 
 pub mod authority;
 pub mod compute;
+pub mod compute_benchmarks;
 pub mod compute_contracts;
 pub mod data;
 pub mod ids;
