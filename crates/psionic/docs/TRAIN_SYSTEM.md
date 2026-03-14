@@ -1559,11 +1559,23 @@ issues.
 
 ### 18. `Psionic Train: implement curriculum, filtering, and non-zero-advantage gates`
 
-The Intellect papers make curriculum and filtering a first-class control
-surface. This issue should add difficulty metadata consumption, trivial-sample
-suppression, non-zero-advantage gates, online and offline sampling filters, and
-receipt-bearing filtering policy. It should make training-sample selection
-inspectable and reproducible.
+Status: implemented on 2026-03-14 via GitHub issue `#3581`.
+
+Added the first train-side curriculum controller inside `psionic-train`:
+
+- digest-bound curriculum policy with online and offline sampling filters
+- typed training candidates constructed from SFT traces and rollout artifacts
+- explicit filter receipts and batch selection receipts
+- difficulty-tier consumption, trivial-reward suppression, source-budget
+  suppression, and non-zero-advantage gates
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_CURRICULUM_REFERENCE.md`
+- `scripts/release/check-psionic-train-curriculum.sh`
+
+This issue makes training-sample selection inspectable and reproducible.
+Instability telemetry and halt policy remain the next train issue.
 
 ### 19. `Psionic Train: add instability telemetry, halt policies, and risky-optimization gating`
 

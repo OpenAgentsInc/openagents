@@ -22,6 +22,7 @@ use thiserror::Error;
 
 mod checkpoint_recovery;
 mod core_loop;
+mod curriculum;
 mod orchestrator;
 mod rl_artifacts;
 mod rollout_validation;
@@ -31,6 +32,7 @@ mod worker_protocol;
 
 pub use checkpoint_recovery::*;
 pub use core_loop::*;
+pub use curriculum::*;
 pub use orchestrator::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
