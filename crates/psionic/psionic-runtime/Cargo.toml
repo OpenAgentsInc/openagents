@@ -19,6 +19,7 @@ hex = { workspace = true }
 psionic-core = { path = "../psionic-core" }
 psionic-ir = { path = "../psionic-ir" }
 rand = { workspace = true }
+regex-syntax = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

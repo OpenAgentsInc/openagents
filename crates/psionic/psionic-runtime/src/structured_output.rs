@@ -1,19 +1,132 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+use regex_syntax::{
+    hir::{Class as RegexClass, Hir as RegexHir, HirKind as RegexHirKind, Look as RegexLook},
+    parse as parse_regex,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+
+/// Stable structured-output kinds surfaced by Psionic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredOutputKind {
+    /// Discrete string choice from one caller-supplied set.
+    Choice,
+    /// Regex-constrained string output.
+    Regex,
+    /// Grammar-constrained output.
+    Grammar,
+    /// JSON-schema constrained output.
+    JsonSchema,
+    /// Untyped JSON-object constrained output.
+    JsonObject,
+    /// Tagged JSON structure with a discriminator field.
+    TaggedStructure,
+}
+
+impl StructuredOutputKind {
+    /// Returns the stable label used by HTTP and telemetry surfaces.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Choice => "choice",
+            Self::Regex => "regex",
+            Self::Grammar => "grammar",
+            Self::JsonSchema => "json_schema",
+            Self::JsonObject => "json_object",
+            Self::TaggedStructure => "tagged_structure",
+        }
+    }
+}
+
+/// Explicit structured-output support level for one serving path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredOutputSupportLevel {
+    /// The serving path enforces this kind natively.
+    Native,
+    /// The serving path enforces this kind through a Psionic-owned fallback.
+    Fallback,
+    /// The serving path does not support this kind.
+    Unsupported,
+}
+
+impl StructuredOutputSupportLevel {
+    /// Returns the stable label used by HTTP and telemetry surfaces.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Fallback => "fallback",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// Machine-readable structured-output capability fact for one serving path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StructuredOutputCapability {
+    /// Structured-output kind covered by this capability row.
+    pub kind: StructuredOutputKind,
+    /// Support level for the realized serving path.
+    pub support_level: StructuredOutputSupportLevel,
+    /// Enforcement mode when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<StructuredOutputEnforcementMode>,
+    /// Parser family when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parser: Option<StructuredOutputParser>,
+    /// Optional detail for unsupported or degraded modes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl StructuredOutputCapability {
+    #[must_use]
+    pub const fn fallback(
+        kind: StructuredOutputKind,
+        mode: StructuredOutputEnforcementMode,
+        parser: StructuredOutputParser,
+    ) -> Self {
+        Self {
+            kind,
+            support_level: StructuredOutputSupportLevel::Fallback,
+            mode: Some(mode),
+            parser: Some(parser),
+            detail: None,
+        }
+    }
+
+    #[must_use]
+    pub fn unsupported(kind: StructuredOutputKind, detail: impl Into<String>) -> Self {
+        Self {
+            kind,
+            support_level: StructuredOutputSupportLevel::Unsupported,
+            mode: None,
+            parser: None,
+            detail: Some(detail.into()),
+        }
+    }
+}
 
 /// Machine-checkable local structured-output fallback modes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StructuredOutputEnforcementMode {
+    /// Discrete choice fallback owned by Psionic.
+    FallbackChoice,
+    /// Regex fallback lowered into the Psionic matcher.
+    FallbackRegex,
     /// GBNF-compatible grammar fallback owned by Psionic.
     FallbackGrammar,
     /// JSON-schema subset lowered into the Psionic fallback matcher.
     FallbackJsonSchema,
     /// Generic JSON object fallback owned by Psionic.
     FallbackJsonObject,
+    /// Tagged-structure fallback lowered into the Psionic JSON-schema path.
+    FallbackTaggedStructure,
 }
 
 impl StructuredOutputEnforcementMode {
@@ -21,9 +134,12 @@ impl StructuredOutputEnforcementMode {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::FallbackChoice => "fallback_choice",
+            Self::FallbackRegex => "fallback_regex",
             Self::FallbackGrammar => "fallback_grammar",
             Self::FallbackJsonSchema => "fallback_json_schema",
             Self::FallbackJsonObject => "fallback_json_object",
+            Self::FallbackTaggedStructure => "fallback_tagged_structure",
         }
     }
 }
@@ -32,12 +148,18 @@ impl StructuredOutputEnforcementMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StructuredOutputParser {
+    /// Discrete caller-supplied choice set.
+    ChoiceSet,
+    /// Regex subset lowered into the Psionic matcher.
+    RegexSubset,
     /// GBNF subset accepted by the current local fallback.
     GbnfSubset,
     /// JSON-schema subset accepted by the current local fallback.
     JsonSchemaSubset,
     /// Untyped JSON-object fallback owned by Psionic.
     JsonObject,
+    /// Tagged-structure JSON-schema lowering owned by Psionic.
+    TaggedJsonSchema,
 }
 
 impl StructuredOutputParser {
@@ -45,9 +167,12 @@ impl StructuredOutputParser {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::ChoiceSet => "choice_set",
+            Self::RegexSubset => "regex_subset",
             Self::GbnfSubset => "gbnf_subset",
             Self::JsonSchemaSubset => "json_schema_subset",
             Self::JsonObject => "json_object",
+            Self::TaggedJsonSchema => "tagged_json_schema",
         }
     }
 }
@@ -56,9 +181,49 @@ impl StructuredOutputParser {
 #[must_use]
 pub fn local_structured_output_parsers() -> Vec<StructuredOutputParser> {
     vec![
+        StructuredOutputParser::ChoiceSet,
+        StructuredOutputParser::RegexSubset,
         StructuredOutputParser::GbnfSubset,
         StructuredOutputParser::JsonSchemaSubset,
         StructuredOutputParser::JsonObject,
+        StructuredOutputParser::TaggedJsonSchema,
+    ]
+}
+
+/// The local structured-output capability inventory currently advertised by Psionic.
+#[must_use]
+pub fn local_structured_output_capabilities() -> Vec<StructuredOutputCapability> {
+    vec![
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::Choice,
+            StructuredOutputEnforcementMode::FallbackChoice,
+            StructuredOutputParser::ChoiceSet,
+        ),
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::Regex,
+            StructuredOutputEnforcementMode::FallbackRegex,
+            StructuredOutputParser::RegexSubset,
+        ),
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::Grammar,
+            StructuredOutputEnforcementMode::FallbackGrammar,
+            StructuredOutputParser::GbnfSubset,
+        ),
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::JsonSchema,
+            StructuredOutputEnforcementMode::FallbackJsonSchema,
+            StructuredOutputParser::JsonSchemaSubset,
+        ),
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::JsonObject,
+            StructuredOutputEnforcementMode::FallbackJsonObject,
+            StructuredOutputParser::JsonObject,
+        ),
+        StructuredOutputCapability::fallback(
+            StructuredOutputKind::TaggedStructure,
+            StructuredOutputEnforcementMode::FallbackTaggedStructure,
+            StructuredOutputParser::TaggedJsonSchema,
+        ),
     ]
 }
 
@@ -66,6 +231,16 @@ pub fn local_structured_output_parsers() -> Vec<StructuredOutputParser> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StructuredOutputRequest {
+    /// Discrete choice from one caller-supplied set of exact strings.
+    Choice {
+        /// Ordered allowed values.
+        values: Vec<String>,
+    },
+    /// Regex-constrained string output.
+    Regex {
+        /// Regular-expression pattern enforced against the entire output.
+        pattern: String,
+    },
     /// Grammar-constrained generation using a GBNF-compatible syntax subset.
     Grammar {
         /// Grammar syntax identifier.
@@ -83,16 +258,44 @@ pub enum StructuredOutputRequest {
     },
     /// Generic JSON object fallback with no additional schema restrictions.
     JsonObject,
+    /// Tagged JSON structure lowered into the local JSON-schema path.
+    TaggedStructure {
+        /// Optional schema name preserved for reporting.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// Field name used to discriminate between variants.
+        discriminator: String,
+        /// Allowed tagged variants.
+        variants: Vec<StructuredTaggedVariant>,
+    },
 }
 
 impl StructuredOutputRequest {
+    /// Returns the structured-output kind.
+    #[must_use]
+    pub const fn kind(&self) -> StructuredOutputKind {
+        match self {
+            Self::Choice { .. } => StructuredOutputKind::Choice,
+            Self::Regex { .. } => StructuredOutputKind::Regex,
+            Self::Grammar { .. } => StructuredOutputKind::Grammar,
+            Self::JsonSchema { .. } => StructuredOutputKind::JsonSchema,
+            Self::JsonObject => StructuredOutputKind::JsonObject,
+            Self::TaggedStructure { .. } => StructuredOutputKind::TaggedStructure,
+        }
+    }
+
     /// Returns the enforced fallback mode for the request.
     #[must_use]
     pub const fn mode(&self) -> StructuredOutputEnforcementMode {
         match self {
+            Self::Choice { .. } => StructuredOutputEnforcementMode::FallbackChoice,
+            Self::Regex { .. } => StructuredOutputEnforcementMode::FallbackRegex,
             Self::Grammar { .. } => StructuredOutputEnforcementMode::FallbackGrammar,
             Self::JsonSchema { .. } => StructuredOutputEnforcementMode::FallbackJsonSchema,
             Self::JsonObject => StructuredOutputEnforcementMode::FallbackJsonObject,
+            Self::TaggedStructure { .. } => {
+                StructuredOutputEnforcementMode::FallbackTaggedStructure
+            }
         }
     }
 
@@ -100,9 +303,12 @@ impl StructuredOutputRequest {
     #[must_use]
     pub const fn parser(&self) -> StructuredOutputParser {
         match self {
+            Self::Choice { .. } => StructuredOutputParser::ChoiceSet,
+            Self::Regex { .. } => StructuredOutputParser::RegexSubset,
             Self::Grammar { .. } => StructuredOutputParser::GbnfSubset,
             Self::JsonSchema { .. } => StructuredOutputParser::JsonSchemaSubset,
             Self::JsonObject => StructuredOutputParser::JsonObject,
+            Self::TaggedStructure { .. } => StructuredOutputParser::TaggedJsonSchema,
         }
     }
 
@@ -111,10 +317,44 @@ impl StructuredOutputRequest {
     pub fn schema_name(&self) -> Option<&str> {
         match self {
             Self::JsonSchema { name, .. } => name.as_deref(),
-            Self::Grammar { .. } | Self::JsonObject => None,
+            Self::TaggedStructure { name, .. } => name.as_deref(),
+            Self::Choice { .. } | Self::Regex { .. } | Self::Grammar { .. } | Self::JsonObject => {
+                None
+            }
         }
     }
 }
+
+/// One tagged-structure variant lowered into the local JSON-schema fallback.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StructuredTaggedVariant {
+    /// Discriminator value for the variant.
+    pub tag: String,
+    /// Schema for the payload object of this variant.
+    pub schema: Value,
+}
+
+/// Machine-readable structured value preserved by the serve layer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StructuredOutputValue {
+    /// One discrete string from a caller-supplied choice set.
+    Choice { value: String },
+    /// One regex-constrained string value.
+    Regex { value: String },
+    /// Raw grammar-constrained string output.
+    Grammar { value: String },
+    /// Parsed JSON value.
+    Json { value: Value },
+    /// Tagged JSON object with discriminator extraction.
+    TaggedStructure {
+        discriminator: String,
+        tag: String,
+        value: Value,
+    },
+}
+
+impl Eq for StructuredOutputValue {}
 
 /// Grammar syntax identifiers accepted by the local fallback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +367,10 @@ pub enum StructuredGrammarSyntax {
 /// Machine-checkable report attached to successful fallback-constrained requests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructuredOutputExecutionReport {
+    /// Structured-output kind used for the request.
+    pub kind: StructuredOutputKind,
+    /// Support level used for the request.
+    pub support_level: StructuredOutputSupportLevel,
     /// Fallback mode used for enforcement.
     pub mode: StructuredOutputEnforcementMode,
     /// Parser family used by the fallback.
@@ -141,6 +385,8 @@ impl StructuredOutputExecutionReport {
     #[must_use]
     pub fn from_request(request: &StructuredOutputRequest) -> Self {
         Self {
+            kind: request.kind(),
+            support_level: StructuredOutputSupportLevel::Fallback,
             mode: request.mode(),
             parser: request.parser(),
             schema_name: request.schema_name().map(String::from),
@@ -203,6 +449,15 @@ impl StructuredOutputMatch {
 /// Failure returned when the local fallback cannot compile or match a request.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StructuredOutputError {
+    /// The request declared an invalid or empty choice set.
+    #[error("invalid structured choice set: {0}")]
+    InvalidChoice(String),
+    /// The regex failed to parse.
+    #[error("invalid structured regex: {0}")]
+    InvalidRegex(String),
+    /// The regex requested an unsupported feature.
+    #[error("unsupported structured regex feature for local fallback: {0}")]
+    UnsupportedRegex(String),
     /// The grammar syntax is unsupported by the current fallback.
     #[error("unsupported structured grammar syntax `{0}`")]
     UnsupportedGrammarSyntax(String),
@@ -224,6 +479,12 @@ pub enum StructuredOutputError {
     /// The JSON schema is malformed.
     #[error("invalid JSON schema for local fallback: {0}")]
     InvalidJsonSchema(String),
+    /// The tagged-structure request is malformed.
+    #[error("invalid tagged structure for local fallback: {0}")]
+    InvalidTaggedStructure(String),
+    /// The structured value could not be materialized from the generated text.
+    #[error("structured value materialization failed: {0}")]
+    InvalidStructuredValue(String),
 }
 
 /// Compiled fallback matcher used by the local serving path.
@@ -237,6 +498,8 @@ impl StructuredOutputMatcher {
     /// Compiles a request-local fallback matcher.
     pub fn compile(request: StructuredOutputRequest) -> Result<Self, StructuredOutputError> {
         let grammar = match &request {
+            StructuredOutputRequest::Choice { values } => Grammar::from_choice(values)?,
+            StructuredOutputRequest::Regex { pattern } => Grammar::from_regex(pattern)?,
             StructuredOutputRequest::Grammar { syntax, grammar } => match syntax {
                 StructuredGrammarSyntax::Gbnf => Grammar::parse_gbnf(grammar)?,
             },
@@ -244,6 +507,11 @@ impl StructuredOutputMatcher {
                 Grammar::from_json_schema(schema)?
             }
             StructuredOutputRequest::JsonObject => Grammar::from_json_object(),
+            StructuredOutputRequest::TaggedStructure {
+                discriminator,
+                variants,
+                ..
+            } => Grammar::from_tagged_structure(discriminator, variants)?,
         };
         Ok(Self { request, grammar })
     }
@@ -272,12 +540,22 @@ impl StructuredOutputMatcher {
         self.request.schema_name()
     }
 
+    /// Returns the structured-output kind used by this matcher.
+    #[must_use]
+    pub const fn kind(&self) -> StructuredOutputKind {
+        self.request.kind()
+    }
+
     /// Returns whether the matcher should auto-close once a complete value is reached.
     #[must_use]
     pub const fn prefers_completion_termination(&self) -> bool {
         matches!(
             self.request,
-            StructuredOutputRequest::JsonSchema { .. } | StructuredOutputRequest::JsonObject
+            StructuredOutputRequest::Choice { .. }
+                | StructuredOutputRequest::Regex { .. }
+                | StructuredOutputRequest::JsonSchema { .. }
+                | StructuredOutputRequest::JsonObject
+                | StructuredOutputRequest::TaggedStructure { .. }
         )
     }
 
@@ -285,6 +563,67 @@ impl StructuredOutputMatcher {
     #[must_use]
     pub fn classify(&self, text: &str) -> StructuredOutputMatch {
         self.grammar.classify(text)
+    }
+
+    /// Materializes one completed structured value from generated text.
+    pub fn materialize(
+        &self,
+        text: &str,
+    ) -> Result<Option<StructuredOutputValue>, StructuredOutputError> {
+        if !matches!(
+            self.classify(text).status,
+            StructuredOutputMatchStatus::Complete
+        ) {
+            return Ok(None);
+        }
+        match &self.request {
+            StructuredOutputRequest::Choice { values } => {
+                if values.iter().any(|value| value == text) {
+                    Ok(Some(StructuredOutputValue::Choice {
+                        value: text.to_string(),
+                    }))
+                } else {
+                    Err(StructuredOutputError::InvalidStructuredValue(format!(
+                        "completed choice `{text}` is not in the allowed set"
+                    )))
+                }
+            }
+            StructuredOutputRequest::Regex { .. } => Ok(Some(StructuredOutputValue::Regex {
+                value: text.to_string(),
+            })),
+            StructuredOutputRequest::Grammar { .. } => Ok(Some(StructuredOutputValue::Grammar {
+                value: text.to_string(),
+            })),
+            StructuredOutputRequest::JsonSchema { .. } | StructuredOutputRequest::JsonObject => {
+                let value = serde_json::from_str(text).map_err(|error| {
+                    StructuredOutputError::InvalidStructuredValue(format!(
+                        "failed to parse JSON output: {error}"
+                    ))
+                })?;
+                Ok(Some(StructuredOutputValue::Json { value }))
+            }
+            StructuredOutputRequest::TaggedStructure { discriminator, .. } => {
+                let value = serde_json::from_str::<Value>(text).map_err(|error| {
+                    StructuredOutputError::InvalidStructuredValue(format!(
+                        "failed to parse tagged JSON output: {error}"
+                    ))
+                })?;
+                let tag = value
+                    .get(discriminator)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        StructuredOutputError::InvalidStructuredValue(format!(
+                            "tagged output is missing string discriminator `{discriminator}`"
+                        ))
+                    })?
+                    .to_string();
+                Ok(Some(StructuredOutputValue::TaggedStructure {
+                    discriminator: discriminator.clone(),
+                    tag,
+                    value,
+                }))
+            }
+        }
     }
 }
 
@@ -295,6 +634,49 @@ struct Grammar {
 }
 
 impl Grammar {
+    fn from_choice(values: &[String]) -> Result<Self, StructuredOutputError> {
+        if values.is_empty() {
+            return Err(StructuredOutputError::InvalidChoice(String::from(
+                "choice set must include at least one value",
+            )));
+        }
+        if values.iter().any(|value| value.is_empty()) {
+            return Err(StructuredOutputError::InvalidChoice(String::from(
+                "choice values must not be empty",
+            )));
+        }
+        let alternatives = values
+            .iter()
+            .map(|value| Sequence {
+                terms: vec![Term::literal(value.clone())],
+            })
+            .collect();
+        let mut rules = BTreeMap::new();
+        rules.insert(String::from("root"), Expression::choice(alternatives));
+        Ok(Self {
+            root: String::from("root"),
+            rules,
+        })
+    }
+
+    fn from_regex(pattern: &str) -> Result<Self, StructuredOutputError> {
+        if pattern.is_empty() {
+            return Err(StructuredOutputError::InvalidRegex(String::from(
+                "regex pattern must not be empty",
+            )));
+        }
+        let hir = parse_regex(pattern)
+            .map_err(|error| StructuredOutputError::InvalidRegex(error.to_string()))?;
+        let mut rules = BTreeMap::new();
+        rules.insert(String::from("root"), regex_hir_to_expression(&hir)?);
+        let grammar = Self {
+            root: String::from("root"),
+            rules,
+        };
+        grammar.validate()?;
+        Ok(grammar)
+    }
+
     fn parse_gbnf(grammar: &str) -> Result<Self, StructuredOutputError> {
         let rule_text = preprocess_gbnf_rules(grammar)?;
         if rule_text.is_empty() {
@@ -364,6 +746,14 @@ impl Grammar {
         Ok(grammar)
     }
 
+    fn from_tagged_structure(
+        discriminator: &str,
+        variants: &[StructuredTaggedVariant],
+    ) -> Result<Self, StructuredOutputError> {
+        let schema = tagged_structure_schema(discriminator, variants)?;
+        Self::from_json_schema(&schema)
+    }
+
     fn validate(&self) -> Result<(), StructuredOutputError> {
         let mut referenced = BTreeSet::new();
         for expression in self.rules.values() {
@@ -427,6 +817,196 @@ fn preprocess_gbnf_rules(grammar: &str) -> Result<Vec<String>, StructuredOutputE
         rules.push(current.trim().to_string());
     }
     Ok(rules)
+}
+
+fn regex_hir_to_expression(hir: &RegexHir) -> Result<Expression, StructuredOutputError> {
+    match hir.kind() {
+        RegexHirKind::Empty => Ok(Expression::sequence(Vec::new())),
+        RegexHirKind::Literal(literal) => {
+            let value = std::str::from_utf8(&literal.0)
+                .map_err(|_| {
+                    StructuredOutputError::UnsupportedRegex(String::from(
+                        "regex literals must remain valid UTF-8",
+                    ))
+                })?
+                .to_string();
+            Ok(Expression::sequence(vec![Term::literal(value)]))
+        }
+        RegexHirKind::Class(class) => Ok(Expression::sequence(vec![Term::class(
+            regex_class_to_character_class(class)?,
+        )])),
+        RegexHirKind::Look(look) => regex_look_to_expression(*look),
+        RegexHirKind::Repetition(repetition) => Ok(Expression::sequence(vec![
+            Term::group(regex_hir_to_expression(repetition.sub.as_ref())?).repeat(
+                usize::try_from(repetition.min).map_err(|_| {
+                    StructuredOutputError::UnsupportedRegex(String::from(
+                        "regex repetition minimum does not fit usize",
+                    ))
+                })?,
+                repetition
+                    .max
+                    .map(|value| {
+                        usize::try_from(value).map_err(|_| {
+                            StructuredOutputError::UnsupportedRegex(String::from(
+                                "regex repetition maximum does not fit usize",
+                            ))
+                        })
+                    })
+                    .transpose()?,
+            ),
+        ])),
+        RegexHirKind::Capture(capture) => regex_hir_to_expression(capture.sub.as_ref()),
+        RegexHirKind::Concat(expressions) => Ok(Expression::sequence(
+            expressions
+                .iter()
+                .map(regex_hir_to_term)
+                .collect::<Result<Vec<_>, StructuredOutputError>>()?,
+        )),
+        RegexHirKind::Alternation(expressions) => Ok(Expression::choice(
+            expressions
+                .iter()
+                .map(|expression| {
+                    let expression = regex_hir_to_expression(expression)?;
+                    Ok(expression_as_sequence(expression))
+                })
+                .collect::<Result<Vec<_>, StructuredOutputError>>()?,
+        )),
+    }
+}
+
+fn regex_hir_to_term(hir: &RegexHir) -> Result<Term, StructuredOutputError> {
+    Ok(Term::group(regex_hir_to_expression(hir)?))
+}
+
+fn expression_as_sequence(expression: Expression) -> Sequence {
+    if let [sequence] = expression.alternatives.as_slice() {
+        sequence.clone()
+    } else {
+        Sequence {
+            terms: vec![Term::group(expression)],
+        }
+    }
+}
+
+fn regex_look_to_expression(look: RegexLook) -> Result<Expression, StructuredOutputError> {
+    match look {
+        RegexLook::Start | RegexLook::End => Ok(Expression::sequence(Vec::new())),
+        other => Err(StructuredOutputError::UnsupportedRegex(format!(
+            "look-around `{other:?}` is not supported by the local fallback"
+        ))),
+    }
+}
+
+fn regex_class_to_character_class(
+    class: &RegexClass,
+) -> Result<CharacterClass, StructuredOutputError> {
+    match class {
+        RegexClass::Unicode(class) => Ok(CharacterClass {
+            negated: false,
+            ranges: class
+                .iter()
+                .map(|range| CharacterRange {
+                    start: range.start(),
+                    end: range.end(),
+                })
+                .collect(),
+        }),
+        RegexClass::Bytes(class) => {
+            let mut ranges = Vec::new();
+            for range in class.iter() {
+                let start = char::from(range.start());
+                let end = char::from(range.end());
+                if !start.is_ascii() || !end.is_ascii() {
+                    return Err(StructuredOutputError::UnsupportedRegex(String::from(
+                        "byte-oriented regex classes must stay ASCII in the local fallback",
+                    )));
+                }
+                ranges.push(CharacterRange { start, end });
+            }
+            Ok(CharacterClass {
+                negated: false,
+                ranges,
+            })
+        }
+    }
+}
+
+fn tagged_structure_schema(
+    discriminator: &str,
+    variants: &[StructuredTaggedVariant],
+) -> Result<Value, StructuredOutputError> {
+    if discriminator.trim().is_empty() {
+        return Err(StructuredOutputError::InvalidTaggedStructure(String::from(
+            "discriminator must not be empty",
+        )));
+    }
+    if variants.is_empty() {
+        return Err(StructuredOutputError::InvalidTaggedStructure(String::from(
+            "tagged structure must include at least one variant",
+        )));
+    }
+
+    let mut lowered_variants = Vec::with_capacity(variants.len());
+    for variant in variants {
+        if variant.tag.trim().is_empty() {
+            return Err(StructuredOutputError::InvalidTaggedStructure(String::from(
+                "variant tag must not be empty",
+            )));
+        }
+        let mut schema = match &variant.schema {
+            Value::Object(map) => map.clone(),
+            _ => {
+                return Err(StructuredOutputError::InvalidTaggedStructure(format!(
+                    "variant `{}` schema must be an object",
+                    variant.tag
+                )));
+            }
+        };
+        match schema.get("type") {
+            Some(Value::String(kind)) if kind == "object" => {}
+            Some(_) => {
+                return Err(StructuredOutputError::InvalidTaggedStructure(format!(
+                    "variant `{}` schema type must be `object`",
+                    variant.tag
+                )));
+            }
+            None => {
+                schema.insert(String::from("type"), Value::String(String::from("object")));
+            }
+        }
+        let properties = schema
+            .entry(String::from("properties"))
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        let Value::Object(properties) = properties else {
+            return Err(StructuredOutputError::InvalidTaggedStructure(format!(
+                "variant `{}` properties must be an object",
+                variant.tag
+            )));
+        };
+        properties.insert(
+            discriminator.to_string(),
+            serde_json::json!({ "const": variant.tag }),
+        );
+
+        let required = schema
+            .entry(String::from("required"))
+            .or_insert_with(|| Value::Array(Vec::new()));
+        let Value::Array(required) = required else {
+            return Err(StructuredOutputError::InvalidTaggedStructure(format!(
+                "variant `{}` required entries must be an array",
+                variant.tag
+            )));
+        };
+        if !required
+            .iter()
+            .any(|value| value.as_str() == Some(discriminator))
+        {
+            required.push(Value::String(discriminator.to_string()));
+        }
+        lowered_variants.push(Value::Object(schema));
+    }
+
+    Ok(serde_json::json!({ "oneOf": lowered_variants }))
 }
 
 #[derive(Clone, Debug)]
@@ -1296,15 +1876,33 @@ impl JsonSchemaLowerer {
     }
 
     fn lower_string(&mut self, schema: &Value) -> Result<Expression, StructuredOutputError> {
-        if schema.get("pattern").is_some() {
-            return Err(StructuredOutputError::UnsupportedJsonSchema(String::from(
-                "`pattern` is not supported by the local fallback JSON-schema path",
-            )));
-        }
         if schema.get("format").is_some() {
             return Err(StructuredOutputError::UnsupportedJsonSchema(String::from(
                 "`format` is not supported by the local fallback JSON-schema path",
             )));
+        }
+        if let Some(pattern) = schema.get("pattern") {
+            let Value::String(pattern) = pattern else {
+                return Err(StructuredOutputError::InvalidJsonSchema(String::from(
+                    "`pattern` must be a string",
+                )));
+            };
+            if schema.get("minLength").is_some() || schema.get("maxLength").is_some() {
+                return Err(StructuredOutputError::UnsupportedJsonSchema(String::from(
+                    "`pattern` cannot currently be combined with `minLength` or `maxLength`",
+                )));
+            }
+            let mut regex = Grammar::from_regex(pattern)?;
+            let expression = regex.rules.remove("root").ok_or_else(|| {
+                StructuredOutputError::UnsupportedJsonSchema(String::from(
+                    "regex lowering did not produce a root rule",
+                ))
+            })?;
+            return Ok(Expression::sequence(vec![
+                Term::literal("\""),
+                Term::group(expression),
+                Term::literal("\""),
+            ]));
         }
         let min_length = optional_usize_field(schema, "minLength")?.unwrap_or(0);
         let max_length = optional_usize_field(schema, "maxLength")?;
@@ -1694,8 +2292,10 @@ fn install_json_value_rules(rules: &mut BTreeMap<String, Expression>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        StructuredGrammarSyntax, StructuredOutputMatchStatus, StructuredOutputMatcher,
-        StructuredOutputParser, StructuredOutputRequest, local_structured_output_parsers,
+        StructuredGrammarSyntax, StructuredOutputKind, StructuredOutputMatchStatus,
+        StructuredOutputMatcher, StructuredOutputParser, StructuredOutputRequest,
+        StructuredOutputValue, StructuredTaggedVariant, local_structured_output_capabilities,
+        local_structured_output_parsers,
     };
     use serde_json::json;
 
@@ -1704,10 +2304,38 @@ mod tests {
         assert_eq!(
             local_structured_output_parsers(),
             vec![
+                StructuredOutputParser::ChoiceSet,
+                StructuredOutputParser::RegexSubset,
                 StructuredOutputParser::GbnfSubset,
                 StructuredOutputParser::JsonSchemaSubset,
                 StructuredOutputParser::JsonObject,
+                StructuredOutputParser::TaggedJsonSchema,
             ]
+        );
+    }
+
+    #[test]
+    fn local_structured_output_capability_inventory_is_stable() {
+        let capabilities = local_structured_output_capabilities();
+        assert_eq!(
+            capabilities
+                .iter()
+                .map(|capability| capability.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                StructuredOutputKind::Choice,
+                StructuredOutputKind::Regex,
+                StructuredOutputKind::Grammar,
+                StructuredOutputKind::JsonSchema,
+                StructuredOutputKind::JsonObject,
+                StructuredOutputKind::TaggedStructure,
+            ]
+        );
+        assert!(
+            capabilities
+                .iter()
+                .all(|capability| capability.support_level.label() == "fallback"),
+            "local capability inventory should currently advertise fallback support"
         );
     }
 
@@ -1789,6 +2417,89 @@ mod tests {
         assert_eq!(
             matcher.classify("{\"items\":[1,true,null]}").status,
             StructuredOutputMatchStatus::Complete
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn choice_matcher_materializes_discrete_values() -> Result<(), Box<dyn std::error::Error>> {
+        let matcher = StructuredOutputMatcher::compile(StructuredOutputRequest::Choice {
+            values: vec![String::from("red"), String::from("green")],
+        })?;
+
+        assert_eq!(
+            matcher.classify("r").status,
+            StructuredOutputMatchStatus::Prefix
+        );
+        assert_eq!(
+            matcher.materialize("green")?,
+            Some(StructuredOutputValue::Choice {
+                value: String::from("green")
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn regex_matcher_supports_prefix_and_materialization() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let matcher = StructuredOutputMatcher::compile(StructuredOutputRequest::Regex {
+            pattern: String::from("[A-Z]{2}[0-9]{2}"),
+        })?;
+
+        assert_eq!(
+            matcher.classify("AB").status,
+            StructuredOutputMatchStatus::Prefix
+        );
+        assert_eq!(
+            matcher.materialize("AB12")?,
+            Some(StructuredOutputValue::Regex {
+                value: String::from("AB12")
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tagged_structure_matcher_materializes_tag_and_value()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let matcher = StructuredOutputMatcher::compile(StructuredOutputRequest::TaggedStructure {
+            name: Some(String::from("decision")),
+            discriminator: String::from("kind"),
+            variants: vec![
+                StructuredTaggedVariant {
+                    tag: String::from("approve"),
+                    schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "reason": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["reason"],
+                        "additionalProperties": false
+                    }),
+                },
+                StructuredTaggedVariant {
+                    tag: String::from("reject"),
+                    schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "code": { "type": "integer" }
+                        },
+                        "required": ["code"],
+                        "additionalProperties": false
+                    }),
+                },
+            ],
+        })?;
+
+        let value = matcher.materialize("{\"kind\":\"approve\",\"reason\":\"ok\"}")?;
+        assert_eq!(
+            value,
+            Some(StructuredOutputValue::TaggedStructure {
+                discriminator: String::from("kind"),
+                tag: String::from("approve"),
+                value: json!({"kind":"approve","reason":"ok"}),
+            })
         );
         Ok(())
     }

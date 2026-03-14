@@ -78,8 +78,9 @@ use psionic_runtime::{
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
     ShardedModelManifestError, StructuredOutputError, StructuredOutputExecutionReport,
-    StructuredOutputMatchStatus, StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
-    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
+    StructuredOutputMatchStatus, StructuredOutputMatcher, StructuredOutputRequest,
+    StructuredOutputValue, TokenSampler, default_cache_invalidation_policy, plan_model_admission,
+    select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1257,6 +1258,9 @@ pub struct GenerationOutput {
     pub tokens: TokenSequence,
     /// Output text rendering.
     pub text: String,
+    /// Machine-readable structured output when the request used one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured: Option<StructuredOutputValue>,
     /// Structured GPT-OSS / Harmony output when parsing succeeded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harmony: Option<GptOssHarmonyParsedOutput>,
@@ -1267,6 +1271,13 @@ impl GenerationOutput {
     #[must_use]
     pub fn with_harmony(mut self, harmony: GptOssHarmonyParsedOutput) -> Self {
         self.harmony = Some(harmony);
+        self
+    }
+
+    /// Attaches a machine-readable structured value while preserving raw text and token lanes.
+    #[must_use]
+    pub fn with_structured(mut self, structured: StructuredOutputValue) -> Self {
+        self.structured = Some(structured);
         self
     }
 }
@@ -1859,6 +1870,7 @@ impl GenerationResponse {
             output: GenerationOutput {
                 tokens,
                 text: text.into(),
+                structured: None,
                 harmony: None,
             },
             metrics: GenerationMetrics::from_usage(&usage),
@@ -1877,6 +1889,13 @@ impl GenerationResponse {
     ) -> Self {
         self.metrics = metrics;
         self.provenance = Some(provenance);
+        self
+    }
+
+    /// Attaches a machine-readable structured value to the response output.
+    #[must_use]
+    pub fn with_structured_output_value(mut self, structured: StructuredOutputValue) -> Self {
+        self.output.structured = Some(structured);
         self
     }
 }
@@ -5342,6 +5361,19 @@ impl GenerationSampler {
             .as_ref()
             .map(StructuredOutputMatcher::execution_report)
     }
+
+    fn structured_output_value(
+        &self,
+        text: &str,
+    ) -> Result<Option<StructuredOutputValue>, ReferenceTextGenerationError> {
+        let structured_output = self
+            .structured_output
+            .as_ref()
+            .map(|matcher| matcher.materialize(text))
+            .transpose()
+            .map_err(ReferenceTextGenerationError::from)?;
+        Ok(structured_output.flatten())
+    }
 }
 
 /// Result of one shared continuous-batching generation run.
@@ -5884,6 +5916,7 @@ where
             scheduler,
             structured_output: self.sampler.structured_output_report(),
         };
+        let structured_output_value = self.sampler.structured_output_value(text.as_str())?;
         let response = GenerationResponse::new(
             &self.request,
             self.request.session_id.clone(),
@@ -5894,6 +5927,11 @@ where
             termination,
         )
         .with_metrics_and_provenance(metrics, provenance);
+        let response = if let Some(value) = structured_output_value {
+            response.with_structured_output_value(value)
+        } else {
+            response
+        };
         let _ = models.finish_request(model_id.as_str(), current_time_millis());
         Ok(response)
     }
@@ -6780,16 +6818,27 @@ where
             scheduler: None,
             structured_output: self.sampler.structured_output_report(),
         };
-        GenerationResponse::new(
+        let text = self.loaded_model.model().tokenizer().decode(output_tokens);
+        let structured_output_value = self
+            .sampler
+            .structured_output_value(text.as_str())
+            .ok()
+            .flatten();
+        let response = GenerationResponse::new(
             &self.request,
             self.request.session_id.clone(),
             generated,
-            self.loaded_model.model().tokenizer().decode(output_tokens),
+            text,
             usage.input_tokens,
             usage.cache_tokens,
             termination,
         )
-        .with_metrics_and_provenance(metrics, provenance)
+        .with_metrics_and_provenance(metrics, provenance);
+        if let Some(value) = structured_output_value {
+            response.with_structured_output_value(value)
+        } else {
+            response
+        }
     }
 
     fn build_terminal(
@@ -6861,6 +6910,7 @@ where
             output: GenerationOutput {
                 tokens: TokenSequence::new(delta_tokens),
                 text: delta_text,
+                structured: None,
                 harmony: None,
             },
             cumulative_output_tokens: self.emitted_token_count,
@@ -7419,7 +7469,8 @@ where
             scheduler: None,
             structured_output: structured_output_report,
         };
-        Ok(GenerationResponse::new(
+        let structured_output_value = sampler.structured_output_value(text.as_str())?;
+        let response = GenerationResponse::new(
             request,
             request.session_id.clone(),
             generated,
@@ -7428,7 +7479,12 @@ where
             usage.cache_tokens,
             termination,
         )
-        .with_metrics_and_provenance(metrics, provenance))
+        .with_metrics_and_provenance(metrics, provenance);
+        Ok(if let Some(value) = structured_output_value {
+            response.with_structured_output_value(value)
+        } else {
+            response
+        })
     })();
 
     let _ = models.finish_request(model_id, current_time_millis());
