@@ -1,5 +1,5 @@
-//! Training checkpointing, fixed-budget trainer steps, live recovery, and
-//! elastic membership substrate for Psionic.
+//! Training checkpointing, fixed-budget trainer steps, rollout artifacts, live
+//! recovery, and elastic membership substrate for Psionic.
 
 #![cfg_attr(
     test,
@@ -21,12 +21,14 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 mod core_loop;
+mod rl_artifacts;
 
 pub use core_loop::*;
+pub use rl_artifacts::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str =
-    "training core, checkpoint, recovery, and elastic membership substrate";
+    "training core, rollout artifacts, checkpoint, recovery, and elastic membership substrate";
 
 /// Error returned by training-session state transitions.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]

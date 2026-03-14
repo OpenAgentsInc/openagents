@@ -174,6 +174,9 @@ Implemented now:
 - early train substrate: checkpoint-backed recovery, elastic membership,
   collective planning, typed fixed-budget trainer steps, checkpoint-anchored
   restore, and adapter lineage.
+- early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
+  artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
+  digests inside `psionic-train`.
 - broader-stack authority flows for environment packages, eval runs, and
   synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
 
@@ -182,8 +185,8 @@ Still planned:
 - full inference-engine maturity across model families and broader serving
   surfaces.
 - Psionic-native environment and eval runtime crates.
-- broader distributed training completion, rollout artifacts, and orchestrator
-  layers.
+- broader distributed training completion, freshness or validator policy, and
+  orchestrator layers.
 - training-window protocol, checkpoint pointer/manifest discipline, and
   validator-owned benchmark packages for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
@@ -206,6 +209,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md](docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md)** —
   canonical reference loop, runbook, and acceptance criteria for the first
   real `psionic-train` fixed-budget training-core path.
+- **[docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md](docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md)** —
+  canonical rollout-artifact, trainer-batch, and policy-lineage runbook for
+  the first reusable RL-facing contracts in `psionic-train`.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
