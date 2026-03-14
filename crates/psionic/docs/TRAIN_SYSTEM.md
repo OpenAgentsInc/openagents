@@ -95,6 +95,8 @@ It already has real substrate for:
 - versioned dataset manifests, tokenizer digests, split declarations, and
   long-context packing contracts
 - environment package ABI and deterministic runtime sessions
+- held-out eval runtime, benchmark packages, repeat-run aggregation, and local
+  validator simulation
 - adapter lineage
 
 It does not yet implement the full distributed trainer-orchestrator-RL runtime.
@@ -188,7 +190,7 @@ shape already includes at least:
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Orchestrator | `planned` | no first-class rollout scheduler, batch assembler, or policy propagation engine |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
-| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
+| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `planned` | no rollout verification bundle family or sampled adjudication loop |
@@ -212,6 +214,9 @@ The current train-relevant ownership split in Psionic is:
   - environment package ABI, execution entrypoints, tool and rubric hooks,
     artifact expectations, versioned dataset bindings, and deterministic
     runtime sessions
+- `psionic-eval`
+  - held-out eval runs, rubric-scored sample/runtime contracts, benchmark
+    packages, repeat-run aggregation, and operator-local validator simulation
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
     elastic-membership posture, the fixed-budget training-core reference loop,
@@ -1187,13 +1192,27 @@ free-form dataset refs.
 
 ### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
 
-Psionic needs a shared evaluation runtime that can score outputs using the same
-environment contract used by training. This issue should introduce held-out
-eval runners, fixed rubric interfaces, durable eval summaries, and the core
-online/offline parity model. It should also support validator-owned benchmark
-packages, repeat-run scoring with robust aggregation, and an operator-local
-"simulate the validator" path that uses the same packaged benchmark contract.
-The target is a Rust-native quality loop rather than notebook-style eval glue.
+Status: implemented on 2026-03-14 via GitHub issue `#3568`.
+
+Added the `psionic-eval` crate for:
+
+- held-out eval-run contracts and local eval-run state machines
+- rubric-scored sample construction directly from `psionic-environments`
+  session summaries
+- durable eval summaries with machine-legible aggregate metrics and artifacts
+- explicit online/offline parity through one shared sample/runtime contract
+- validator-style `BenchmarkPackage` contracts with repeat-run aggregation and
+  operator-local validator simulation
+- typed verification facts for timer integrity, token accounting, final-state
+  capture, and declared execution strategy
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/EVAL_RUNTIME_REFERENCE.md`
+- `scripts/release/check-psionic-eval-runtime.sh`
+
+Kernel and Nexus still own canonical eval-run authority truth. This issue lands
+the reusable Psionic-side runtime and benchmark-contract layer only.
 
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 

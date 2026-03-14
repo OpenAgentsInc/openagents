@@ -43,6 +43,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
 - `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
+- `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, and elastic membership on top of ordered cluster state and datastream manifests.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
@@ -187,6 +188,10 @@ Implemented now:
   rubric hooks, expected artifact contracts, and reference runtime sessions in
   `psionic-environments`, keyed to the same `environment_ref@version` identity
   used by kernel authority.
+- early eval substrate: held-out eval runs, rubric-scored sample/runtime
+  contracts, benchmark packages with repeat-run aggregation, and operator-local
+  validator simulation in `psionic-eval`, while kernel/Nexus still own
+  canonical eval-run authority truth.
 - broader-stack authority flows for environment packages, eval runs, and
   synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
 
@@ -194,12 +199,12 @@ Still planned:
 
 - full inference-engine maturity across model families and broader serving
   surfaces.
-- Psionic-native eval runtime crate and broader environment registry/composition
-  integration.
+- broader environment registry/composition integration and richer eval-policy
+  productization.
 - broader distributed training completion, freshness or validator policy, and
   orchestrator layers.
-- training-window protocol, checkpoint pointer/manifest discipline, and
-  validator-owned benchmark packages for training-class lanes.
+- training-window protocol, checkpoint pointer/manifest discipline, and deeper
+  benchmark or validator policy for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
   session-claims discipline for clustered and sandboxed execution.
 - AMD execution support.
@@ -230,6 +235,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical versioned-dataset, tokenizer-digest, streamed-iteration, and
   long-context packing runbook for the first Psionic-native data-contract
   layer.
+- **[docs/EVAL_RUNTIME_REFERENCE.md](docs/EVAL_RUNTIME_REFERENCE.md)** —
+  canonical held-out eval, benchmark-package, and local validator-simulation
+  runbook for the first Psionic-native eval runtime.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

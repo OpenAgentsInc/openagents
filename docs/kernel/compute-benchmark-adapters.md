@@ -81,5 +81,7 @@ The landed tests cover:
 
 ## Next Integration Path
 
-- `#3521`: training-class execution should be able to consume the same
-  environment and eval truth without a benchmark-only side channel
+- `#3568`: `psionic-eval` now executes held-out and benchmark-class runs
+  locally with the same environment-bound scoring shape, and it can simulate
+  validator execution against the same packaged benchmark contract that later
+  imports into this kernel eval lifecycle

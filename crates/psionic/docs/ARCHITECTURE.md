@@ -141,7 +141,7 @@ Psionic is also not:
 | Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
-| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate, validator-owned benchmark package runtime, or local validator simulator exists yet |
+| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
@@ -150,7 +150,8 @@ Recent issue closure changed one important reading of this table:
 
 > environment packages, eval runs, and synthetic-data authority flows now exist
 > in the broader OpenAgents stack, and Psionic now owns the first environment
-> runtime crate, but eval and broader generation loops still remain unfinished.
+> plus eval runtime crates, but broader generation loops still remain
+> unfinished.
 
 ## Canonical Layer Model
 
@@ -169,7 +170,7 @@ Applications / Operators / Authority
  psionic-serve / psionic-models
         |
         v
- psionic-train / psionic-data / psionic-collectives / psionic-adapters
+ psionic-train / psionic-eval / psionic-data / psionic-collectives / psionic-adapters
         |
         v
  psionic-cluster / psionic-datastream / psionic-sandbox / psionic-net
@@ -203,26 +204,29 @@ Applications / Operators / Authority
 8. `psionic-data`
    - versioned dataset manifests, tokenizer digests, split declarations,
      streamed iteration, and packing policy contracts
-9. `psionic-cluster`
+9. `psionic-eval`
+   - held-out eval runs, rubric-scored runtime contracts, benchmark packages,
+     repeat-run aggregation, and local validator simulation
+10. `psionic-cluster`
    - ordered state, cluster admission, catch-up, scheduling, topology and
      placement truth
-10. `psionic-collectives`
+11. `psionic-collectives`
    - elastic device-mesh and quantized collective planning
-11. `psionic-train`
+12. `psionic-train`
    - training-session truth for checkpointing, live recovery, and
      elastic-membership posture
-12. `psionic-adapters`
+13. `psionic-adapters`
    - adapter identity, packaging, and hosted binding lineage
-13. backend crates
+14. backend crates
    - backend-specific runtime implementations only
-14. `psionic-models`
+15. `psionic-models`
    - reusable model definitions and metadata
-15. `psionic-serve`
+16. `psionic-serve`
    - request, response, and execution contracts for served products
-16. `psionic-router`
+17. `psionic-router`
    - reusable multi-model routing inventory, policy filters, and worker-path
      selection for served fleets
-17. `psionic-provider`
+18. `psionic-provider`
    - provider-facing capability, readiness, and receipt types at the OpenAgents
      boundary
 
@@ -304,8 +308,8 @@ training subsystems.
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | planned train layer | root identity for one training program | `planned` |
 | `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
-| `BenchmarkPackage` | planned eval layer | validator-owned packaged benchmark harness or reference evaluation profile | `planned` |
-| `EvalRun` | planned eval layer | one evaluation execution over a declared environment and artifact set | `planned` |
+| `BenchmarkPackage` | `psionic-eval` | validator-owned packaged benchmark harness or reference evaluation profile with repeat-run aggregation | `implemented_early` |
+| `EvalRun` | `psionic-eval` | one local evaluation execution over a declared environment and artifact set | `implemented_early` |
 
 The important point is not that every object already exists. The important
 point is that Psionic should converge on a typed object model rather than
@@ -349,7 +353,7 @@ Psionic is also an artifact system, not only an execution engine.
 | Checkpoint | `DatastreamSubjectKind::Checkpoint` plus `TrainingCheckpointReference` | recoverable training or optimizer state |
 | Tokenized corpus | `DatastreamSubjectKind::TokenizedCorpus` | tokenized dataset shard delivered for training or eval |
 | Eval bundle | `DatastreamSubjectKind::EvalBundle` | benchmark or evaluation harness artifact |
-| Benchmark package | planned | validator-owned packaged benchmark harness or reference evaluation profile |
+| Benchmark package | `psionic-eval` | validator-owned packaged benchmark harness or reference evaluation profile |
 | Adapter package | `DatastreamSubjectKind::AdapterPackage` plus adapter manifests | adapter or LoRA artifact delivered with lineage |
 | Proof artifact | execution-proof bundle or augmentation | evidence about what the runtime or cluster actually did |
 | Sandbox artifact | sandbox input/output digest sets | staged inputs and outputs of bounded execution |
@@ -378,7 +382,7 @@ The tree should be understood through four truth domains.
 | Truth Domain | Owned By | What It Says |
 | --- | --- | --- |
 | Runtime truth | `psionic-runtime` and lower execution crates | what device, work class, and proof posture actually ran |
-| Artifact truth | `psionic-datastream`, `psionic-adapters`, future environment/eval crates | what bytes, manifests, and digests were actually staged or referenced |
+| Artifact truth | `psionic-datastream`, `psionic-adapters`, `psionic-eval`, and `psionic-environments` | what bytes, manifests, packages, and digests were actually staged or referenced |
 | Cluster and sandbox truth | `psionic-cluster`, `psionic-sandbox`, `psionic-collectives`, `psionic-train` | what topology, recovery posture, sandbox runtime, and collective decisions actually occurred |
 | Authority truth | outside Psionic in kernel and control services | what the platform or market accepts as final outcome |
 
