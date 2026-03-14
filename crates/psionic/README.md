@@ -331,6 +331,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical retention-profile, deduplication, archival, garbage-collection,
   and cold-restore runbook for the train artifact-storage layer in
   `psionic-train`.
+- **[docs/TRAIN_SCHEDULING_ACCOUNTING_REFERENCE.md](docs/TRAIN_SCHEDULING_ACCOUNTING_REFERENCE.md)** —
+  canonical queue-class, budget-cap, preemption, and cost-attribution runbook
+  for the train scheduling and accounting layer in `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
