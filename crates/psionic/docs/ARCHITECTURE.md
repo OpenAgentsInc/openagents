@@ -141,7 +141,7 @@ Psionic is also not:
 | Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
-| Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, and trainer-batch assembly requests over the run graph |
+| Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
@@ -315,7 +315,9 @@ training subsystems.
 | `TrainingRun` | `psionic-train` | root identity, participant graph, and lifecycle state for one training program | `implemented_early` |
 | `TrainingWindow` | `psionic-train` | one synchronized contribution or trainer interval with contributor-set and transition state | `implemented_early` |
 | `TrainerBatchAssemblyRequest` | `psionic-train` | lightweight control-plane request for one trainer batch over rollout refs | `implemented_early` |
+| `RolloutTaskClaim` | `psionic-train` | deterministic task-claim contract for one rollout assignment under one worker heartbeat | `implemented_early` |
 | `RolloutAdmissionReceipt` | `psionic-train` | typed acceptance, quarantine, or discard receipt for one rollout artifact under bounded off-policy policy | `implemented_early` |
+| `RolloutWorkerOutcomeReceipt` | `psionic-train` | typed claim-expiry, upload-policy, or orchestrator-wrapped outcome receipt for one rollout worker | `implemented_early` |
 | `CollectiveSyncCadenceReceipt` | `psionic-collectives` | typed cadence, transport-feedback, and replan-trace receipt for one sync step | `implemented_early` |
 | `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
@@ -439,6 +441,7 @@ policy authority into one crate.
 | sandbox execution receipts | `implemented` | `psionic-sandbox` |
 | clustered execution evidence | `implemented_early` | `psionic-cluster` |
 | rollout admission receipts | `implemented_early` | `psionic-train` |
+| rollout-worker outcome receipts | `implemented_early` | `psionic-train` |
 | training run, trainer step, and eval receipts | `planned` | future `psionic-train` and `psionic-eval` layers |
 | adapter package and hosted binding lineage | `implemented_early` | `psionic-adapters` |
 
