@@ -193,6 +193,9 @@ Applications / Operators / Authority
    - canonical graph and execution-plan representation
 3. `psionic-compiler`
    - lowering and scheduling boundaries over IR
+   - compiler replay fixtures now guard deterministic lowering and
+     topology-bound program identity through
+     `scripts/lint/psionic-compiler-replay-gate.sh`
 4. `psionic-runtime`
    - runtime traits, runtime planning, execution-proof bundles, training-class
      runtime truth
@@ -579,6 +582,7 @@ Psionic should prefer:
 - reason-coded failure
 - replay-safe state transitions
 - explicit degraded posture
+- checked-in compiler replay fixtures for behavior-preserving lowering changes
 
 It should avoid:
 
@@ -638,6 +642,8 @@ here, not as a disconnected parallel stack.
   - narrow inference completion criteria
 - `crates/psionic/docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md`
   - detailed inference build-out and issue plan
+- `crates/psionic/docs/COMPILER_REPLAY_REFERENCE.md`
+  - compiler replay-fixture policy and validation entrypoints
 
 ## Review Checklist
 

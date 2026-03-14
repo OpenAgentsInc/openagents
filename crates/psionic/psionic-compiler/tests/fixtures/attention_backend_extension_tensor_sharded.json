@@ -1,0 +1,93 @@
+{
+  "name": "attention_backend_extension_tensor_sharded",
+  "description": "backend-extension-heavy attention path with explicit tensor-sharded topology identity",
+  "graph_digest": "00a58943cc9a01c0260c494081dadb59e6137b70d1e2d8df63c69b32a7c625ea",
+  "graph_signature": [
+    "t0|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:query|",
+    "t1|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:key|",
+    "t2|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:value|",
+    "t3|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||constant|f32:3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000",
+    "t4|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||constant|f32:3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000",
+    "t5|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t0,t3,t4|interleaved=false|",
+    "t6|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t1,t3,t4|interleaved=false|",
+    "t7|scaled_dot_product_attention|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t5,t6,t2|scale_bits=3eb504f3,causal=true|",
+    "t8|reshape|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t7|reshape|",
+    "t9|constant|shape=[64] strides=[1] offset=0 dtype=F32 device=cuda:0||constant|f32:3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000",
+    "t10|rms_norm|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t8,t9|epsilon_bits=3727c5ac|",
+    "t11|constant|shape=[2, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0||constant|quantized:GgmlQ4_0:blocks=4:bytes_per_block=18:bytes=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "t12|quantized_matmul|shape=[1, 2] strides=[2, 1] offset=0 dtype=F32 device=cuda:0|t10,t11|rhs_mode=GgmlQ4_0|",
+    "outputs|t12"
+  ],
+  "plan_digest": "ccfc7bf09b0b1cc316fe86052a052699eaed536c3c4d66cd34f9c0c325df8b90",
+  "plan_signature": [
+    "graph|00a58943cc9a01c0260c494081dadb59e6137b70d1e2d8df63c69b32a7c625ea",
+    "step|t0|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:query",
+    "step|t1|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:key",
+    "step|t2|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:value",
+    "step|t3|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||f32:3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000",
+    "step|t4|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||f32:3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000",
+    "step|t5|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t0,t3,t4|interleaved=false",
+    "step|t6|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t1,t3,t4|interleaved=false",
+    "step|t7|scaled_dot_product_attention|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t5,t6,t2|scale_bits=3eb504f3,causal=true",
+    "step|t8|reshape|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t7|",
+    "step|t9|constant|shape=[64] strides=[1] offset=0 dtype=F32 device=cuda:0||f32:3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000",
+    "step|t10|rms_norm|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t8,t9|epsilon_bits=3727c5ac",
+    "step|t11|constant|shape=[2, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0||quantized:GgmlQ4_0:blocks=4:bytes_per_block=18:bytes=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "step|t12|quantized_matmul|shape=[1, 2] strides=[2, 1] offset=0 dtype=F32 device=cuda:0|t10,t11|rhs_mode=GgmlQ4_0",
+    "outputs|t12"
+  ],
+  "plan_debug": "graph|00a58943cc9a01c0260c494081dadb59e6137b70d1e2d8df63c69b32a7c625ea\nt0 <- input[input:query]()\nt1 <- input[input:key]()\nt2 <- input[input:value]()\nt3 <- constant[f32:3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000]()\nt4 <- constant[f32:3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000]()\nt5 <- rotary_embedding[interleaved=false](t0, t3, t4)\nt6 <- rotary_embedding[interleaved=false](t1, t3, t4)\nt7 <- scaled_dot_product_attention[scale_bits=3eb504f3,causal=true](t5, t6, t2)\nt8 <- reshape(t7)\nt9 <- constant[f32:3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000]()\nt10 <- rms_norm[epsilon_bits=3727c5ac](t8, t9)\nt11 <- constant[quantized:GgmlQ4_0:blocks=4:bytes_per_block=18:bytes=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111]()\nt12 <- quantized_matmul[rhs_mode=GgmlQ4_0](t10, t11)\noutputs: t12",
+  "compiled_digest": "61c1ce2a12620556e92ed5b7050e4e50168220ab6658e8f4167d996ba4962bd8",
+  "compiled_signature": [
+    "graph|00a58943cc9a01c0260c494081dadb59e6137b70d1e2d8df63c69b32a7c625ea",
+    "step|t0|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:query",
+    "step|t1|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:key",
+    "step|t2|input|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0||input:value",
+    "step|t3|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||f32:3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000,3f000000",
+    "step|t4|constant|shape=[4, 4] strides=[4, 1] offset=0 dtype=F32 device=cuda:0||f32:3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000,3e800000",
+    "step|t5|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t0,t3,t4|interleaved=false",
+    "step|t6|rotary_embedding|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t1,t3,t4|interleaved=false",
+    "step|t7|scaled_dot_product_attention|shape=[1, 2, 4, 8] strides=[64, 32, 8, 1] offset=0 dtype=F32 device=cuda:0|t5,t6,t2|scale_bits=3eb504f3,causal=true",
+    "step|t8|reshape|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t7|",
+    "step|t9|constant|shape=[64] strides=[1] offset=0 dtype=F32 device=cuda:0||f32:3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000,3f800000",
+    "step|t10|rms_norm|shape=[1, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0|t8,t9|epsilon_bits=3727c5ac",
+    "step|t11|constant|shape=[2, 64] strides=[64, 1] offset=0 dtype=F32 device=cuda:0||quantized:GgmlQ4_0:blocks=4:bytes_per_block=18:bytes=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "step|t12|quantized_matmul|shape=[1, 2] strides=[2, 1] offset=0 dtype=F32 device=cuda:0|t10,t11|rhs_mode=GgmlQ4_0",
+    "outputs|t12",
+    "topology|96c7069f07eefa64240b8d6cb9830a6587196922d62c8920540504db489813c2"
+  ],
+  "topology": {
+    "assignments": [
+      {
+        "device": {
+          "placement_index": 0,
+          "stable_device_id": "cuda:0",
+          "topology_key": "00000000:01:00.0"
+        },
+        "partition": {
+          "axis": 3,
+          "end": 4,
+          "kind": "tensor_range",
+          "start": 0
+        },
+        "shard_id": 0
+      },
+      {
+        "device": {
+          "placement_index": 1,
+          "stable_device_id": "cuda:1",
+          "topology_key": "00000000:02:00.0"
+        },
+        "partition": {
+          "axis": 3,
+          "end": 8,
+          "kind": "tensor_range",
+          "start": 4
+        },
+        "shard_id": 1
+      }
+    ],
+    "effective_backend": "cuda",
+    "kind": "tensor_sharded"
+  }
+}
