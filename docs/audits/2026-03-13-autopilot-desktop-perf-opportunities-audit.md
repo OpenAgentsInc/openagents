@@ -67,6 +67,10 @@ Control / mirror runtimes:
   (`Provider Control`, `Autopilot Chat`, `Log Stream`, payment visualization
   panes, and diagnostics panes) now render through cheap, app-owned preview
   summaries instead of always paying full paint cost.
+- 2026-03-14: `#3535` is implemented. `Presentation` and `Rive Preview` now
+  track last-applied controller fit/play state in runtime state and only mutate
+  the Rive controller when desired state actually changes, while cadence/debug
+  snapshots now distinguish controller-sync-pending from truly settled surfaces.
 
 ## Executive Summary
 

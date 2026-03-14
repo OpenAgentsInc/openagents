@@ -102,6 +102,7 @@ pub struct RiveCadenceSnapshot {
     pub needs_redraw: bool,
     pub animating: bool,
     pub settled: bool,
+    pub pending_controller_sync: bool,
 }
 
 impl RiveCadenceSnapshot {
@@ -110,6 +111,8 @@ impl RiveCadenceSnapshot {
             "closed"
         } else if !self.surface_loaded {
             "unloaded"
+        } else if self.pending_controller_sync {
+            "sync-pending"
         } else if self.animating {
             "animating"
         } else if self.needs_redraw {
@@ -123,11 +126,12 @@ impl RiveCadenceSnapshot {
 
     pub fn state_summary(&self) -> String {
         format!(
-            "{} // loaded={} redraw={} settled={}",
+            "{} // loaded={} redraw={} settled={} pending={}",
             self.cadence_label(),
             self.surface_loaded,
             self.needs_redraw,
-            self.settled
+            self.settled,
+            self.pending_controller_sync
         )
     }
 }
@@ -455,6 +459,7 @@ mod frame_debugger_tests {
                 needs_redraw: true,
                 animating: true,
                 settled: false,
+                pending_controller_sync: false,
             },
             ..FrameRedrawPressureSnapshot::default()
         };
@@ -471,6 +476,21 @@ mod frame_debugger_tests {
         };
 
         assert_eq!(snapshot.reason_summary(), "provider_heartbeat");
+    }
+
+    #[test]
+    fn rive_cadence_snapshot_reports_sync_pending_before_settled() {
+        let snapshot = super::RiveCadenceSnapshot {
+            pane_open: true,
+            surface_loaded: true,
+            needs_redraw: true,
+            animating: false,
+            settled: false,
+            pending_controller_sync: true,
+        };
+
+        assert_eq!(snapshot.cadence_label(), "sync-pending");
+        assert!(snapshot.state_summary().contains("pending=true"));
     }
 }
 

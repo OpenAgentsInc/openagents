@@ -51,8 +51,13 @@ fn ensure_runtime_loaded(
         None,
     ) {
         Ok(mut surface) => {
-            surface.controller_mut().set_fit_mode(RiveFitMode::Contain);
-            surface.controller_mut().play();
+            sync_controller_state(
+                &mut surface,
+                &mut runtime.last_applied_fit_mode,
+                &mut runtime.last_applied_playing,
+                RiveFitMode::Contain,
+                true,
+            );
             pane_state.asset_id = asset.id.to_string();
             pane_state.asset_name = asset.file_name.to_string();
             pane_state.load_state = PaneLoadState::Ready;
@@ -74,13 +79,46 @@ fn sync_runtime_state(runtime: &mut PresentationRuntimeState) {
     let Some(surface) = runtime.surface.as_mut() else {
         return;
     };
-    surface.controller_mut().set_fit_mode(RiveFitMode::Contain);
-    surface.controller_mut().play();
+    let _ = sync_controller_state(
+        surface,
+        &mut runtime.last_applied_fit_mode,
+        &mut runtime.last_applied_playing,
+        RiveFitMode::Contain,
+        true,
+    );
+}
+
+fn sync_controller_state(
+    surface: &mut RiveSurface,
+    last_applied_fit_mode: &mut Option<RiveFitMode>,
+    last_applied_playing: &mut Option<bool>,
+    desired_fit_mode: RiveFitMode,
+    desired_playing: bool,
+) -> bool {
+    let mut changed = false;
+    if *last_applied_fit_mode != Some(desired_fit_mode) {
+        surface.controller_mut().set_fit_mode(desired_fit_mode);
+        *last_applied_fit_mode = Some(desired_fit_mode);
+        changed = true;
+    }
+    if *last_applied_playing != Some(desired_playing) {
+        if desired_playing {
+            surface.controller_mut().play();
+        } else {
+            surface.controller_mut().pause();
+        }
+        *last_applied_playing = Some(desired_playing);
+        changed = true;
+    }
+    if changed {
+        surface.mark_dirty();
+    }
+    changed
 }
 
 #[cfg(test)]
 mod tests {
-    use super::paint;
+    use super::{paint, sync_runtime_state};
     use crate::app_state::{PaneLoadState, PresentationPaneState, PresentationRuntimeState};
     use wgpui::{Bounds, PaintContext, RiveFitMode, Scene, TextSystem};
 
@@ -110,5 +148,30 @@ mod tests {
                 .fit_mode(),
             RiveFitMode::Contain
         );
+        assert_eq!(runtime.last_applied_fit_mode, Some(RiveFitMode::Contain));
+        assert_eq!(runtime.last_applied_playing, Some(true));
+    }
+
+    #[test]
+    fn presentation_sync_runtime_state_noops_when_controller_state_is_current() {
+        let mut pane_state = PresentationPaneState::default();
+        let mut runtime = PresentationRuntimeState::default();
+        let mut scene = Scene::new();
+        let mut text_system = TextSystem::new(1.0);
+        let mut paint_context = PaintContext::new(&mut scene, &mut text_system, 1.0);
+
+        paint(
+            Bounds::new(0.0, 0.0, 960.0, 540.0),
+            &mut pane_state,
+            &mut runtime,
+            &mut paint_context,
+        );
+
+        let before_fit = runtime.last_applied_fit_mode;
+        let before_playing = runtime.last_applied_playing;
+        sync_runtime_state(&mut runtime);
+
+        assert_eq!(runtime.last_applied_fit_mode, before_fit);
+        assert_eq!(runtime.last_applied_playing, before_playing);
     }
 }
