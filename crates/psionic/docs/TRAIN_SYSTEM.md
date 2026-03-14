@@ -3,6 +3,7 @@
 > Status: updated 2026-03-14 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`,
 > `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md`,
+> `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`,
 > `crates/psionic/README.md`,
 > `crates/psionic/docs/ARCHITECTURE.md`,
 > `crates/psionic/docs/AUTORESEARCH_INTEGRATION_PLAN.md`,
@@ -12,7 +13,7 @@
 > `crates/psionic/psionic-train/src/lib.rs`,
 > `crates/psionic/psionic-adapters/src/lib.rs`, and
 > `crates/psionic/psionic-sandbox/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3593`.
+> recently closed issue backlog through `#3609`.
 
 ## Why This Doc Exists
 
@@ -49,6 +50,10 @@ transport behavior.
   spec that defines the lower execution substrate this doc builds on.
 - `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md` is
   research rationale, not the canonical current-state spec.
+- `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`
+  is a code-grounded adaptation audit for windowed training, checkpoint
+  protocol discipline, validator-owned benchmark truth, and bounded research
+  loops.
 
 ## Status Vocabulary
 
@@ -108,12 +113,16 @@ stable vocabulary for train-class execution.
 | --- | --- | --- |
 | `TrainingRun` | Root identity for one training program | `planned` |
 | `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
+| `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `planned` |
 | `TrainerStep` | One optimizer update over one trainer batch | `planned` |
 | `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `planned` |
 | `RolloutArtifact` | One worker-produced trajectory or completion bundle | `planned` |
 | `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `planned` |
 | `EnvironmentPackage` | One versioned environment definition used by training and eval | `planned` |
+| `BenchmarkPackage` | One validator-owned packaged benchmark or reference evaluation profile | `planned` |
 | `EvalRun` | One online or offline evaluation execution | `planned` |
+| `CheckpointPointer` | One stable pointer to the latest accepted checkpoint for a run, stage, or window | `planned` |
+| `CheckpointManifest` | One shard, digest, writer, and durability manifest for a checkpoint flush | `planned` |
 | `Checkpoint` | Recoverable training state and lineage anchor | `partial` |
 | `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | `planned` |
 
@@ -129,6 +138,15 @@ Current checkpoint substrate is carried today by
 `TrainingCheckpointReference` plus checkpoint-scoped datastream manifests.
 
 The rest of the train object model still needs to be built explicitly.
+
+What is still missing most clearly from the current vocabulary is:
+
+- explicit `TrainingWindow` identity rather than inferring windows from
+  scheduler cadence
+- explicit `CheckpointPointer` and `CheckpointManifest` objects rather than
+  treating latest-checkpoint and shard metadata as loose convention
+- explicit `BenchmarkPackage` truth for validator-owned, repeatable benchmark
+  evaluation rather than folding that concept into generic eval notes
 
 ### Planned `RolloutArtifact` Shape
 
@@ -440,7 +458,12 @@ Psionic cannot honestly claim any of the following yet:
 - off-policy accounting
 - environment package execution
 - shared training/eval environment contract
+- training-window state transitions with deterministic assignment as first-class
+  train truth
+- checkpoint pointer and checkpoint-manifest protocol semantics
 - validator-aware rollout verification
+- validator-owned benchmark packages with repeat-run scoring and local
+  validator-simulation parity
 - orchestrator-owned batch assembly and weight propagation
 - productionized RL sandbox throughput
 
@@ -469,9 +492,11 @@ Owns:
 
 - training graph or backward substrate
 - optimizer state
+- optimizer-state residency, offload, and prefetch policy
 - gradient update policy
 - checkpoint save and restore
 - trainer step loop
+- step-level training telemetry such as grad, update, and parameter norms
 
 This is the engine that does the actual learning work.
 
@@ -480,7 +505,9 @@ This is the engine that does the actual learning work.
 Owns:
 
 - participant roles
+- training-window creation, seal, score, and reconcile transitions
 - rollout scheduling
+- deterministic assignment for contributor, batch, and eval slices
 - batch assembly
 - off-policy budgeting
 - policy revision tracking
@@ -506,9 +533,13 @@ This extends the current `psionic-datastream` substrate.
 Owns:
 
 - environment package ABI
+- benchmark package and validator-owned reference benchmark profiles
 - rollout execution contracts
 - tool and multi-turn abstractions
 - reward and rubric contracts
+- repeat-run scoring and robust aggregation rules
+- operator-local validator simulation against the same packaged benchmark
+  environment
 - offline and online eval over the same environment definition
 
 This is where environment-bound training becomes honest.
@@ -521,6 +552,9 @@ Owns:
 - cheap universal checks
 - sampled expensive checks
 - stale or malformed rollout rejection
+- timer, token-accounting, and final-state verification where a benchmark or
+  validator package requires them
+- declared execution-strategy verification for benchmark-class workloads
 - validator verdict artifacts
 
 This is the integrity loop for untrusted or semi-trusted rollout workers.
@@ -641,26 +675,30 @@ The mature Psionic train lifecycle should look like this:
 
 1. A training run is created with stable run identity, policy, environment, and
    checkpoint lineage.
-2. The orchestrator forms or revises the participant topology and contributor
-   set.
+2. The orchestrator forms or revises the participant topology, contributor set,
+   and current `TrainingWindow`.
 3. The collective planner materializes the device mesh and collective posture.
 4. The heavy artifact plane stages the active checkpoint, policy weights, and
    dataset or environment artifacts while the control plane carries only refs,
    digests, and policy posture.
 5. Only the selected contributor subset begins rollout or trainer work under
-   explicit policy and freshness constraints.
-6. Rollout artifacts or trainer-step inputs are validated and assembled into
+   explicit policy, assignment, and freshness constraints.
+6. The window transitions through explicit control states such as `planned`,
+   `active`, `sealed`, `scored`, and `reconciled` as work is accepted and
+   judged.
+7. Rollout artifacts or trainer-step inputs are validated and assembled into
    trainer batches.
-7. The trainer advances one or more steps and emits step-level metrics,
+8. The trainer advances one or more steps and emits step-level metrics,
    receipts, and optional checkpoints.
-8. Async checkpoint flushes begin and later transition to durable state.
-9. Recovery, late join, reconfiguration, or eviction events update the run
+9. Async checkpoint flushes begin and later transition to durable state.
+10. Recovery, late join, reconfiguration, or eviction events update the run
    topology and checkpoint posture.
-10. Online and offline eval may run against the same environment contract.
-11. Accepted outcomes produce durable train and eval receipts and later, when
+11. Online and offline eval may run against the same environment contract or
+    benchmark package contract.
+12. Accepted outcomes produce durable train and eval receipts and later, when
     market-relevant, can flow into kernel truth.
 
-The current repository implements only pieces of steps 2, 3, 4, 8, and 9.
+The current repository implements only pieces of steps 2, 3, 4, 9, and 10.
 
 ## Planned Run State Machine
 
@@ -716,6 +754,7 @@ system should emit at least these receipts.
 | Receipt | Purpose | Minimum Contents |
 | --- | --- | --- |
 | `TrainingRunReceipt` | One durable summary for a full run or run stage | run id, stage id, policy ids, environment refs, checkpoint lineage, validator posture, final outcome |
+| `TrainingWindowReceipt` | One durable record for one contributor or trainer window transition | run id, stage id, window id, contributor-set revision, policy revision, transition state, validator posture |
 | `TrainerStepReceipt` | One accepted optimizer step | run id, stage id, step id, trainer batch digest, policy revision in and out, optimizer policy, checkpoint linkage |
 | `CheckpointReceipt` | One checkpoint creation or durability event | run id, stage id, checkpoint family, manifest digest, object digest, writer identity, durability state |
 | `RolloutReceipt` | One rollout artifact and its acceptance result | run id, worker id, policy revision, environment version, rollout digest, reward and termination posture, acceptance result |
@@ -738,9 +777,9 @@ controllers are allowed to tune.
 
 | Policy Surface | What It Governs |
 | --- | --- |
-| `TrainingPolicy` | trainer step budget, checkpoint cadence, optimizer posture, gradient clipping, contributor caps, stage transitions, halt policy |
+| `TrainingPolicy` | trainer step budget, training-window cadence, checkpoint cadence, optimizer posture, gradient clipping, contributor caps, stage transitions, halt policy |
 | `EnvironmentPolicy` | admissible environment packages, tool access, state persistence, reward and rubric posture |
-| `ValidatorPolicy` | universal checks, sampled expensive checks, stale-policy tolerances, duplicate-detection posture, contribution normalization, rejection posture, penalty posture |
+| `ValidatorPolicy` | universal checks, sampled expensive checks, stale-policy tolerances, duplicate-detection posture, contribution normalization, benchmark verification posture, rejection posture, penalty posture |
 | `CollectivePolicy` | mesh layout, sync cadence, quantization mode, replan triggers, communication class |
 | `SandboxPolicy` | allowed profiles, warm-pool behavior, runtime limits, filesystem or network posture, retry behavior |
 | `ArtifactPolicy` | artifact freshness windows, retention classes, replay rules, archival posture, provenance requirements |
@@ -1046,8 +1085,11 @@ This program is now instantiated on GitHub as issues `#3564` through `#3593`.
 does not yet own real training. This issue should add the actual training-step
 substrate: backward or explicit train-graph execution, optimizer state
 ownership, gradient update application, step scheduling, and checkpoint
-read-restore integration. The acceptance bar is that Psionic can honestly run a
-typed fixed-budget training loop rather than only describe recovery around one.
+read-restore integration. It should also make optimizer-state residency,
+offload, prefetch, and step-level training telemetry first-class policy rather
+than hidden trainer-local behavior. The acceptance bar is that Psionic can
+honestly run a typed fixed-budget training loop rather than only describe
+recovery around one.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
@@ -1079,16 +1121,19 @@ lineage just as explicit as checkpoint lineage.
 Psionic needs a shared evaluation runtime that can score outputs using the same
 environment contract used by training. This issue should introduce held-out
 eval runners, fixed rubric interfaces, durable eval summaries, and the core
-online/offline parity model. The target is a Rust-native quality loop rather
-than notebook-style eval glue.
+online/offline parity model. It should also support validator-owned benchmark
+packages, repeat-run scoring with robust aggregation, and an operator-local
+"simulate the validator" path that uses the same packaged benchmark contract.
+The target is a Rust-native quality loop rather than notebook-style eval glue.
 
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 
 The current session substrate knows about membership and checkpoints, but it
 does not yet model one full training run. This issue should define stable run
-ids, stage ids, participant roles, topology revisions, and lifecycle events for
-join, leave, crash, timeout, eviction, and rejoin. It should also make
-heartbeat and departure semantics first-class train truth.
+ids, stage ids, `TrainingWindow` ids, participant roles, topology revisions,
+and lifecycle events for join, leave, crash, timeout, eviction, and rejoin. It
+should also make heartbeat, departure, window-transition, and deterministic
+assignment semantics first-class train truth.
 
 ### 7. `Psionic Train: extend checkpoint lineage, recovery modes, and catch-up receipts`
 
@@ -1096,8 +1141,11 @@ heartbeat and departure semantics first-class train truth.
 and `plan_live_recovery`. This issue should build on that foundation by adding
 explicit recovery modes such as blocking catch-up, overlapped catch-up, and
 resume-from-last-stable-checkpoint, then record those decisions in durable run
-receipts. The goal is to turn recovery policy from an internal heuristic into a
-queryable contract.
+receipts. It should also add explicit `CheckpointPointer` and
+`CheckpointManifest` semantics, preferred-read hierarchy, listing fallback,
+deterministic shard-uploader assignment, and fake object-store tests for
+partial-upload and missing-pointer cases. The goal is to turn recovery policy
+from an internal heuristic into a queryable contract.
 
 ### 8. `Psionic Collectives: add bandwidth-aware elastic sync planning and quantized policy surfaces`
 
@@ -1145,7 +1193,9 @@ Validator work for train-class execution should widen beyond generic execution
 proofs. This issue should define rollout-verification bundles, cheap universal
 checks, sampled expensive checks, stale-policy rejection, schema and sanity
 validation, and validator verdict artifacts that the train system can attach to
-accepted or rejected outcomes. This is the main integrity layer for
+accepted or rejected outcomes. It should also cover timer-integrity, token
+accounting, final-state, and declared-strategy verification when a benchmark
+package or validator policy requires them. This is the main integrity layer for
 permissionless or semi-trusted RL.
 
 ### 14. `Environments: define a package contract for SFT, RL, and eval`
@@ -1154,7 +1204,9 @@ The environment ABI issue defines execution mechanics; this issue should define
 the package contents and product shape. Packages should carry dataset refs,
 tool schemas, rubric refs, sandbox requirements, difficulty metadata, and
 policy references so the same environment artifact can power SFT, RL, online
-eval, and offline eval. This is how environment-bound training becomes
+eval, and offline eval. The same package family should also be able to describe
+validator-owned benchmark profiles so local simulation and validator execution
+can share one packaged contract. This is how environment-bound training becomes
 composable.
 
 ### 15. `Environments Registry: add package install, version pinning, composition, and eval parity`
@@ -1207,7 +1259,9 @@ need authority-facing truth. This issue should add durable receipt families,
 read models, and policy registries for environment packages, checkpoint
 families, validator posture, and accepted train or eval outcomes. It is the
 bridge from Psionic-local execution truth into higher-level OpenAgents market
-or authority truth.
+or authority truth. It should also prefer typed Rust client and payload-builder
+surfaces for those train, eval, and validator-facing authority contracts rather
+than ad hoc JSON glue.
 
 ### 21. `Desktop and autopilotctl: expose training operator surfaces and diagnostics`
 
