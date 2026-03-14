@@ -12,7 +12,9 @@ Psionic is structured as a layered engine subtree.
    Lowering, scheduling, and plan construction boundaries over IR.
 4. `psionic-runtime`
    Runtime traits for devices, buffers, allocators, execution, low-level
-   quantization dispatch, and worker batching/parking decisions.
+   quantization dispatch, worker batching/parking decisions, and canonical
+   execution-proof bundles that later validator and kernel layers can
+   reference.
 5. `psionic-sandbox`
    Bounded sandbox runtime detection, profile realization, execution adapters,
    execution evidence, and reusable background-job/file-transfer lifecycle

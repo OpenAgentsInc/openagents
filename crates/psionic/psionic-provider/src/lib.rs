@@ -17,14 +17,16 @@ use psionic_runtime::{
     ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus, ClusterExecutionCapabilityProfile,
     ClusterExecutionContext, ClusterSettlementProvenanceInput, CompilePathEvidence,
     DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
-    ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy,
-    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
-    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
-    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
-    SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
-    SignedClusterEvidenceBundle, ValidationMatrixReference,
-    validation_reference_for_served_product, validation_reference_for_text_generation_model,
+    ExecutionDeliveryProof, ExecutionProofBundle, ExecutionProofBundleKind,
+    ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity, ExecutionTopologyPlan, HealthStatus,
+    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
+    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
+    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, SandboxExecutionCapabilityProfile,
+    SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
+    ServedArtifactIdentity, SettlementLinkageInput, SignedClusterEvidenceBundle,
+    ValidationMatrixReference, validation_reference_for_served_product,
+    validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -234,6 +236,26 @@ fn cluster_evidence_bundle_status(status: ReceiptStatus) -> ClusterEvidenceBundl
     }
 }
 
+fn execution_proof_bundle_status(status: ReceiptStatus) -> ExecutionProofBundleStatus {
+    match status {
+        ReceiptStatus::Succeeded => ExecutionProofBundleStatus::Succeeded,
+        ReceiptStatus::Cancelled => ExecutionProofBundleStatus::Cancelled,
+        ReceiptStatus::Disconnected => ExecutionProofBundleStatus::Disconnected,
+        ReceiptStatus::Failed => ExecutionProofBundleStatus::Failed,
+    }
+}
+
+fn execution_proof_runtime_identity(
+    runtime_backend: &str,
+    backend_toolchain: &BackendToolchainIdentity,
+    selected_device_inventory: &Option<DeviceInventoryQualifiers>,
+    selected_devices: &[DeviceInventoryQualifiers],
+) -> ExecutionProofRuntimeIdentity {
+    ExecutionProofRuntimeIdentity::new(runtime_backend, backend_toolchain.clone())
+        .with_selected_device_inventory(selected_device_inventory.clone())
+        .with_selected_devices(selected_devices.to_vec())
+}
+
 struct ClusterEvidenceBundleExportContext<'a> {
     product_id: &'a str,
     request_id: &'a str,
@@ -247,6 +269,7 @@ struct ClusterEvidenceBundleExportContext<'a> {
     cluster_execution: &'a Option<ClusterExecutionContext>,
     delivery_proof: &'a Option<ExecutionDeliveryProof>,
     settlement_linkage: &'a Option<SettlementLinkageInput>,
+    proof_bundle: &'a Option<ExecutionProofBundle>,
     failure_reason: &'a Option<String>,
     diagnostic: &'a Option<LocalRuntimeDiagnostic>,
 }
@@ -272,6 +295,9 @@ fn cluster_evidence_bundle_payload(
     if let Some(settlement_linkage) = context.settlement_linkage.clone() {
         payload = payload.with_settlement_linkage(settlement_linkage);
     }
+    if let Some(proof_bundle) = context.proof_bundle.as_ref() {
+        payload = payload.with_proof_bundle_digest(proof_bundle.stable_digest());
+    }
     if let Some(failure_reason) = context.failure_reason {
         payload = payload.with_failure_reason(failure_reason.clone());
     }
@@ -279,6 +305,182 @@ fn cluster_evidence_bundle_payload(
         payload = payload.with_diagnostic(diagnostic);
     }
     Some(payload)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn embedding_execution_proof_bundle(
+    status: ReceiptStatus,
+    request_id: &str,
+    request_digest: &str,
+    runtime_backend: &str,
+    backend_toolchain: &BackendToolchainIdentity,
+    selected_device_inventory: &Option<DeviceInventoryQualifiers>,
+    selected_devices: &[DeviceInventoryQualifiers],
+    validation: ValidationMatrixReference,
+    model_id: &str,
+    served_artifact: &ServedArtifactIdentity,
+    execution_topology: &Option<ExecutionTopologyPlan>,
+    cluster_execution: &Option<ClusterExecutionContext>,
+    compile_path: &Option<CompilePathEvidence>,
+    delivery_proof: &Option<ExecutionDeliveryProof>,
+    settlement_linkage: &Option<SettlementLinkageInput>,
+    failure_reason: &Option<String>,
+    diagnostic: &Option<LocalRuntimeDiagnostic>,
+) -> ExecutionProofBundle {
+    let mut bundle = ExecutionProofBundle::new(
+        if cluster_execution.is_some() {
+            ExecutionProofBundleKind::Clustered
+        } else {
+            ExecutionProofBundleKind::Local
+        },
+        execution_proof_bundle_status(status),
+        request_id,
+        request_digest,
+        EMBEDDINGS_PRODUCT_ID,
+        execution_proof_runtime_identity(
+            runtime_backend,
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+        ),
+    )
+    .with_model_id(model_id)
+    .with_validation(validation)
+    .with_served_artifact(served_artifact);
+    if let Some(execution_topology) = execution_topology.as_ref() {
+        bundle = bundle.with_execution_topology(execution_topology);
+    }
+    if let Some(cluster_execution) = cluster_execution.as_ref() {
+        bundle = bundle.with_cluster_execution(cluster_execution);
+    }
+    if let Some(compile_path) = compile_path.clone() {
+        bundle = bundle.with_compile_path(compile_path);
+    }
+    if let Some(delivery_proof) = delivery_proof.clone() {
+        bundle = bundle.with_delivery_proof(delivery_proof);
+    }
+    if let Some(settlement_linkage) = settlement_linkage.clone() {
+        bundle = bundle.with_settlement_linkage(settlement_linkage);
+    }
+    if let Some(failure_reason) = failure_reason.clone() {
+        bundle = bundle.with_failure_reason(failure_reason);
+    }
+    if let Some(diagnostic) = diagnostic.clone() {
+        bundle = bundle.with_diagnostic(diagnostic);
+    }
+    bundle
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generation_execution_proof_bundle(
+    status: ReceiptStatus,
+    request_id: &str,
+    request_digest: &str,
+    runtime_backend: &str,
+    backend_toolchain: &BackendToolchainIdentity,
+    selected_device_inventory: &Option<DeviceInventoryQualifiers>,
+    selected_devices: &[DeviceInventoryQualifiers],
+    validation: ValidationMatrixReference,
+    product_id: &str,
+    model_id: &str,
+    served_artifact: &ServedArtifactIdentity,
+    execution_topology: &Option<ExecutionTopologyPlan>,
+    cluster_execution: &Option<ClusterExecutionContext>,
+    compile_path: &Option<CompilePathEvidence>,
+    delivery_proof: &Option<ExecutionDeliveryProof>,
+    settlement_linkage: &Option<SettlementLinkageInput>,
+    execution_plan_digest: &Option<String>,
+    failure_reason: &Option<String>,
+    diagnostic: &Option<LocalRuntimeDiagnostic>,
+) -> ExecutionProofBundle {
+    let mut bundle = ExecutionProofBundle::new(
+        if cluster_execution.is_some() {
+            ExecutionProofBundleKind::Clustered
+        } else {
+            ExecutionProofBundleKind::Local
+        },
+        execution_proof_bundle_status(status),
+        request_id,
+        request_digest,
+        product_id,
+        execution_proof_runtime_identity(
+            runtime_backend,
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+        ),
+    )
+    .with_model_id(model_id)
+    .with_validation(validation)
+    .with_served_artifact(served_artifact);
+    if let Some(execution_topology) = execution_topology.as_ref() {
+        bundle = bundle.with_execution_topology(execution_topology);
+    }
+    if let Some(cluster_execution) = cluster_execution.as_ref() {
+        bundle = bundle.with_cluster_execution(cluster_execution);
+    }
+    if let Some(compile_path) = compile_path.clone() {
+        bundle = bundle.with_compile_path(compile_path);
+    }
+    if let Some(execution_plan_digest) = execution_plan_digest.as_ref() {
+        bundle = bundle.with_execution_plan_digest(execution_plan_digest.clone());
+    }
+    if let Some(delivery_proof) = delivery_proof.clone() {
+        bundle = bundle.with_delivery_proof(delivery_proof);
+    }
+    if let Some(settlement_linkage) = settlement_linkage.clone() {
+        bundle = bundle.with_settlement_linkage(settlement_linkage);
+    }
+    if let Some(failure_reason) = failure_reason.clone() {
+        bundle = bundle.with_failure_reason(failure_reason);
+    }
+    if let Some(diagnostic) = diagnostic.clone() {
+        bundle = bundle.with_diagnostic(diagnostic);
+    }
+    bundle
+}
+
+fn sandbox_execution_proof_bundle(
+    status: ReceiptStatus,
+    request_id: &str,
+    request_digest: &str,
+    runtime_backend: &str,
+    backend_toolchain: &BackendToolchainIdentity,
+    selected_device_inventory: &Option<DeviceInventoryQualifiers>,
+    selected_devices: &[DeviceInventoryQualifiers],
+    evidence: &SandboxExecutionEvidence,
+    cluster_execution: &Option<ClusterExecutionContext>,
+    failure_reason: &Option<String>,
+    diagnostic: &Option<LocalRuntimeDiagnostic>,
+) -> ExecutionProofBundle {
+    let mut bundle = ExecutionProofBundle::new(
+        if cluster_execution.is_some() {
+            ExecutionProofBundleKind::Clustered
+        } else {
+            ExecutionProofBundleKind::Sandbox
+        },
+        execution_proof_bundle_status(status),
+        request_id,
+        request_digest,
+        SANDBOX_EXECUTION_PRODUCT_ID,
+        execution_proof_runtime_identity(
+            runtime_backend,
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+        ),
+    )
+    .with_sandbox_evidence(evidence);
+    if let Some(cluster_execution) = cluster_execution.as_ref() {
+        bundle = bundle.with_cluster_execution(cluster_execution);
+    }
+    if let Some(failure_reason) = failure_reason.clone() {
+        bundle = bundle.with_failure_reason(failure_reason);
+    }
+    if let Some(diagnostic) = diagnostic.clone() {
+        bundle = bundle.with_diagnostic(diagnostic);
+    }
+    bundle
 }
 
 /// Explicit policy for whether one model artifact may be advertised or served into compute-market supply.
@@ -723,6 +925,8 @@ pub struct SandboxExecutionReceipt {
     pub request_digest: String,
     /// Runtime-owned sandbox evidence for the realized request path.
     pub evidence: SandboxExecutionEvidence,
+    /// Canonical execution-proof bundle for the realized request path.
+    pub proof_bundle: ExecutionProofBundle,
     /// Promised-vs-delivered accelerator comparison for accelerator-sensitive offers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accelerator_deliverability: Option<AcceleratorDeliverabilityReport>,
@@ -761,15 +965,32 @@ impl SandboxExecutionReceipt {
         };
         let failure_reason =
             (status != ReceiptStatus::Succeeded).then(|| evidence.exit.detail.clone());
+        let backend_toolchain = backend_toolchain_identity_for_selection(&backend_selection);
+        let selected_device_inventory = selected_device_inventory_for_selection(&backend_selection);
+        let selected_devices = selected_devices_inventory_for_selection(&backend_selection);
+        let execution_topology = execution_topology_for_selection(&backend_selection);
+        let proof_bundle = sandbox_execution_proof_bundle(
+            status,
+            request.request_id.as_str(),
+            evidence.request_digest.as_str(),
+            backend_selection.effective_backend.as_str(),
+            &backend_toolchain,
+            &selected_device_inventory,
+            selected_devices.as_slice(),
+            &evidence,
+            &None,
+            &failure_reason,
+            &diagnostic,
+        );
 
         Self {
             product_id: String::from(SANDBOX_EXECUTION_PRODUCT_ID),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
-            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
-            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
-            execution_topology: execution_topology_for_selection(&backend_selection),
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+            execution_topology,
             cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
@@ -777,6 +998,7 @@ impl SandboxExecutionReceipt {
             request_id: request.request_id.clone(),
             request_digest: evidence.request_digest.clone(),
             evidence,
+            proof_bundle,
             accelerator_deliverability: None,
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -813,6 +1035,19 @@ impl SandboxExecutionReceipt {
             &cluster_execution,
         );
         self.cluster_execution = Some(cluster_execution);
+        self.proof_bundle = sandbox_execution_proof_bundle(
+            self.status,
+            self.request_id.as_str(),
+            self.request_digest.as_str(),
+            self.runtime_backend.as_str(),
+            &self.backend_toolchain,
+            &self.selected_device_inventory,
+            self.selected_devices.as_slice(),
+            &self.evidence,
+            &self.cluster_execution,
+            &self.failure_reason,
+            &self.diagnostic,
+        );
         self
     }
 }
@@ -1106,6 +1341,8 @@ pub struct ExecutionReceipt {
     /// Settlement-linkage inputs derived from the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settlement_linkage: Option<SettlementLinkageInput>,
+    /// Canonical execution-proof bundle for the realized request path.
+    pub proof_bundle: ExecutionProofBundle,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of request inputs.
@@ -1164,6 +1401,11 @@ impl ExecutionReceipt {
                 cluster_execution,
             );
         }
+        let validation = validation_reference_for_served_product(
+            &backend_selection,
+            request.product_id.as_str(),
+        );
+        let backend_toolchain = backend_toolchain_identity_for_selection(&backend_selection);
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
                 SettlementLinkageContext {
@@ -1178,15 +1420,35 @@ impl ExecutionReceipt {
                 delivery_proof,
             )
         });
+        let compile_path = response
+            .provenance
+            .as_ref()
+            .and_then(|value| value.compile_path.clone());
+        let proof_bundle = embedding_execution_proof_bundle(
+            ReceiptStatus::Succeeded,
+            request.request_id.as_str(),
+            request_digest.as_str(),
+            backend_selection.effective_backend.as_str(),
+            &backend_toolchain,
+            &selected_device_inventory,
+            selected_devices.as_slice(),
+            validation.clone(),
+            response.metadata.model_id.as_str(),
+            &served_artifact,
+            &execution_topology,
+            &cluster_execution,
+            &compile_path,
+            &delivery_proof,
+            &settlement_linkage,
+            &None,
+            &None,
+        );
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_served_product(
-                &backend_selection,
-                request.product_id.as_str(),
-            ),
-            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            validation,
+            backend_toolchain,
             selected_device_inventory,
             selected_devices,
             execution_topology,
@@ -1206,12 +1468,10 @@ impl ExecutionReceipt {
                 .as_ref()
                 .map(|value| value.cache_observations.clone())
                 .unwrap_or_else(|| cache_observations_for_embedding_model(&request.model, None)),
-            compile_path: response
-                .provenance
-                .as_ref()
-                .and_then(|value| value.compile_path.clone()),
+            compile_path,
             delivery_proof,
             settlement_linkage,
+            proof_bundle,
             output_dimensions: response.metadata.dimensions,
             input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
@@ -1257,18 +1517,43 @@ impl ExecutionReceipt {
     ) -> Self {
         let served_artifact =
             served_artifact_identity_for_embedding_model(&request.model, &backend_selection);
+        let validation = validation_reference_for_served_product(
+            &backend_selection,
+            request.product_id.as_str(),
+        );
+        let backend_toolchain = backend_toolchain_identity_for_selection(&backend_selection);
+        let selected_device_inventory = selected_device_inventory_for_selection(&backend_selection);
+        let selected_devices = selected_devices_inventory_for_selection(&backend_selection);
+        let execution_topology = execution_topology_for_selection(&backend_selection);
+        let failure_reason = Some(failure_reason.into());
+        let proof_bundle = embedding_execution_proof_bundle(
+            ReceiptStatus::Failed,
+            request.request_id.as_str(),
+            digest_embedding_request(request).as_str(),
+            backend_selection.effective_backend.as_str(),
+            &backend_toolchain,
+            &selected_device_inventory,
+            selected_devices.as_slice(),
+            validation.clone(),
+            request.model.model.model_id.as_str(),
+            &served_artifact,
+            &execution_topology,
+            &None,
+            &None,
+            &None,
+            &None,
+            &failure_reason,
+            &None,
+        );
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_served_product(
-                &backend_selection,
-                request.product_id.as_str(),
-            ),
-            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
-            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
-            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
-            execution_topology: execution_topology_for_selection(&backend_selection),
+            validation,
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+            execution_topology,
             cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
@@ -1284,6 +1569,7 @@ impl ExecutionReceipt {
             compile_path: None,
             delivery_proof: None,
             settlement_linkage: None,
+            proof_bundle,
             output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
@@ -1299,7 +1585,7 @@ impl ExecutionReceipt {
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
-            failure_reason: Some(failure_reason.into()),
+            failure_reason,
             diagnostic: None,
         }
     }
@@ -1310,6 +1596,7 @@ impl ExecutionReceipt {
         if self.failure_reason.is_none() {
             self.failure_reason = Some(diagnostic.message.clone());
         }
+        self.proof_bundle = self.proof_bundle.with_diagnostic(diagnostic.clone());
         self.diagnostic = Some(diagnostic);
         self
     }
@@ -1324,6 +1611,9 @@ impl ExecutionReceipt {
             &cluster_execution,
         );
         self.cluster_execution = Some(cluster_execution);
+        if let Some(cluster_execution) = self.cluster_execution.as_ref() {
+            self.proof_bundle = self.proof_bundle.with_cluster_execution(cluster_execution);
+        }
         self
     }
 
@@ -1343,6 +1633,7 @@ impl ExecutionReceipt {
             cluster_execution: &self.cluster_execution,
             delivery_proof: &self.delivery_proof,
             settlement_linkage: &self.settlement_linkage,
+            proof_bundle: &Some(self.proof_bundle.clone()),
             failure_reason: &self.failure_reason,
             diagnostic: &self.diagnostic,
         })
@@ -1602,6 +1893,8 @@ pub struct TextGenerationReceipt {
     /// Settlement-linkage inputs derived from the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settlement_linkage: Option<SettlementLinkageInput>,
+    /// Canonical execution-proof bundle for the realized request path.
+    pub proof_bundle: ExecutionProofBundle,
     /// Explicit resident-memory plan for the loaded model, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -1709,6 +2002,11 @@ impl TextGenerationReceipt {
                 cluster_execution,
             );
         }
+        let validation = validation_reference_for_text_generation_model(
+            &backend_selection,
+            &request.model.model.family,
+        );
+        let backend_toolchain = backend_toolchain_identity_for_selection(&backend_selection);
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
                 SettlementLinkageContext {
@@ -1723,15 +2021,38 @@ impl TextGenerationReceipt {
                 delivery_proof,
             )
         });
+        let compile_path = response
+            .provenance
+            .as_ref()
+            .and_then(|value| value.compile_path.clone());
+        let execution_plan_digest = Some(execution_plan_digest);
+        let proof_bundle = generation_execution_proof_bundle(
+            ReceiptStatus::Succeeded,
+            request.request_id.as_str(),
+            request_digest.as_str(),
+            backend_selection.effective_backend.as_str(),
+            &backend_toolchain,
+            &selected_device_inventory,
+            selected_devices.as_slice(),
+            validation.clone(),
+            request.product_id.as_str(),
+            response.model_id.as_str(),
+            &served_artifact,
+            &execution_topology,
+            &cluster_execution,
+            &compile_path,
+            &delivery_proof,
+            &settlement_linkage,
+            &execution_plan_digest,
+            &None,
+            &None,
+        );
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_text_generation_model(
-                &backend_selection,
-                &request.model.model.family,
-            ),
-            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            validation,
+            backend_toolchain,
             selected_device_inventory,
             selected_devices,
             execution_topology,
@@ -1741,7 +2062,7 @@ impl TextGenerationReceipt {
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest,
-            execution_plan_digest: Some(execution_plan_digest),
+            execution_plan_digest,
             model_id: response.model_id.clone(),
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
@@ -1752,12 +2073,10 @@ impl TextGenerationReceipt {
                 .as_ref()
                 .map(|value| value.cache_observations.clone())
                 .unwrap_or_default(),
-            compile_path: response
-                .provenance
-                .as_ref()
-                .and_then(|value| value.compile_path.clone()),
+            compile_path,
             delivery_proof,
             settlement_linkage,
+            proof_bundle,
             memory_plan: response
                 .provenance
                 .as_ref()
@@ -1847,25 +2166,54 @@ impl TextGenerationReceipt {
         };
         let served_artifact =
             served_artifact_identity_for_decoder_model(&request.model, &backend_selection);
+        let validation = validation_reference_for_text_generation_model(
+            &backend_selection,
+            &request.model.model.family,
+        );
+        let backend_toolchain = backend_toolchain_identity_for_selection(&backend_selection);
+        let selected_device_inventory = selected_device_inventory_for_selection(&backend_selection);
+        let selected_devices = selected_devices_inventory_for_selection(&backend_selection);
+        let execution_topology = execution_topology_for_selection(&backend_selection);
+        let request_digest = digest_generation_request(request);
+        let execution_plan_digest = execution_plan_digest;
+        let failure_reason = Some(failure_reason.into());
+        let proof_bundle = generation_execution_proof_bundle(
+            ReceiptStatus::Failed,
+            request.request_id.as_str(),
+            request_digest.as_str(),
+            backend_selection.effective_backend.as_str(),
+            &backend_toolchain,
+            &selected_device_inventory,
+            selected_devices.as_slice(),
+            validation.clone(),
+            request.product_id.as_str(),
+            request.model.model.model_id.as_str(),
+            &served_artifact,
+            &execution_topology,
+            &None,
+            &None,
+            &None,
+            &None,
+            &execution_plan_digest,
+            &failure_reason,
+            &None,
+        );
 
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_text_generation_model(
-                &backend_selection,
-                &request.model.model.family,
-            ),
-            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
-            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
-            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
-            execution_topology: execution_topology_for_selection(&backend_selection),
+            validation,
+            backend_toolchain,
+            selected_device_inventory,
+            selected_devices,
+            execution_topology,
             cluster_execution: None,
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
-            request_digest: digest_generation_request(request),
+            request_digest,
             execution_plan_digest,
             model_id: request.model.model.model_id.clone(),
             model_family: request.model.model.family.clone(),
@@ -1876,6 +2224,7 @@ impl TextGenerationReceipt {
             compile_path: None,
             delivery_proof: None,
             settlement_linkage: None,
+            proof_bundle,
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
@@ -1899,7 +2248,7 @@ impl TextGenerationReceipt {
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
-            failure_reason: Some(failure_reason.into()),
+            failure_reason,
             diagnostic: None,
         }
     }
@@ -1910,6 +2259,7 @@ impl TextGenerationReceipt {
         if self.failure_reason.is_none() {
             self.failure_reason = Some(diagnostic.message.clone());
         }
+        self.proof_bundle = self.proof_bundle.with_diagnostic(diagnostic.clone());
         self.diagnostic = Some(diagnostic);
         self
     }
@@ -1924,6 +2274,9 @@ impl TextGenerationReceipt {
             &cluster_execution,
         );
         self.cluster_execution = Some(cluster_execution);
+        if let Some(cluster_execution) = self.cluster_execution.as_ref() {
+            self.proof_bundle = self.proof_bundle.with_cluster_execution(cluster_execution);
+        }
         self
     }
 
@@ -1943,6 +2296,7 @@ impl TextGenerationReceipt {
             cluster_execution: &self.cluster_execution,
             delivery_proof: &self.delivery_proof,
             settlement_linkage: &self.settlement_linkage,
+            proof_bundle: &Some(self.proof_bundle.clone()),
             failure_reason: &self.failure_reason,
             diagnostic: &self.diagnostic,
         })
@@ -2329,16 +2683,17 @@ mod tests {
         ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage, ClusterPipelineStageRole,
         ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
         DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionDeliveryProof, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
-        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
-        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
-        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
-        RuntimeTransitionKind, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
-        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
-        SandboxExecutionResourceSummary, ServedProductBackendPolicy, ValidationCoverage,
+        ExecutionDeliveryProof, ExecutionProofBundleKind, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
+        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -2940,6 +3295,18 @@ mod tests {
         );
         assert_eq!(receipt.evidence, evidence);
         assert_eq!(receipt.diagnostic, diagnostic);
+        assert_eq!(
+            receipt.proof_bundle.bundle_kind,
+            ExecutionProofBundleKind::Sandbox
+        );
+        assert_eq!(
+            receipt
+                .proof_bundle
+                .artifact_residency
+                .as_ref()
+                .map(|value| value.output_artifact_digests.as_slice()),
+            Some(&["output-a".to_string()][..])
+        );
         assert_eq!(
             serde_json::from_value::<SandboxExecutionReceipt>(serde_json::to_value(&receipt)?)?,
             receipt
@@ -4535,6 +4902,18 @@ mod tests {
         assert_eq!(decoded.output_vector_count, 1);
         assert_eq!(decoded.input_count, 1);
         assert_eq!(decoded.normalization, EmbeddingNormalization::None);
+        assert_eq!(
+            decoded.proof_bundle.bundle_kind,
+            ExecutionProofBundleKind::Local
+        );
+        assert_eq!(
+            decoded
+                .proof_bundle
+                .validation
+                .as_ref()
+                .map(|value| value.claim_id.as_str()),
+            Some("cpu.embeddings.reference")
+        );
         assert_eq!(decoded.requested_output_dimensions, None);
         assert_eq!(decoded.failure_reason, None);
         assert_eq!(decoded.model_family, "smoke");
@@ -4606,6 +4985,10 @@ mod tests {
                 .as_ref()
                 .map(|value| value.execution_plan_digest.as_str()),
             Some("embedding-cluster-plan")
+        );
+        assert_eq!(
+            bundle.payload.proof_bundle_digest.as_deref(),
+            Some(receipt.proof_bundle.stable_digest().as_str())
         );
         assert!(bundle.verify().is_ok(), "bundle should verify");
         Ok(())
@@ -4722,6 +5105,18 @@ mod tests {
             json!("authority-digest")
         );
         assert_eq!(
+            receipt.proof_bundle.bundle_kind,
+            ExecutionProofBundleKind::Clustered
+        );
+        assert_eq!(
+            receipt
+                .proof_bundle
+                .topology
+                .as_ref()
+                .and_then(|value| value.cluster_id.as_deref()),
+            Some("cluster-alpha")
+        );
+        assert_eq!(
             serde_json::from_value::<TextGenerationReceipt>(encoded)?,
             receipt
         );
@@ -4814,6 +5209,10 @@ mod tests {
                 .and_then(|value| value.cluster_provenance.as_ref())
                 .map(|value| value.command_provenance.len()),
             Some(4)
+        );
+        assert_eq!(
+            bundle.payload.proof_bundle_digest.as_deref(),
+            Some(receipt.proof_bundle.stable_digest().as_str())
         );
         assert!(bundle.verify().is_ok(), "bundle should verify");
         Ok(())
