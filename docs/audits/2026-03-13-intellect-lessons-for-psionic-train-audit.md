@@ -719,6 +719,21 @@ digest-bound and queryable, not just "whatever the trainer used."
 
 ## Proposed GitHub Issue Set For The Full Intellect-Style Training Paradigm
 
+This section is retained as the research-source issue program from the Intellect
+audit.
+
+The canonical current issue program should now be read from
+`crates/psionic/docs/TRAIN_SYSTEM.md`, because that spec was updated after
+`psionic-train`, `psionic-collectives`, and `psionic-adapters` landed in the
+workspace and therefore no longer carries the stale "create the
+`psionic-train` crate" assumption.
+
+That canonical train issue program is now instantiated on GitHub as issues
+`#3564` through `#3593`.
+
+So this audit section is still useful as rationale, but not as the primary
+instantiation source for GitHub issue creation.
+
 This list assumes the currently open Prime/Psionic issues are already complete
 before any of the work below starts.
 

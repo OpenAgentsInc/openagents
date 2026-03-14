@@ -1,6 +1,6 @@
 # Psionic Train System
 
-> Status: draft written 2026-03-13 after reviewing `docs/MVP.md`,
+> Status: updated 2026-03-14 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`,
 > `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md`,
 > `crates/psionic/README.md`,
@@ -11,7 +11,8 @@
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`,
 > `crates/psionic/psionic-adapters/src/lib.rs`, and
-> `crates/psionic/psionic-sandbox/src/lib.rs`.
+> `crates/psionic/psionic-sandbox/src/lib.rs`, plus the current open and
+> recently closed issue backlog through `#3563`.
 
 ## Why This Doc Exists
 
@@ -35,6 +36,10 @@ The right question is:
 > substrate to a real training system?
 
 This doc answers that question.
+
+The train system assumes the execution substrate defined in
+`ARCHITECTURE.md` and does not redefine runtime, cluster, sandbox, or artifact
+transport behavior.
 
 ## Short Definition
 
@@ -78,6 +83,51 @@ The honest description today is:
 > Psionic already owns real training-class truth surfaces, but it does not yet
 > own the full Rust-native training loop.
 
+## Canonical Train Objects
+
+The full train system needs a formal object model. Today only some of these
+objects have concrete repo types; the rest are planned and should become the
+stable vocabulary for train-class execution.
+
+| Object | Purpose | Current Repo Status |
+| --- | --- | --- |
+| `TrainingRun` | Root identity for one training program | Planned |
+| `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | Planned |
+| `TrainerStep` | One optimizer update over one trainer batch | Planned |
+| `PolicyRevision` | Versioned policy or weight state used by workers and trainer | Planned |
+| `RolloutArtifact` | One worker-produced trajectory or completion bundle | Planned |
+| `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | Planned |
+| `EnvironmentPackage` | One versioned environment definition used by training and eval | Planned |
+| `EvalRun` | One online or offline evaluation execution | Planned |
+| `Checkpoint` | Recoverable training state and lineage anchor | Partially implemented through `TrainingCheckpointReference` plus datastream checkpoint manifests |
+| `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | Planned |
+
+Today the concrete object vocabulary is strongest around:
+
+- `TrainingCheckpointReference`
+- `TrainingRecoveryContext`
+- `TrainingDeviceMeshContext`
+- `TrainingCollectiveContext`
+- `DatastreamManifest` and `DatastreamManifestRef`
+
+The rest of the train object model still needs to be built explicitly.
+
+### Planned `RolloutArtifact` Shape
+
+The most important currently missing object is the rollout artifact. The mature
+shape should include at least:
+
+- `worker_id`
+- `policy_revision`
+- `environment_version`
+- `task_id` or task digest
+- `token_ids`
+- `logprobs`
+- reward or rubric outputs
+- termination reason
+- proof or validator reference fields
+- stable `artifact_digest`
+
 ## Current State At A Glance
 
 | Subsystem | Current Status | What Is Real Today |
@@ -90,8 +140,9 @@ The honest description today is:
 | Sandbox for RL/train workloads | Partial | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | Not implemented | no backward/autodiff training substrate, optimizer state machine, or trainer step loop |
 | Orchestrator | Not implemented | no first-class rollout scheduler, batch assembler, or policy propagation engine |
-| Environment ABI | Not implemented | no Rust-native environment package ABI for multi-turn or tool-using tasks |
-| Eval runtime | Not implemented | no `psionic-eval` crate or canonical online/offline rubric runtime |
+| Environment ABI | Partial outside Psionic | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
+| Eval runtime | Partial outside Psionic | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
+| Synthetic-data flows | Partial outside Psionic | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | Not implemented | no typed rollout record, reward, advantage, or trainer-batch artifact model |
 | Validator-aware RL verification | Not implemented | no rollout verification bundle family or sampled adjudication loop |
 
@@ -116,6 +167,13 @@ The current train-relevant ownership split in Psionic is:
   - bounded sandbox execution substrate and background-job lifecycle
 - `psionic-cluster`
   - durable ordered-state, cluster admission, catch-up, and topology truth
+
+The broader OpenAgents tree now also has train-adjacent authority surfaces
+outside Psionic for:
+
+- environment package descriptors and registry behavior
+- compute evaluation-run lifecycle
+- synthetic-data job and verification lifecycle
 
 This is already a meaningful substrate split. The missing work is higher in the
 stack.
@@ -311,6 +369,27 @@ Intellect papers. It still lacks:
 - environment-bound lifecycle contracts
 - explicit RL-throughput surfaces
 
+### 7. Environment, eval, and synthetic-data authority surfaces now exist outside Psionic
+
+The recent issue closures matter because they changed the broader system around
+Psionic even though they did not create new Psionic runtime crates.
+
+The tree now has broader OpenAgents support for:
+
+- environment package descriptors and registry behavior
+- environment refs bound into compute products and delivery proofs
+- evaluation-run creation, sample ingestion, and finalize flows
+- synthetic-data job creation, append, finalize, and verification flows
+
+Those capabilities currently live in kernel/proto and Nexus-control surfaces.
+
+So the accurate reading is:
+
+- the larger platform now has a home for environment, eval, and synthetic-data
+  truth
+- Psionic still does not have the native runtime crates that would execute
+  those workflows inside the compute substrate itself
+
 ## What Psionic Can Honestly Claim Today
 
 Today Psionic can honestly claim all of the following:
@@ -325,6 +404,8 @@ Today Psionic can honestly claim all of the following:
   revisions
 - training-related artifact lineage is beginning to exist as first-class data
   rather than opaque side files
+- the broader OpenAgents stack now has authority-layer environment, eval, and
+  synthetic-data flows that Psionic can eventually target as execution clients
 
 That is a meaningful base.
 
@@ -525,6 +606,186 @@ The mature Psionic train lifecycle should look like this:
 
 The current repository implements only pieces of steps 2, 3, 4, 8, and 9.
 
+## Planned Run State Machine
+
+The mature train system should give operators and controllers a small explicit
+run-state machine.
+
+| `TrainingRunStatus` | Meaning |
+| --- | --- |
+| `planned` | run identity exists but execution has not started |
+| `initializing` | artifacts, participants, and execution substrate are still being prepared |
+| `active` | trainer and rollout work are progressing normally |
+| `recovering` | the run is reconfiguring or resuming from checkpoint-backed state |
+| `paused` | the run is intentionally halted without being terminal |
+| `completed` | the run reached a successful terminal outcome |
+| `failed` | the run reached a terminal failure outcome |
+
+The runtime and operator surfaces should not infer these states indirectly from
+scattered logs. They should be first-class train truth.
+
+## Training Time Semantics
+
+Training execution depends on explicit time boundaries.
+
+The most important ones are:
+
+- policy freshness windows
+- rollout expiry windows
+- checkpoint cadence
+- validator sampling or adjudication intervals
+- environment timeout limits
+- sandbox reuse and pool lifetime limits
+
+These time boundaries sit above the generic execution timing defined in
+`ARCHITECTURE.md` and should be recorded in train policy and receipts where
+they affect acceptance or rejection.
+
+## Canonical Train Receipts
+
+OpenAgents is receipt-first, so the train system needs explicit receipt
+families rather than vague references to "logs" or "artifacts."
+
+Today the repo already has some lower-level receipt substrate:
+
+- `DatastreamDeliveryReceipt`
+- sandbox execution receipts
+- runtime execution-proof bundles
+- checkpoint and recovery contexts that can feed later receipts
+
+What is still missing is the train-specific receipt family. The mature train
+system should emit at least these receipts.
+
+| Receipt | Purpose | Minimum Contents |
+| --- | --- | --- |
+| `TrainingRunReceipt` | One durable summary for a full run or run stage | run id, stage id, policy ids, environment refs, checkpoint lineage, validator posture, final outcome |
+| `TrainerStepReceipt` | One accepted optimizer step | run id, stage id, step id, trainer batch digest, policy revision in and out, optimizer policy, checkpoint linkage |
+| `CheckpointReceipt` | One checkpoint creation or durability event | run id, stage id, checkpoint family, manifest digest, object digest, writer identity, durability state |
+| `RolloutReceipt` | One rollout artifact and its acceptance result | run id, worker id, policy revision, environment version, rollout digest, reward and termination posture, acceptance result |
+| `ValidatorReceipt` | One validator verdict over a rollout, batch, or eval artifact | validator policy id, sampled or universal check class, referenced artifact digests, verdict, reason codes |
+| `EvalReceipt` | One online or offline evaluation result | eval run id, environment version, rubric version, policy revision, artifact digests, score summary |
+
+The most important design rule is simple:
+
+> every economically or operationally important train event should have a typed
+> receipt family, not only a log line or an in-memory state transition.
+
+## Policy Surfaces
+
+The full train system should make the configurable policy surfaces explicit.
+The spec should say not only what happens, but what operators and higher-level
+controllers are allowed to tune.
+
+| Policy Surface | What It Governs |
+| --- | --- |
+| `TrainingPolicy` | trainer step budget, checkpoint cadence, optimizer posture, gradient clipping, stage transitions, halt policy |
+| `EnvironmentPolicy` | admissible environment packages, tool access, state persistence, reward and rubric posture |
+| `ValidatorPolicy` | universal checks, sampled expensive checks, stale-policy tolerances, rejection posture, penalty posture |
+| `CollectivePolicy` | mesh layout, sync cadence, quantization mode, replan triggers, communication class |
+| `SandboxPolicy` | allowed profiles, warm-pool behavior, runtime limits, filesystem or network posture, retry behavior |
+| `ArtifactPolicy` | artifact freshness windows, retention classes, replay rules, archival posture, provenance requirements |
+
+Current repo truth only covers a small piece of this policy surface directly:
+
+- collective quantization approval and benchmark posture
+- cluster admission and readiness posture
+- checkpoint durability posture
+- sandbox profile realization
+
+Most train policy remains to be formalized.
+
+### Example Policy Values
+
+The policy surfaces above become easier to reason about when rendered with
+concrete examples.
+
+| `TrainingPolicy` Field | Example Value |
+| --- | --- |
+| `max_policy_drift` | `3 revisions` |
+| `checkpoint_interval` | `1000 steps` |
+| `gradient_clip_norm` | `1.0` |
+| `halt_on_entropy_drop` | `true` |
+| `max_rollout_age_ms` | `30000` |
+
+### Policy Revision Propagation
+
+Policy revisions should propagate through the data plane as staged artifacts,
+not as implicit mutable state.
+
+The intended model is:
+
+- the trainer emits a new policy revision or checkpoint-backed weight state
+- the revision is published through `psionic-datastream` as a staged artifact
+- the orchestrator enforces freshness and admissibility before assigning work
+- rollout workers and evaluators must bind their outputs to the specific policy
+  revision they consumed
+
+This keeps policy lineage replay-safe and validator-reviewable.
+
+## Training Failure Semantics
+
+The train system needs explicit failure handling, not only a list of failure
+classes. The table below describes the expected control policy for the mature
+system.
+
+| Failure Type | Expected System Response |
+| --- | --- |
+| rollout worker crash | replay or reassign the rollout task and mark prior claim incomplete |
+| stale or mismatched policy revision | reject the rollout artifact and emit a stale-policy receipt |
+| validator rejection | discard or quarantine the referenced rollout or batch and record reason codes |
+| checkpoint flush failure | block any state transition that requires durability and keep the run in non-durable posture |
+| orchestrator crash | resume from durable orchestrator state and latest accepted checkpoint lineage |
+| trainer crash | restart from the latest durable checkpoint and replay admissible pending control-plane state |
+| environment package mismatch | reject execution before rollout start and emit environment-mismatch reason codes |
+| sandbox runtime failure | terminate the affected task, record runtime and profile identity, and apply retry or quarantine policy |
+| topology shock or node loss | trigger elastic reconfiguration, recovery planning, and possibly world-size rebalance |
+| datastream interruption | resume from the last committed cursor rather than restart blind transfer |
+
+The system should never collapse these into one generic "training failed"
+outcome. Failure handling is part of train truth.
+
+## Security Model
+
+The train system explicitly allows for partially trusted and untrusted roles, so
+the threat model belongs in the spec and not only in later issue descriptions.
+
+| Threat | Mitigation Direction |
+| --- | --- |
+| malicious rollout workers | validator sampling, schema checks, stale-policy rejection, worker admission controls |
+| artifact poisoning or tampering | manifest digests, object digests, provenance requirements, signed artifacts where policy requires |
+| checkpoint tampering | datastream manifest verification plus checkpoint-family and writer identity linkage |
+| environment compromise | signed or pinned packages, sandbox policy, version pinning, package admissibility policy |
+| policy drift | explicit policy revisions, freshness windows, off-policy budget enforcement |
+| worker spam or flooding | task-claim limits, admission control, rate limiting, and orchestrator-side pruning |
+| orchestrator inconsistency | durable orchestrator state and replay-safe receipts |
+| validator abuse or misconfiguration | validator policy versioning, sampled check receipts, adjudication reason codes |
+
+The current repo already helps here in a limited way through:
+
+- manifest and chunk digests in `psionic-datastream`
+- explicit checkpoint identity and writer linkage in `psionic-runtime`
+- benchmark-gated collective posture in `psionic-collectives`
+- bounded profile and execution receipts in `psionic-sandbox`
+
+The broader train security model is still planned.
+
+## Train Artifact Retention Model
+
+Retention policy affects reproducibility, cost, and later authority linkage, so
+it should be named now even before enforcement exists.
+
+| Artifact Class | Expected Retention |
+| --- | --- |
+| durable checkpoints | long-term or archival, because they anchor recovery and promotion lineage |
+| trainer-step receipts | long-term, because they define accepted optimization history |
+| rollout artifacts | medium-term by default, with longer retention for sampled, disputed, or promoted artifacts |
+| validator receipts and proof refs | long-term, because they justify acceptance or rejection outcomes |
+| eval summaries | long-term, because they anchor quality and release decisions |
+| raw sandbox traces and transient logs | short-term by default unless attached to an incident or dispute |
+
+The retention table does not imply the implementation already exists. It defines
+the operating model the train stack should eventually enforce.
+
 ## What The Intellect Papers Change For Psionic
 
 The March 13 audit remains directionally correct. The useful lessons from the
@@ -697,6 +958,8 @@ environment-first Intellect-style train stack.
 
 The issue program below is written from the current repository state, not from
 the older "there is no `psionic-train` crate" assumption.
+
+This program is now instantiated on GitHub as issues `#3564` through `#3593`.
 
 ### Core Platform Build-Out
 
