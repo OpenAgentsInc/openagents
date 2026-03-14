@@ -65,10 +65,10 @@ The current harness should prove:
 
 This issue intentionally does not claim:
 
-- validator-owned rollout verification bundles
 - sampled adjudication or duplicate-detection policy
 - richer upload transports such as rollout-native datastream subjects
 - train-wide durable receipt families beyond worker outcomes
 
-Those remain later issues. This issue makes worker heartbeats, claims, and
-upload semantics real first.
+Validator-owned rollout verification bundles now live in the follow-on record
+`TRAIN_ROLLOUT_VALIDATION_REFERENCE.md`. This issue makes worker heartbeats,
+claims, and upload semantics real first.

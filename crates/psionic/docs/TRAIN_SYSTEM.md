@@ -136,7 +136,7 @@ stable vocabulary for train-class execution.
 | `CheckpointPointer` | One stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | One shard, digest, writer, and durability manifest for a checkpoint flush | `implemented_early` |
 | `Checkpoint` | Recoverable training state and lineage anchor | `partial` |
-| `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | `planned` |
+| `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | `implemented_early` |
 
 Today the concrete object vocabulary is strongest around:
 
@@ -158,7 +158,7 @@ What is still missing most clearly from the current vocabulary is:
   from surrounding operator control flow
 - deeper checkpoint lineage policy such as checkpoint retention tiers,
   cross-window promotion rules, and cold-restore governance
-- explicit `ValidatorVerdict` families for training- and rollout-class artifacts
+- broader `ValidatorVerdict` families for trainer-batch and eval-class artifacts
 
 ### Current `RolloutArtifact` Shape
 
@@ -194,7 +194,7 @@ shape already includes at least:
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
-| Validator-aware RL verification | `planned` | no rollout verification bundle family or sampled adjudication loop |
+| Validator-aware RL verification | `implemented_early` | `psionic-train` now owns rollout-verification bundles, replay or duplicate detection, sampled benchmark checks, and typed validator verdicts; broader service productization is still later |
 
 ## Current Crate Ownership
 
@@ -1059,7 +1059,7 @@ crate names.
 | Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
 | Eval runtime | present in `psionic-eval` | shared online/offline eval and rubric runtime, benchmark packages, and local validator simulation |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
-| Validators for RL | absent | rollout-verification bundles and sampled adjudication |
+| Validators for RL | rollout-verification bundles and sampled adjudication contracts present | broader service productization, batch-level adjudication, and authority integration |
 | Operator surfaces | absent in Psionic-local train form | inspection, diagnostics, and receipts across all train subsystems |
 
 ## Path To Completion
@@ -1401,8 +1401,9 @@ The canonical runbook and harness are now:
 - `scripts/release/check-psionic-train-off-policy-budget.sh`
 
 This issue makes stale-rollout accounting first-class train control-plane truth
-instead of a batch-filtering convention. It does not yet land worker claim
-protocols or validator-owned rollout adjudication.
+instead of a batch-filtering convention. Worker claim protocol completion and
+validator-owned rollout adjudication now live in the follow-on records for
+issues `#3575` and `#3576`.
 
 ### 12. `Psionic Train: define the inference-worker protocol for trustless rollout generation`
 
@@ -1429,19 +1430,37 @@ The canonical runbook and harness are now:
 - `scripts/release/check-psionic-train-rollout-worker-protocol.sh`
 
 This issue makes rollout-worker coordination a first-class typed protocol
-inside Psionic instead of a trainer-local convention. It does not yet land
-validator-owned rollout verification or sampled adjudication.
+inside Psionic instead of a trainer-local convention. Validator-owned rollout
+verification and sampled adjudication now live in the follow-on record for
+issue `#3576`.
 
 ### 13. `Validator Service: add rollout-verification bundles and sampled adjudication protocols`
 
-Validator work for train-class execution should widen beyond generic execution
-proofs. This issue should define rollout-verification bundles, cheap universal
-checks, sampled expensive checks, stale-policy rejection, schema and sanity
-validation, and validator verdict artifacts that the train system can attach to
-accepted or rejected outcomes. It should also cover timer-integrity, token
-accounting, final-state, and declared-strategy verification when a benchmark
-package or validator policy requires them. This is the main integrity layer for
-permissionless or semi-trusted RL.
+Status: implemented on 2026-03-14 via GitHub issue `#3576`.
+
+Added rollout-validation contracts inside `psionic-train` for:
+
+- `RolloutVerificationBundle` over one rollout artifact, worker outcome, and
+  optional benchmark observation or expectation
+- `RolloutValidatorPolicy` with execution-proof requirements, deterministic
+  sampled expensive-check posture, benchmark-check posture, and duplicate
+  normalization policy
+- `ValidatorVerdict` with typed replay-detected, duplicate-detected,
+  stale-policy-rejected, contribution-normalized, timer-integrity,
+  token-accounting, final-state, and execution-strategy reason codes
+- stateful replay and duplicate detection through artifact-digest and
+  response-signature history
+- benchmark-gated sampled adjudication for timer, token, final-state, and
+  declared-execution-strategy checks
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_ROLLOUT_VALIDATION_REFERENCE.md`
+- `scripts/release/check-psionic-train-rollout-validation.sh`
+
+This issue makes validator-ready rollout integrity first-class typed Psionic
+truth. Broader external validator services, batch-level verdicts, and authority
+integration are still later layers.
 
 ### 14. `Environments: define a package contract for SFT, RL, and eval`
 

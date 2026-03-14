@@ -318,6 +318,8 @@ training subsystems.
 | `RolloutTaskClaim` | `psionic-train` | deterministic task-claim contract for one rollout assignment under one worker heartbeat | `implemented_early` |
 | `RolloutAdmissionReceipt` | `psionic-train` | typed acceptance, quarantine, or discard receipt for one rollout artifact under bounded off-policy policy | `implemented_early` |
 | `RolloutWorkerOutcomeReceipt` | `psionic-train` | typed claim-expiry, upload-policy, or orchestrator-wrapped outcome receipt for one rollout worker | `implemented_early` |
+| `RolloutVerificationBundle` | `psionic-train` | validator-ready bundle for one rollout artifact, worker outcome, and optional benchmark evidence | `implemented_early` |
+| `ValidatorVerdict` | `psionic-train` | typed validator outcome over one rollout bundle, including replay, duplicate, normalization, and benchmark checks | `implemented_early` |
 | `CollectiveSyncCadenceReceipt` | `psionic-collectives` | typed cadence, transport-feedback, and replan-trace receipt for one sync step | `implemented_early` |
 | `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
@@ -442,6 +444,7 @@ policy authority into one crate.
 | clustered execution evidence | `implemented_early` | `psionic-cluster` |
 | rollout admission receipts | `implemented_early` | `psionic-train` |
 | rollout-worker outcome receipts | `implemented_early` | `psionic-train` |
+| rollout validator verdicts | `implemented_early` | `psionic-train` |
 | training run, trainer step, and eval receipts | `planned` | future `psionic-train` and `psionic-eval` layers |
 | adapter package and hosted binding lineage | `implemented_early` | `psionic-adapters` |
 

@@ -24,6 +24,7 @@ mod checkpoint_recovery;
 mod core_loop;
 mod orchestrator;
 mod rl_artifacts;
+mod rollout_validation;
 mod run_graph;
 mod worker_protocol;
 
@@ -31,6 +32,7 @@ pub use checkpoint_recovery::*;
 pub use core_loop::*;
 pub use orchestrator::*;
 pub use rl_artifacts::*;
+pub use rollout_validation::*;
 pub use run_graph::*;
 pub use worker_protocol::*;
 
