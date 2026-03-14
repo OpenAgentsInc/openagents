@@ -77,7 +77,8 @@ that should eventually own:
 - trainer and orchestrator control flow
 - operator-inspectable receipts for the whole system
 
-Today Psionic implements only the lower half of that stack.
+Today Psionic implements the lower half of that stack plus a first real
+trainer-step core.
 
 It already has real substrate for:
 
@@ -86,9 +87,12 @@ It already has real substrate for:
 - elastic membership truth
 - device-mesh and collective planning
 - resumable dataset and checkpoint transport
+- typed fixed-budget trainer steps
+- per-group optimizer state and residency policy
+- machine-legible step telemetry and checkpoint-anchored restore lineage
 - adapter lineage
 
-It does not yet implement the actual trainer-orchestrator-RL runtime.
+It does not yet implement the full distributed trainer-orchestrator-RL runtime.
 
 ## What Psionic Train Is Not
 
@@ -100,8 +104,9 @@ It does not yet implement the actual trainer-orchestrator-RL runtime.
 
 The honest description today is:
 
-> Psionic already owns real training-class truth surfaces, but it does not yet
-> own the full Rust-native training loop.
+> Psionic already owns real training-class truth surfaces plus a bounded
+> training-core reference loop, but it does not yet own the full distributed
+> train system.
 
 ## Canonical Train Objects
 
@@ -114,7 +119,7 @@ stable vocabulary for train-class execution.
 | `TrainingRun` | Root identity for one training program | `planned` |
 | `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
 | `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `planned` |
-| `TrainerStep` | One optimizer update over one trainer batch | `planned` |
+| `TrainerStep` | One optimizer update over one trainer batch | `implemented_early` |
 | `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `planned` |
 | `RolloutArtifact` | One worker-produced trajectory or completion bundle | `planned` |
 | `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `planned` |
@@ -174,7 +179,7 @@ shape should include at least:
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
-| Training core | `planned` | no backward/autodiff training substrate, optimizer state machine, or trainer step loop |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Orchestrator | `planned` | no first-class rollout scheduler, batch assembler, or policy propagation engine |
 | Environment ABI | `partial_outside_psionic` | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
 | Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
@@ -195,8 +200,9 @@ The current train-relevant ownership split in Psionic is:
 - `psionic-collectives`
   - elastic mesh observation and benchmark-gated collective planning
 - `psionic-train`
-  - training-session truth for checkpointing, live recovery, and
-    elastic-membership posture
+  - training-session truth for checkpointing, live recovery,
+    elastic-membership posture, and the fixed-budget training-core reference
+    loop
 - `psionic-adapters`
   - adapter package identity and hosted binding lineage
 - `psionic-sandbox`
@@ -1081,15 +1087,26 @@ This program is now instantiated on GitHub as issues `#3564` through `#3593`.
 
 ### 1. `Psionic Train: complete the Rust-native training core beyond recovery substrate`
 
-`psionic-train` already owns checkpoint, recovery, and membership truth, but it
-does not yet own real training. This issue should add the actual training-step
-substrate: backward or explicit train-graph execution, optimizer state
-ownership, gradient update application, step scheduling, and checkpoint
-read-restore integration. It should also make optimizer-state residency,
-offload, prefetch, and step-level training telemetry first-class policy rather
-than hidden trainer-local behavior. The acceptance bar is that Psionic can
-honestly run a typed fixed-budget training loop rather than only describe
-recovery around one.
+Status: implemented on 2026-03-14 via GitHub issue `#3564`.
+
+Added `psionic-train` fixed-budget training-core types and behavior for:
+
+- typed parameter groups
+- explicit optimizer-state ownership
+- optimizer-state residency policy and transitions
+- machine-legible step telemetry for gradient, update, and parameter norms
+- visible window and cadence scheduling
+- checkpoint-anchored restore via `TrainingSessionState`
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md`
+- `scripts/release/check-psionic-training-core.sh`
+
+The current step path is intentionally an explicit-gradient reference loop over
+`f32` tensor payloads. That is enough to make trainer-step truth real without
+pretending the later tensor, autodiff, distributed-optimizer, and orchestrator
+issues are already solved.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
