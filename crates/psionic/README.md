@@ -44,7 +44,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-collectives`: elastic device-mesh, bandwidth-aware local/global sync planning, and benchmark-gated collective policy for training-class lanes.
 - `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
 - `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
-- `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, window lifecycle, and orchestrator control on top of ordered cluster state and datastream manifests.
+- `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, window lifecycle, rollout-worker protocol, and orchestrator control on top of ordered cluster state and datastream manifests.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
@@ -182,8 +182,8 @@ Implemented now:
   steps, explicit checkpoint pointers and checkpoint manifests, restore
   receipts with declared recovery modes, checkpoint-anchored restore, explicit
   run graphs, contributor-set revisions, window lifecycle, first orchestrator
-  state, rollout-admission receipts, bounded off-policy freshness budgets, and
-  adapter lineage.
+  state, rollout-admission receipts, bounded off-policy freshness budgets,
+  worker heartbeats, claims, upload receipts, and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, explicit policy-lineage
   digests, and quarantined-versus-discarded stale-rollout pruning inside
@@ -260,6 +260,12 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_ORCHESTRATOR_REFERENCE.md](docs/TRAIN_ORCHESTRATOR_REFERENCE.md)** —
   canonical window-control, assignment-posture, and trainer-batch assembly
   runbook for the first explicit Psionic train orchestrator.
+- **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
+  canonical bounded stale-rollout admission, quarantine, and discard runbook
+  for the first explicit Psionic off-policy control layer.
+- **[docs/TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md](docs/TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md)** —
+  canonical rollout-worker heartbeat, claim, upload, and worker-outcome
+  runbook for the first trust-aware worker protocol in `psionic-train`.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

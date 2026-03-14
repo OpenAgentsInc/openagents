@@ -189,7 +189,7 @@ shape already includes at least:
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
-| Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, and trainer-batch assembly requests over the run graph |
+| Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
@@ -1055,7 +1055,7 @@ crate names.
 | Collective planning | present in `psionic-collectives` | full local/global sync planning with distributed optimizer integration |
 | Weight broadcast | present in `psionic-datastream` | staged policy-weight broadcast with freshness cutoffs and relay policy |
 | Training steps | typed fixed-budget reference loop present | broader Rust-native trainer-step engine |
-| RL rollouts | typed rollout and trainer-batch contracts present | freshness enforcement, worker protocols, and validator-ready lineage |
+| RL rollouts | typed rollout, bounded stale-rollout budgeting, and worker-protocol contracts present | validator-ready lineage and sampled adjudication |
 | Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
 | Eval runtime | present in `psionic-eval` | shared online/offline eval and rubric runtime, benchmark packages, and local validator simulation |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
@@ -1406,11 +1406,31 @@ protocols or validator-owned rollout adjudication.
 
 ### 12. `Psionic Train: define the inference-worker protocol for trustless rollout generation`
 
-Psionic needs a protocol for workers that generate rollouts under a declared
-policy revision. This issue should define heartbeats, task claims,
-sample-selection seeds, rollout upload rules, stale-weight handling, and worker
-outcome receipts. It should also explicitly distinguish trusted trainer roles
-from untrusted or semi-trusted rollout workers.
+Status: implemented on 2026-03-14 via GitHub issue `#3575`.
+
+Added rollout-worker protocol contracts inside `psionic-train` for:
+
+- explicit `RolloutWorkerTrustClass` and `RolloutWorkerIdentity` so trusted
+  trainer nodes are protocol-distinct from semi-trusted or untrusted rollout
+  workers
+- `RolloutWorkerHeartbeatReceipt` and `RolloutTaskClaim` over heartbeat
+  freshness, claim TTL, deterministic sample-selection seed, and assignment
+  binding
+- `RolloutUploadLocator` and upload-policy enforcement for inline versus
+  external artifact delivery
+- `RolloutWorkerOutcomeReceipt` that wraps local claim-expiry or upload-policy
+  outcomes plus orchestrator-provided rollout-admission receipts
+- replay-safe tests proving fresh-heartbeat claims, bounded off-policy upload
+  handling, and local receipts for expired claims or oversized uploads
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md`
+- `scripts/release/check-psionic-train-rollout-worker-protocol.sh`
+
+This issue makes rollout-worker coordination a first-class typed protocol
+inside Psionic instead of a trainer-local convention. It does not yet land
+validator-owned rollout verification or sampled adjudication.
 
 ### 13. `Validator Service: add rollout-verification bundles and sampled adjudication protocols`
 

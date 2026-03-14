@@ -71,10 +71,10 @@ The current harness should prove:
 
 This issue intentionally does not claim:
 
-- worker-heartbeat, claim, or upload protocol completion
 - validator-owned rollout verification bundles
 - sampled adjudication or penalty policy
 - train-wide durable receipt families beyond rollout admission
 
-Those remain later issues. This issue makes bounded stale-rollout truth real
-first.
+Worker-heartbeat, claim, and upload protocol completion now live in the
+follow-on record `TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md`. This issue makes
+bounded stale-rollout truth real first.
