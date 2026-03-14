@@ -554,6 +554,7 @@ dependencies = [
  "openagents-spark",
  "pollster",
  "psionic-apple-fm",
+ "psionic-sandbox",
  "psionic-serve",
  "qrcode",
  "reqwest",

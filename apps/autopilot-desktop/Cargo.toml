@@ -44,6 +44,7 @@ axum = "0.8"
 autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 codex-client = { path = "../../crates/codex-client" }
 psionic-apple-fm = { path = "../../crates/psionic/psionic-apple-fm" }
+psionic-sandbox = { path = "../../crates/psionic/psionic-sandbox" }
 psionic-serve = { path = "../../crates/psionic/psionic-serve" }
 openagents-cad = { path = "../../crates/cad" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }

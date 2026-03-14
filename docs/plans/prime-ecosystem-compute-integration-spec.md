@@ -911,6 +911,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Every one of those operations should have machine-legible receipts and failure reasons.
 
 24. **Compute Control: extend desktop control and `autopilotctl` for cluster and sandbox operations**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3508`.
    - Add commands and snapshot fields for cluster membership, topology, sandbox jobs, proof status, and challenge status.
    - This keeps operator truth inside the app-owned control plane instead of spawning a separate hidden system.
 

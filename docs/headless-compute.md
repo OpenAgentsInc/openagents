@@ -24,12 +24,17 @@ It can:
 
 - fetch the current desktop-control snapshot
 - stream desktop-control event batches
+- inspect cluster, sandbox, proof, and challenge status through the same
+  app-owned snapshot the desktop uses
 - list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
 - refresh, warm, unload, and wait on GPT-OSS directly
 - bring the provider online or offline
 - inspect active-job and buy-mode state
+- create, upload, start, wait on, and inspect desktop-owned sandbox jobs
+- download sandbox workspace files and declared sandbox artifacts through the
+  control plane
 - inspect the current tunnel-status surface (`tunnels`) that will eventually
   reflect Psionic-backed service exposure when the desktop app starts owning
   those flows directly
@@ -70,6 +75,10 @@ autopilotctl chat status
 autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
 autopilotctl tunnels status
+autopilotctl cluster status
+autopilotctl sandbox status
+autopilotctl proof status
+autopilotctl challenge status
 autopilotctl logs --tail 50
 autopilotctl pane list
 autopilotctl pane status provider_control
@@ -82,6 +91,21 @@ Apple-specific bridge flows still exist for the shipped macOS release path:
 ```bash
 autopilotctl apple-fm refresh --wait
 autopilotctl apple-fm smoke-test
+```
+
+Sandbox lifecycle examples:
+
+```bash
+autopilotctl sandbox status
+autopilotctl sandbox create pythonexec-profile job-1 /tmp/openagents-sandbox \
+  --entrypoint-type workspace-file \
+  --entrypoint scripts/job.py \
+  --expected-output result.txt
+autopilotctl sandbox upload job-1 scripts/job.py ./job.py
+autopilotctl sandbox start job-1
+autopilotctl sandbox wait job-1 --timeout-ms 30000
+autopilotctl sandbox job job-1
+autopilotctl sandbox download-artifact job-1 result.txt --output /tmp/result.txt
 ```
 
 ## Supported local-runtime hosts

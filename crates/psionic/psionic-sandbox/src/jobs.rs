@@ -356,6 +356,15 @@ impl InMemorySandboxJobService {
         Ok(job.snapshot())
     }
 
+    pub fn list_jobs(&self) -> Vec<ProviderSandboxBackgroundJobSnapshot> {
+        let jobs = self
+            .inner
+            .jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        jobs.values().map(ManagedSandboxJob::snapshot).collect()
+    }
+
     pub fn wait_for_job(
         &self,
         job_id: &str,
