@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_runtime::{
-    ClusterArtifactResidencyDisposition, ClusterExecutionDisposition, ClusterPolicyDigest,
+    CacheAction, CacheInvalidationTrigger, ClusterArtifactResidencyDisposition, ClusterCacheUsage,
+    ClusterExecutionDisposition, ClusterExecutionLane, ClusterPolicyDigest,
     ClusterPolicyDigestKind, ClusterReplicaNode, ClusterReplicaRoutingDisposition,
     ClusterReplicaWarmState, ClusterSelectedNode as RuntimeClusterSelectedNode,
     DeviceInventoryQualifiers, ExecutionTopologyPlan,
@@ -360,6 +361,35 @@ pub fn plan_replicated_serving(
         replica_snapshot.lane.runtime_backend.clone(),
         replica_devices,
     );
+    let clustered_cache_usage = if serving_decision
+        .schedule
+        .cluster_execution
+        .fallback_history
+        .is_empty()
+    {
+        ClusterCacheUsage::new(
+            ClusterExecutionLane::ReplicaRouted,
+            psionic_runtime::ClusterCacheScope::ReplicaLocal,
+            psionic_runtime::ClusterCacheScope::ReplicaLocal,
+            CacheAction::Reuse,
+            CacheAction::Reuse,
+        )
+        .with_detail(
+            "replica-routed prefix and KV reuse remained valid on the selected warm replica",
+        )
+    } else {
+        ClusterCacheUsage::new(
+            ClusterExecutionLane::ReplicaRouted,
+            psionic_runtime::ClusterCacheScope::ReplicaLocal,
+            psionic_runtime::ClusterCacheScope::ReplicaLocal,
+            CacheAction::Invalidate,
+            CacheAction::Invalidate,
+        )
+        .with_invalidation_trigger(CacheInvalidationTrigger::ClusterRouteChange)
+        .with_detail(
+            "replica-routed prefix and KV reuse were invalidated because routing changed replicas",
+        )
+    };
 
     serving_decision.schedule.execution_topology = replicated_topology.clone();
     serving_decision.schedule.cluster_execution.disposition =
@@ -377,6 +407,7 @@ pub fn plan_replicated_serving(
             ClusterPolicyDigestKind::Replication,
             lifecycle_policy_digest.clone(),
         ))
+        .with_clustered_cache_usage(clustered_cache_usage)
         .with_replica_nodes(replica_nodes);
     if let Some(sharded_model_manifest_digest) =
         replica_snapshot.lane.sharded_model_manifest_digest.clone()
@@ -560,7 +591,8 @@ mod tests {
     use std::io::Error;
 
     use psionic_runtime::{
-        ClusterAdmissionFactKind, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
+        CacheAction, CacheInvalidationTrigger, ClusterAdmissionFactKind, ClusterCacheCapability,
+        ClusterCacheScope, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
         ClusterPolicyDigestKind,
     };
 
@@ -654,6 +686,17 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::ReplicaRouted,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .invalidates_on_route_change()
+                .with_detail(
+                    "replica-routed prefix and KV reuse are only truthful on one warm replica identity",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request dispatch plus replica routing across warm lanes",
             )
@@ -936,6 +979,16 @@ mod tests {
                 .and_then(|eligibility| eligibility.capability_profile_digest.as_deref())
                 .is_some()
         );
+        assert_eq!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .clustered_cache_usage
+                .as_ref()
+                .map(|usage| usage.prefix_action),
+            Some(CacheAction::Reuse)
+        );
         Ok(())
     }
 
@@ -1000,6 +1053,16 @@ mod tests {
                     replica.node.node_id == "worker-a"
                         && replica.routing == ClusterReplicaRoutingDisposition::WarmStandby
                 })
+        );
+        assert_eq!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .clustered_cache_usage
+                .as_ref()
+                .and_then(|usage| usage.invalidation_trigger),
+            Some(CacheInvalidationTrigger::ClusterRouteChange)
         );
         Ok(())
     }

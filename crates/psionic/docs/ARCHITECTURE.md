@@ -39,7 +39,8 @@ Psionic is structured as a layered engine subtree.
   remote whole-request scheduling, replica-routed serving placement,
   public-network pipeline stage planning, layer-sharded handoff planning,
   tensor-collective planning, artifact residency/staging truth,
-  sharded-manifest intake, and topology planning on top of it.
+  sharded-manifest intake, clustered prefix/KV cache compatibility truth,
+  and topology planning on top of it.
 - backend crates may depend on runtime/core/IR/compiler as needed.
 - `psionic-models` depends on reusable engine crates only.
 - `psionic-serve` depends on models/runtime/core.

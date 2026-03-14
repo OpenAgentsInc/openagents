@@ -981,6 +981,9 @@ pub struct ClusterExecutionCapabilityProfile {
     /// Declared clustered execution lanes supported by the backend today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_lanes: Vec<ClusterExecutionLane>,
+    /// Declared clustered cache-compatibility truth for supported lanes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clustered_cache_capabilities: Vec<ClusterCacheCapability>,
     /// Declared communication classes supported by the backend today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_communication_classes: Vec<ClusterCommunicationClass>,
@@ -996,6 +999,7 @@ impl ClusterExecutionCapabilityProfile {
         Self {
             runtime_backend: runtime_backend.into(),
             supported_lanes: Vec::new(),
+            clustered_cache_capabilities: Vec::new(),
             supported_communication_classes: Vec::new(),
             detail: None,
         }
@@ -1024,6 +1028,33 @@ impl ClusterExecutionCapabilityProfile {
         self
     }
 
+    /// Replaces declared clustered cache-compatibility truth and normalizes by lane.
+    #[must_use]
+    pub fn with_clustered_cache_capabilities(
+        mut self,
+        mut clustered_cache_capabilities: Vec<ClusterCacheCapability>,
+    ) -> Self {
+        clustered_cache_capabilities.sort_by_key(|capability| capability.lane);
+        clustered_cache_capabilities.dedup_by_key(|capability| capability.lane);
+        self.clustered_cache_capabilities = clustered_cache_capabilities;
+        self
+    }
+
+    /// Appends one clustered cache-compatibility declaration.
+    #[must_use]
+    pub fn with_clustered_cache_capability(
+        mut self,
+        clustered_cache_capability: ClusterCacheCapability,
+    ) -> Self {
+        self.clustered_cache_capabilities
+            .push(clustered_cache_capability);
+        self.clustered_cache_capabilities
+            .sort_by_key(|capability| capability.lane);
+        self.clustered_cache_capabilities
+            .dedup_by_key(|capability| capability.lane);
+        self
+    }
+
     /// Attaches plain-language declaration or refusal detail.
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
@@ -1035,6 +1066,17 @@ impl ClusterExecutionCapabilityProfile {
     #[must_use]
     pub fn supports_lane(&self, lane: ClusterExecutionLane) -> bool {
         self.supported_lanes.contains(&lane)
+    }
+
+    /// Returns declared clustered cache truth for one supported lane, when present.
+    #[must_use]
+    pub fn clustered_cache_capability(
+        &self,
+        lane: ClusterExecutionLane,
+    ) -> Option<&ClusterCacheCapability> {
+        self.clustered_cache_capabilities
+            .iter()
+            .find(|capability| capability.lane == lane)
     }
 
     /// Returns whether the profile explicitly supports one communication class.
@@ -1098,6 +1140,30 @@ impl ClusterExecutionCapabilityProfile {
                 ClusterExecutionLane::LayerSharded => b"layer_sharded".as_slice(),
                 ClusterExecutionLane::TensorSharded => b"tensor_sharded".as_slice(),
             });
+        }
+        for cache_capability in &self.clustered_cache_capabilities {
+            hasher.update(b"|clustered_cache|");
+            hasher.update(cache_capability.lane.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(cache_capability.prefix_scope.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(cache_capability.kv_scope.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(if cache_capability.invalidates_on_route_change {
+                b"route_change".as_slice()
+            } else {
+                b"route_stable".as_slice()
+            });
+            hasher.update(b"|");
+            hasher.update(if cache_capability.invalidates_on_topology_change {
+                b"topology_change".as_slice()
+            } else {
+                b"topology_stable".as_slice()
+            });
+            if let Some(detail) = &cache_capability.detail {
+                hasher.update(b"|detail|");
+                hasher.update(detail.as_bytes());
+            }
         }
         for communication_class in &self.supported_communication_classes {
             hasher.update(b"|communication_class|");
@@ -1381,6 +1447,154 @@ impl ClusterPipelineStage {
     }
 }
 
+/// Truthful locality scope for reusable clustered cache state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCacheScope {
+    /// The clustered lane cannot truthfully promise reusable state.
+    Unavailable,
+    /// Reuse is only truthful when the request returns to one specific remote node.
+    RequestNodeLocal,
+    /// Reuse is only truthful on one warm replica identity.
+    ReplicaLocal,
+    /// Reuse is only truthful when every stage remains pinned to the same topology.
+    StageLocal,
+    /// Reuse remains truthful across the whole clustered lane.
+    ClusterWide,
+}
+
+impl ClusterCacheScope {
+    /// Returns a stable machine-checkable name for this scope.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::RequestNodeLocal => "request_node_local",
+            Self::ReplicaLocal => "replica_local",
+            Self::StageLocal => "stage_local",
+            Self::ClusterWide => "cluster_wide",
+        }
+    }
+}
+
+/// Advertised clustered cache-compatibility truth for one clustered lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCacheCapability {
+    /// Clustered lane this cache truth applies to.
+    pub lane: ClusterExecutionLane,
+    /// Truthful prefix-cache scope for the lane.
+    pub prefix_scope: ClusterCacheScope,
+    /// Truthful KV-state scope for the lane.
+    pub kv_scope: ClusterCacheScope,
+    /// Whether route changes invalidate otherwise compatible state.
+    pub invalidates_on_route_change: bool,
+    /// Whether topology changes invalidate otherwise compatible state.
+    pub invalidates_on_topology_change: bool,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterCacheCapability {
+    /// Creates clustered cache-compatibility truth for one lane.
+    #[must_use]
+    pub fn new(
+        lane: ClusterExecutionLane,
+        prefix_scope: ClusterCacheScope,
+        kv_scope: ClusterCacheScope,
+    ) -> Self {
+        Self {
+            lane,
+            prefix_scope,
+            kv_scope,
+            invalidates_on_route_change: false,
+            invalidates_on_topology_change: false,
+            detail: None,
+        }
+    }
+
+    /// Marks route changes as invalidating otherwise compatible state.
+    #[must_use]
+    pub const fn invalidates_on_route_change(mut self) -> Self {
+        self.invalidates_on_route_change = true;
+        self
+    }
+
+    /// Marks topology changes as invalidating otherwise compatible state.
+    #[must_use]
+    pub const fn invalidates_on_topology_change(mut self) -> Self {
+        self.invalidates_on_topology_change = true;
+        self
+    }
+
+    /// Attaches plain-language capability detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Realized clustered cache usage and invalidation posture for one request path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCacheUsage {
+    /// Clustered lane this request realized.
+    pub lane: ClusterExecutionLane,
+    /// Truthful prefix-cache scope for the realized path.
+    pub prefix_scope: ClusterCacheScope,
+    /// Truthful KV-state scope for the realized path.
+    pub kv_scope: ClusterCacheScope,
+    /// Action taken for prefix reuse under clustered routing truth.
+    pub prefix_action: CacheAction,
+    /// Action taken for KV reuse under clustered routing truth.
+    pub kv_action: CacheAction,
+    /// Trigger that invalidated clustered cache truth when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalidation_trigger: Option<CacheInvalidationTrigger>,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterCacheUsage {
+    /// Creates realized clustered cache usage from explicit scope and actions.
+    #[must_use]
+    pub fn new(
+        lane: ClusterExecutionLane,
+        prefix_scope: ClusterCacheScope,
+        kv_scope: ClusterCacheScope,
+        prefix_action: CacheAction,
+        kv_action: CacheAction,
+    ) -> Self {
+        Self {
+            lane,
+            prefix_scope,
+            kv_scope,
+            prefix_action,
+            kv_action,
+            invalidation_trigger: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches the invalidation trigger that changed clustered cache truth.
+    #[must_use]
+    pub const fn with_invalidation_trigger(
+        mut self,
+        invalidation_trigger: CacheInvalidationTrigger,
+    ) -> Self {
+        self.invalidation_trigger = Some(invalidation_trigger);
+        self
+    }
+
+    /// Attaches plain-language usage detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
 /// Runtime-owned clustered execution evidence shared by capability, provenance, and receipt types.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterExecutionContext {
@@ -1432,6 +1646,9 @@ pub struct ClusterExecutionContext {
     /// Explicit stage timing and transport facts for pipeline-parallel execution.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pipeline_stages: Vec<ClusterPipelineStage>,
+    /// Realized clustered cache-compatibility and invalidation truth for the request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clustered_cache_usage: Option<ClusterCacheUsage>,
     /// Authorized command provenance facts that admitted or fenced this request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command_provenance: Vec<ClusterCommandProvenanceEvidence>,
@@ -1473,6 +1690,7 @@ impl ClusterExecutionContext {
             replica_nodes: Vec::new(),
             shard_handoffs: Vec::new(),
             pipeline_stages: Vec::new(),
+            clustered_cache_usage: None,
             command_provenance: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
@@ -1573,6 +1791,13 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_pipeline_stages(mut self, pipeline_stages: Vec<ClusterPipelineStage>) -> Self {
         self.pipeline_stages = pipeline_stages;
+        self
+    }
+
+    /// Attaches realized clustered cache usage for the request path.
+    #[must_use]
+    pub fn with_clustered_cache_usage(mut self, clustered_cache_usage: ClusterCacheUsage) -> Self {
+        self.clustered_cache_usage = Some(clustered_cache_usage);
         self
     }
 
@@ -2608,6 +2833,10 @@ pub enum CacheInvalidationTrigger {
     PrefixCacheFormatUpgrade,
     /// The KV-state format changed.
     KvStateFormatUpgrade,
+    /// Cluster routing changed and reuse can no longer be trusted.
+    ClusterRouteChange,
+    /// Cluster topology or shard placement changed and reuse can no longer be trusted.
+    ClusterTopologyChange,
     /// The caller explicitly reset or discarded state.
     ExplicitReset,
 }
@@ -6722,9 +6951,9 @@ mod tests {
         BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
         CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterAdmissionFactKind,
-        ClusterArtifactResidencyDisposition, ClusterCommandAuthorityScopeEvidence,
-        ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence,
-        ClusterCommunicationClass, ClusterCommunicationEligibility,
+        ClusterArtifactResidencyDisposition, ClusterCacheCapability, ClusterCacheScope,
+        ClusterCacheUsage, ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
+        ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
         ClusterComputeMarketTrustAssessment, ClusterComputeMarketTrustDisposition,
         ClusterComputeMarketTrustRefusalReason, ClusterDiscoveryPosture,
         ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus,
@@ -8477,7 +8706,19 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let device = sample_cuda_device().inventory_qualifiers();
         let capability_profile = ClusterExecutionCapabilityProfile::new("cuda")
-            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+            ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .invalidates_on_route_change()
+                .with_detail("cache reuse only remains truthful when routing stays pinned"),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             );
@@ -8535,6 +8776,17 @@ mod tests {
                 .with_served_artifact_digest("served-artifact-digest")
                 .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
         ])
+        .with_clustered_cache_usage(
+            ClusterCacheUsage::new(
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterCacheScope::ReplicaLocal,
+                ClusterCacheScope::ReplicaLocal,
+                CacheAction::Reuse,
+                CacheAction::Reuse,
+            )
+            .with_invalidation_trigger(CacheInvalidationTrigger::ClusterRouteChange)
+            .with_detail("request replay stayed pinned to the same warm replica"),
+        )
         .with_fallback(
             ClusterFallbackStep::new("worker-a", ClusterFallbackReason::BackendDegraded)
                 .from_node("worker-b")
@@ -8564,6 +8816,14 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["communication_eligibility"]["required_class"],
             json!("remote_dispatch")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["prefix_scope"],
+            json!("replica_local")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["invalidation_trigger"],
+            json!("cluster_route_change")
         );
         assert!(
             encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
@@ -8595,6 +8855,15 @@ mod tests {
                 ClusterExecutionLane::LayerSharded,
                 ClusterExecutionLane::TensorSharded,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .invalidates_on_route_change()
+                .with_detail("replica-routed reuse remains truthful only on one warm replica"),
+            )
             .with_detail("cluster-capable CUDA backend profile");
         let encoded = match serde_json::to_string(&profile) {
             Ok(value) => value,
@@ -8612,6 +8881,12 @@ mod tests {
         assert_eq!(decoded, profile);
         assert_eq!(decoded.stable_digest(), profile.stable_digest());
         assert!(profile.supports_lane(ClusterExecutionLane::LayerSharded));
+        assert_eq!(
+            profile
+                .clustered_cache_capability(ClusterExecutionLane::ReplicaRouted)
+                .map(|capability| capability.prefix_scope),
+            Some(ClusterCacheScope::ReplicaLocal)
+        );
         assert!(profile.supports_communication_class(ClusterCommunicationClass::LayerShardHandoff));
         assert!(
             profile.supports_communication_class(ClusterCommunicationClass::TensorCollectiveMesh)
@@ -8639,6 +8914,32 @@ mod tests {
         );
         assert!(!replicated_only.supports_lane(ClusterExecutionLane::LayerSharded));
         assert!(layer_sharded.supports_lane(ClusterExecutionLane::LayerSharded));
+    }
+
+    #[test]
+    fn cluster_execution_capability_profile_digest_changes_when_cache_truth_changes() {
+        let replica_local = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::ReplicaRouted])
+            .with_clustered_cache_capability(ClusterCacheCapability::new(
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterCacheScope::ReplicaLocal,
+                ClusterCacheScope::ReplicaLocal,
+            ));
+        let route_invalidating = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::ReplicaRouted])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .invalidates_on_route_change(),
+            );
+
+        assert_ne!(
+            replica_local.stable_digest(),
+            route_invalidating.stable_digest()
+        );
     }
 
     #[test]

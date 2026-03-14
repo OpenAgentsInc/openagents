@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
+    CacheAction, ClusterCacheCapability, ClusterCacheScope, ClusterCacheUsage,
     ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPipelineStage, ClusterPipelineStageRole, ClusterPolicyDigest,
@@ -97,6 +98,17 @@ fn default_pipeline_sharded_capability_profile() -> ClusterExecutionCapabilityPr
             ClusterExecutionLane::RemoteWholeRequest,
             ClusterExecutionLane::PipelineSharded,
         ])
+        .with_clustered_cache_capability(
+            ClusterCacheCapability::new(
+                ClusterExecutionLane::PipelineSharded,
+                ClusterCacheScope::StageLocal,
+                ClusterCacheScope::StageLocal,
+            )
+            .invalidates_on_topology_change()
+            .with_detail(
+                "pipeline-parallel prefix and KV reuse are only truthful while the same ordered stage topology remains pinned",
+            ),
+        )
         .with_detail(
             "backend `cuda` declares whole-request dispatch plus public-network pipeline-parallel stage handoff support under explicit timing policy",
         )
@@ -630,6 +642,18 @@ pub fn schedule_pipeline_sharded_execution(
             .iter()
             .map(|schedule| &schedule.cluster_execution),
     ));
+    cluster_execution = cluster_execution.with_clustered_cache_usage(
+        ClusterCacheUsage::new(
+            ClusterExecutionLane::PipelineSharded,
+            ClusterCacheScope::StageLocal,
+            ClusterCacheScope::StageLocal,
+            CacheAction::Bypass,
+            CacheAction::Bypass,
+        )
+        .with_detail(
+            "pipeline-parallel execution cannot promise cluster-wide prefix or KV reuse outside one fixed stage topology",
+        ),
+    );
     if let Some(commit_authority) = state.commit_authority() {
         cluster_execution = cluster_execution
             .with_commit_authority(ClusterCommitAuthorityEvidence::new(
@@ -1324,6 +1348,17 @@ mod tests {
             schedule.pipeline_stages
         );
         assert_eq!(schedule.cluster_execution.shard_handoffs.len(), 4);
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .clustered_cache_usage
+                .as_ref()
+                .map(|usage| (usage.prefix_scope, usage.prefix_action)),
+            Some((
+                psionic_runtime::ClusterCacheScope::StageLocal,
+                psionic_runtime::CacheAction::Bypass,
+            ))
+        );
         assert_eq!(
             schedule
                 .cluster_execution
