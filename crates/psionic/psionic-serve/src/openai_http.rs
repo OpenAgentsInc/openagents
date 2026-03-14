@@ -34,8 +34,10 @@ use psionic_models::{
     render_gpt_oss_harmony_prompt,
 };
 use psionic_router::{
-    FleetRouter, RouteSelection, RouteSelectionStrategy, RoutedModelInventory, RoutedWarmState,
-    RoutedWorkerInventory, RoutingEndpoint, RoutingError, RoutingRequest, RoutingTarget,
+    FleetRouter, ResponseConversationRef, ResponseStateCapability, ResponseStateError,
+    ResponseStateRecord, ResponseStateRetentionPolicy, ResponseStateStore, RouteSelection,
+    RouteSelectionStrategy, RoutedModelInventory, RoutedWarmState, RoutedWorkerInventory,
+    RoutingEndpoint, RoutingError, RoutingRequest, RoutingTarget,
 };
 use psionic_runtime::{
     ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
@@ -75,9 +77,6 @@ const CPU_SERVER_LOAD_STATUS: &str = "loaded";
 const CPU_SERVER_WARM_CONTROL: &str = "not_implemented";
 const CPU_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
 const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
-const RESPONSE_STATE_STORAGE: &str = "memory_only";
-const RESPONSE_STATE_RETENTION_SCOPE: &str = "process_lifetime";
-const RESPONSE_STATE_CACHE_BEHAVIOR: &str = "prompt_replay_only";
 const OPENAI_COMPAT_WORKER_ID: &str = "local_cpu_0";
 
 fn structured_output_parser_labels() -> Vec<&'static str> {
@@ -119,17 +118,6 @@ struct ToolCallingCapability {
     argument_validation: &'static str,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct ResponseStateCapability {
-    storage: &'static str,
-    retention_scope: &'static str,
-    cache_behavior: &'static str,
-    continuation_modes: Vec<&'static str>,
-    max_responses: usize,
-    max_conversations: usize,
-    max_items_per_conversation: usize,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum ResponseContinuationMode {
@@ -162,17 +150,10 @@ impl Default for PsionicResponseStateRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct ResponseConversationRef {
-    id: String,
-    revision: u64,
-    item_count: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct ResponseStateReceipt {
-    storage: &'static str,
-    retention_scope: &'static str,
-    cache_behavior: &'static str,
+    storage: String,
+    retention_scope: String,
+    cache_behavior: String,
     stored: bool,
     continuation: ResponseContinuationMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,213 +169,6 @@ struct ResponseStateReceipt {
     conversation_item_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     invalidated_references: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ResponseStateRetentionPolicy {
-    max_responses: usize,
-    max_conversations: usize,
-    max_items_per_conversation: usize,
-}
-
-impl Default for ResponseStateRetentionPolicy {
-    fn default() -> Self {
-        Self {
-            max_responses: 128,
-            max_conversations: 64,
-            max_items_per_conversation: 64,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct StoredResponseState {
-    response_id: String,
-    model_key: String,
-    worker_id: String,
-    conversation_id: Option<String>,
-    prompt_history: Vec<PromptMessage>,
-}
-
-#[derive(Clone, Debug)]
-struct StoredConversationState {
-    conversation_id: String,
-    model_key: String,
-    worker_id: String,
-    prompt_history: Vec<PromptMessage>,
-    revision: u64,
-    last_response_id: String,
-}
-
-#[derive(Clone, Debug, Default)]
-struct ResponseStateContext {
-    model_key: Option<String>,
-    worker_id: Option<String>,
-    conversation_id: Option<String>,
-    prompt_history: Vec<PromptMessage>,
-    previous_response_id: Option<String>,
-    replayed_prompt_messages: usize,
-    conversation_item_count: usize,
-}
-
-#[derive(Clone, Debug)]
-struct ResponseStateStore {
-    retention: ResponseStateRetentionPolicy,
-    responses: BTreeMap<String, StoredResponseState>,
-    response_order: VecDeque<String>,
-    conversations: BTreeMap<String, StoredConversationState>,
-    conversation_order: VecDeque<String>,
-}
-
-impl ResponseStateStore {
-    fn new(retention: ResponseStateRetentionPolicy) -> Self {
-        Self {
-            retention,
-            responses: BTreeMap::new(),
-            response_order: VecDeque::new(),
-            conversations: BTreeMap::new(),
-            conversation_order: VecDeque::new(),
-        }
-    }
-
-    fn capability(&self) -> ResponseStateCapability {
-        ResponseStateCapability {
-            storage: RESPONSE_STATE_STORAGE,
-            retention_scope: RESPONSE_STATE_RETENTION_SCOPE,
-            cache_behavior: RESPONSE_STATE_CACHE_BEHAVIOR,
-            continuation_modes: vec!["append_turn"],
-            max_responses: self.retention.max_responses,
-            max_conversations: self.retention.max_conversations,
-            max_items_per_conversation: self.retention.max_items_per_conversation,
-        }
-    }
-
-    fn load_context(
-        &self,
-        previous_response_id: Option<&str>,
-        conversation_id: Option<&str>,
-    ) -> Result<ResponseStateContext, OpenAiCompatHttpError> {
-        if let Some(previous_response_id) = previous_response_id {
-            let stored = self.responses.get(previous_response_id).ok_or_else(|| {
-                OpenAiCompatHttpError::BadRequest(format!(
-                    "response state `{previous_response_id}` is unknown or expired"
-                ))
-            })?;
-            return Ok(ResponseStateContext {
-                model_key: Some(stored.model_key.clone()),
-                worker_id: Some(stored.worker_id.clone()),
-                conversation_id: stored.conversation_id.clone(),
-                prompt_history: stored.prompt_history.clone(),
-                previous_response_id: Some(stored.response_id.clone()),
-                replayed_prompt_messages: stored.prompt_history.len(),
-                conversation_item_count: stored.prompt_history.len(),
-            });
-        }
-        if let Some(conversation_id) = conversation_id {
-            let stored = self.conversations.get(conversation_id).ok_or_else(|| {
-                OpenAiCompatHttpError::BadRequest(format!(
-                    "conversation state `{conversation_id}` is unknown or expired"
-                ))
-            })?;
-            return Ok(ResponseStateContext {
-                model_key: Some(stored.model_key.clone()),
-                worker_id: Some(stored.worker_id.clone()),
-                conversation_id: Some(stored.conversation_id.clone()),
-                prompt_history: stored.prompt_history.clone(),
-                previous_response_id: Some(stored.last_response_id.clone()),
-                replayed_prompt_messages: stored.prompt_history.len(),
-                conversation_item_count: stored.prompt_history.len(),
-            });
-        }
-        Ok(ResponseStateContext::default())
-    }
-
-    fn record_response(
-        &mut self,
-        response_id: String,
-        model_key: String,
-        worker_id: String,
-        conversation_id: Option<String>,
-        prompt_history: Vec<PromptMessage>,
-    ) -> Result<Option<ResponseConversationRef>, OpenAiCompatHttpError> {
-        if prompt_history.len() > self.retention.max_items_per_conversation {
-            return Err(OpenAiCompatHttpError::BadRequest(format!(
-                "stateful response exceeds the bounded conversation-state limit of {} prompt messages",
-                self.retention.max_items_per_conversation
-            )));
-        }
-        let stored_response = StoredResponseState {
-            response_id: response_id.clone(),
-            model_key: model_key.clone(),
-            worker_id: worker_id.clone(),
-            conversation_id: conversation_id.clone(),
-            prompt_history: prompt_history.clone(),
-        };
-        self.responses.insert(response_id.clone(), stored_response);
-        touch_fifo_key(&mut self.response_order, response_id.clone());
-        while self.responses.len() > self.retention.max_responses {
-            if let Some(evicted) = self.response_order.pop_front() {
-                self.responses.remove(&evicted);
-            }
-        }
-
-        let Some(conversation_id) = conversation_id else {
-            return Ok(None);
-        };
-        let revision = self
-            .conversations
-            .get(&conversation_id)
-            .map_or(1, |conversation| conversation.revision + 1);
-        self.conversations.insert(
-            conversation_id.clone(),
-            StoredConversationState {
-                conversation_id: conversation_id.clone(),
-                model_key,
-                worker_id,
-                prompt_history,
-                revision,
-                last_response_id: response_id,
-            },
-        );
-        touch_fifo_key(&mut self.conversation_order, conversation_id.clone());
-        while self.conversations.len() > self.retention.max_conversations {
-            if let Some(evicted) = self.conversation_order.pop_front() {
-                self.conversations.remove(&evicted);
-            }
-        }
-        let stored = self
-            .conversations
-            .get(&conversation_id)
-            .expect("stored conversation should exist");
-        Ok(Some(ResponseConversationRef {
-            id: conversation_id,
-            revision: stored.revision,
-            item_count: stored.prompt_history.len(),
-        }))
-    }
-
-    fn invalidate_references(
-        &mut self,
-        previous_response_id: Option<&str>,
-        conversation_id: Option<&str>,
-    ) -> Vec<String> {
-        let mut invalidated = Vec::new();
-        if let Some(previous_response_id) = previous_response_id
-            && self.responses.remove(previous_response_id).is_some()
-        {
-            self.response_order
-                .retain(|candidate| candidate != previous_response_id);
-            invalidated.push(format!("response:{previous_response_id}"));
-        }
-        if let Some(conversation_id) = conversation_id
-            && self.conversations.remove(conversation_id).is_some()
-        {
-            self.conversation_order
-                .retain(|candidate| candidate != conversation_id);
-            invalidated.push(format!("conversation:{conversation_id}"));
-        }
-        invalidated
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -897,6 +671,7 @@ struct OpenAiCompatState {
     include_psionic_fields: bool,
     request_counter: AtomicU64,
     conversation_counter: AtomicU64,
+    response_state_capability: ResponseStateCapability,
     response_state: Mutex<ResponseStateStore>,
 }
 
@@ -1000,11 +775,6 @@ impl OpenAiCompatLoadedModel {
         }
     }
 
-    fn response_state_capability(&self) -> Option<ResponseStateCapability> {
-        self.decoder()
-            .map(|_| ResponseStateStore::new(ResponseStateRetentionPolicy::default()).capability())
-    }
-
     fn family_label(&self) -> &str {
         match &self.kind {
             OpenAiCompatLoadedModelKind::Decoder(model) => model.descriptor.model.family.as_str(),
@@ -1044,6 +814,16 @@ enum OpenAiCompatWorkerCommand {
 
 impl OpenAiCompatServer {
     pub fn from_config(config: &OpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
+        Self::from_config_with_response_state_store(
+            config,
+            ResponseStateStore::in_memory(ResponseStateRetentionPolicy::default()),
+        )
+    }
+
+    pub fn from_config_with_response_state_store(
+        config: &OpenAiCompatConfig,
+        response_state: ResponseStateStore,
+    ) -> Result<Self, OpenAiCompatServerError> {
         if config.model_paths.is_empty() {
             return Err(OpenAiCompatServerError::Config(String::from(
                 "generic OpenAI server requires at least one `--model` path",
@@ -1103,6 +883,7 @@ impl OpenAiCompatServer {
 
         let worker = OpenAiCompatWorker::spawn(load_plans)?;
         let default_model_key = default_model_key.expect("validated non-empty model list");
+        let response_state_capability = response_state.capability();
         let router = FleetRouter::new(
             default_model_key.clone(),
             vec![
@@ -1132,9 +913,8 @@ impl OpenAiCompatServer {
                 include_psionic_fields,
                 request_counter: AtomicU64::new(1),
                 conversation_counter: AtomicU64::new(1),
-                response_state: Mutex::new(ResponseStateStore::new(
-                    ResponseStateRetentionPolicy::default(),
-                )),
+                response_state_capability,
+                response_state: Mutex::new(response_state),
             }),
         })
     }
@@ -1883,7 +1663,9 @@ async fn generic_health(
         structured_output_fallbacks: default_model.structured_output_labels(),
         structured_output_capabilities: Some(default_model.structured_output_capabilities()),
         tool_calling: Some(default_model.tool_calling_capability()),
-        response_state: default_model.response_state_capability(),
+        response_state: default_model
+            .decoder()
+            .map(|_| state.response_state_capability.clone()),
         execution_profile: default_model.execution_profile().clone(),
         scheduler_policy: default_model.scheduler_policy().cloned(),
     })
@@ -1910,7 +1692,9 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                     model.structured_output_capabilities(),
                 ),
                 psionic_tool_calling: Some(model.tool_calling_capability()),
-                psionic_response_state: model.response_state_capability(),
+                psionic_response_state: model
+                    .decoder()
+                    .map(|_| state.response_state_capability.clone()),
                 psionic_execution_profile: Some(model.execution_profile().clone()),
                 psionic_scheduler_policy: model.scheduler_policy().cloned(),
                 psionic_embedding_dimensions: model.embedding_dimensions(),
@@ -2243,11 +2027,6 @@ fn is_true(value: &bool) -> bool {
     *value
 }
 
-fn touch_fifo_key(order: &mut VecDeque<String>, key: String) {
-    order.retain(|candidate| candidate != &key);
-    order.push_back(key);
-}
-
 fn resolved_response_state_request(
     request: &ResponsesRequest,
 ) -> Result<PsionicResponseStateRequest, OpenAiCompatHttpError> {
@@ -2264,18 +2043,35 @@ fn next_conversation_id(state: &OpenAiCompatState) -> String {
     format!("psionic-conv-{next}")
 }
 
-fn current_response_state_capability(
-    state: &OpenAiCompatState,
-) -> Result<ResponseStateCapability, OpenAiCompatHttpError> {
-    state
-        .response_state
-        .lock()
-        .map_err(|_| {
-            OpenAiCompatHttpError::Internal(String::from(
-                "generic response-state store is poisoned",
+fn current_response_state_capability(state: &OpenAiCompatState) -> ResponseStateCapability {
+    state.response_state_capability.clone()
+}
+
+fn response_state_error_into_http(error: ResponseStateError) -> OpenAiCompatHttpError {
+    match error {
+        ResponseStateError::UnknownResponseState { response_id } => {
+            OpenAiCompatHttpError::BadRequest(format!(
+                "response state `{response_id}` is unknown or expired"
             ))
-        })
-        .map(|store| store.capability())
+        }
+        ResponseStateError::UnknownConversationState { conversation_id } => {
+            OpenAiCompatHttpError::BadRequest(format!(
+                "conversation state `{conversation_id}` is unknown or expired"
+            ))
+        }
+        ResponseStateError::ConversationTooLarge {
+            max_items_per_conversation,
+            ..
+        } => OpenAiCompatHttpError::BadRequest(format!(
+            "stateful response exceeds the bounded conversation-state limit of {max_items_per_conversation} prompt messages"
+        )),
+        ResponseStateError::IoRead { .. }
+        | ResponseStateError::IoWrite { .. }
+        | ResponseStateError::Deserialize { .. }
+        | ResponseStateError::Serialize { .. } => OpenAiCompatHttpError::Internal(format!(
+            "generic response-state backend failed: {error}"
+        )),
+    }
 }
 
 fn parse_reasoning_response_for_family(
@@ -3146,7 +2942,8 @@ async fn handle_generic_responses(
         .load_context(
             request.previous_response_id.as_deref(),
             request.conversation.as_deref(),
-        )?;
+        )
+        .map_err(response_state_error_into_http)?;
     let structured_output = structured_output_from_responses_request(&request)?;
     let tool_contract =
         tool_contract_from_responses_request(&request, structured_output.is_some())?;
@@ -3329,7 +3126,7 @@ async fn handle_generic_responses(
         response.output.text.as_str(),
         parsed.as_ref(),
     );
-    let response_state_capability = current_response_state_capability(state.as_ref())?;
+    let response_state_capability = current_response_state_capability(state.as_ref());
     let assigned_conversation_id = response_state_request.store.then(|| {
         if response_state_request.invalidate_references
             || response_state_context.conversation_id.is_none()
@@ -3351,13 +3148,15 @@ async fn handle_generic_responses(
             ))
         })?;
         let conversation = if response_state_request.store {
-            response_state.record_response(
-                request_id.clone(),
-                loaded_model.model_key.clone(),
-                route.selection.worker_id.clone(),
-                assigned_conversation_id.clone(),
-                stored_prompt_history.clone(),
-            )?
+            response_state
+                .record_response(ResponseStateRecord {
+                    response_id: request_id.clone(),
+                    model_key: loaded_model.model_key.clone(),
+                    worker_id: route.selection.worker_id.clone(),
+                    conversation_id: assigned_conversation_id.clone(),
+                    prompt_history: stored_prompt_history.clone(),
+                })
+                .map_err(response_state_error_into_http)?
         } else {
             None
         };
@@ -3366,10 +3165,12 @@ async fn handle_generic_responses(
                 .conversation_id
                 .as_deref()
                 .filter(|candidate| Some(*candidate) != assigned_conversation_id.as_deref());
-            response_state.invalidate_references(
-                request.previous_response_id.as_deref(),
-                invalidated_conversation_id,
-            )
+            response_state
+                .invalidate_references(
+                    request.previous_response_id.as_deref(),
+                    invalidated_conversation_id,
+                )
+                .map_err(response_state_error_into_http)?
         } else {
             Vec::new()
         };
@@ -3400,9 +3201,9 @@ async fn handle_generic_responses(
             state.include_psionic_fields,
         ),
         psionic_response_state: Some(ResponseStateReceipt {
-            storage: response_state_capability.storage,
-            retention_scope: response_state_capability.retention_scope,
-            cache_behavior: response_state_capability.cache_behavior,
+            storage: response_state_capability.storage.clone(),
+            retention_scope: response_state_capability.retention_scope.clone(),
+            cache_behavior: response_state_capability.cache_behavior.clone(),
             stored: response_state_request.store,
             continuation: response_state_request.continuation,
             previous_response_id: response_state_context.previous_response_id.clone(),
@@ -4905,6 +4706,7 @@ mod tests {
         PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, ReasoningParser, TokenId,
         TokenSequence, parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
     };
+    use psionic_router::{ResponseStateRetentionPolicy, ResponseStateStore};
     use psionic_runtime::{
         BatchExecutionPosture, PrefixCacheControl, PrefixCacheMode, QueueDiscipline,
         StructuredGrammarSyntax, StructuredOutputRequest, StructuredTaggedVariant,
@@ -5595,7 +5397,7 @@ mod tests {
                 .response_state
                 .as_ref()
                 .map(|capability| capability.continuation_modes.clone()),
-            Some(vec!["append_turn"])
+            Some(vec![String::from("append_turn")])
         );
 
         let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
@@ -5614,8 +5416,8 @@ mod tests {
             decoder_model
                 .psionic_response_state
                 .as_ref()
-                .map(|capability| capability.cache_behavior),
-            Some("prompt_replay_only")
+                .map(|capability| capability.cache_behavior.clone()),
+            Some(String::from("prompt_replay_only"))
         );
         let embeddings_model = models
             .0
@@ -5798,6 +5600,102 @@ mod tests {
         assert_eq!(
             second_payload["psionic_response_state"]["conversation_item_count"],
             serde_json::json!(5)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_file_backed_state_survives_server_restart()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let model_path = temp.path().join("tiny-durable-stateful-llama.gguf");
+        let state_path = temp.path().join("response-state.json");
+        write_test_gguf(
+            &model_path,
+            dense_llama_metadata("tiny durable stateful llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let config = OpenAiCompatConfig::new(&model_path);
+        let runtime = tokio::runtime::Runtime::new()?;
+        let first_server = OpenAiCompatServer::from_config_with_response_state_store(
+            &config,
+            ResponseStateStore::file_backed(&state_path, ResponseStateRetentionPolicy::default())?,
+        )?;
+        let first_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&first_server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-durable-stateful-llama")),
+                instructions: Some(String::from("Be brief.")),
+                conversation: None,
+                input: ResponsesInput::Text(String::from("hello")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let first_payload = runtime.block_on(response_json(first_response))?;
+        let conversation_id = first_payload["conversation"]["id"]
+            .as_str()
+            .expect("conversation id")
+            .to_string();
+        let first_response_id = first_payload["id"]
+            .as_str()
+            .expect("response id")
+            .to_string();
+
+        let second_server = OpenAiCompatServer::from_config_with_response_state_store(
+            &config,
+            ResponseStateStore::file_backed(&state_path, ResponseStateRetentionPolicy::default())?,
+        )?;
+        let second_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&second_server.state),
+            ResponsesRequest {
+                model: None,
+                instructions: None,
+                conversation: Some(conversation_id.clone()),
+                input: ResponsesInput::Text(String::from("again")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let second_payload = runtime.block_on(response_json(second_response))?;
+        assert_eq!(
+            second_payload["previous_response_id"],
+            serde_json::json!(first_response_id)
+        );
+        assert_eq!(
+            second_payload["conversation"]["id"],
+            serde_json::json!(conversation_id)
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["storage"],
+            serde_json::json!("json_file")
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["retention_scope"],
+            serde_json::json!("best_effort_local_durable")
+        );
+        assert_eq!(
+            second_payload["psionic_response_state"]["replayed_prompt_messages"],
+            serde_json::json!(3)
         );
         Ok(())
     }

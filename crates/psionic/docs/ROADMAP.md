@@ -887,7 +887,13 @@ too through a router-owned reliability controller: retries, queue depth
 controls, rate limiting, circuit-breaker state, worker health gating, and
 explicit metrics or traces exercised in failure-injection tests. The next
 dependency-ordered issue in that chain is now `PSI-252` /
-[#3557](https://github.com/OpenAgentsInc/openagents/issues/3557).
+[#3557](https://github.com/OpenAgentsInc/openagents/issues/3557), and it is now
+landed too through a router-owned response-state backend seam: pluggable
+in-memory and best-effort local JSON persistence, explicit retention and
+durability labels, and generic-server integration so `/v1/responses`
+continuation can survive restart without app-local storage glue. The next
+dependency-ordered issue in that chain is now `PSI-253` /
+[#3558](https://github.com/OpenAgentsInc/openagents/issues/3558).
 
 ## Current Reality
 
