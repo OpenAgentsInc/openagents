@@ -1,5 +1,6 @@
 use crate::authority::{
     AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
+    AppendComputeSyntheticDataSamplesRequest, AppendComputeSyntheticDataSamplesResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
     CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
@@ -7,11 +8,14 @@ use crate::authority::{
     CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
     CreateComputeEvaluationRunRequest, CreateComputeEvaluationRunResponse,
     CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateComputeSyntheticDataJobRequest, CreateComputeSyntheticDataJobResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     FinalizeComputeEvaluationRunRequest, FinalizeComputeEvaluationRunResponse,
-    PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
-    RecordDeliveryProofResponse, RegisterComputeEnvironmentPackageRequest,
-    RegisterComputeEnvironmentPackageResponse,
+    FinalizeComputeSyntheticDataGenerationRequest, FinalizeComputeSyntheticDataGenerationResponse,
+    PublishComputeIndexRequest, PublishComputeIndexResponse,
+    RecordComputeSyntheticDataVerificationRequest, RecordComputeSyntheticDataVerificationResponse,
+    RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
@@ -26,10 +30,11 @@ use crate::compute::{
     ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeIndex,
     ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
     ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
-    ComputeSettlementMode, ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, DeliverySandboxEvidence,
-    DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+    ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
+    ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
+    GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
 use crate::receipts::{
@@ -593,6 +598,92 @@ fn compute_evaluation_sample_status_from_proto(value: i32) -> ComputeEvaluationS
         proto_compute::ComputeEvaluationSampleStatus::Unspecified
         | proto_compute::ComputeEvaluationSampleStatus::Recorded => {
             ComputeEvaluationSampleStatus::Recorded
+        }
+    }
+}
+
+fn compute_synthetic_data_job_status_to_proto(value: ComputeSyntheticDataJobStatus) -> i32 {
+    match value {
+        ComputeSyntheticDataJobStatus::Queued => {
+            proto_compute::ComputeSyntheticDataJobStatus::Queued as i32
+        }
+        ComputeSyntheticDataJobStatus::Generating => {
+            proto_compute::ComputeSyntheticDataJobStatus::Generating as i32
+        }
+        ComputeSyntheticDataJobStatus::Generated => {
+            proto_compute::ComputeSyntheticDataJobStatus::Generated as i32
+        }
+        ComputeSyntheticDataJobStatus::Verifying => {
+            proto_compute::ComputeSyntheticDataJobStatus::Verifying as i32
+        }
+        ComputeSyntheticDataJobStatus::Verified => {
+            proto_compute::ComputeSyntheticDataJobStatus::Verified as i32
+        }
+        ComputeSyntheticDataJobStatus::Failed => {
+            proto_compute::ComputeSyntheticDataJobStatus::Failed as i32
+        }
+    }
+}
+
+fn compute_synthetic_data_job_status_from_proto(value: i32) -> ComputeSyntheticDataJobStatus {
+    match proto_compute::ComputeSyntheticDataJobStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeSyntheticDataJobStatus::Queued)
+    {
+        proto_compute::ComputeSyntheticDataJobStatus::Generating => {
+            ComputeSyntheticDataJobStatus::Generating
+        }
+        proto_compute::ComputeSyntheticDataJobStatus::Generated => {
+            ComputeSyntheticDataJobStatus::Generated
+        }
+        proto_compute::ComputeSyntheticDataJobStatus::Verifying => {
+            ComputeSyntheticDataJobStatus::Verifying
+        }
+        proto_compute::ComputeSyntheticDataJobStatus::Verified => {
+            ComputeSyntheticDataJobStatus::Verified
+        }
+        proto_compute::ComputeSyntheticDataJobStatus::Failed => {
+            ComputeSyntheticDataJobStatus::Failed
+        }
+        proto_compute::ComputeSyntheticDataJobStatus::Unspecified
+        | proto_compute::ComputeSyntheticDataJobStatus::Queued => {
+            ComputeSyntheticDataJobStatus::Queued
+        }
+    }
+}
+
+fn compute_synthetic_data_sample_status_to_proto(value: ComputeSyntheticDataSampleStatus) -> i32 {
+    match value {
+        ComputeSyntheticDataSampleStatus::Generated => {
+            proto_compute::ComputeSyntheticDataSampleStatus::Generated as i32
+        }
+        ComputeSyntheticDataSampleStatus::Verified => {
+            proto_compute::ComputeSyntheticDataSampleStatus::Verified as i32
+        }
+        ComputeSyntheticDataSampleStatus::Rejected => {
+            proto_compute::ComputeSyntheticDataSampleStatus::Rejected as i32
+        }
+        ComputeSyntheticDataSampleStatus::Errored => {
+            proto_compute::ComputeSyntheticDataSampleStatus::Errored as i32
+        }
+    }
+}
+
+fn compute_synthetic_data_sample_status_from_proto(value: i32) -> ComputeSyntheticDataSampleStatus {
+    match proto_compute::ComputeSyntheticDataSampleStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeSyntheticDataSampleStatus::Generated)
+    {
+        proto_compute::ComputeSyntheticDataSampleStatus::Verified => {
+            ComputeSyntheticDataSampleStatus::Verified
+        }
+        proto_compute::ComputeSyntheticDataSampleStatus::Rejected => {
+            ComputeSyntheticDataSampleStatus::Rejected
+        }
+        proto_compute::ComputeSyntheticDataSampleStatus::Errored => {
+            ComputeSyntheticDataSampleStatus::Errored
+        }
+        proto_compute::ComputeSyntheticDataSampleStatus::Unspecified
+        | proto_compute::ComputeSyntheticDataSampleStatus::Generated => {
+            ComputeSyntheticDataSampleStatus::Generated
         }
     }
 }
@@ -2018,6 +2109,110 @@ pub fn compute_evaluation_sample_from_proto(
     })
 }
 
+pub fn compute_synthetic_data_job_to_proto(
+    job: &ComputeSyntheticDataJob,
+) -> Result<proto_compute::ComputeSyntheticDataJob> {
+    Ok(proto_compute::ComputeSyntheticDataJob {
+        synthetic_job_id: job.synthetic_job_id.clone(),
+        environment_binding: Some(compute_environment_binding_to_proto(
+            &job.environment_binding,
+        )),
+        teacher_model_ref: job.teacher_model_ref.clone(),
+        generation_product_id: job.generation_product_id.clone(),
+        generation_delivery_proof_id: job.generation_delivery_proof_id.clone(),
+        output_artifact_ref: job.output_artifact_ref.clone(),
+        created_at_ms: job.created_at_ms,
+        generated_at_ms: job.generated_at_ms,
+        verification_eval_run_id: job.verification_eval_run_id.clone(),
+        verified_at_ms: job.verified_at_ms,
+        target_sample_count: job.target_sample_count,
+        status: compute_synthetic_data_job_status_to_proto(job.status),
+        verification_summary: job
+            .verification_summary
+            .as_ref()
+            .map(compute_evaluation_summary_to_proto)
+            .transpose()?,
+        metadata_json: json_value_to_string(&job.metadata)?,
+    })
+}
+
+pub fn compute_synthetic_data_job_from_proto(
+    job: &proto_compute::ComputeSyntheticDataJob,
+) -> Result<ComputeSyntheticDataJob> {
+    Ok(ComputeSyntheticDataJob {
+        synthetic_job_id: job.synthetic_job_id.clone(),
+        environment_binding: compute_environment_binding_from_proto(
+            job.environment_binding
+                .as_ref()
+                .ok_or_else(|| missing("environment_binding"))?,
+        ),
+        teacher_model_ref: job.teacher_model_ref.clone(),
+        generation_product_id: optional_string_as_none(job.generation_product_id.clone()),
+        generation_delivery_proof_id: optional_string_as_none(
+            job.generation_delivery_proof_id.clone(),
+        ),
+        output_artifact_ref: optional_string_as_none(job.output_artifact_ref.clone()),
+        created_at_ms: job.created_at_ms,
+        generated_at_ms: job.generated_at_ms,
+        verification_eval_run_id: optional_string_as_none(job.verification_eval_run_id.clone()),
+        verified_at_ms: job.verified_at_ms,
+        target_sample_count: job.target_sample_count,
+        status: compute_synthetic_data_job_status_from_proto(job.status),
+        verification_summary: job
+            .verification_summary
+            .as_ref()
+            .map(compute_evaluation_summary_from_proto)
+            .transpose()?,
+        metadata: json_string_to_value(job.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_synthetic_data_sample_to_proto(
+    sample: &ComputeSyntheticDataSample,
+) -> Result<proto_compute::ComputeSyntheticDataSample> {
+    Ok(proto_compute::ComputeSyntheticDataSample {
+        synthetic_job_id: sample.synthetic_job_id.clone(),
+        sample_id: sample.sample_id.clone(),
+        ordinal: sample.ordinal,
+        prompt_ref: sample.prompt_ref.clone(),
+        output_ref: sample.output_ref.clone(),
+        generation_config_ref: sample.generation_config_ref.clone(),
+        generator_machine_ref: sample.generator_machine_ref.clone(),
+        verification_eval_sample_id: sample.verification_eval_sample_id.clone(),
+        verification_status: sample
+            .verification_status
+            .map(compute_evaluation_sample_status_to_proto),
+        verification_score_bps: sample.verification_score_bps,
+        status: compute_synthetic_data_sample_status_to_proto(sample.status),
+        recorded_at_ms: sample.recorded_at_ms,
+        metadata_json: json_value_to_string(&sample.metadata)?,
+    })
+}
+
+pub fn compute_synthetic_data_sample_from_proto(
+    sample: &proto_compute::ComputeSyntheticDataSample,
+) -> Result<ComputeSyntheticDataSample> {
+    Ok(ComputeSyntheticDataSample {
+        synthetic_job_id: sample.synthetic_job_id.clone(),
+        sample_id: sample.sample_id.clone(),
+        ordinal: sample.ordinal,
+        prompt_ref: sample.prompt_ref.clone(),
+        output_ref: sample.output_ref.clone(),
+        generation_config_ref: optional_string_as_none(sample.generation_config_ref.clone()),
+        generator_machine_ref: optional_string_as_none(sample.generator_machine_ref.clone()),
+        verification_eval_sample_id: optional_string_as_none(
+            sample.verification_eval_sample_id.clone(),
+        ),
+        verification_status: sample
+            .verification_status
+            .map(compute_evaluation_sample_status_from_proto),
+        verification_score_bps: sample.verification_score_bps,
+        status: compute_synthetic_data_sample_status_from_proto(sample.status),
+        recorded_at_ms: sample.recorded_at_ms,
+        metadata: json_string_to_value(sample.metadata_json.as_str())?,
+    })
+}
+
 pub fn compute_product_to_proto(product: &ComputeProduct) -> Result<proto_compute::ComputeProduct> {
     Ok(proto_compute::ComputeProduct {
         product_id: product.product_id.clone(),
@@ -2747,6 +2942,319 @@ pub fn finalize_compute_evaluation_run_response_from_proto(
                 .as_ref()
                 .ok_or_else(|| missing("eval_run"))?,
         )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn create_compute_synthetic_data_job_request_to_proto(
+    request: &CreateComputeSyntheticDataJobRequest,
+) -> Result<proto_compute::CreateComputeSyntheticDataJobRequest> {
+    Ok(proto_compute::CreateComputeSyntheticDataJobRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        synthetic_job: Some(compute_synthetic_data_job_to_proto(&request.synthetic_job)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn create_compute_synthetic_data_job_request_from_proto(
+    request: &proto_compute::CreateComputeSyntheticDataJobRequest,
+) -> Result<CreateComputeSyntheticDataJobRequest> {
+    Ok(CreateComputeSyntheticDataJobRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        synthetic_job: compute_synthetic_data_job_from_proto(
+            request
+                .synthetic_job
+                .as_ref()
+                .ok_or_else(|| missing("synthetic_job"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn create_compute_synthetic_data_job_response_to_proto(
+    response: &CreateComputeSyntheticDataJobResponse,
+) -> Result<proto_compute::CreateComputeSyntheticDataJobResponse> {
+    Ok(proto_compute::CreateComputeSyntheticDataJobResponse {
+        synthetic_job: Some(compute_synthetic_data_job_to_proto(
+            &response.synthetic_job,
+        )?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn create_compute_synthetic_data_job_response_from_proto(
+    response: &proto_compute::CreateComputeSyntheticDataJobResponse,
+) -> Result<CreateComputeSyntheticDataJobResponse> {
+    Ok(CreateComputeSyntheticDataJobResponse {
+        synthetic_job: compute_synthetic_data_job_from_proto(
+            response
+                .synthetic_job
+                .as_ref()
+                .ok_or_else(|| missing("synthetic_job"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn append_compute_synthetic_data_samples_request_to_proto(
+    request: &AppendComputeSyntheticDataSamplesRequest,
+) -> Result<proto_compute::AppendComputeSyntheticDataSamplesRequest> {
+    Ok(proto_compute::AppendComputeSyntheticDataSamplesRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        synthetic_job_id: request.synthetic_job_id.clone(),
+        samples: request
+            .samples
+            .iter()
+            .map(compute_synthetic_data_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn append_compute_synthetic_data_samples_request_from_proto(
+    request: &proto_compute::AppendComputeSyntheticDataSamplesRequest,
+) -> Result<AppendComputeSyntheticDataSamplesRequest> {
+    Ok(AppendComputeSyntheticDataSamplesRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        synthetic_job_id: request.synthetic_job_id.clone(),
+        samples: request
+            .samples
+            .iter()
+            .map(compute_synthetic_data_sample_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn append_compute_synthetic_data_samples_response_to_proto(
+    response: &AppendComputeSyntheticDataSamplesResponse,
+) -> Result<proto_compute::AppendComputeSyntheticDataSamplesResponse> {
+    Ok(proto_compute::AppendComputeSyntheticDataSamplesResponse {
+        synthetic_job: Some(compute_synthetic_data_job_to_proto(
+            &response.synthetic_job,
+        )?),
+        samples: response
+            .samples
+            .iter()
+            .map(compute_synthetic_data_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn append_compute_synthetic_data_samples_response_from_proto(
+    response: &proto_compute::AppendComputeSyntheticDataSamplesResponse,
+) -> Result<AppendComputeSyntheticDataSamplesResponse> {
+    Ok(AppendComputeSyntheticDataSamplesResponse {
+        synthetic_job: compute_synthetic_data_job_from_proto(
+            response
+                .synthetic_job
+                .as_ref()
+                .ok_or_else(|| missing("synthetic_job"))?,
+        )?,
+        samples: response
+            .samples
+            .iter()
+            .map(compute_synthetic_data_sample_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn finalize_compute_synthetic_data_generation_request_to_proto(
+    request: &FinalizeComputeSyntheticDataGenerationRequest,
+) -> Result<proto_compute::FinalizeComputeSyntheticDataGenerationRequest> {
+    Ok(
+        proto_compute::FinalizeComputeSyntheticDataGenerationRequest {
+            idempotency_key: request.idempotency_key.clone(),
+            trace: Some(trace_to_proto(&request.trace)),
+            policy: Some(policy_to_proto(&request.policy)),
+            synthetic_job_id: request.synthetic_job_id.clone(),
+            status: compute_synthetic_data_job_status_to_proto(request.status),
+            generated_at_ms: request.generated_at_ms,
+            output_artifact_ref: request.output_artifact_ref.clone(),
+            metadata_json: json_value_to_string(&request.metadata)?,
+            evidence: request
+                .evidence
+                .iter()
+                .map(evidence_to_proto)
+                .collect::<Result<Vec<_>>>()?,
+            hints: Some(hints_to_proto(&request.hints)),
+        },
+    )
+}
+
+pub fn finalize_compute_synthetic_data_generation_request_from_proto(
+    request: &proto_compute::FinalizeComputeSyntheticDataGenerationRequest,
+) -> Result<FinalizeComputeSyntheticDataGenerationRequest> {
+    Ok(FinalizeComputeSyntheticDataGenerationRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        synthetic_job_id: request.synthetic_job_id.clone(),
+        status: compute_synthetic_data_job_status_from_proto(request.status),
+        generated_at_ms: request.generated_at_ms,
+        output_artifact_ref: optional_string_as_none(request.output_artifact_ref.clone()),
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn finalize_compute_synthetic_data_generation_response_to_proto(
+    response: &FinalizeComputeSyntheticDataGenerationResponse,
+) -> Result<proto_compute::FinalizeComputeSyntheticDataGenerationResponse> {
+    Ok(
+        proto_compute::FinalizeComputeSyntheticDataGenerationResponse {
+            synthetic_job: Some(compute_synthetic_data_job_to_proto(
+                &response.synthetic_job,
+            )?),
+            receipt: Some(receipt_to_proto(&response.receipt)?),
+        },
+    )
+}
+
+pub fn finalize_compute_synthetic_data_generation_response_from_proto(
+    response: &proto_compute::FinalizeComputeSyntheticDataGenerationResponse,
+) -> Result<FinalizeComputeSyntheticDataGenerationResponse> {
+    Ok(FinalizeComputeSyntheticDataGenerationResponse {
+        synthetic_job: compute_synthetic_data_job_from_proto(
+            response
+                .synthetic_job
+                .as_ref()
+                .ok_or_else(|| missing("synthetic_job"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn record_compute_synthetic_data_verification_request_to_proto(
+    request: &RecordComputeSyntheticDataVerificationRequest,
+) -> Result<proto_compute::RecordComputeSyntheticDataVerificationRequest> {
+    Ok(
+        proto_compute::RecordComputeSyntheticDataVerificationRequest {
+            idempotency_key: request.idempotency_key.clone(),
+            trace: Some(trace_to_proto(&request.trace)),
+            policy: Some(policy_to_proto(&request.policy)),
+            synthetic_job_id: request.synthetic_job_id.clone(),
+            verification_eval_run_id: request.verification_eval_run_id.clone(),
+            verified_at_ms: request.verified_at_ms,
+            metadata_json: json_value_to_string(&request.metadata)?,
+            evidence: request
+                .evidence
+                .iter()
+                .map(evidence_to_proto)
+                .collect::<Result<Vec<_>>>()?,
+            hints: Some(hints_to_proto(&request.hints)),
+        },
+    )
+}
+
+pub fn record_compute_synthetic_data_verification_request_from_proto(
+    request: &proto_compute::RecordComputeSyntheticDataVerificationRequest,
+) -> Result<RecordComputeSyntheticDataVerificationRequest> {
+    Ok(RecordComputeSyntheticDataVerificationRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        synthetic_job_id: request.synthetic_job_id.clone(),
+        verification_eval_run_id: request.verification_eval_run_id.clone(),
+        verified_at_ms: request.verified_at_ms,
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn record_compute_synthetic_data_verification_response_to_proto(
+    response: &RecordComputeSyntheticDataVerificationResponse,
+) -> Result<proto_compute::RecordComputeSyntheticDataVerificationResponse> {
+    Ok(
+        proto_compute::RecordComputeSyntheticDataVerificationResponse {
+            synthetic_job: Some(compute_synthetic_data_job_to_proto(
+                &response.synthetic_job,
+            )?),
+            samples: response
+                .samples
+                .iter()
+                .map(compute_synthetic_data_sample_to_proto)
+                .collect::<Result<Vec<_>>>()?,
+            receipt: Some(receipt_to_proto(&response.receipt)?),
+        },
+    )
+}
+
+pub fn record_compute_synthetic_data_verification_response_from_proto(
+    response: &proto_compute::RecordComputeSyntheticDataVerificationResponse,
+) -> Result<RecordComputeSyntheticDataVerificationResponse> {
+    Ok(RecordComputeSyntheticDataVerificationResponse {
+        synthetic_job: compute_synthetic_data_job_from_proto(
+            response
+                .synthetic_job
+                .as_ref()
+                .ok_or_else(|| missing("synthetic_job"))?,
+        )?,
+        samples: response
+            .samples
+            .iter()
+            .map(compute_synthetic_data_sample_from_proto)
+            .collect::<Result<Vec<_>>>()?,
         receipt: receipt_from_proto(
             response
                 .receipt
@@ -3574,6 +4082,67 @@ pub fn list_compute_evaluation_samples_response_from_proto(
         .collect()
 }
 
+pub fn list_compute_synthetic_data_jobs_response_to_proto(
+    jobs: &[ComputeSyntheticDataJob],
+) -> Result<proto_compute::ListComputeSyntheticDataJobsResponse> {
+    Ok(proto_compute::ListComputeSyntheticDataJobsResponse {
+        synthetic_jobs: jobs
+            .iter()
+            .map(compute_synthetic_data_job_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_synthetic_data_jobs_response_from_proto(
+    response: &proto_compute::ListComputeSyntheticDataJobsResponse,
+) -> Result<Vec<ComputeSyntheticDataJob>> {
+    response
+        .synthetic_jobs
+        .iter()
+        .map(compute_synthetic_data_job_from_proto)
+        .collect()
+}
+
+pub fn get_compute_synthetic_data_job_response_to_proto(
+    job: &ComputeSyntheticDataJob,
+) -> Result<proto_compute::GetComputeSyntheticDataJobResponse> {
+    Ok(proto_compute::GetComputeSyntheticDataJobResponse {
+        synthetic_job: Some(compute_synthetic_data_job_to_proto(job)?),
+    })
+}
+
+pub fn get_compute_synthetic_data_job_response_from_proto(
+    response: &proto_compute::GetComputeSyntheticDataJobResponse,
+) -> Result<ComputeSyntheticDataJob> {
+    compute_synthetic_data_job_from_proto(
+        response
+            .synthetic_job
+            .as_ref()
+            .ok_or_else(|| missing("synthetic_job"))?,
+    )
+}
+
+pub fn list_compute_synthetic_data_samples_response_to_proto(
+    samples: &[ComputeSyntheticDataSample],
+) -> Result<proto_compute::ListComputeSyntheticDataSamplesResponse> {
+    Ok(proto_compute::ListComputeSyntheticDataSamplesResponse {
+        samples: samples
+            .iter()
+            .map(compute_synthetic_data_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_synthetic_data_samples_response_from_proto(
+    response: &proto_compute::ListComputeSyntheticDataSamplesResponse,
+) -> Result<Vec<ComputeSyntheticDataSample>> {
+    response
+        .samples
+        .iter()
+        .map(compute_synthetic_data_sample_from_proto)
+        .collect()
+}
+
 pub fn list_capacity_lots_response_to_proto(
     lots: &[CapacityLot],
 ) -> Result<proto_compute::ListCapacityLotsResponse> {
@@ -3766,7 +4335,11 @@ mod tests {
         append_compute_evaluation_samples_request_from_proto,
         append_compute_evaluation_samples_request_to_proto,
         append_compute_evaluation_samples_response_from_proto,
-        append_compute_evaluation_samples_response_to_proto, capacity_instrument_from_proto,
+        append_compute_evaluation_samples_response_to_proto,
+        append_compute_synthetic_data_samples_request_from_proto,
+        append_compute_synthetic_data_samples_request_to_proto,
+        append_compute_synthetic_data_samples_response_from_proto,
+        append_compute_synthetic_data_samples_response_to_proto, capacity_instrument_from_proto,
         capacity_instrument_to_proto, capacity_lot_from_proto, capacity_lot_to_proto,
         cash_settle_capacity_instrument_request_from_proto,
         cash_settle_capacity_instrument_request_to_proto,
@@ -3783,12 +4356,18 @@ mod tests {
         compute_evaluation_run_from_proto, compute_evaluation_run_to_proto,
         compute_evaluation_sample_from_proto, compute_evaluation_sample_to_proto,
         compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
-        compute_product_to_proto, correct_compute_index_request_from_proto,
+        compute_product_to_proto, compute_synthetic_data_job_from_proto,
+        compute_synthetic_data_job_to_proto, compute_synthetic_data_sample_from_proto,
+        compute_synthetic_data_sample_to_proto, correct_compute_index_request_from_proto,
         correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
         correct_compute_index_response_to_proto, create_compute_evaluation_run_request_from_proto,
         create_compute_evaluation_run_request_to_proto,
         create_compute_evaluation_run_response_from_proto,
         create_compute_evaluation_run_response_to_proto,
+        create_compute_synthetic_data_job_request_from_proto,
+        create_compute_synthetic_data_job_request_to_proto,
+        create_compute_synthetic_data_job_response_from_proto,
+        create_compute_synthetic_data_job_response_to_proto,
         create_structured_capacity_instrument_request_from_proto,
         create_structured_capacity_instrument_request_to_proto,
         create_structured_capacity_instrument_response_from_proto,
@@ -3797,11 +4376,16 @@ mod tests {
         finalize_compute_evaluation_run_request_to_proto,
         finalize_compute_evaluation_run_response_from_proto,
         finalize_compute_evaluation_run_response_to_proto,
+        finalize_compute_synthetic_data_generation_request_from_proto,
+        finalize_compute_synthetic_data_generation_request_to_proto,
+        finalize_compute_synthetic_data_generation_response_from_proto,
+        finalize_compute_synthetic_data_generation_response_to_proto,
         get_compute_environment_package_response_from_proto,
         get_compute_environment_package_response_to_proto,
         get_compute_evaluation_run_response_from_proto,
         get_compute_evaluation_run_response_to_proto, get_compute_index_response_from_proto,
-        get_compute_index_response_to_proto,
+        get_compute_index_response_to_proto, get_compute_synthetic_data_job_response_from_proto,
+        get_compute_synthetic_data_job_response_to_proto,
         get_structured_capacity_instrument_response_from_proto,
         get_structured_capacity_instrument_response_to_proto,
         list_compute_environment_packages_response_from_proto,
@@ -3811,8 +4395,16 @@ mod tests {
         list_compute_evaluation_samples_response_from_proto,
         list_compute_evaluation_samples_response_to_proto,
         list_compute_products_response_from_proto, list_compute_products_response_to_proto,
+        list_compute_synthetic_data_jobs_response_from_proto,
+        list_compute_synthetic_data_jobs_response_to_proto,
+        list_compute_synthetic_data_samples_response_from_proto,
+        list_compute_synthetic_data_samples_response_to_proto,
         list_structured_capacity_instruments_response_from_proto,
         list_structured_capacity_instruments_response_to_proto,
+        record_compute_synthetic_data_verification_request_from_proto,
+        record_compute_synthetic_data_verification_request_to_proto,
+        record_compute_synthetic_data_verification_response_from_proto,
+        record_compute_synthetic_data_verification_response_to_proto,
         register_compute_environment_package_request_from_proto,
         register_compute_environment_package_request_to_proto,
         register_compute_environment_package_response_from_proto,
@@ -3821,13 +4413,18 @@ mod tests {
     };
     use crate::authority::{
         AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
+        AppendComputeSyntheticDataSamplesRequest, AppendComputeSyntheticDataSamplesResponse,
         CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
         CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
         CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
         CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateComputeEvaluationRunRequest,
-        CreateComputeEvaluationRunResponse, CreateStructuredCapacityInstrumentRequest,
+        CreateComputeEvaluationRunResponse, CreateComputeSyntheticDataJobRequest,
+        CreateComputeSyntheticDataJobResponse, CreateStructuredCapacityInstrumentRequest,
         CreateStructuredCapacityInstrumentResponse, FinalizeComputeEvaluationRunRequest,
-        FinalizeComputeEvaluationRunResponse, RegisterComputeEnvironmentPackageRequest,
+        FinalizeComputeEvaluationRunResponse, FinalizeComputeSyntheticDataGenerationRequest,
+        FinalizeComputeSyntheticDataGenerationResponse,
+        RecordComputeSyntheticDataVerificationRequest,
+        RecordComputeSyntheticDataVerificationResponse, RegisterComputeEnvironmentPackageRequest,
         RegisterComputeEnvironmentPackageResponse,
     };
     use crate::compute::{
@@ -3843,11 +4440,13 @@ mod tests {
         ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeExecutionKind,
         ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
         ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
-        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
-        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
-        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
+        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, ComputeTopologyKind, ComputeValidatorRequirements,
+        DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
@@ -4036,6 +4635,69 @@ mod tests {
             error_reason: None,
             recorded_at_ms: 1_762_000_505_000,
             metadata: json!({"prompt_tokens": 42}),
+        }
+    }
+
+    fn synthetic_data_job_fixture() -> ComputeSyntheticDataJob {
+        ComputeSyntheticDataJob {
+            synthetic_job_id: "synthetic.math.basic.alpha".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            },
+            teacher_model_ref: "model://llama3.3-instruct".to_string(),
+            generation_product_id: Some("gpt_oss.text_generation".to_string()),
+            generation_delivery_proof_id: Some("delivery.synthetic.alpha".to_string()),
+            output_artifact_ref: Some("artifact://synthetic/output".to_string()),
+            created_at_ms: 1_762_000_520_000,
+            generated_at_ms: Some(1_762_000_521_000),
+            verification_eval_run_id: Some("eval.synthetic.alpha".to_string()),
+            verified_at_ms: Some(1_762_000_522_000),
+            target_sample_count: Some(2),
+            status: ComputeSyntheticDataJobStatus::Verified,
+            verification_summary: Some(ComputeEvaluationSummary {
+                total_samples: 2,
+                scored_samples: 2,
+                passed_samples: 1,
+                failed_samples: 1,
+                errored_samples: 0,
+                average_score_bps: Some(9_250),
+                pass_rate_bps: Some(5_000),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.925,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"split": "synthetic"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "verification_scorecard".to_string(),
+                    artifact_ref: "artifact://synthetic/scorecard".to_string(),
+                    digest: Some("sha256:synthetic-scorecard".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({"pipeline": "teacher-verify"}),
+        }
+    }
+
+    fn synthetic_data_sample_fixture() -> ComputeSyntheticDataSample {
+        ComputeSyntheticDataSample {
+            synthetic_job_id: "synthetic.math.basic.alpha".to_string(),
+            sample_id: "sample.alpha".to_string(),
+            ordinal: Some(1),
+            prompt_ref: "artifact://synthetic/prompts/sample.alpha".to_string(),
+            output_ref: "artifact://synthetic/outputs/sample.alpha".to_string(),
+            generation_config_ref: Some("config://synthetic/default".to_string()),
+            generator_machine_ref: Some("machine://provider.alpha/gpu0".to_string()),
+            verification_eval_sample_id: Some("sample.alpha".to_string()),
+            verification_status: Some(ComputeEvaluationSampleStatus::Passed),
+            verification_score_bps: Some(9_500),
+            status: ComputeSyntheticDataSampleStatus::Verified,
+            recorded_at_ms: 1_762_000_521_000,
+            metadata: json!({"prompt_tokens": 64}),
         }
     }
 
@@ -5018,6 +5680,207 @@ mod tests {
                 .expect("eval samples proto"),
         )
         .expect("eval samples roundtrip");
+        assert_eq!(samples_roundtrip, samples);
+    }
+
+    #[test]
+    fn compute_synthetic_proto_roundtrip_preserves_job_and_sample() {
+        let job = synthetic_data_job_fixture();
+        let job_roundtrip = compute_synthetic_data_job_from_proto(
+            &compute_synthetic_data_job_to_proto(&job).expect("synthetic job proto"),
+        )
+        .expect("synthetic job roundtrip");
+        assert_eq!(job_roundtrip, job);
+
+        let sample = synthetic_data_sample_fixture();
+        let sample_roundtrip = compute_synthetic_data_sample_from_proto(
+            &compute_synthetic_data_sample_to_proto(&sample).expect("synthetic sample proto"),
+        )
+        .expect("synthetic sample roundtrip");
+        assert_eq!(sample_roundtrip, sample);
+    }
+
+    #[test]
+    fn compute_synthetic_request_response_proto_roundtrip_preserves_lifecycle() {
+        let job = synthetic_data_job_fixture();
+        let sample = synthetic_data_sample_fixture();
+
+        let create_request = CreateComputeSyntheticDataJobRequest {
+            idempotency_key: "synthetic-create-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job: job.clone(),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let create_request_roundtrip = create_compute_synthetic_data_job_request_from_proto(
+            &create_compute_synthetic_data_job_request_to_proto(&create_request)
+                .expect("synthetic create request proto"),
+        )
+        .expect("synthetic create request roundtrip");
+        assert_eq!(create_request_roundtrip, create_request);
+
+        let create_response = CreateComputeSyntheticDataJobResponse {
+            synthetic_job: job.clone(),
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.synthetic.create.alpha",
+                "kernel.compute.synthetic.create.v1",
+                1_762_000_520_000,
+                "synthetic-create-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("synthetic create receipt"),
+        };
+        let create_response_roundtrip = create_compute_synthetic_data_job_response_from_proto(
+            &create_compute_synthetic_data_job_response_to_proto(&create_response)
+                .expect("synthetic create response proto"),
+        )
+        .expect("synthetic create response roundtrip");
+        assert_eq!(create_response_roundtrip, create_response);
+
+        let append_request = AppendComputeSyntheticDataSamplesRequest {
+            idempotency_key: "synthetic-append-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: job.synthetic_job_id.clone(),
+            samples: vec![sample.clone()],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let append_request_roundtrip = append_compute_synthetic_data_samples_request_from_proto(
+            &append_compute_synthetic_data_samples_request_to_proto(&append_request)
+                .expect("synthetic append request proto"),
+        )
+        .expect("synthetic append request roundtrip");
+        assert_eq!(append_request_roundtrip, append_request);
+
+        let append_response = AppendComputeSyntheticDataSamplesResponse {
+            synthetic_job: job.clone(),
+            samples: vec![sample.clone()],
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.synthetic.append.alpha",
+                "kernel.compute.synthetic.samples.append.v1",
+                1_762_000_521_000,
+                "synthetic-append-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("synthetic append receipt"),
+        };
+        let append_response_roundtrip = append_compute_synthetic_data_samples_response_from_proto(
+            &append_compute_synthetic_data_samples_response_to_proto(&append_response)
+                .expect("synthetic append response proto"),
+        )
+        .expect("synthetic append response roundtrip");
+        assert_eq!(append_response_roundtrip, append_response);
+
+        let finalize_request = FinalizeComputeSyntheticDataGenerationRequest {
+            idempotency_key: "synthetic-finalize-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: job.synthetic_job_id.clone(),
+            status: ComputeSyntheticDataJobStatus::Generated,
+            generated_at_ms: 1_762_000_521_500,
+            output_artifact_ref: Some("artifact://synthetic/output".to_string()),
+            metadata: json!({"phase": "generation"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let finalize_request_roundtrip =
+            finalize_compute_synthetic_data_generation_request_from_proto(
+                &finalize_compute_synthetic_data_generation_request_to_proto(&finalize_request)
+                    .expect("synthetic finalize request proto"),
+            )
+            .expect("synthetic finalize request roundtrip");
+        assert_eq!(finalize_request_roundtrip, finalize_request);
+
+        let finalize_response = FinalizeComputeSyntheticDataGenerationResponse {
+            synthetic_job: job.clone(),
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.synthetic.finalize.alpha",
+                "kernel.compute.synthetic.generation.finalize.v1",
+                1_762_000_521_500,
+                "synthetic-finalize-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("synthetic finalize receipt"),
+        };
+        let finalize_response_roundtrip =
+            finalize_compute_synthetic_data_generation_response_from_proto(
+                &finalize_compute_synthetic_data_generation_response_to_proto(&finalize_response)
+                    .expect("synthetic finalize response proto"),
+            )
+            .expect("synthetic finalize response roundtrip");
+        assert_eq!(finalize_response_roundtrip, finalize_response);
+
+        let verification_request = RecordComputeSyntheticDataVerificationRequest {
+            idempotency_key: "synthetic-verify-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: job.synthetic_job_id.clone(),
+            verification_eval_run_id: "eval.synthetic.alpha".to_string(),
+            verified_at_ms: 1_762_000_522_000,
+            metadata: json!({"phase": "verification"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let verification_request_roundtrip =
+            record_compute_synthetic_data_verification_request_from_proto(
+                &record_compute_synthetic_data_verification_request_to_proto(&verification_request)
+                    .expect("synthetic verification request proto"),
+            )
+            .expect("synthetic verification request roundtrip");
+        assert_eq!(verification_request_roundtrip, verification_request);
+
+        let verification_response = RecordComputeSyntheticDataVerificationResponse {
+            synthetic_job: job.clone(),
+            samples: vec![sample.clone()],
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.synthetic.verify.alpha",
+                "kernel.compute.synthetic.verification.record.v1",
+                1_762_000_522_000,
+                "synthetic-verify-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("synthetic verification receipt"),
+        };
+        let verification_response_roundtrip =
+            record_compute_synthetic_data_verification_response_from_proto(
+                &record_compute_synthetic_data_verification_response_to_proto(
+                    &verification_response,
+                )
+                .expect("synthetic verification response proto"),
+            )
+            .expect("synthetic verification response roundtrip");
+        assert_eq!(verification_response_roundtrip, verification_response);
+
+        let jobs = vec![job.clone()];
+        let jobs_roundtrip = list_compute_synthetic_data_jobs_response_from_proto(
+            &list_compute_synthetic_data_jobs_response_to_proto(jobs.as_slice())
+                .expect("synthetic jobs proto"),
+        )
+        .expect("synthetic jobs roundtrip");
+        assert_eq!(jobs_roundtrip, jobs);
+
+        let get_job_roundtrip = get_compute_synthetic_data_job_response_from_proto(
+            &get_compute_synthetic_data_job_response_to_proto(&job).expect("synthetic get proto"),
+        )
+        .expect("synthetic get roundtrip");
+        assert_eq!(get_job_roundtrip, job);
+
+        let samples = vec![sample];
+        let samples_roundtrip = list_compute_synthetic_data_samples_response_from_proto(
+            &list_compute_synthetic_data_samples_response_to_proto(samples.as_slice())
+                .expect("synthetic samples proto"),
+        )
+        .expect("synthetic samples roundtrip");
         assert_eq!(samples_roundtrip, samples);
     }
 }

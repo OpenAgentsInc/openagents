@@ -970,6 +970,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Every eval should be queryable as a first-class compute output, not just a JSON blob on disk.
 
 35. **Synthetic Data: add generation-plus-verification pipelines**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3519`.
    - Rebuild the useful `genesys` pattern for synthetic data generation and asynchronous verification.
    - This should terminate in environment and eval objects, not float beside them.
 

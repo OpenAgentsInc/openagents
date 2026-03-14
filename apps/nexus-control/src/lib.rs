@@ -44,8 +44,8 @@ use openagents_kernel_core::authority::{
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeEnvironmentPackageStatus,
-    ComputeEvaluationRunStatus, ComputeProductStatus, DeliveryProofStatus,
-    StructuredCapacityInstrumentStatus,
+    ComputeEvaluationRunStatus, ComputeProductStatus, ComputeSyntheticDataJobStatus,
+    DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
@@ -732,6 +732,28 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/evals/{eval_run_id}/finalize",
             post(finalize_kernel_compute_evaluation_run),
+        )
+        .route(
+            "/v1/kernel/compute/synthetic",
+            get(list_kernel_compute_synthetic_data_jobs)
+                .post(create_kernel_compute_synthetic_data_job),
+        )
+        .route(
+            "/v1/kernel/compute/synthetic/{synthetic_job_id}",
+            get(get_kernel_compute_synthetic_data_job),
+        )
+        .route(
+            "/v1/kernel/compute/synthetic/{synthetic_job_id}/samples",
+            get(list_kernel_compute_synthetic_data_samples)
+                .post(append_kernel_compute_synthetic_data_samples),
+        )
+        .route(
+            "/v1/kernel/compute/synthetic/{synthetic_job_id}/finalize_generation",
+            post(finalize_kernel_compute_synthetic_data_generation),
+        )
+        .route(
+            "/v1/kernel/compute/synthetic/{synthetic_job_id}/record_verification",
+            post(record_kernel_compute_synthetic_data_verification),
         )
         .route(
             "/v1/kernel/compute/lots",
@@ -1834,6 +1856,13 @@ struct ComputeEvaluationRunsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct ComputeSyntheticDataJobsQuery {
+    environment_ref: Option<String>,
+    generation_product_id: Option<String>,
+    status: Option<ComputeSyntheticDataJobStatus>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CapacityLotsQuery {
     product_id: Option<String>,
     status: Option<CapacityLotStatus>,
@@ -2040,6 +2069,98 @@ async fn list_kernel_compute_evaluation_samples(
         store
             .kernel
             .list_compute_evaluation_samples(eval_run_id.as_str())
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_synthetic_data_jobs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeSyntheticDataJobsQuery>,
+) -> Result<Json<proto_compute::ListComputeSyntheticDataJobsResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_synthetic_data_jobs_response_to_proto(
+        store
+            .kernel
+            .list_compute_synthetic_data_jobs(
+                query.environment_ref.as_deref(),
+                query.generation_product_id.as_deref(),
+                query.status,
+            )
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_synthetic_data_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(synthetic_job_id): Path<String>,
+) -> Result<Json<proto_compute::GetComputeSyntheticDataJobResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let synthetic_job_id = normalize_required_field(
+        synthetic_job_id.as_str(),
+        "compute_synthetic_job_id_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(synthetic_job) = store
+        .kernel
+        .get_compute_synthetic_data_job(synthetic_job_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_synthetic_job_not_found".to_string(),
+        });
+    };
+    let response =
+        compute_contracts::get_compute_synthetic_data_job_response_to_proto(&synthetic_job)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_synthetic_data_samples(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(synthetic_job_id): Path<String>,
+) -> Result<Json<proto_compute::ListComputeSyntheticDataSamplesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let synthetic_job_id = normalize_required_field(
+        synthetic_job_id.as_str(),
+        "compute_synthetic_job_id_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if store
+        .kernel
+        .get_compute_synthetic_data_job(synthetic_job_id.as_str())
+        .is_none()
+    {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_synthetic_job_not_found".to_string(),
+        });
+    }
+    let response = compute_contracts::list_compute_synthetic_data_samples_response_to_proto(
+        store
+            .kernel
+            .list_compute_synthetic_data_samples(synthetic_job_id.as_str())
             .as_slice(),
     )
     .map_err(kernel_contract_error)?;
@@ -2630,6 +2751,193 @@ async fn finalize_kernel_compute_evaluation_run(
     let response =
         compute_contracts::finalize_compute_evaluation_run_response_to_proto(&result.response)
             .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn create_kernel_compute_synthetic_data_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::CreateComputeSyntheticDataJobRequest>,
+) -> Result<Json<proto_compute::CreateComputeSyntheticDataJobResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::create_compute_synthetic_data_job_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_compute_synthetic_data_job(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.synthetic.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::create_compute_synthetic_data_job_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn append_kernel_compute_synthetic_data_samples(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(synthetic_job_id): Path<String>,
+    Json(mut request): Json<proto_compute::AppendComputeSyntheticDataSamplesRequest>,
+) -> Result<Json<proto_compute::AppendComputeSyntheticDataSamplesResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let synthetic_job_id = normalize_required_field(
+        synthetic_job_id.as_str(),
+        "compute_synthetic_job_id_missing",
+    )?;
+    if !request.synthetic_job_id.trim().is_empty() && request.synthetic_job_id != synthetic_job_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_synthetic_job_id_mismatch".to_string(),
+        });
+    }
+    request.synthetic_job_id = synthetic_job_id;
+    let request =
+        compute_contracts::append_compute_synthetic_data_samples_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .append_compute_synthetic_data_samples(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.synthetic.samples_appended",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::append_compute_synthetic_data_samples_response_to_proto(
+        &result.response,
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn finalize_kernel_compute_synthetic_data_generation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(synthetic_job_id): Path<String>,
+    Json(mut request): Json<proto_compute::FinalizeComputeSyntheticDataGenerationRequest>,
+) -> Result<Json<proto_compute::FinalizeComputeSyntheticDataGenerationResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let synthetic_job_id = normalize_required_field(
+        synthetic_job_id.as_str(),
+        "compute_synthetic_job_id_missing",
+    )?;
+    if !request.synthetic_job_id.trim().is_empty() && request.synthetic_job_id != synthetic_job_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_synthetic_job_id_mismatch".to_string(),
+        });
+    }
+    request.synthetic_job_id = synthetic_job_id;
+    let request =
+        compute_contracts::finalize_compute_synthetic_data_generation_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .finalize_compute_synthetic_data_generation(
+                &kernel_mutation_context(&session, now),
+                request,
+            )
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.synthetic.generation_finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::finalize_compute_synthetic_data_generation_response_to_proto(
+        &result.response,
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn record_kernel_compute_synthetic_data_verification(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(synthetic_job_id): Path<String>,
+    Json(mut request): Json<proto_compute::RecordComputeSyntheticDataVerificationRequest>,
+) -> Result<Json<proto_compute::RecordComputeSyntheticDataVerificationResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let synthetic_job_id = normalize_required_field(
+        synthetic_job_id.as_str(),
+        "compute_synthetic_job_id_missing",
+    )?;
+    if !request.synthetic_job_id.trim().is_empty() && request.synthetic_job_id != synthetic_job_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_synthetic_job_id_mismatch".to_string(),
+        });
+    }
+    request.synthetic_job_id = synthetic_job_id;
+    let request =
+        compute_contracts::record_compute_synthetic_data_verification_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .record_compute_synthetic_data_verification(
+                &kernel_mutation_context(&session, now),
+                request,
+            )
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.synthetic.verification_recorded",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::record_compute_synthetic_data_verification_response_to_proto(
+        &result.response,
+    )
+    .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -3631,6 +3939,8 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_environment_package_not_found"
         | "kernel_compute_environment_package_not_found"
         | "compute_eval_run_not_found"
+        | "compute_synthetic_job_not_found"
+        | "kernel_compute_synthetic_job_not_found"
         | "compute_index_not_found"
         | "capacity_lot_not_found"
         | "capacity_instrument_not_found"
@@ -3651,6 +3961,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "kernel_contract_id_mismatch"
         | "kernel_capacity_lot_id_mismatch"
         | "kernel_compute_eval_run_id_mismatch"
+        | "kernel_compute_synthetic_job_id_mismatch"
         | "kernel_access_grant_id_mismatch"
         | "kernel_reserve_partition_id_mismatch"
         | "kernel_risk_claim_id_mismatch"
@@ -3670,6 +3981,19 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_eval_sample_count_exceeds_expected"
         | "compute_eval_sample_count_incomplete"
         | "delivery_proof_eval_run_conflict"
+        | "compute_synthetic_job_id_conflict"
+        | "compute_synthetic_job_product_mismatch"
+        | "compute_synthetic_job_environment_mismatch"
+        | "compute_synthetic_sample_job_mismatch"
+        | "compute_synthetic_job_finalized"
+        | "compute_synthetic_job_already_finalized"
+        | "compute_synthetic_job_already_verified"
+        | "compute_synthetic_job_not_ready_for_verification"
+        | "compute_synthetic_sample_already_exists"
+        | "compute_synthetic_sample_count_exceeds_expected"
+        | "compute_synthetic_sample_count_incomplete"
+        | "compute_synthetic_verification_eval_run_invalid"
+        | "compute_synthetic_verification_sample_mismatch"
         | "structured_capacity_instrument_id_conflict"
         | "capacity_instrument_already_structured"
         | "structured_capacity_leg_product_mismatch"
@@ -3732,11 +4056,29 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "receipt_id_missing"
         | "compute_product_id_missing"
         | "compute_eval_run_id_missing"
+        | "compute_synthetic_job_id_missing"
         | "compute_eval_sample_id_missing"
+        | "compute_synthetic_sample_id_missing"
         | "compute_eval_samples_missing"
+        | "compute_synthetic_samples_missing"
         | "compute_eval_run_create_status_invalid"
         | "compute_eval_finalize_status_invalid"
+        | "compute_synthetic_job_create_status_invalid"
+        | "compute_synthetic_generation_finalize_status_invalid"
         | "compute_eval_expected_sample_count_invalid"
+        | "compute_synthetic_teacher_model_ref_missing"
+        | "compute_synthetic_target_sample_count_invalid"
+        | "compute_synthetic_output_artifact_ref_missing"
+        | "compute_synthetic_generated_at_missing"
+        | "compute_synthetic_verification_eval_run_id_missing"
+        | "compute_synthetic_verified_at_missing"
+        | "compute_synthetic_verification_summary_missing"
+        | "compute_synthetic_prompt_ref_missing"
+        | "compute_synthetic_output_ref_missing"
+        | "compute_synthetic_sample_recorded_at_invalid"
+        | "compute_synthetic_verification_score_invalid"
+        | "compute_synthetic_verification_status_missing"
+        | "compute_synthetic_verification_eval_sample_id_missing"
         | "compute_eval_finalized_at_missing"
         | "compute_eval_summary_missing"
         | "compute_eval_summary_counts_invalid"
@@ -4600,23 +4942,25 @@ mod tests {
     use axum::response::Response;
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest, BindCoverageRequest,
-        BindCoverageResponse, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
+        AppendComputeSyntheticDataSamplesRequest, BindCoverageRequest, BindCoverageResponse,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
         CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
         CreateCapacityLotRequest, CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
-        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        CreateComputeSyntheticDataJobRequest, CreateContractRequest, CreateContractResponse,
+        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
         CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
         CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest, CreateWorkUnitResponse,
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
-        FinalizeComputeEvaluationRunRequest, FinalizeVerdictRequest, FinalizeVerdictResponse,
-        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
-        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
-        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
-        RegisterComputeEnvironmentPackageRequest, RegisterDataAssetRequest,
-        RegisterDataAssetResponse, RegisterReservePartitionRequest,
+        FinalizeComputeEvaluationRunRequest, FinalizeComputeSyntheticDataGenerationRequest,
+        FinalizeVerdictRequest, FinalizeVerdictResponse, HttpKernelAuthorityClient,
+        IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
+        IssueLiquidityEnvelopeResponse, KernelAuthority, PlaceCoverageOfferRequest,
+        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
+        PublishRiskSignalResponse, RecordComputeSyntheticDataVerificationRequest,
+        RecordDeliveryProofRequest, RegisterComputeEnvironmentPackageRequest,
+        RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
         RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
         RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
         SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
@@ -4632,10 +4976,11 @@ mod tests {
         ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
         ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
         ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
-        DeliveryProofStatus, GptOssRuntimeCapability, StructuredCapacityInstrument,
-        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-        StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode,
+        ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, DeliveryProof, DeliveryProofStatus,
+        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
@@ -5151,6 +5496,127 @@ mod tests {
                 metadata: json!({"schema": "v1"}),
             }],
             metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_synthetic_data_job_request(
+        synthetic_job_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateComputeSyntheticDataJobRequest {
+        CreateComputeSyntheticDataJobRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            synthetic_job: ComputeSyntheticDataJob {
+                synthetic_job_id: synthetic_job_id.to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                teacher_model_ref: "model://llama3.3-instruct".to_string(),
+                generation_product_id: Some("ollama.text_generation".to_string()),
+                generation_delivery_proof_id: Some("delivery.compute.client".to_string()),
+                output_artifact_ref: None,
+                created_at_ms,
+                generated_at_ms: None,
+                verification_eval_run_id: None,
+                verified_at_ms: None,
+                target_sample_count: Some(2),
+                status: ComputeSyntheticDataJobStatus::Queued,
+                verification_summary: None,
+                metadata: json!({"pipeline": "teacher-verify"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_synthetic_data_sample(
+        synthetic_job_id: &str,
+        sample_id: &str,
+        ordinal: u64,
+        recorded_at_ms: i64,
+    ) -> ComputeSyntheticDataSample {
+        ComputeSyntheticDataSample {
+            synthetic_job_id: synthetic_job_id.to_string(),
+            sample_id: sample_id.to_string(),
+            ordinal: Some(ordinal),
+            prompt_ref: format!("artifact://synthetic/prompts/{sample_id}"),
+            output_ref: format!("artifact://synthetic/outputs/{sample_id}"),
+            generation_config_ref: Some("config://synthetic/default".to_string()),
+            generator_machine_ref: Some("machine://provider.alpha/gpu0".to_string()),
+            verification_eval_sample_id: None,
+            verification_status: None,
+            verification_score_bps: None,
+            status: ComputeSyntheticDataSampleStatus::Generated,
+            recorded_at_ms,
+            metadata: json!({"prompt_tokens": 64}),
+        }
+    }
+
+    fn append_compute_synthetic_data_samples_request(
+        synthetic_job_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> AppendComputeSyntheticDataSamplesRequest {
+        AppendComputeSyntheticDataSamplesRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            samples: vec![
+                compute_synthetic_data_sample(synthetic_job_id, "sample.alpha", 1, created_at_ms),
+                compute_synthetic_data_sample(
+                    synthetic_job_id,
+                    "sample.beta",
+                    2,
+                    created_at_ms + 100,
+                ),
+            ],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_compute_synthetic_data_generation_request(
+        synthetic_job_id: &str,
+        idempotency_key: &str,
+        generated_at_ms: i64,
+    ) -> FinalizeComputeSyntheticDataGenerationRequest {
+        FinalizeComputeSyntheticDataGenerationRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            status: ComputeSyntheticDataJobStatus::Generated,
+            generated_at_ms,
+            output_artifact_ref: Some(format!("artifact://synthetic/output/{synthetic_job_id}")),
+            metadata: json!({"stage": "generation"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn record_compute_synthetic_data_verification_request(
+        synthetic_job_id: &str,
+        verification_eval_run_id: &str,
+        idempotency_key: &str,
+        verified_at_ms: i64,
+    ) -> RecordComputeSyntheticDataVerificationRequest {
+        RecordComputeSyntheticDataVerificationRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            verification_eval_run_id: verification_eval_run_id.to_string(),
+            verified_at_ms,
+            metadata: json!({"stage": "verification"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -9081,6 +9547,100 @@ mod tests {
                 .as_ref()
                 .and_then(|evidence| evidence.eval_run_ref.as_deref()),
             Some("eval.run.client")
+        );
+
+        let synthetic_job = client
+            .create_compute_synthetic_data_job(compute_synthetic_data_job_request(
+                "synthetic.job.client",
+                "idemp.compute.client.synthetic",
+                created_at_ms + 3_450,
+            ))
+            .await?;
+        assert_eq!(
+            synthetic_job.synthetic_job.synthetic_job_id,
+            "synthetic.job.client"
+        );
+        assert_eq!(
+            synthetic_job
+                .synthetic_job
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+
+        let synthetic_samples = client
+            .append_compute_synthetic_data_samples(append_compute_synthetic_data_samples_request(
+                "synthetic.job.client",
+                "idemp.compute.client.synthetic.samples",
+                created_at_ms + 3_500,
+            ))
+            .await?;
+        assert_eq!(synthetic_samples.samples.len(), 2);
+        assert_eq!(
+            synthetic_samples.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generating
+        );
+
+        let synthetic_generated = client
+            .finalize_compute_synthetic_data_generation(
+                finalize_compute_synthetic_data_generation_request(
+                    "synthetic.job.client",
+                    "idemp.compute.client.synthetic.finalize",
+                    created_at_ms + 3_550,
+                ),
+            )
+            .await?;
+        assert_eq!(
+            synthetic_generated.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated
+        );
+
+        let synthetic_verified = client
+            .record_compute_synthetic_data_verification(
+                record_compute_synthetic_data_verification_request(
+                    "synthetic.job.client",
+                    "eval.run.client",
+                    "idemp.compute.client.synthetic.verify",
+                    created_at_ms + 3_600,
+                ),
+            )
+            .await?;
+        assert_eq!(
+            synthetic_verified.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Verified
+        );
+        assert_eq!(
+            synthetic_verified
+                .synthetic_job
+                .verification_eval_run_id
+                .as_deref(),
+            Some("eval.run.client")
+        );
+        let fetched_synthetic_job = client
+            .get_compute_synthetic_data_job("synthetic.job.client")
+            .await?;
+        assert_eq!(
+            fetched_synthetic_job.synthetic_job_id,
+            "synthetic.job.client"
+        );
+        let listed_synthetic_jobs = client
+            .list_compute_synthetic_data_jobs(
+                Some("env.openagents.math.basic"),
+                Some("ollama.text_generation"),
+                Some(ComputeSyntheticDataJobStatus::Verified),
+            )
+            .await?;
+        assert_eq!(listed_synthetic_jobs.len(), 1);
+        let listed_synthetic_samples = client
+            .list_compute_synthetic_data_samples("synthetic.job.client")
+            .await?;
+        assert_eq!(listed_synthetic_samples.len(), 2);
+        assert_eq!(
+            listed_synthetic_samples[0]
+                .verification_eval_sample_id
+                .as_deref(),
+            Some("sample.alpha")
         );
 
         let index = client

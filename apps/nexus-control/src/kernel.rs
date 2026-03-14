@@ -1,7 +1,8 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
-    AppendComputeEvaluationSamplesResponse, BindCoverageRequest, BindCoverageResponse,
+    AppendComputeEvaluationSamplesResponse, AppendComputeSyntheticDataSamplesRequest,
+    AppendComputeSyntheticDataSamplesResponse, BindCoverageRequest, BindCoverageResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
     CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
@@ -9,17 +10,21 @@ use openagents_kernel_core::authority::{
     CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
     CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeEvaluationRunRequest,
     CreateComputeEvaluationRunResponse, CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateComputeSyntheticDataJobRequest, CreateComputeSyntheticDataJobResponse,
     CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
     CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
     ExecuteSettlementIntentResponse, FinalizeComputeEvaluationRunRequest,
-    FinalizeComputeEvaluationRunResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
-    IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
-    PublishComputeIndexRequest, PublishComputeIndexResponse, PublishRiskSignalRequest,
-    PublishRiskSignalResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    FinalizeComputeEvaluationRunResponse, FinalizeComputeSyntheticDataGenerationRequest,
+    FinalizeComputeSyntheticDataGenerationResponse, FinalizeVerdictRequest,
+    FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
+    PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+    PublishRiskSignalRequest, PublishRiskSignalResponse,
+    RecordComputeSyntheticDataVerificationRequest, RecordComputeSyntheticDataVerificationResponse,
+    RecordDeliveryProofRequest, RecordDeliveryProofResponse,
     RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
     RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
     RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
@@ -34,11 +39,14 @@ use openagents_kernel_core::compute::{
     ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
     ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeIndex,
     ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-    StructuredCapacityInstrumentStatus, StructuredCapacityLegRole, canonical_compute_product_id,
-    validate_compute_environment_package, validate_compute_evaluation_artifact,
-    validate_compute_evaluation_run, validate_compute_evaluation_sample, validate_delivery_proof,
+    ComputeSettlementFailureReason, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+    ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, DeliveryProof,
+    DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_environment_package,
+    validate_compute_evaluation_artifact, validate_compute_evaluation_run,
+    validate_compute_evaluation_sample, validate_compute_synthetic_data_job,
+    validate_compute_synthetic_data_sample, validate_delivery_proof,
     validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
@@ -341,6 +349,8 @@ pub struct KernelState {
     compute_environment_packages: HashMap<String, ComputeEnvironmentPackageRecord>,
     compute_evaluation_runs: HashMap<String, ComputeEvaluationRunRecord>,
     compute_evaluation_samples: HashMap<String, ComputeEvaluationSampleRecord>,
+    compute_synthetic_jobs: HashMap<String, ComputeSyntheticDataJobRecord>,
+    compute_synthetic_samples: HashMap<String, ComputeSyntheticDataSampleRecord>,
     capacity_lots: HashMap<String, CapacityLotRecord>,
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
     structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
@@ -407,6 +417,18 @@ struct ComputeEvaluationRunRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeEvaluationSampleRecord {
     sample: ComputeEvaluationSample,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeSyntheticDataJobRecord {
+    synthetic_job: ComputeSyntheticDataJob,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeSyntheticDataSampleRecord {
+    sample: ComputeSyntheticDataSample,
     receipt_id: String,
 }
 
@@ -481,6 +503,10 @@ struct PersistedComputeAuthorityState {
     compute_evaluation_runs: BTreeMap<String, ComputeEvaluationRunRecord>,
     #[serde(default)]
     compute_evaluation_samples: BTreeMap<String, ComputeEvaluationSampleRecord>,
+    #[serde(default)]
+    compute_synthetic_jobs: BTreeMap<String, ComputeSyntheticDataJobRecord>,
+    #[serde(default)]
+    compute_synthetic_samples: BTreeMap<String, ComputeSyntheticDataSampleRecord>,
     capacity_lots: BTreeMap<String, CapacityLotRecord>,
     capacity_instruments: BTreeMap<String, CapacityInstrumentRecord>,
     #[serde(default)]
@@ -1229,6 +1255,10 @@ fn compute_evaluation_sample_key(eval_run_id: &str, sample_id: &str) -> String {
     format!("{eval_run_id}::{sample_id}")
 }
 
+fn compute_synthetic_data_sample_key(synthetic_job_id: &str, sample_id: &str) -> String {
+    format!("{synthetic_job_id}::{sample_id}")
+}
+
 fn forward_remedy_profile(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
         "psionic.local.embeddings.gpt_oss.single_node" => "forward_physical.embeddings.v1",
@@ -1513,6 +1543,52 @@ impl KernelState {
         Ok(())
     }
 
+    fn normalize_compute_synthetic_data_sample(
+        sample: &mut ComputeSyntheticDataSample,
+    ) -> Result<(), String> {
+        sample.sample_id = normalize_required(
+            sample.sample_id.as_str(),
+            "compute_synthetic_sample_id_missing",
+        )?;
+        sample.prompt_ref = normalize_required(
+            sample.prompt_ref.as_str(),
+            "compute_synthetic_prompt_ref_missing",
+        )?;
+        sample.output_ref = normalize_required(
+            sample.output_ref.as_str(),
+            "compute_synthetic_output_ref_missing",
+        )?;
+        sample.generation_config_ref = sample
+            .generation_config_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        sample.generator_machine_ref = sample
+            .generator_machine_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        sample.verification_eval_sample_id = sample
+            .verification_eval_sample_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Ok(())
+    }
+
+    fn synthetic_status_from_eval_status(
+        status: ComputeEvaluationSampleStatus,
+    ) -> ComputeSyntheticDataSampleStatus {
+        match status {
+            ComputeEvaluationSampleStatus::Recorded | ComputeEvaluationSampleStatus::Scored => {
+                ComputeSyntheticDataSampleStatus::Verified
+            }
+            ComputeEvaluationSampleStatus::Passed => ComputeSyntheticDataSampleStatus::Verified,
+            ComputeEvaluationSampleStatus::Failed => ComputeSyntheticDataSampleStatus::Rejected,
+            ComputeEvaluationSampleStatus::Errored => ComputeSyntheticDataSampleStatus::Errored,
+        }
+    }
+
     fn evaluation_pass_threshold(
         package: &ComputeEnvironmentPackage,
         binding: &ComputeEnvironmentBinding,
@@ -1768,6 +1844,60 @@ impl KernelState {
         items
     }
 
+    pub fn list_compute_synthetic_data_jobs(
+        &self,
+        environment_ref: Option<&str>,
+        generation_product_id: Option<&str>,
+        status: Option<ComputeSyntheticDataJobStatus>,
+    ) -> Vec<ComputeSyntheticDataJob> {
+        let mut items = self
+            .compute_synthetic_jobs
+            .values()
+            .map(|record| record.synthetic_job.clone())
+            .filter(|job| {
+                environment_ref
+                    .is_none_or(|expected| job.environment_binding.environment_ref == expected)
+                    && generation_product_id.is_none_or(|expected| {
+                        job.generation_product_id.as_deref() == Some(expected)
+                    })
+                    && status.is_none_or(|expected| job.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.synthetic_job_id.cmp(&rhs.synthetic_job_id))
+        });
+        items
+    }
+
+    pub fn get_compute_synthetic_data_job(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Option<ComputeSyntheticDataJob> {
+        self.compute_synthetic_jobs
+            .get(synthetic_job_id)
+            .map(|record| record.synthetic_job.clone())
+    }
+
+    pub fn list_compute_synthetic_data_samples(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Vec<ComputeSyntheticDataSample> {
+        let mut items = self
+            .compute_synthetic_samples
+            .values()
+            .filter(|record| record.sample.synthetic_job_id == synthetic_job_id)
+            .map(|record| record.sample.clone())
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.ordinal
+                .cmp(&rhs.ordinal)
+                .then_with(|| lhs.sample_id.cmp(&rhs.sample_id))
+        });
+        items
+    }
+
     pub fn list_capacity_lots(
         &self,
         product_id: Option<&str>,
@@ -2007,6 +2137,8 @@ impl KernelState {
         self.compute_evaluation_runs = persisted.compute_evaluation_runs.into_iter().collect();
         self.compute_evaluation_samples =
             persisted.compute_evaluation_samples.into_iter().collect();
+        self.compute_synthetic_jobs = persisted.compute_synthetic_jobs.into_iter().collect();
+        self.compute_synthetic_samples = persisted.compute_synthetic_samples.into_iter().collect();
         self.capacity_lots = persisted.capacity_lots.into_iter().collect();
         self.capacity_instruments = persisted.capacity_instruments.into_iter().collect();
         self.structured_capacity_instruments = persisted
@@ -2040,6 +2172,8 @@ impl KernelState {
                 .clone()
                 .into_iter()
                 .collect(),
+            compute_synthetic_jobs: self.compute_synthetic_jobs.clone().into_iter().collect(),
+            compute_synthetic_samples: self.compute_synthetic_samples.clone().into_iter().collect(),
             capacity_lots: self.capacity_lots.clone().into_iter().collect(),
             capacity_instruments: self.capacity_instruments.clone().into_iter().collect(),
             structured_capacity_instruments: self
@@ -3260,6 +3394,666 @@ impl KernelState {
         Ok(MutationResult {
             response: FinalizeComputeEvaluationRunResponse {
                 eval_run: eval_run_record.eval_run,
+                receipt: put_result.receipt.clone(),
+            },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_compute_synthetic_data_job(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateComputeSyntheticDataJobRequest,
+    ) -> Result<MutationResult<CreateComputeSyntheticDataJobResponse>, String> {
+        let synthetic_job_id = normalize_required(
+            req.synthetic_job.synthetic_job_id.as_str(),
+            "compute_synthetic_job_id_missing",
+        )?;
+        if self
+            .compute_synthetic_jobs
+            .contains_key(synthetic_job_id.as_str())
+        {
+            return Err("compute_synthetic_job_id_conflict".to_string());
+        }
+        req.synthetic_job
+            .synthetic_job_id
+            .clone_from(&synthetic_job_id);
+        req.synthetic_job.created_at_ms =
+            normalize_created_at_ms(req.synthetic_job.created_at_ms, context.now_unix_ms);
+        req.synthetic_job.teacher_model_ref = normalize_required(
+            req.synthetic_job.teacher_model_ref.as_str(),
+            "compute_synthetic_teacher_model_ref_missing",
+        )?;
+        req.synthetic_job.generation_product_id = req
+            .synthetic_job
+            .generation_product_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.synthetic_job.generation_delivery_proof_id = req
+            .synthetic_job
+            .generation_delivery_proof_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.synthetic_job.output_artifact_ref = None;
+        req.synthetic_job.generated_at_ms = None;
+        req.synthetic_job.verification_eval_run_id = None;
+        req.synthetic_job.verified_at_ms = None;
+        req.synthetic_job.verification_summary = None;
+        if matches!(
+            req.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated
+                | ComputeSyntheticDataJobStatus::Verified
+                | ComputeSyntheticDataJobStatus::Failed
+        ) {
+            return Err("compute_synthetic_job_create_status_invalid".to_string());
+        }
+        let (mut resolved_binding, package) =
+            self.resolve_compute_environment_binding(&req.synthetic_job.environment_binding)?;
+        Self::hydrate_environment_binding_from_package(&mut resolved_binding, &package);
+        req.synthetic_job.environment_binding = resolved_binding;
+        if let Some(product_id) = req.synthetic_job.generation_product_id.as_deref() {
+            let Some(product_record) = self.compute_products.get(product_id) else {
+                return Err("compute_product_not_found".to_string());
+            };
+            if let Some(product_binding) = product_record
+                .product
+                .capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.environment_binding.clone())
+                && Self::merge_compute_environment_binding(
+                    Some(req.synthetic_job.environment_binding.clone()),
+                    Some(product_binding),
+                )
+                .map_err(|_| "compute_synthetic_job_environment_mismatch".to_string())?
+                .is_none()
+            {
+                return Err("compute_synthetic_job_environment_mismatch".to_string());
+            }
+        }
+        if let Some(delivery_proof_id) = req.synthetic_job.generation_delivery_proof_id.as_deref() {
+            let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id) else {
+                return Err("delivery_proof_not_found".to_string());
+            };
+            if let Some(product_id) = req.synthetic_job.generation_product_id.as_deref() {
+                if delivery_record.delivery_proof.product_id != product_id {
+                    return Err("compute_synthetic_job_product_mismatch".to_string());
+                }
+            } else {
+                req.synthetic_job.generation_product_id =
+                    Some(delivery_record.delivery_proof.product_id.clone());
+            }
+            if let Some(verification) = delivery_record
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                && ((verification.environment_ref.as_deref()
+                    != Some(
+                        req.synthetic_job
+                            .environment_binding
+                            .environment_ref
+                            .as_str(),
+                    ))
+                    || verification.environment_version
+                        != req.synthetic_job.environment_binding.environment_version)
+            {
+                return Err("compute_synthetic_job_environment_mismatch".to_string());
+            }
+        }
+        validate_compute_synthetic_data_job(&req.synthetic_job)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(product_id) = req.synthetic_job.generation_product_id.as_deref()
+            && let Some(product_record) = self.compute_products.get(product_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(product_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        if let Some(delivery_proof_id) = req.synthetic_job.generation_delivery_proof_id.as_deref()
+            && let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(delivery_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let job_payload = serde_json::to_value(&req.synthetic_job)
+            .map_err(|error| format!("kernel_compute_synthetic_job_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.synthetic.create".to_string(),
+                created_at_ms: req.synthetic_job.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: job_payload,
+                outputs_payload: json!({
+                    "synthetic_job_id": synthetic_job_id.clone(),
+                    "environment_binding": req.synthetic_job.environment_binding.clone(),
+                    "generation_product_id": req.synthetic_job.generation_product_id.clone(),
+                    "generation_delivery_proof_id": req.synthetic_job.generation_delivery_proof_id.clone(),
+                    "status": req.synthetic_job.status,
+                    "target_sample_count": req.synthetic_job.target_sample_count,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.synthetic.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateComputeSyntheticDataJobResponse {
+            synthetic_job: req.synthetic_job.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_synthetic_jobs.insert(
+            synthetic_job_id,
+            ComputeSyntheticDataJobRecord {
+                synthetic_job: req.synthetic_job.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.synthetic_job.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn append_compute_synthetic_data_samples(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: AppendComputeSyntheticDataSamplesRequest,
+    ) -> Result<MutationResult<AppendComputeSyntheticDataSamplesResponse>, String> {
+        let synthetic_job_id = normalize_required(
+            req.synthetic_job_id.as_str(),
+            "compute_synthetic_job_id_missing",
+        )?;
+        let Some(mut synthetic_job_record) = self
+            .compute_synthetic_jobs
+            .get(synthetic_job_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_synthetic_job_not_found".to_string());
+        };
+        if matches!(
+            synthetic_job_record.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated
+                | ComputeSyntheticDataJobStatus::Verified
+                | ComputeSyntheticDataJobStatus::Failed
+        ) {
+            return Err("compute_synthetic_job_finalized".to_string());
+        }
+        if req.samples.is_empty() {
+            return Err("compute_synthetic_samples_missing".to_string());
+        }
+        req.synthetic_job_id.clone_from(&synthetic_job_id);
+        let existing_sample_count = self
+            .compute_synthetic_samples
+            .values()
+            .filter(|record| record.sample.synthetic_job_id == synthetic_job_id)
+            .count() as u64;
+        if let Some(target_sample_count) = synthetic_job_record.synthetic_job.target_sample_count
+            && existing_sample_count.saturating_add(req.samples.len() as u64) > target_sample_count
+        {
+            return Err("compute_synthetic_sample_count_exceeds_expected".to_string());
+        }
+
+        let incoming_samples = std::mem::take(&mut req.samples);
+        let mut normalized_samples = Vec::with_capacity(incoming_samples.len());
+        let mut batch_ids = BTreeSet::new();
+        for mut sample in incoming_samples {
+            if sample.synthetic_job_id.trim().is_empty() {
+                sample.synthetic_job_id = synthetic_job_id.clone();
+            } else {
+                sample.synthetic_job_id = normalize_required(
+                    sample.synthetic_job_id.as_str(),
+                    "compute_synthetic_job_id_missing",
+                )?;
+            }
+            if sample.synthetic_job_id != synthetic_job_id {
+                return Err("compute_synthetic_sample_job_mismatch".to_string());
+            }
+            sample.recorded_at_ms =
+                normalize_created_at_ms(sample.recorded_at_ms, context.now_unix_ms);
+            sample.status = ComputeSyntheticDataSampleStatus::Generated;
+            sample.verification_eval_sample_id = None;
+            sample.verification_status = None;
+            sample.verification_score_bps = None;
+            Self::normalize_compute_synthetic_data_sample(&mut sample)?;
+            validate_compute_synthetic_data_sample(&sample)?;
+            let sample_key = compute_synthetic_data_sample_key(
+                synthetic_job_id.as_str(),
+                sample.sample_id.as_str(),
+            );
+            if self
+                .compute_synthetic_samples
+                .contains_key(sample_key.as_str())
+                || !batch_ids.insert(sample.sample_id.clone())
+            {
+                return Err("compute_synthetic_sample_already_exists".to_string());
+            }
+            normalized_samples.push(sample);
+        }
+        req.samples = normalized_samples.clone();
+
+        if synthetic_job_record.synthetic_job.status == ComputeSyntheticDataJobStatus::Queued {
+            synthetic_job_record.synthetic_job.status = ComputeSyntheticDataJobStatus::Generating;
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(synthetic_job_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let sample_payload = serde_json::to_value(&normalized_samples)
+            .map_err(|error| format!("kernel_compute_synthetic_samples_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.synthetic.samples.append".to_string(),
+                created_at_ms: context.now_unix_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: sample_payload,
+                outputs_payload: json!({
+                    "synthetic_job_id": synthetic_job_id.clone(),
+                    "appended_sample_count": normalized_samples.len(),
+                    "sample_ids": normalized_samples.iter().map(|sample| sample.sample_id.clone()).collect::<Vec<_>>(),
+                    "status": synthetic_job_record.synthetic_job.status,
+                    "synthetic_job_receipt_id": synthetic_job_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.synthetic.samples.append",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = AppendComputeSyntheticDataSamplesResponse {
+            synthetic_job: synthetic_job_record.synthetic_job.clone(),
+            samples: normalized_samples.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_synthetic_jobs
+            .insert(synthetic_job_id.clone(), synthetic_job_record.clone());
+        for sample in &normalized_samples {
+            self.compute_synthetic_samples.insert(
+                compute_synthetic_data_sample_key(
+                    synthetic_job_id.as_str(),
+                    sample.sample_id.as_str(),
+                ),
+                ComputeSyntheticDataSampleRecord {
+                    sample: sample.clone(),
+                    receipt_id: put_result.receipt.receipt_id.clone(),
+                },
+            );
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(context.now_unix_ms as i64)?;
+        Ok(MutationResult {
+            response: AppendComputeSyntheticDataSamplesResponse {
+                synthetic_job: synthetic_job_record.synthetic_job,
+                samples: normalized_samples,
+                receipt: put_result.receipt.clone(),
+            },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn finalize_compute_synthetic_data_generation(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: FinalizeComputeSyntheticDataGenerationRequest,
+    ) -> Result<MutationResult<FinalizeComputeSyntheticDataGenerationResponse>, String> {
+        let synthetic_job_id = normalize_required(
+            req.synthetic_job_id.as_str(),
+            "compute_synthetic_job_id_missing",
+        )?;
+        let Some(mut synthetic_job_record) = self
+            .compute_synthetic_jobs
+            .get(synthetic_job_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_synthetic_job_not_found".to_string());
+        };
+        if matches!(
+            synthetic_job_record.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated
+                | ComputeSyntheticDataJobStatus::Verified
+                | ComputeSyntheticDataJobStatus::Failed
+        ) {
+            return Err("compute_synthetic_job_already_finalized".to_string());
+        }
+        if !matches!(
+            req.status,
+            ComputeSyntheticDataJobStatus::Generated | ComputeSyntheticDataJobStatus::Failed
+        ) {
+            return Err("compute_synthetic_generation_finalize_status_invalid".to_string());
+        }
+        req.synthetic_job_id.clone_from(&synthetic_job_id);
+        req.generated_at_ms = normalize_created_at_ms(req.generated_at_ms, context.now_unix_ms);
+        req.output_artifact_ref = req
+            .output_artifact_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let samples = self.list_compute_synthetic_data_samples(synthetic_job_id.as_str());
+        if req.status == ComputeSyntheticDataJobStatus::Generated && samples.is_empty() {
+            return Err("compute_synthetic_samples_missing".to_string());
+        }
+        if let Some(target_sample_count) = synthetic_job_record.synthetic_job.target_sample_count
+            && samples.len() as u64 != target_sample_count
+        {
+            return Err("compute_synthetic_sample_count_incomplete".to_string());
+        }
+        if req.status == ComputeSyntheticDataJobStatus::Generated
+            && req.output_artifact_ref.is_none()
+        {
+            return Err("compute_synthetic_output_artifact_ref_missing".to_string());
+        }
+
+        synthetic_job_record.synthetic_job.status = req.status;
+        synthetic_job_record.synthetic_job.generated_at_ms = Some(req.generated_at_ms);
+        synthetic_job_record.synthetic_job.output_artifact_ref = req.output_artifact_ref.clone();
+        synthetic_job_record.synthetic_job.verification_eval_run_id = None;
+        synthetic_job_record.synthetic_job.verified_at_ms = None;
+        synthetic_job_record.synthetic_job.verification_summary = None;
+        if !req.metadata.is_null() {
+            ensure_metadata_object(&mut synthetic_job_record.synthetic_job.metadata)?
+                .insert("finalize_generation".to_string(), req.metadata.clone());
+        }
+        validate_compute_synthetic_data_job(&synthetic_job_record.synthetic_job)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(synthetic_job_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let job_payload = serde_json::to_value(&synthetic_job_record.synthetic_job)
+            .map_err(|error| format!("kernel_compute_synthetic_finalize_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.synthetic.generation.finalize".to_string(),
+                created_at_ms: req.generated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: job_payload,
+                outputs_payload: json!({
+                    "synthetic_job_id": synthetic_job_id.clone(),
+                    "status": synthetic_job_record.synthetic_job.status,
+                    "output_artifact_ref": synthetic_job_record.synthetic_job.output_artifact_ref.clone(),
+                    "generated_at_ms": synthetic_job_record.synthetic_job.generated_at_ms,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.synthetic.generation.finalize",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = FinalizeComputeSyntheticDataGenerationResponse {
+            synthetic_job: synthetic_job_record.synthetic_job.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_synthetic_jobs
+            .insert(synthetic_job_id.clone(), synthetic_job_record.clone());
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.generated_at_ms)?;
+        Ok(MutationResult {
+            response: FinalizeComputeSyntheticDataGenerationResponse {
+                synthetic_job: synthetic_job_record.synthetic_job,
+                receipt: put_result.receipt.clone(),
+            },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn record_compute_synthetic_data_verification(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RecordComputeSyntheticDataVerificationRequest,
+    ) -> Result<MutationResult<RecordComputeSyntheticDataVerificationResponse>, String> {
+        let synthetic_job_id = normalize_required(
+            req.synthetic_job_id.as_str(),
+            "compute_synthetic_job_id_missing",
+        )?;
+        let verification_eval_run_id = normalize_required(
+            req.verification_eval_run_id.as_str(),
+            "compute_synthetic_verification_eval_run_id_missing",
+        )?;
+        let Some(mut synthetic_job_record) = self
+            .compute_synthetic_jobs
+            .get(synthetic_job_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_synthetic_job_not_found".to_string());
+        };
+        if synthetic_job_record.synthetic_job.status == ComputeSyntheticDataJobStatus::Verified {
+            return Err("compute_synthetic_job_already_verified".to_string());
+        }
+        if !matches!(
+            synthetic_job_record.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated | ComputeSyntheticDataJobStatus::Verifying
+        ) {
+            return Err("compute_synthetic_job_not_ready_for_verification".to_string());
+        }
+        let Some(eval_run_record) = self
+            .compute_evaluation_runs
+            .get(verification_eval_run_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_eval_run_not_found".to_string());
+        };
+        if eval_run_record.eval_run.status != ComputeEvaluationRunStatus::Finalized {
+            return Err("compute_synthetic_verification_eval_run_invalid".to_string());
+        }
+        if eval_run_record.eval_run.environment_binding.environment_ref
+            != synthetic_job_record
+                .synthetic_job
+                .environment_binding
+                .environment_ref
+            || eval_run_record
+                .eval_run
+                .environment_binding
+                .environment_version
+                != synthetic_job_record
+                    .synthetic_job
+                    .environment_binding
+                    .environment_version
+        {
+            return Err("compute_synthetic_job_environment_mismatch".to_string());
+        }
+        let samples = self.list_compute_synthetic_data_samples(synthetic_job_id.as_str());
+        if samples.is_empty() {
+            return Err("compute_synthetic_samples_missing".to_string());
+        }
+        let eval_samples = self.list_compute_evaluation_samples(verification_eval_run_id.as_str());
+        let eval_sample_map = eval_samples
+            .into_iter()
+            .map(|sample| (sample.sample_id.clone(), sample))
+            .collect::<BTreeMap<_, _>>();
+        let mut updated_samples = Vec::with_capacity(samples.len());
+        for mut sample in samples {
+            let Some(eval_sample) = eval_sample_map.get(sample.sample_id.as_str()) else {
+                return Err("compute_synthetic_verification_sample_mismatch".to_string());
+            };
+            sample.verification_eval_sample_id = Some(eval_sample.sample_id.clone());
+            sample.verification_status = Some(eval_sample.status);
+            sample.verification_score_bps = eval_sample.score_bps;
+            sample.status = Self::synthetic_status_from_eval_status(eval_sample.status);
+            validate_compute_synthetic_data_sample(&sample)?;
+            updated_samples.push(sample);
+        }
+
+        req.synthetic_job_id.clone_from(&synthetic_job_id);
+        req.verification_eval_run_id = verification_eval_run_id.clone();
+        req.verified_at_ms = normalize_created_at_ms(req.verified_at_ms, context.now_unix_ms);
+        synthetic_job_record.synthetic_job.status = ComputeSyntheticDataJobStatus::Verified;
+        synthetic_job_record.synthetic_job.verification_eval_run_id =
+            Some(verification_eval_run_id);
+        synthetic_job_record.synthetic_job.verified_at_ms = Some(req.verified_at_ms);
+        synthetic_job_record.synthetic_job.verification_summary =
+            eval_run_record.eval_run.summary.clone();
+        if !req.metadata.is_null() {
+            ensure_metadata_object(&mut synthetic_job_record.synthetic_job.metadata)?
+                .insert("verification".to_string(), req.metadata.clone());
+        }
+        validate_compute_synthetic_data_job(&synthetic_job_record.synthetic_job)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(synthetic_job_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(eval_run_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let verification_payload = serde_json::json!({
+            "synthetic_job": synthetic_job_record.synthetic_job.clone(),
+            "samples": updated_samples.clone(),
+        });
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.synthetic.verification.record".to_string(),
+                created_at_ms: req.verified_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: verification_payload,
+                outputs_payload: json!({
+                    "synthetic_job_id": synthetic_job_id.clone(),
+                    "verification_eval_run_id": synthetic_job_record.synthetic_job.verification_eval_run_id.clone(),
+                    "status": synthetic_job_record.synthetic_job.status,
+                    "verified_sample_count": updated_samples.len(),
+                    "summary": synthetic_job_record.synthetic_job.verification_summary.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.synthetic.verification.record",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RecordComputeSyntheticDataVerificationResponse {
+            synthetic_job: synthetic_job_record.synthetic_job.clone(),
+            samples: updated_samples.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_synthetic_jobs
+            .insert(synthetic_job_id.clone(), synthetic_job_record.clone());
+        for sample in &updated_samples {
+            self.compute_synthetic_samples.insert(
+                compute_synthetic_data_sample_key(
+                    synthetic_job_id.as_str(),
+                    sample.sample_id.as_str(),
+                ),
+                ComputeSyntheticDataSampleRecord {
+                    sample: sample.clone(),
+                    receipt_id: put_result.receipt.receipt_id.clone(),
+                },
+            );
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.verified_at_ms)?;
+        Ok(MutationResult {
+            response: RecordComputeSyntheticDataVerificationResponse {
+                synthetic_job: synthetic_job_record.synthetic_job,
+                samples: updated_samples,
                 receipt: put_result.receipt.clone(),
             },
             receipt_event: Some(receipt_event),
@@ -10875,15 +11669,17 @@ mod tests {
         money_amount_value,
     };
     use openagents_kernel_core::authority::{
-        AppendComputeEvaluationSamplesRequest, BindCoverageRequest,
-        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
+        BindCoverageRequest, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
         CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
-        CreateComputeEvaluationRunRequest, CreateComputeProductRequest, CreateRiskClaimRequest,
+        CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
+        CreateComputeSyntheticDataJobRequest, CreateRiskClaimRequest,
         CreateStructuredCapacityInstrumentRequest, FinalizeComputeEvaluationRunRequest,
-        PlaceCoverageOfferRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
-        RegisterComputeEnvironmentPackageRequest, RegisterReservePartitionRequest,
-        ResolveRiskClaimRequest,
+        FinalizeComputeSyntheticDataGenerationRequest, PlaceCoverageOfferRequest,
+        PublishComputeIndexRequest, RecordComputeSyntheticDataVerificationRequest,
+        RecordDeliveryProofRequest, RegisterComputeEnvironmentPackageRequest,
+        RegisterReservePartitionRequest, ResolveRiskClaimRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
@@ -10896,11 +11692,12 @@ mod tests {
         ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
         ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
-        DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
-        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
-        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-        StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
+        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, ComputeTopologyKind, DeliveryProof, DeliveryProofStatus,
+        DeliveryRejectionReason, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
+        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
     use openagents_kernel_core::receipts::{
@@ -11163,6 +11960,123 @@ mod tests {
                 metadata: json!({"schema": "v1"}),
             }],
             metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_synthetic_data_job_request(
+        synthetic_job_id: &str,
+        created_at_ms: i64,
+    ) -> CreateComputeSyntheticDataJobRequest {
+        CreateComputeSyntheticDataJobRequest {
+            idempotency_key: format!("idemp.compute.synthetic.{synthetic_job_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job: ComputeSyntheticDataJob {
+                synthetic_job_id: synthetic_job_id.to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                teacher_model_ref: "model://llama3.3-instruct".to_string(),
+                generation_product_id: Some("ollama.text_generation".to_string()),
+                generation_delivery_proof_id: Some("delivery.compute.alpha".to_string()),
+                output_artifact_ref: None,
+                created_at_ms,
+                generated_at_ms: None,
+                verification_eval_run_id: None,
+                verified_at_ms: None,
+                target_sample_count: Some(2),
+                status: ComputeSyntheticDataJobStatus::Queued,
+                verification_summary: None,
+                metadata: json!({"pipeline": "teacher-verify"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_synthetic_data_sample(
+        sample_id: &str,
+        ordinal: u64,
+        recorded_at_ms: i64,
+    ) -> ComputeSyntheticDataSample {
+        ComputeSyntheticDataSample {
+            synthetic_job_id: "synthetic.math.basic.alpha".to_string(),
+            sample_id: sample_id.to_string(),
+            ordinal: Some(ordinal),
+            prompt_ref: format!("artifact://synthetic/prompts/{sample_id}"),
+            output_ref: format!("artifact://synthetic/outputs/{sample_id}"),
+            generation_config_ref: Some("config://synthetic/default".to_string()),
+            generator_machine_ref: Some("machine://provider.alpha/gpu0".to_string()),
+            verification_eval_sample_id: None,
+            verification_status: None,
+            verification_score_bps: None,
+            status: ComputeSyntheticDataSampleStatus::Generated,
+            recorded_at_ms,
+            metadata: json!({"prompt_tokens": 64}),
+        }
+    }
+
+    fn append_compute_synthetic_data_samples_request(
+        synthetic_job_id: &str,
+        created_at_ms: i64,
+    ) -> AppendComputeSyntheticDataSamplesRequest {
+        AppendComputeSyntheticDataSamplesRequest {
+            idempotency_key: format!("idemp.compute.synthetic.samples.{synthetic_job_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            samples: vec![
+                ComputeSyntheticDataSample {
+                    synthetic_job_id: synthetic_job_id.to_string(),
+                    ..compute_synthetic_data_sample("sample.alpha", 1, created_at_ms)
+                },
+                ComputeSyntheticDataSample {
+                    synthetic_job_id: synthetic_job_id.to_string(),
+                    ..compute_synthetic_data_sample("sample.beta", 2, created_at_ms + 100)
+                },
+            ],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_compute_synthetic_data_generation_request(
+        synthetic_job_id: &str,
+        generated_at_ms: i64,
+    ) -> FinalizeComputeSyntheticDataGenerationRequest {
+        FinalizeComputeSyntheticDataGenerationRequest {
+            idempotency_key: format!("idemp.compute.synthetic.finalize.{synthetic_job_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            status: ComputeSyntheticDataJobStatus::Generated,
+            generated_at_ms,
+            output_artifact_ref: Some(format!("artifact://synthetic/output/{synthetic_job_id}")),
+            metadata: json!({"stage": "generation"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn record_compute_synthetic_data_verification_request(
+        synthetic_job_id: &str,
+        verification_eval_run_id: &str,
+        verified_at_ms: i64,
+    ) -> RecordComputeSyntheticDataVerificationRequest {
+        RecordComputeSyntheticDataVerificationRequest {
+            idempotency_key: format!("idemp.compute.synthetic.verify.{synthetic_job_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            synthetic_job_id: synthetic_job_id.to_string(),
+            verification_eval_run_id: verification_eval_run_id.to_string(),
+            verified_at_ms,
+            metadata: json!({"stage": "verification"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -12332,6 +13246,315 @@ mod tests {
             )
             .expect_err("duplicate sample should conflict");
         assert_eq!(error, "compute_eval_sample_already_exists");
+    }
+
+    #[test]
+    fn compute_synthetic_data_pipeline_links_generation_and_verification() {
+        let created_at_ms = 1_762_000_325_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+
+        let mut product_request = compute_product_request(created_at_ms as i64 + 500);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        kernel
+            .create_compute_product(&fixture_context(created_at_ms + 500), product_request)
+            .expect("create product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery");
+
+        let create = kernel
+            .create_compute_synthetic_data_job(
+                &fixture_context(created_at_ms + 4_000),
+                compute_synthetic_data_job_request(
+                    "synthetic.math.basic.alpha",
+                    created_at_ms as i64 + 4_000,
+                ),
+            )
+            .expect("create synthetic job");
+        assert_eq!(
+            create.response.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Queued
+        );
+        assert_eq!(
+            create
+                .response
+                .synthetic_job
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+
+        let appended = kernel
+            .append_compute_synthetic_data_samples(
+                &fixture_context(created_at_ms + 5_000),
+                append_compute_synthetic_data_samples_request(
+                    "synthetic.math.basic.alpha",
+                    created_at_ms as i64 + 5_000,
+                ),
+            )
+            .expect("append synthetic samples");
+        assert_eq!(appended.response.samples.len(), 2);
+        assert_eq!(
+            appended.response.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generating
+        );
+
+        let finalized_generation = kernel
+            .finalize_compute_synthetic_data_generation(
+                &fixture_context(created_at_ms + 6_000),
+                finalize_compute_synthetic_data_generation_request(
+                    "synthetic.math.basic.alpha",
+                    created_at_ms as i64 + 6_000,
+                ),
+            )
+            .expect("finalize synthetic generation");
+        assert_eq!(
+            finalized_generation.response.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Generated
+        );
+        assert_eq!(
+            finalized_generation
+                .response
+                .synthetic_job
+                .output_artifact_ref
+                .as_deref(),
+            Some("artifact://synthetic/output/synthetic.math.basic.alpha")
+        );
+
+        let create_eval = kernel
+            .create_compute_evaluation_run(&fixture_context(created_at_ms + 7_000), {
+                let mut request = compute_evaluation_run_request(created_at_ms as i64 + 7_000);
+                request.eval_run.eval_run_id = "eval.synthetic.alpha".to_string();
+                request.idempotency_key = "idemp.compute.eval_run.synthetic".to_string();
+                request
+            })
+            .expect("create eval run");
+        assert_eq!(
+            create_eval.response.eval_run.eval_run_id,
+            "eval.synthetic.alpha"
+        );
+        kernel
+            .append_compute_evaluation_samples(&fixture_context(created_at_ms + 8_000), {
+                let mut request =
+                    append_compute_evaluation_samples_request(created_at_ms as i64 + 8_000);
+                request.idempotency_key = "idemp.compute.eval_run.samples.synthetic".to_string();
+                request.eval_run_id = "eval.synthetic.alpha".to_string();
+                request.samples = vec![
+                    ComputeEvaluationSample {
+                        eval_run_id: "eval.synthetic.alpha".to_string(),
+                        ..compute_evaluation_sample(
+                            "sample.alpha",
+                            1,
+                            9_500,
+                            ComputeEvaluationSampleStatus::Passed,
+                            created_at_ms as i64 + 8_000,
+                        )
+                    },
+                    ComputeEvaluationSample {
+                        eval_run_id: "eval.synthetic.alpha".to_string(),
+                        ..compute_evaluation_sample(
+                            "sample.beta",
+                            2,
+                            8_500,
+                            ComputeEvaluationSampleStatus::Failed,
+                            created_at_ms as i64 + 8_100,
+                        )
+                    },
+                ];
+                request
+            })
+            .expect("append eval samples");
+        kernel
+            .finalize_compute_evaluation_run(&fixture_context(created_at_ms + 9_000), {
+                let mut request =
+                    finalize_compute_evaluation_run_request(created_at_ms as i64 + 9_000);
+                request.idempotency_key = "idemp.compute.eval_run.finalize.synthetic".to_string();
+                request.eval_run_id = "eval.synthetic.alpha".to_string();
+                request
+            })
+            .expect("finalize eval run");
+
+        let verified = kernel
+            .record_compute_synthetic_data_verification(
+                &fixture_context(created_at_ms + 10_000),
+                record_compute_synthetic_data_verification_request(
+                    "synthetic.math.basic.alpha",
+                    "eval.synthetic.alpha",
+                    created_at_ms as i64 + 10_000,
+                ),
+            )
+            .expect("record synthetic verification");
+        assert_eq!(
+            verified.response.synthetic_job.status,
+            ComputeSyntheticDataJobStatus::Verified
+        );
+        assert_eq!(
+            verified
+                .response
+                .synthetic_job
+                .verification_eval_run_id
+                .as_deref(),
+            Some("eval.synthetic.alpha")
+        );
+        assert_eq!(
+            verified
+                .response
+                .synthetic_job
+                .verification_summary
+                .as_ref()
+                .map(|summary| summary.pass_rate_bps),
+            Some(Some(5_000))
+        );
+        let verified_samples =
+            kernel.list_compute_synthetic_data_samples("synthetic.math.basic.alpha");
+        assert_eq!(verified_samples.len(), 2);
+        assert_eq!(
+            verified_samples[0].status,
+            ComputeSyntheticDataSampleStatus::Verified
+        );
+        assert_eq!(
+            verified_samples[1].status,
+            ComputeSyntheticDataSampleStatus::Rejected
+        );
+    }
+
+    #[test]
+    fn compute_synthetic_append_rejects_duplicate_sample_id() {
+        let created_at_ms = 1_762_000_326_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+        let mut product_request = compute_product_request(created_at_ms as i64 + 500);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        kernel
+            .create_compute_product(&fixture_context(created_at_ms + 500), product_request)
+            .expect("create product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery");
+        kernel
+            .create_compute_synthetic_data_job(
+                &fixture_context(created_at_ms + 4_000),
+                compute_synthetic_data_job_request(
+                    "synthetic.math.basic.dup",
+                    created_at_ms as i64 + 4_000,
+                ),
+            )
+            .expect("create synthetic job");
+
+        kernel
+            .append_compute_synthetic_data_samples(
+                &fixture_context(created_at_ms + 5_000),
+                AppendComputeSyntheticDataSamplesRequest {
+                    samples: vec![ComputeSyntheticDataSample {
+                        synthetic_job_id: "synthetic.math.basic.dup".to_string(),
+                        ..compute_synthetic_data_sample(
+                            "sample.alpha",
+                            1,
+                            created_at_ms as i64 + 5_000,
+                        )
+                    }],
+                    ..append_compute_synthetic_data_samples_request(
+                        "synthetic.math.basic.dup",
+                        created_at_ms as i64 + 5_000,
+                    )
+                },
+            )
+            .expect("append first synthetic sample");
+
+        let error = kernel
+            .append_compute_synthetic_data_samples(
+                &fixture_context(created_at_ms + 6_000),
+                AppendComputeSyntheticDataSamplesRequest {
+                    samples: vec![ComputeSyntheticDataSample {
+                        synthetic_job_id: "synthetic.math.basic.dup".to_string(),
+                        ..compute_synthetic_data_sample(
+                            "sample.alpha",
+                            2,
+                            created_at_ms as i64 + 6_000,
+                        )
+                    }],
+                    ..append_compute_synthetic_data_samples_request(
+                        "synthetic.math.basic.dup",
+                        created_at_ms as i64 + 6_000,
+                    )
+                },
+            )
+            .expect_err("duplicate sample should conflict");
+        assert_eq!(error, "compute_synthetic_sample_already_exists");
     }
 
     #[test]

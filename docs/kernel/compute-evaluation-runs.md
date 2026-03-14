@@ -96,10 +96,13 @@ Receipt types:
 - HTTP client and generated proto contracts roundtrip the full lifecycle.
 - Delivery proofs can now point to a canonical `eval_run_ref` instead of only to
   raw environment refs.
+- Synthetic-data jobs can now point at a canonical `verification_eval_run_id`
+  and reuse these sample records instead of inventing parallel scoring stores.
 
 ## Next Integration Path
 
-- `#3519`: synthetic-data pipelines should emit directly into these eval-run
+- `#3519`: synthetic-data pipelines now emit directly into these eval-run
   objects
+  - landed in `docs/kernel/compute-synthetic-data.md`
 - `#3520`: benchmark adapters should terminate in this lifecycle rather than
   inventing parallel result stores

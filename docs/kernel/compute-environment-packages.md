@@ -101,5 +101,8 @@ expectation, policy refs, digest, and metadata.
   products and delivery proofs against this registry
 - `#3518`: make eval runs terminate in environment-backed objects
   - landed in `docs/kernel/compute-evaluation-runs.md`
-- later synthetic-data and training issues should reuse this package identity
-  instead of inventing parallel environment descriptors
+- `#3519`: synthetic-data pipelines now reuse this package identity for both
+  generation and verification
+  - landed in `docs/kernel/compute-synthetic-data.md`
+- later training issues should keep reusing this package identity instead of
+  inventing parallel environment descriptors

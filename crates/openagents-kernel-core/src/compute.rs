@@ -131,6 +131,74 @@ impl ComputeEvaluationSampleStatus {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum ComputeSyntheticDataJobStatus {
+    #[default]
+    Queued,
+    Generating,
+    Generated,
+    Verifying,
+    Verified,
+    Failed,
+}
+
+impl ComputeSyntheticDataJobStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Generating => "generating",
+            Self::Generated => "generated",
+            Self::Verifying => "verifying",
+            Self::Verified => "verified",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "queued" => Some(Self::Queued),
+            "generating" => Some(Self::Generating),
+            "generated" => Some(Self::Generated),
+            "verifying" => Some(Self::Verifying),
+            "verified" => Some(Self::Verified),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeSyntheticDataSampleStatus {
+    #[default]
+    Generated,
+    Verified,
+    Rejected,
+    Errored,
+}
+
+impl ComputeSyntheticDataSampleStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Generated => "generated",
+            Self::Verified => "verified",
+            Self::Rejected => "rejected",
+            Self::Errored => "errored",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "generated" => Some(Self::Generated),
+            "verified" => Some(Self::Verified),
+            "rejected" => Some(Self::Rejected),
+            "errored" => Some(Self::Errored),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum CapacityReserveState {
     #[default]
     Available,
@@ -630,6 +698,59 @@ pub struct ComputeEvaluationSample {
     pub artifacts: Vec<ComputeEvaluationArtifact>,
     #[serde(default)]
     pub error_reason: Option<String>,
+    pub recorded_at_ms: i64,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeSyntheticDataJob {
+    pub synthetic_job_id: String,
+    pub environment_binding: ComputeEnvironmentBinding,
+    pub teacher_model_ref: String,
+    #[serde(default)]
+    pub generation_product_id: Option<String>,
+    #[serde(default)]
+    pub generation_delivery_proof_id: Option<String>,
+    #[serde(default)]
+    pub output_artifact_ref: Option<String>,
+    pub created_at_ms: i64,
+    #[serde(default)]
+    pub generated_at_ms: Option<i64>,
+    #[serde(default)]
+    pub verification_eval_run_id: Option<String>,
+    #[serde(default)]
+    pub verified_at_ms: Option<i64>,
+    #[serde(default)]
+    pub target_sample_count: Option<u64>,
+    #[serde(default)]
+    pub status: ComputeSyntheticDataJobStatus,
+    #[serde(default)]
+    pub verification_summary: Option<ComputeEvaluationSummary>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeSyntheticDataSample {
+    pub synthetic_job_id: String,
+    pub sample_id: String,
+    #[serde(default)]
+    pub ordinal: Option<u64>,
+    pub prompt_ref: String,
+    pub output_ref: String,
+    #[serde(default)]
+    pub generation_config_ref: Option<String>,
+    #[serde(default)]
+    pub generator_machine_ref: Option<String>,
+    #[serde(default)]
+    pub verification_eval_sample_id: Option<String>,
+    #[serde(default)]
+    pub verification_status: Option<ComputeEvaluationSampleStatus>,
+    #[serde(default)]
+    pub verification_score_bps: Option<u32>,
+    #[serde(default)]
+    pub status: ComputeSyntheticDataSampleStatus,
     pub recorded_at_ms: i64,
     #[serde(default)]
     pub metadata: Value,
@@ -1142,6 +1263,106 @@ pub fn validate_compute_evaluation_sample(sample: &ComputeEvaluationSample) -> R
     }
     for artifact in &sample.artifacts {
         validate_compute_evaluation_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_synthetic_data_job(job: &ComputeSyntheticDataJob) -> Result<(), String> {
+    if job.synthetic_job_id.trim().is_empty() {
+        return Err("compute_synthetic_job_id_missing".to_string());
+    }
+    if job.environment_binding.environment_ref.trim().is_empty() {
+        return Err("compute_environment_binding_ref_missing".to_string());
+    }
+    if job
+        .environment_binding
+        .environment_version
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_version_missing".to_string());
+    }
+    if job.teacher_model_ref.trim().is_empty() {
+        return Err("compute_synthetic_teacher_model_ref_missing".to_string());
+    }
+    if job.target_sample_count == Some(0) {
+        return Err("compute_synthetic_target_sample_count_invalid".to_string());
+    }
+    if matches!(
+        job.status,
+        ComputeSyntheticDataJobStatus::Generated | ComputeSyntheticDataJobStatus::Verified
+    ) && job
+        .output_artifact_ref
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_synthetic_output_artifact_ref_missing".to_string());
+    }
+    if matches!(
+        job.status,
+        ComputeSyntheticDataJobStatus::Generated | ComputeSyntheticDataJobStatus::Verified
+    ) && job.generated_at_ms.is_none()
+    {
+        return Err("compute_synthetic_generated_at_missing".to_string());
+    }
+    if matches!(job.status, ComputeSyntheticDataJobStatus::Verified)
+        && job
+            .verification_eval_run_id
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_synthetic_verification_eval_run_id_missing".to_string());
+    }
+    if matches!(job.status, ComputeSyntheticDataJobStatus::Verified) && job.verified_at_ms.is_none()
+    {
+        return Err("compute_synthetic_verified_at_missing".to_string());
+    }
+    if matches!(job.status, ComputeSyntheticDataJobStatus::Verified)
+        && job.verification_summary.is_none()
+    {
+        return Err("compute_synthetic_verification_summary_missing".to_string());
+    }
+    if let Some(summary) = job.verification_summary.as_ref() {
+        validate_compute_evaluation_summary(summary)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_synthetic_data_sample(
+    sample: &ComputeSyntheticDataSample,
+) -> Result<(), String> {
+    if sample.synthetic_job_id.trim().is_empty() {
+        return Err("compute_synthetic_job_id_missing".to_string());
+    }
+    if sample.sample_id.trim().is_empty() {
+        return Err("compute_synthetic_sample_id_missing".to_string());
+    }
+    if sample.prompt_ref.trim().is_empty() {
+        return Err("compute_synthetic_prompt_ref_missing".to_string());
+    }
+    if sample.output_ref.trim().is_empty() {
+        return Err("compute_synthetic_output_ref_missing".to_string());
+    }
+    if sample.recorded_at_ms <= 0 {
+        return Err("compute_synthetic_sample_recorded_at_invalid".to_string());
+    }
+    if sample
+        .verification_score_bps
+        .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_synthetic_verification_score_invalid".to_string());
+    }
+    if sample.verification_status.is_some() && sample.verification_eval_sample_id.is_none() {
+        return Err("compute_synthetic_verification_eval_sample_id_missing".to_string());
+    }
+    if matches!(
+        sample.status,
+        ComputeSyntheticDataSampleStatus::Verified
+            | ComputeSyntheticDataSampleStatus::Rejected
+            | ComputeSyntheticDataSampleStatus::Errored
+    ) && sample.verification_status.is_none()
+    {
+        return Err("compute_synthetic_verification_status_missing".to_string());
     }
     Ok(())
 }
@@ -1662,14 +1883,18 @@ mod tests {
         COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeCheckpointBinding, ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
         ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeExecutionKind,
-        ComputeFamily, ComputeHostCapability, ComputeProduct, ComputeProductStatus,
-        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
+        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationSampleStatus,
+        ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+        ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
         ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
         DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
         validate_compute_capability_envelope, validate_compute_environment_package,
+        validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
         validate_delivery_proof, validate_launch_compute_product,
     };
     use serde_json::json;
@@ -1774,6 +1999,69 @@ mod tests {
                 "policy://artifact/scorecard".to_string(),
             ],
             metadata: json!({"tier": "reference"}),
+        }
+    }
+
+    fn synthetic_data_job() -> ComputeSyntheticDataJob {
+        ComputeSyntheticDataJob {
+            synthetic_job_id: "synthetic.math.basic.alpha".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            },
+            teacher_model_ref: "model://llama3.3-instruct".to_string(),
+            generation_product_id: Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID.to_string()),
+            generation_delivery_proof_id: Some("delivery.synthetic.alpha".to_string()),
+            output_artifact_ref: Some("artifact://synthetic/math/basic/output".to_string()),
+            created_at_ms: 1_762_000_500_000,
+            generated_at_ms: Some(1_762_000_501_000),
+            verification_eval_run_id: Some("eval.synthetic.alpha".to_string()),
+            verified_at_ms: Some(1_762_000_502_000),
+            target_sample_count: Some(2),
+            status: ComputeSyntheticDataJobStatus::Verified,
+            verification_summary: Some(ComputeEvaluationSummary {
+                total_samples: 2,
+                scored_samples: 2,
+                passed_samples: 1,
+                failed_samples: 1,
+                errored_samples: 0,
+                average_score_bps: Some(9_250),
+                pass_rate_bps: Some(5_000),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.925,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"split": "synthetic"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "verification_scorecard".to_string(),
+                    artifact_ref: "artifact://synthetic/math/basic/scorecard".to_string(),
+                    digest: Some("sha256:synthetic-scorecard".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({"pipeline": "teacher-verify"}),
+        }
+    }
+
+    fn synthetic_data_sample() -> ComputeSyntheticDataSample {
+        ComputeSyntheticDataSample {
+            synthetic_job_id: "synthetic.math.basic.alpha".to_string(),
+            sample_id: "sample.alpha".to_string(),
+            ordinal: Some(1),
+            prompt_ref: "artifact://synthetic/prompts/sample.alpha".to_string(),
+            output_ref: "artifact://synthetic/outputs/sample.alpha".to_string(),
+            generation_config_ref: Some("config://synthetic/default".to_string()),
+            generator_machine_ref: Some("machine://provider.alpha/gpu0".to_string()),
+            verification_eval_sample_id: Some("sample.alpha".to_string()),
+            verification_status: Some(ComputeEvaluationSampleStatus::Passed),
+            verification_score_bps: Some(9_500),
+            status: ComputeSyntheticDataSampleStatus::Verified,
+            recorded_at_ms: 1_762_000_501_000,
+            metadata: json!({"prompt_tokens": 64}),
         }
     }
 
@@ -1931,6 +2219,33 @@ mod tests {
         let err = validate_compute_environment_package(&package)
             .expect_err("dataset ref should be required");
         assert_eq!(err, "compute_environment_dataset_ref_missing");
+    }
+
+    #[test]
+    fn validates_synthetic_data_job_and_sample_contracts() {
+        validate_compute_synthetic_data_job(&synthetic_data_job())
+            .expect("synthetic job should validate");
+        validate_compute_synthetic_data_sample(&synthetic_data_sample())
+            .expect("synthetic sample should validate");
+    }
+
+    #[test]
+    fn rejects_verified_synthetic_job_without_eval_run_reference() {
+        let mut job = synthetic_data_job();
+        job.verification_eval_run_id = None;
+        let err = validate_compute_synthetic_data_job(&job)
+            .expect_err("verified jobs should require eval run linkage");
+        assert_eq!(err, "compute_synthetic_verification_eval_run_id_missing");
+    }
+
+    #[test]
+    fn rejects_verified_synthetic_sample_without_verification_status() {
+        let mut sample = synthetic_data_sample();
+        sample.status = ComputeSyntheticDataSampleStatus::Rejected;
+        sample.verification_status = None;
+        let err = validate_compute_synthetic_data_sample(&sample)
+            .expect_err("verified synthetic samples should require verification status");
+        assert_eq!(err, "compute_synthetic_verification_status_missing");
     }
 
     #[test]
