@@ -62,6 +62,11 @@ Control / mirror runtimes:
   selection now consume an app-owned incremental presence index instead of
   replaying every confirmed message in the configured main channel on hot-path
   queries.
+- 2026-03-14: `#3534` is implemented. `PaneRenderer` now has an explicit
+  inactive-pane render policy, and the heaviest inactive desktop panes
+  (`Provider Control`, `Autopilot Chat`, `Log Stream`, payment visualization
+  panes, and diagnostics panes) now render through cheap, app-owned preview
+  summaries instead of always paying full paint cost.
 
 ## Executive Summary
 

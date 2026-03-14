@@ -81,6 +81,22 @@ pub struct PaneRenderer;
 const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
 const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InactivePaneRenderPolicy {
+    Full,
+    Summary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct InactivePanePreviewState {
+    source_badge: String,
+    load_state: PaneLoadState,
+    summary: String,
+    last_action: Option<String>,
+    last_error: Option<String>,
+    detail_lines: Vec<String>,
+}
+
 impl PaneRenderer {
     #[expect(
         clippy::too_many_arguments,
@@ -219,6 +235,35 @@ impl PaneRenderer {
                 paint
                     .scene
                     .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
+            }
+
+            if !pane_is_active
+                && paint_inactive_pane_preview_if_needed(
+                    inactive_pane_render_policy(pane.kind),
+                    pane.title.as_str(),
+                    pane.kind,
+                    content_bounds,
+                    desktop_shell_mode,
+                    buy_mode_enabled,
+                    backend_kernel_authority,
+                    autopilot_chat,
+                    codex_diagnostics,
+                    provider_runtime,
+                    local_inference_runtime,
+                    provider_blockers,
+                    provider_control,
+                    log_stream,
+                    buy_mode_payments,
+                    network_requests,
+                    nip90_payment_facts,
+                    relay_connections,
+                    spark_replay,
+                    spark_wallet,
+                    frame_debugger,
+                    paint,
+                )
+            {
+                continue;
             }
 
             match pane.kind {
@@ -648,6 +693,899 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
         theme::text::MUTED,
     );
     paint.scene.draw_text(empty);
+}
+
+fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
+    match kind {
+        PaneKind::AutopilotChat
+        | PaneKind::GoOnline
+        | PaneKind::ProviderControl
+        | PaneKind::CodexDiagnostics
+        | PaneKind::FrameDebugger
+        | PaneKind::LogStream
+        | PaneKind::BuyModePayments
+        | PaneKind::BuyerRaceMatrix
+        | PaneKind::SellerEarningsTimeline
+        | PaneKind::SettlementLadder
+        | PaneKind::KeyLedger
+        | PaneKind::SettlementAtlas
+        | PaneKind::SparkReplay
+        | PaneKind::RelayChoreography => InactivePaneRenderPolicy::Summary,
+        _ => InactivePaneRenderPolicy::Full,
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Inactive pane summaries read across multiple app-owned pane states."
+)]
+fn paint_inactive_pane_preview_if_needed(
+    policy: InactivePaneRenderPolicy,
+    pane_title: &str,
+    kind: PaneKind,
+    content_bounds: Bounds,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    buy_mode_enabled: bool,
+    backend_kernel_authority: bool,
+    autopilot_chat: &AutopilotChatState,
+    codex_diagnostics: &CodexDiagnosticsPaneState,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    provider_blockers: &[ProviderBlocker],
+    provider_control: &ProviderControlPaneState,
+    log_stream: &LogStreamPaneState,
+    buy_mode_payments: &BuyModePaymentsPaneState,
+    network_requests: &NetworkRequestsState,
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+    relay_connections: &RelayConnectionsState,
+    spark_replay: &SparkReplayPaneState,
+    spark_wallet: &SparkPaneState,
+    frame_debugger: &FrameDebuggerPaneState,
+    paint: &mut PaintContext,
+) -> bool {
+    if policy == InactivePaneRenderPolicy::Full {
+        return false;
+    }
+    let Some(preview) = inactive_pane_preview_state(
+        kind,
+        desktop_shell_mode,
+        buy_mode_enabled,
+        backend_kernel_authority,
+        autopilot_chat,
+        codex_diagnostics,
+        provider_runtime,
+        local_inference_runtime,
+        provider_blockers,
+        provider_control,
+        log_stream,
+        buy_mode_payments,
+        network_requests,
+        nip90_payment_facts,
+        relay_connections,
+        spark_replay,
+        spark_wallet,
+        frame_debugger,
+    ) else {
+        return false;
+    };
+
+    paint_inactive_pane_preview(content_bounds, pane_title, &preview, paint);
+    true
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Inactive pane summaries intentionally stay app-owned and context-rich."
+)]
+fn inactive_pane_preview_state(
+    kind: PaneKind,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    buy_mode_enabled: bool,
+    backend_kernel_authority: bool,
+    autopilot_chat: &AutopilotChatState,
+    codex_diagnostics: &CodexDiagnosticsPaneState,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    provider_blockers: &[ProviderBlocker],
+    provider_control: &ProviderControlPaneState,
+    log_stream: &LogStreamPaneState,
+    buy_mode_payments: &BuyModePaymentsPaneState,
+    network_requests: &NetworkRequestsState,
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+    relay_connections: &RelayConnectionsState,
+    spark_replay: &SparkReplayPaneState,
+    spark_wallet: &SparkPaneState,
+    frame_debugger: &FrameDebuggerPaneState,
+) -> Option<InactivePanePreviewState> {
+    match kind {
+        PaneKind::GoOnline | PaneKind::ProviderControl => {
+            Some(provider_control_inactive_preview_state(
+                desktop_shell_mode,
+                backend_kernel_authority,
+                provider_runtime,
+                local_inference_runtime,
+                provider_blockers,
+                provider_control,
+                spark_wallet,
+            ))
+        }
+        PaneKind::AutopilotChat => Some(autopilot_chat_inactive_preview_state(autopilot_chat)),
+        PaneKind::CodexDiagnostics => {
+            Some(codex_diagnostics_inactive_preview_state(codex_diagnostics))
+        }
+        PaneKind::FrameDebugger => Some(frame_debugger_inactive_preview_state(frame_debugger)),
+        PaneKind::LogStream => Some(log_stream_inactive_preview_state(log_stream)),
+        PaneKind::BuyModePayments => Some(buy_mode_payments_inactive_preview_state(
+            buy_mode_enabled,
+            autopilot_chat,
+            buy_mode_payments,
+            network_requests,
+            nip90_payment_facts,
+            spark_wallet,
+        )),
+        PaneKind::BuyerRaceMatrix => Some(buyer_race_matrix_inactive_preview_state(
+            network_requests,
+            spark_wallet,
+        )),
+        PaneKind::SellerEarningsTimeline => Some(seller_earnings_timeline_inactive_preview_state(
+            nip90_payment_facts,
+        )),
+        PaneKind::SettlementLadder => Some(settlement_ladder_inactive_preview_state(
+            nip90_payment_facts,
+        )),
+        PaneKind::KeyLedger => Some(key_ledger_inactive_preview_state(nip90_payment_facts)),
+        PaneKind::SettlementAtlas => {
+            Some(settlement_atlas_inactive_preview_state(nip90_payment_facts))
+        }
+        PaneKind::SparkReplay => Some(spark_replay_inactive_preview_state(
+            spark_replay,
+            nip90_payment_facts,
+        )),
+        PaneKind::RelayChoreography => Some(relay_choreography_inactive_preview_state(
+            relay_connections,
+            nip90_payment_facts,
+        )),
+        _ => None,
+    }
+}
+
+fn paint_inactive_pane_preview(
+    content_bounds: Bounds,
+    pane_title: &str,
+    preview: &InactivePanePreviewState,
+    paint: &mut PaintContext,
+) {
+    let shell_bounds = Bounds::new(
+        content_bounds.origin.x + 10.0,
+        content_bounds.origin.y + 10.0,
+        (content_bounds.size.width - 20.0).max(0.0),
+        (content_bounds.size.height - 20.0).max(0.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(shell_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.22))
+            .with_border(theme::border::DEFAULT.with_alpha(0.72), 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint_source_badge(content_bounds, preview.source_badge.as_str(), paint);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "{} // INACTIVE PREVIEW",
+            pane_title.trim().to_ascii_uppercase()
+        ),
+        Point::new(shell_bounds.origin.x + 12.0, shell_bounds.origin.y + 14.0),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Activate pane for live controls and the full detail surface.",
+        Point::new(shell_bounds.origin.x + 12.0, shell_bounds.origin.y + 32.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = paint_state_summary(
+        paint,
+        shell_bounds.origin.x + 12.0,
+        shell_bounds.origin.y + 52.0,
+        preview.load_state,
+        preview.summary.as_str(),
+        preview.last_action.as_deref(),
+        preview.last_error.as_deref(),
+    );
+
+    for line in preview.detail_lines.iter().take(4) {
+        if y + 14.0 > shell_bounds.max_y() - 18.0 {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(shell_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::SECONDARY,
+        ));
+        y += 14.0;
+    }
+}
+
+fn provider_control_inactive_preview_state(
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    backend_kernel_authority: bool,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    provider_blockers: &[ProviderBlocker],
+    provider_control: &ProviderControlPaneState,
+    spark_wallet: &SparkPaneState,
+) -> InactivePanePreviewState {
+    let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let preflight = if provider_blockers.is_empty() {
+        "clear".to_string()
+    } else {
+        format!("{} blocker(s)", provider_blockers.len())
+    };
+    let mut detail_lines = vec![
+        format!("preflight {preflight}"),
+        format!(
+            "control {}",
+            provider_runtime.control_authority_label(backend_kernel_authority)
+        ),
+        format!("load {}", runtime_view.load_label),
+        format!("inventory {} rows", provider_runtime.inventory_rows.len()),
+    ];
+    if let Some(blocker) = provider_blockers.first().copied() {
+        detail_lines.push(format!(
+            "blocker {}",
+            mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
+        ));
+    } else if provider_control.local_fm_summary_is_pending() {
+        detail_lines.push("local-fm summary streaming".to_string());
+    } else if !provider_control.local_fm_summary_text.trim().is_empty() {
+        detail_lines.push(format!(
+            "local-fm {}",
+            compact_mission_control_id(provider_control.local_fm_summary_text.trim())
+        ));
+    }
+    InactivePanePreviewState {
+        source_badge: "inactive runtime".to_string(),
+        load_state: if provider_control.last_error.is_some()
+            || provider_runtime.last_error_detail.is_some()
+        {
+            PaneLoadState::Error
+        } else if provider_runtime.mode == crate::app_state::ProviderMode::Connecting {
+            PaneLoadState::Loading
+        } else {
+            PaneLoadState::Ready
+        },
+        summary: format!(
+            "{} // {} // {}",
+            provider_runtime.mode.label(),
+            runtime_view.model_label,
+            runtime_view.backend_label
+        ),
+        last_action: provider_control
+            .last_action
+            .clone()
+            .or_else(|| provider_runtime.last_result.clone()),
+        last_error: provider_control
+            .last_error
+            .clone()
+            .or_else(|| provider_runtime.last_error_detail.clone()),
+        detail_lines,
+    }
+}
+
+fn autopilot_chat_inactive_preview_state(
+    autopilot_chat: &AutopilotChatState,
+) -> InactivePanePreviewState {
+    let active_thread_label = autopilot_chat
+        .active_thread_id
+        .as_ref()
+        .map(|thread_id| {
+            autopilot_chat
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.thread_name.as_ref())
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+                .unwrap_or_else(|| compact_mission_control_id(thread_id))
+        })
+        .unwrap_or_else(|| "none".to_string());
+    let active_preview = autopilot_chat
+        .active_thread_preview()
+        .map(|value| compact_preview_text(value, 48))
+        .unwrap_or_else(|| "No active transcript loaded".to_string());
+    let pending_tool_inputs = autopilot_chat.pending_tool_user_input.len();
+    let pending_approvals = autopilot_chat.pending_command_approvals.len()
+        + autopilot_chat.pending_file_change_approvals.len();
+    InactivePanePreviewState {
+        source_badge: "inactive chat".to_string(),
+        load_state: if autopilot_chat.last_error.is_some() {
+            PaneLoadState::Error
+        } else if autopilot_chat.connection_status != "ready" {
+            PaneLoadState::Loading
+        } else {
+            PaneLoadState::Ready
+        },
+        summary: format!(
+            "{} // {} threads // active {}",
+            autopilot_chat.connection_status,
+            autopilot_chat.threads.len(),
+            active_thread_label
+        ),
+        last_action: autopilot_chat.last_turn_status.clone(),
+        last_error: autopilot_chat.last_error.clone(),
+        detail_lines: vec![
+            format!(
+                "thread_status {} // loaded {}",
+                autopilot_chat.active_thread_status().unwrap_or("idle"),
+                if autopilot_chat.active_thread_loaded().unwrap_or(false) {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ),
+            format!(
+                "model {} // tool_inputs {}",
+                autopilot_chat.current_model(),
+                pending_tool_inputs
+            ),
+            format!(
+                "approvals {} // auth_refresh {}",
+                pending_approvals,
+                autopilot_chat.pending_auth_refresh.len()
+            ),
+            active_preview,
+        ],
+    }
+}
+
+fn codex_diagnostics_inactive_preview_state(
+    codex_diagnostics: &CodexDiagnosticsPaneState,
+) -> InactivePanePreviewState {
+    let notification_total = codex_diagnostics
+        .notification_counts
+        .iter()
+        .map(|entry| entry.count)
+        .sum::<u64>();
+    let request_total = codex_diagnostics
+        .server_request_counts
+        .iter()
+        .map(|entry| entry.count)
+        .sum::<u64>();
+    let mut detail_lines = vec![
+        format!(
+            "wire_log {} // path {}",
+            if codex_diagnostics.wire_log_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            codex_diagnostics.wire_log_path
+        ),
+        format!(
+            "notifications {} methods // requests {} methods",
+            codex_diagnostics.notification_counts.len(),
+            codex_diagnostics.server_request_counts.len()
+        ),
+    ];
+    if let Some(error) = codex_diagnostics.last_command_failure.as_deref() {
+        detail_lines.push(format!(
+            "command_failure {}",
+            compact_preview_text(error, 48)
+        ));
+    }
+    if let Some(error) = codex_diagnostics.last_snapshot_error.as_deref() {
+        detail_lines.push(format!(
+            "snapshot_error {}",
+            compact_preview_text(error, 48)
+        ));
+    }
+    InactivePanePreviewState {
+        source_badge: "inactive codex".to_string(),
+        load_state: codex_diagnostics.load_state,
+        summary: format!(
+            "{notification_total} notifications // {request_total} server requests // {} raw events",
+            codex_diagnostics.raw_events.len()
+        ),
+        last_action: codex_diagnostics.last_action.clone(),
+        last_error: codex_diagnostics.last_error.clone(),
+        detail_lines,
+    }
+}
+
+fn frame_debugger_inactive_preview_state(
+    frame_debugger: &FrameDebuggerPaneState,
+) -> InactivePanePreviewState {
+    let summary = frame_debugger
+        .rolling_fps
+        .zip(frame_debugger.last_report.as_ref())
+        .map(|(fps, report)| format!("{fps:.1} fps // {:.2} ms cpu", report.total_cpu_ms))
+        .unwrap_or_else(|| "Waiting for first frame sample".to_string());
+    InactivePanePreviewState {
+        source_badge: "inactive perf".to_string(),
+        load_state: frame_debugger.load_state,
+        summary,
+        last_action: frame_debugger.last_action.clone(),
+        last_error: frame_debugger.last_error.clone(),
+        detail_lines: vec![
+            format!("redraw {}", frame_debugger.redraw_pressure.reason_summary()),
+            format!(
+                "samples {} // redraw_requests {}",
+                frame_debugger.samples().len(),
+                frame_debugger.redraw_requests
+            ),
+            format!(
+                "slow 60hz {} // slow 30hz {}",
+                frame_debugger.slow_frames_60hz, frame_debugger.slow_frames_30hz
+            ),
+        ],
+    }
+}
+
+fn log_stream_inactive_preview_state(log_stream: &LogStreamPaneState) -> InactivePanePreviewState {
+    let recent_lines = log_stream.terminal.recent_lines(3);
+    let mut detail_lines = if recent_lines.is_empty() {
+        vec!["No runtime logs buffered yet".to_string()]
+    } else {
+        recent_lines
+            .iter()
+            .map(|line| compact_preview_text(line.text.as_str(), 64))
+            .collect::<Vec<_>>()
+    };
+    detail_lines.push(format!(
+        "buffered {} lines",
+        log_stream.terminal.recent_lines(usize::MAX).len()
+    ));
+    InactivePanePreviewState {
+        source_badge: "inactive logs".to_string(),
+        load_state: PaneLoadState::Ready,
+        summary: format!(
+            "{} buffered runtime lines",
+            log_stream.terminal.recent_lines(usize::MAX).len()
+        ),
+        last_action: None,
+        last_error: None,
+        detail_lines,
+    }
+}
+
+fn buy_mode_payments_inactive_preview_state(
+    buy_mode_enabled: bool,
+    autopilot_chat: &AutopilotChatState,
+    buy_mode_payments: &BuyModePaymentsPaneState,
+    network_requests: &NetworkRequestsState,
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+    spark_wallet: &SparkPaneState,
+) -> InactivePanePreviewState {
+    let now = std::time::Instant::now();
+    let panel = mission_control_buy_mode_panel_state(
+        buy_mode_enabled,
+        autopilot_chat,
+        buy_mode_payments,
+        network_requests,
+        spark_wallet,
+        now,
+    );
+    let mut detail_lines = crate::app_state::buy_mode_payments_status_lines(
+        buy_mode_payments,
+        network_requests,
+        spark_wallet,
+        now,
+    );
+    detail_lines.truncate(3);
+    detail_lines.push(format!("fact rows {}", nip90_payment_facts.facts.len()));
+    InactivePanePreviewState {
+        source_badge: "inactive buy+facts".to_string(),
+        load_state: if buy_mode_payments.last_error.is_some() {
+            PaneLoadState::Error
+        } else {
+            PaneLoadState::Ready
+        },
+        summary: panel
+            .as_ref()
+            .map(|panel| panel.summary.clone())
+            .unwrap_or_else(|| "Buy Mode is disabled for this session.".to_string()),
+        last_action: buy_mode_payments.last_action.clone(),
+        last_error: buy_mode_payments.last_error.clone(),
+        detail_lines,
+    }
+}
+
+fn buyer_race_matrix_inactive_preview_state(
+    network_requests: &NetworkRequestsState,
+    spark_wallet: &SparkPaneState,
+) -> InactivePanePreviewState {
+    let request = network_requests
+        .submitted
+        .iter()
+        .find(|request| {
+            !request.provider_observation_history.is_empty()
+                || !request.provider_observations.is_empty()
+                || !request.target_provider_pubkeys.is_empty()
+        })
+        .or_else(|| network_requests.submitted.first());
+
+    let (summary, detail_lines) = if let Some(request) = request {
+        let snapshot =
+            crate::nip90_compute_flow::build_buyer_request_flow_snapshot(request, spark_wallet);
+        (
+            format!(
+                "req {} // phase {} // next {}",
+                compact_mission_control_id(request.request_id.as_str()),
+                snapshot.phase.as_str(),
+                snapshot.next_expected_event
+            ),
+            vec![
+                format!(
+                    "targets {} // history {}",
+                    request.target_provider_pubkeys.len(),
+                    snapshot.provider_observation_history.len()
+                ),
+                format!(
+                    "selected {} // payable {}",
+                    snapshot
+                        .selected_provider_pubkey()
+                        .map(compact_mission_control_id)
+                        .unwrap_or_else(|| "none".to_string()),
+                    snapshot
+                        .payable_provider_pubkey
+                        .as_deref()
+                        .map(compact_mission_control_id)
+                        .unwrap_or_else(|| "none".to_string())
+                ),
+                format!(
+                    "result {} // invoice {}",
+                    snapshot
+                        .result_provider_pubkey()
+                        .map(compact_mission_control_id)
+                        .unwrap_or_else(|| "none".to_string()),
+                    snapshot
+                        .invoice_provider_pubkey()
+                        .map(compact_mission_control_id)
+                        .unwrap_or_else(|| "none".to_string())
+                ),
+            ],
+        )
+    } else {
+        (
+            "No active buyer race request observed".to_string(),
+            vec![
+                "Open Buyer Race Matrix on an in-flight request for full race detail.".to_string(),
+            ],
+        )
+    };
+
+    InactivePanePreviewState {
+        source_badge: "inactive buy+race".to_string(),
+        load_state: PaneLoadState::Ready,
+        summary,
+        last_action: None,
+        last_error: None,
+        detail_lines,
+    }
+}
+
+fn seller_earnings_timeline_inactive_preview_state(
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let seller_facts = nip90_payment_facts
+        .facts
+        .iter()
+        .filter(|fact| {
+            fact.seller_wallet_confirmed_at.is_some()
+                || fact.seller_settlement_feedback_at.is_some()
+                || fact.seller_payment_pointer.is_some()
+        })
+        .collect::<Vec<_>>();
+    let settled_sats = seller_facts
+        .iter()
+        .filter(|fact| fact.seller_wallet_confirmed_at.is_some())
+        .map(|fact| fact.amount_sats.unwrap_or_default())
+        .sum::<u64>();
+    let pending_sats = seller_facts
+        .iter()
+        .filter(|fact| fact.seller_wallet_confirmed_at.is_none())
+        .map(|fact| fact.amount_sats.unwrap_or_default())
+        .sum::<u64>();
+    let latest_request = seller_facts
+        .iter()
+        .max_by_key(|fact| fact.latest_event_epoch_seconds().unwrap_or_default())
+        .map(|fact| compact_mission_control_id(fact.request_id.as_str()))
+        .unwrap_or_else(|| "none".to_string());
+    InactivePanePreviewState {
+        source_badge: "inactive payment facts".to_string(),
+        load_state: nip90_payment_facts.load_state,
+        summary: if seller_facts.is_empty() {
+            "No seller settlements observed yet".to_string()
+        } else {
+            format!(
+                "settled {} // pending {}",
+                format_sats_amount(settled_sats),
+                format_sats_amount(pending_sats)
+            )
+        },
+        last_action: nip90_payment_facts.last_action.clone(),
+        last_error: nip90_payment_facts.last_error.clone(),
+        detail_lines: vec![
+            format!("rows {} // latest {}", seller_facts.len(), latest_request),
+            format!(
+                "wallet confirmed {} // pending {}",
+                seller_facts
+                    .iter()
+                    .filter(|fact| fact.seller_wallet_confirmed_at.is_some())
+                    .count(),
+                seller_facts
+                    .iter()
+                    .filter(|fact| fact.seller_wallet_confirmed_at.is_none())
+                    .count()
+            ),
+        ],
+    }
+}
+
+fn settlement_ladder_inactive_preview_state(
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let latest = nip90_payment_facts
+        .facts
+        .iter()
+        .max_by_key(|fact| fact.latest_event_epoch_seconds().unwrap_or_default());
+    let (summary, detail_lines) = if let Some(fact) = latest {
+        let lit_count = usize::from(fact.request_event_id.is_some())
+            + usize::from(fact.result_event_id.is_some())
+            + usize::from(fact.invoice_event_id.is_some())
+            + usize::from(fact.buyer_payment_pointer.is_some())
+            + usize::from(
+                fact.seller_settlement_feedback_at.is_some()
+                    || fact.seller_wallet_confirmed_at.is_some(),
+            )
+            + usize::from(fact.buyer_wallet_confirmed_at.is_some());
+        (
+            format!(
+                "req {} // {lit_count}/6 settlement proofs",
+                compact_mission_control_id(fact.request_id.as_str())
+            ),
+            vec![
+                format!("status {}", fact.status.label()),
+                format!("authority {}", fact.settlement_authority),
+                format!(
+                    "amount {}",
+                    format_sats_amount(fact.amount_sats.unwrap_or_default())
+                ),
+            ],
+        )
+    } else {
+        (
+            "No settlement ladder facts yet".to_string(),
+            vec!["Waiting for request, result, invoice, and wallet proof edges.".to_string()],
+        )
+    };
+    InactivePanePreviewState {
+        source_badge: "inactive payment facts".to_string(),
+        load_state: nip90_payment_facts.load_state,
+        summary,
+        last_action: nip90_payment_facts.last_action.clone(),
+        last_error: nip90_payment_facts.last_error.clone(),
+        detail_lines,
+    }
+}
+
+fn key_ledger_inactive_preview_state(
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let total_sent_sats = nip90_payment_facts
+        .facts
+        .iter()
+        .map(|fact| {
+            fact.total_debit_sats
+                .unwrap_or(fact.amount_sats.unwrap_or_default())
+        })
+        .sum::<u64>();
+    let total_received_sats = nip90_payment_facts
+        .facts
+        .iter()
+        .map(|fact| fact.amount_sats.unwrap_or_default())
+        .sum::<u64>();
+    let nostr_actor_count = nip90_payment_facts
+        .actors
+        .iter()
+        .filter(|actor| {
+            actor.namespace == crate::state::nip90_payment_facts::Nip90ActorNamespace::Nostr
+        })
+        .count();
+    let lightning_actor_count = nip90_payment_facts
+        .actors
+        .iter()
+        .filter(|actor| {
+            actor.namespace
+                == crate::state::nip90_payment_facts::Nip90ActorNamespace::LightningDestination
+        })
+        .count();
+    InactivePanePreviewState {
+        source_badge: "inactive payment facts".to_string(),
+        load_state: nip90_payment_facts.load_state,
+        summary: format!(
+            "actors {} // recv {} // sent {}",
+            nip90_payment_facts.actors.len(),
+            format_sats_amount(total_received_sats),
+            format_sats_amount(total_sent_sats)
+        ),
+        last_action: nip90_payment_facts.last_action.clone(),
+        last_error: nip90_payment_facts.last_error.clone(),
+        detail_lines: vec![
+            format!("nostr actors {nostr_actor_count}"),
+            format!("lightning destinations {lightning_actor_count}"),
+            format!(
+                "settlement failures {}",
+                nip90_payment_facts
+                    .facts
+                    .iter()
+                    .filter(|fact| {
+                        fact.status
+                            == crate::state::nip90_payment_facts::Nip90PaymentFactStatus::Failed
+                    })
+                    .count()
+            ),
+        ],
+    }
+}
+
+fn settlement_atlas_inactive_preview_state(
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let mut buyers = std::collections::BTreeSet::<String>::new();
+    let mut providers = std::collections::BTreeSet::<String>::new();
+    let mut edges = std::collections::BTreeSet::<(String, String)>::new();
+    let mut total_volume_sats = 0u64;
+    let mut degraded_fact_count = 0usize;
+    for fact in &nip90_payment_facts.facts {
+        total_volume_sats = total_volume_sats.saturating_add(fact.amount_sats.unwrap_or_default());
+        let buyer = fact
+            .buyer_nostr_pubkey
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let provider = fact
+            .provider_nostr_pubkey
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        match (buyer, provider) {
+            (Some(buyer), Some(provider)) => {
+                buyers.insert(buyer.to_string());
+                providers.insert(provider.to_string());
+                edges.insert((buyer.to_string(), provider.to_string()));
+            }
+            _ => degraded_fact_count = degraded_fact_count.saturating_add(1),
+        }
+    }
+    InactivePanePreviewState {
+        source_badge: "inactive payment facts".to_string(),
+        load_state: nip90_payment_facts.load_state,
+        summary: format!(
+            "buyers {} // providers {} // volume {}",
+            buyers.len(),
+            providers.len(),
+            format_sats_amount(total_volume_sats)
+        ),
+        last_action: nip90_payment_facts.last_action.clone(),
+        last_error: nip90_payment_facts.last_error.clone(),
+        detail_lines: vec![
+            format!("edges {}", edges.len()),
+            format!("degraded hidden {degraded_fact_count}"),
+            format!("facts {}", nip90_payment_facts.facts.len()),
+        ],
+    }
+}
+
+fn spark_replay_inactive_preview_state(
+    spark_replay: &SparkReplayPaneState,
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let step_count = spark_replay_pane::replay_step_count(nip90_payment_facts);
+    InactivePanePreviewState {
+        source_badge: "inactive replay".to_string(),
+        load_state: nip90_payment_facts.load_state,
+        summary: if step_count == 0 {
+            "No payment replay steps available yet".to_string()
+        } else {
+            format!(
+                "{} replay steps // cursor {}/{}",
+                step_count,
+                spark_replay.cursor_step.min(step_count.saturating_sub(1)) + 1,
+                step_count
+            )
+        },
+        last_action: spark_replay.last_action.clone(),
+        last_error: spark_replay.last_error.clone(),
+        detail_lines: vec![
+            format!(
+                "auto_follow {}",
+                if spark_replay.auto_follow {
+                    "on"
+                } else {
+                    "off"
+                }
+            ),
+            format!(
+                "request {}",
+                spark_replay
+                    .last_request_id
+                    .as_deref()
+                    .map(compact_mission_control_id)
+                    .unwrap_or_else(|| "none".to_string())
+            ),
+            format!("facts {}", nip90_payment_facts.facts.len()),
+        ],
+    }
+}
+
+fn relay_choreography_inactive_preview_state(
+    relay_connections: &RelayConnectionsState,
+    nip90_payment_facts: &Nip90PaymentFactLedgerState,
+) -> InactivePanePreviewState {
+    let connected = relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == crate::state::operations::RelayConnectionStatus::Connected)
+        .count();
+    let errored = relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == crate::state::operations::RelayConnectionStatus::Error)
+        .count();
+    let latest_request = nip90_payment_facts
+        .facts
+        .iter()
+        .max_by_key(|fact| fact.latest_event_epoch_seconds().unwrap_or_default())
+        .map(|fact| compact_mission_control_id(fact.request_id.as_str()))
+        .unwrap_or_else(|| "none".to_string());
+    InactivePanePreviewState {
+        source_badge: "inactive relays".to_string(),
+        load_state: relay_connections.load_state,
+        summary: format!(
+            "live relays {connected}/{} // relay hops {}",
+            relay_connections.relays.len(),
+            nip90_payment_facts.relay_hops.len()
+        ),
+        last_action: relay_connections.last_action.clone(),
+        last_error: relay_connections
+            .last_error
+            .clone()
+            .or_else(|| nip90_payment_facts.last_error.clone()),
+        detail_lines: vec![
+            format!("errored relays {errored}"),
+            format!("facts {}", nip90_payment_facts.facts.len()),
+            format!("latest request {latest_request}"),
+        ],
+    }
+}
+
+fn compact_preview_text(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "n/a".to_string();
+    }
+    if trimmed.chars().count() <= max_chars.max(8) {
+        return trimmed.to_string();
+    }
+    let keep = max_chars.max(8);
+    let head = (keep / 2).max(4);
+    let tail = (keep / 3).max(4);
+    let start = trimmed.chars().take(head).collect::<String>();
+    let end = trimmed
+        .chars()
+        .rev()
+        .take(tail)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("{start}..{end}")
 }
 
 fn paint_autopilot_chat_pane(
@@ -5245,22 +6183,25 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        active_job_clipboard_text, build_active_job_scroll_lines, create_invoice_view_state,
-        earnings_scoreboard_amount_display, mission_control_active_jobs_panel_state,
-        mission_control_backend_label, mission_control_body_chunk_len,
-        mission_control_buy_mode_panel_state, mission_control_buy_mode_payment_label,
-        mission_control_go_online_hint, mission_control_lightning_receive_state_label,
-        mission_control_local_action_enabled, mission_control_local_fm_test_button_label,
-        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
-        mission_control_model_load_status, mission_control_primary_model_label,
-        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
-        pay_invoice_view_state, payment_terminal_status, request_freshness_summary,
-        scrollbar_thumb_height, spark_wallet_view_state, split_text_for_display,
+        InactivePaneRenderPolicy, active_job_clipboard_text, build_active_job_scroll_lines,
+        buy_mode_payments_inactive_preview_state, create_invoice_view_state,
+        earnings_scoreboard_amount_display, inactive_pane_render_policy,
+        mission_control_active_jobs_panel_state, mission_control_backend_label,
+        mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
+        mission_control_buy_mode_payment_label, mission_control_go_online_hint,
+        mission_control_lightning_receive_state_label, mission_control_local_action_enabled,
+        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
+        mission_control_local_model_button_label, mission_control_model_load_status,
+        mission_control_primary_model_label, mission_control_value_chunk_len,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, provider_control_inactive_preview_state,
+        request_freshness_summary, scrollbar_thumb_height, spark_wallet_view_state,
+        split_text_for_display,
     };
     use crate::app_state::{
         ActiveJobState, AutopilotChatState, BuyModePaymentsPaneState,
         EarnJobLifecycleProjectionState, JobDemandSource, JobInboxDecision, JobInboxRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, PaneLoadState,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, PaneKind, PaneLoadState,
         ProviderControlPaneState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
@@ -5296,6 +6237,85 @@ mod tests {
 
     fn fixture_autopilot_chat() -> AutopilotChatState {
         AutopilotChatState::default()
+    }
+
+    #[test]
+    fn inactive_pane_render_policy_marks_heavy_panes_as_summary() {
+        assert_eq!(
+            inactive_pane_render_policy(PaneKind::ProviderControl),
+            InactivePaneRenderPolicy::Summary
+        );
+        assert_eq!(
+            inactive_pane_render_policy(PaneKind::AutopilotChat),
+            InactivePaneRenderPolicy::Summary
+        );
+        assert_eq!(
+            inactive_pane_render_policy(PaneKind::LogStream),
+            InactivePaneRenderPolicy::Summary
+        );
+        assert_eq!(
+            inactive_pane_render_policy(PaneKind::BuyerRaceMatrix),
+            InactivePaneRenderPolicy::Summary
+        );
+        assert_eq!(
+            inactive_pane_render_policy(PaneKind::JobInbox),
+            InactivePaneRenderPolicy::Full
+        );
+    }
+
+    #[test]
+    fn provider_control_inactive_preview_surfaces_runtime_truth() {
+        let mut provider_runtime = ProviderRuntimeState::default();
+        provider_runtime.mode = crate::app_state::ProviderMode::Connecting;
+        provider_runtime.last_result = Some("provider warming local runtime".to_string());
+
+        let preview = provider_control_inactive_preview_state(
+            crate::desktop_shell::DesktopShellMode::Production,
+            false,
+            &provider_runtime,
+            &LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &ProviderControlPaneState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert_eq!(preview.load_state, PaneLoadState::Loading);
+        assert!(preview.summary.contains("connecting"));
+        assert!(
+            preview
+                .detail_lines
+                .iter()
+                .any(|line| line.contains("preflight"))
+        );
+        assert!(
+            preview
+                .detail_lines
+                .iter()
+                .any(|line| line.contains("control"))
+        );
+    }
+
+    #[test]
+    fn buy_mode_inactive_preview_surfaces_panel_summary_and_fact_count() {
+        let mut buy_mode = fixture_buy_mode();
+        let now = std::time::Instant::now();
+        buy_mode.toggle_buy_mode_loop(now);
+        let preview = buy_mode_payments_inactive_preview_state(
+            true,
+            &fixture_autopilot_chat(),
+            &buy_mode,
+            &queue_buy_mode_request_for_tests(),
+            &crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState::default(),
+            &SparkPaneState::default(),
+        );
+
+        assert!(preview.summary.contains("req"));
+        assert!(
+            preview
+                .detail_lines
+                .iter()
+                .any(|line| line.contains("fact rows"))
+        );
     }
 
     #[test]
