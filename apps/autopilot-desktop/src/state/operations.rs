@@ -4025,7 +4025,10 @@ mod tests {
         ForwardComputeQuoteCandidate, ForwardComputeRfqDraft, NetworkRequestsState,
         SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate, SpotComputeRfqDraft,
     };
-    use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
+    use openagents_kernel_core::compute::{
+        ComputeBackendFamily, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
+        ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
+    };
 
     fn sample_rfq() -> SpotComputeRfqDraft {
         SpotComputeRfqDraft {
@@ -4046,8 +4049,14 @@ mod tests {
             product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: format!("lot-{quote_id}"),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::GptOss,
+            backend_family: Some(ComputeBackendFamily::GptOss),
             compute_family: ComputeFamily::Inference,
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            environment_binding: None,
+            sandbox_profile_ref: None,
             available_quantity,
             requested_quantity: 1,
             price_sats: 21,
@@ -4081,8 +4090,14 @@ mod tests {
             product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: format!("forward-lot-{quote_id}"),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::GptOss,
+            backend_family: Some(ComputeBackendFamily::GptOss),
             compute_family: ComputeFamily::Inference,
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            environment_binding: None,
+            sandbox_profile_ref: None,
             available_quantity,
             requested_quantity: 1,
             price_sats: 55,
@@ -4127,8 +4142,14 @@ mod tests {
             product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: "lot-quote-a".to_string(),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::GptOss,
+            backend_family: Some(ComputeBackendFamily::GptOss),
             compute_family: ComputeFamily::Inference,
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            environment_binding: None,
+            sandbox_profile_ref: None,
             quantity: 1,
             price_sats: 21,
             delivery_window_label: "15m".to_string(),
@@ -4175,8 +4196,14 @@ mod tests {
             product_id: "gpt_oss.text_generation".to_string(),
             capacity_lot_id: "forward-lot-forward-a".to_string(),
             provider_id: "npub1provider".to_string(),
-            backend_family: ComputeBackendFamily::GptOss,
+            backend_family: Some(ComputeBackendFamily::GptOss),
             compute_family: ComputeFamily::Inference,
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            topology_kind: Some(ComputeTopologyKind::SingleNode),
+            provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+            proof_posture: Some(ComputeProofPosture::DeliveryProofOnly),
+            environment_binding: None,
+            sandbox_profile_ref: None,
             quantity: 1,
             price_sats: 55,
             delivery_start_ms: 1_762_000_180_000,
@@ -4191,5 +4218,47 @@ mod tests {
         assert!(state.forward_quote_candidates.is_empty());
         assert_eq!(state.accepted_forward_orders.len(), 1);
         assert_eq!(state.quote_mode, ComputeQuoteMode::ForwardPhysical);
+    }
+
+    #[test]
+    fn constraints_summary_includes_topology_proof_environment_and_profile() {
+        let constraints = SpotComputeCapabilityConstraints {
+            topology_kind: Some("replicated".to_string()),
+            proof_posture: Some("challenge_eligible".to_string()),
+            environment_ref: Some("env://sandbox/python".to_string()),
+            sandbox_profile_ref: Some("python-batch".to_string()),
+            ..SpotComputeCapabilityConstraints::default()
+        };
+
+        let summary = constraints.summary();
+
+        assert!(summary.contains("topology_kind=replicated"));
+        assert!(summary.contains("proof_posture=challenge_eligible"));
+        assert!(summary.contains("environment_ref=env://sandbox/python"));
+        assert!(summary.contains("sandbox_profile_ref=python-batch"));
+    }
+
+    #[test]
+    fn quote_backend_label_uses_sandbox_for_backendless_sandbox_products() {
+        let quote = SpotComputeQuoteCandidate {
+            backend_family: None,
+            compute_family: ComputeFamily::SandboxExecution,
+            execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+            topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+            provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+            proof_posture: Some(ComputeProofPosture::TopologyAndDelivery),
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env://sandbox/python".to_string(),
+                ..ComputeEnvironmentBinding::default()
+            }),
+            sandbox_profile_ref: Some("python-batch".to_string()),
+            ..sample_quote("quote-sandbox", 1)
+        };
+
+        assert_eq!(quote.backend_label(), "sandbox");
+        assert_eq!(quote.execution_label(), "sandbox_execution");
+        assert_eq!(quote.topology_label(), "sandbox_isolated");
+        assert_eq!(quote.proof_posture_label(), "topology_and_delivery");
+        assert_eq!(quote.environment_ref(), Some("env://sandbox/python"));
     }
 }

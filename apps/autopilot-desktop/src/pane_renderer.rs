@@ -2206,15 +2206,21 @@ fn paint_network_requests_pane(
                             .with_corner_radius(6.0),
                     );
                     let summary = format!(
-                        "{} family={} backend={} provider={} lot={} qty={}/{} price={} terms={} source={}",
+                        "{} family={} backend={} execution={} topology={} provisioning={} proof={} provider={} lot={} qty={}/{} price={} env={} profile={} terms={} source={}",
                         quote.product_id,
                         quote.compute_family_label(),
                         quote.backend_label(),
+                        quote.execution_label(),
+                        quote.topology_label(),
+                        quote.provisioning_label(),
+                        quote.proof_posture_label(),
                         quote.provider_id,
                         quote.capacity_lot_id,
                         quote.requested_quantity,
                         quote.available_quantity,
                         format_sats_amount(quote.price_sats),
+                        quote.environment_ref().unwrap_or("-"),
+                        quote.sandbox_profile_ref.as_deref().unwrap_or("-"),
                         quote.terms_label,
                         quote.source_badge,
                     );
@@ -2257,10 +2263,25 @@ fn paint_network_requests_pane(
                 {
                     paint.scene.draw_text(paint.text.layout_mono(
                         &format!(
-                            "{} -> {} {} provider={} qty={} price={} at={}",
+                            "{} -> {} {} backend={} topology={} proof={} env={} profile={} provider={} qty={} price={} at={}",
                             order.quote_id,
                             order.instrument_id,
                             order.product_id,
+                            match order.backend_family {
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+                                None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
+                                None => "unknown",
+                            },
+                            order.topology_kind.map(|value| value.label()).unwrap_or("unspecified"),
+                            order.proof_posture.map(|value| value.label()).unwrap_or("unspecified"),
+                            order
+                                .environment_binding
+                                .as_ref()
+                                .map(|binding| binding.environment_ref.as_str())
+                                .filter(|value| !value.trim().is_empty())
+                                .unwrap_or("-"),
+                            order.sandbox_profile_ref.as_deref().unwrap_or("-"),
                             order.provider_id,
                             order.quantity,
                             format_sats_amount(order.price_sats),
@@ -2328,16 +2349,22 @@ fn paint_network_requests_pane(
                             .with_corner_radius(6.0),
                     );
                     let summary = format!(
-                        "{} family={} backend={} provider={} lot={} qty={}/{} price={} window={} terms={}",
+                        "{} family={} backend={} execution={} topology={} provisioning={} proof={} provider={} lot={} qty={}/{} price={} window={} env={} profile={} terms={}",
                         quote.product_id,
                         quote.compute_family_label(),
                         quote.backend_label(),
+                        quote.execution_label(),
+                        quote.topology_label(),
+                        quote.provisioning_label(),
+                        quote.proof_posture_label(),
                         quote.provider_id,
                         quote.capacity_lot_id,
                         quote.requested_quantity,
                         quote.available_quantity,
                         format_sats_amount(quote.price_sats),
                         quote.delivery_window_label,
+                        quote.environment_ref().unwrap_or("-"),
+                        quote.sandbox_profile_ref.as_deref().unwrap_or("-"),
                         quote.terms_label,
                     );
                     paint.scene.draw_text(paint.text.layout_mono(
@@ -2384,10 +2411,25 @@ fn paint_network_requests_pane(
                 {
                     paint.scene.draw_text(paint.text.layout_mono(
                         &format!(
-                            "{} -> {} {} provider={} qty={} price={} window={} remedy={}",
+                            "{} -> {} {} backend={} topology={} proof={} env={} profile={} provider={} qty={} price={} window={} remedy={}",
                             order.quote_id,
                             order.instrument_id,
                             order.product_id,
+                            match order.backend_family {
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+                                None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
+                                None => "unknown",
+                            },
+                            order.topology_kind.map(|value| value.label()).unwrap_or("unspecified"),
+                            order.proof_posture.map(|value| value.label()).unwrap_or("unspecified"),
+                            order
+                                .environment_binding
+                                .as_ref()
+                                .map(|binding| binding.environment_ref.as_str())
+                                .filter(|value| !value.trim().is_empty())
+                                .unwrap_or("-"),
+                            order.sandbox_profile_ref.as_deref().unwrap_or("-"),
                             order.provider_id,
                             order.quantity,
                             format_sats_amount(order.price_sats),

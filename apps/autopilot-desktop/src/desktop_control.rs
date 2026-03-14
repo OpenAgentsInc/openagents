@@ -44,7 +44,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 7;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 8;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -74,6 +74,7 @@ pub struct DesktopControlSnapshot {
     pub wallet: DesktopControlWalletStatus,
     pub tunnels: DesktopControlTunnelsStatus,
     pub inventory: DesktopControlInventoryStatus,
+    pub buyer_procurement: DesktopControlBuyerProcurementStatus,
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub proofs: DesktopControlProofStatus,
@@ -224,6 +225,73 @@ pub struct DesktopControlTunnelsStatus {
     pub open_tunnel_count: usize,
     pub services: Vec<DesktopControlTunnelServiceStatus>,
     pub tunnels: Vec<DesktopControlTunnelStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlBuyerProcurementQuoteStatus {
+    pub quote_id: String,
+    pub rfq_id: String,
+    pub product_id: String,
+    pub provider_id: String,
+    pub compute_family: String,
+    pub backend: String,
+    pub execution: String,
+    pub topology: String,
+    pub provisioning: String,
+    pub proof_posture: String,
+    pub requested_quantity: u64,
+    pub available_quantity: u64,
+    pub price_sats: u64,
+    pub delivery_window_label: String,
+    pub environment_ref: Option<String>,
+    pub sandbox_profile_ref: Option<String>,
+    pub source_badge: String,
+    pub terms_label: String,
+    pub capability_summary: String,
+    pub collateral_summary: Option<String>,
+    pub remedy_summary: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlBuyerProcurementOrderStatus {
+    pub order_id: String,
+    pub rfq_id: String,
+    pub quote_id: String,
+    pub instrument_id: String,
+    pub product_id: String,
+    pub provider_id: String,
+    pub compute_family: String,
+    pub backend: String,
+    pub execution: String,
+    pub topology: String,
+    pub provisioning: String,
+    pub proof_posture: String,
+    pub quantity: u64,
+    pub price_sats: u64,
+    pub delivery_window_label: String,
+    pub environment_ref: Option<String>,
+    pub sandbox_profile_ref: Option<String>,
+    pub collateral_summary: Option<String>,
+    pub remedy_summary: Option<String>,
+    pub authority_status: String,
+    pub accepted_at_epoch_seconds: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlBuyerProcurementStatus {
+    pub load_state: String,
+    pub quote_mode: String,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    pub last_spot_rfq_summary: Option<String>,
+    pub last_forward_rfq_summary: Option<String>,
+    pub selected_spot_quote_id: Option<String>,
+    pub selected_forward_quote_id: Option<String>,
+    pub spot_quotes: Vec<DesktopControlBuyerProcurementQuoteStatus>,
+    pub forward_quotes: Vec<DesktopControlBuyerProcurementQuoteStatus>,
+    pub accepted_spot_orders: Vec<DesktopControlBuyerProcurementOrderStatus>,
+    pub accepted_forward_orders: Vec<DesktopControlBuyerProcurementOrderStatus>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1372,6 +1440,16 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.inventory).ok(),
         });
     }
+    if previous.is_none_or(|snapshot| snapshot.buyer_procurement != current.buyer_procurement) {
+        changed_domains.push("buyer_procurement");
+        events.push(DesktopControlEventDraft {
+            event_type: "buyer_procurement.state.changed".to_string(),
+            summary: buyer_procurement_status_summary(&current.buyer_procurement),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.buyer_procurement).ok(),
+        });
+    }
     if previous.is_none_or(|snapshot| snapshot.cluster != current.cluster) {
         changed_domains.push("cluster");
         events.push(DesktopControlEventDraft {
@@ -1701,6 +1779,18 @@ fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
 
 fn inventory_status_summary(status: &DesktopControlInventoryStatus) -> String {
     crate::provider_inventory::inventory_status_summary(status)
+}
+
+fn buyer_procurement_status_summary(status: &DesktopControlBuyerProcurementStatus) -> String {
+    format!(
+        "buyer procurement load={} mode={} spot_quotes={} forward_quotes={} accepted_spot_orders={} accepted_forward_orders={}",
+        status.load_state,
+        status.quote_mode,
+        status.spot_quotes.len(),
+        status.forward_quotes.len(),
+        status.accepted_spot_orders.len(),
+        status.accepted_forward_orders.len()
+    )
 }
 
 fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
@@ -3002,6 +3092,264 @@ fn desktop_control_challenge_status() -> DesktopControlChallengeStatus {
     }
 }
 
+fn procurement_backend_label(
+    backend_family: Option<openagents_kernel_core::compute::ComputeBackendFamily>,
+    compute_family: openagents_kernel_core::compute::ComputeFamily,
+) -> &'static str {
+    match backend_family {
+        Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+        Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => {
+            "apple_foundation_models"
+        }
+        None if matches!(
+            compute_family,
+            openagents_kernel_core::compute::ComputeFamily::SandboxExecution
+        ) =>
+        {
+            "sandbox"
+        }
+        None => "unknown",
+    }
+}
+
+fn procurement_execution_label(
+    value: Option<openagents_kernel_core::compute::ComputeExecutionKind>,
+) -> &'static str {
+    match value {
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::LocalInference) => {
+            "local_inference"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference) => {
+            "clustered_inference"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::SandboxExecution) => {
+            "sandbox_execution"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::EvaluationRun) => {
+            "evaluation_run"
+        }
+        Some(openagents_kernel_core::compute::ComputeExecutionKind::TrainingJob) => "training_job",
+        None => "unspecified",
+    }
+}
+
+fn procurement_topology_label(
+    value: Option<openagents_kernel_core::compute::ComputeTopologyKind>,
+) -> &'static str {
+    match value {
+        Some(kind) => kind.label(),
+        None => "unspecified",
+    }
+}
+
+fn procurement_provisioning_label(
+    value: Option<openagents_kernel_core::compute::ComputeProvisioningKind>,
+) -> &'static str {
+    match value {
+        Some(kind) => kind.label(),
+        None => "unspecified",
+    }
+}
+
+fn procurement_proof_posture_label(
+    value: Option<openagents_kernel_core::compute::ComputeProofPosture>,
+) -> &'static str {
+    match value {
+        Some(kind) => kind.label(),
+        None => "unspecified",
+    }
+}
+
+fn procurement_environment_ref(
+    binding: Option<&openagents_kernel_core::compute::ComputeEnvironmentBinding>,
+) -> Option<String> {
+    binding
+        .map(|binding| binding.environment_ref.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn desktop_control_procurement_spot_quote_status(
+    quote: &crate::state::operations::SpotComputeQuoteCandidate,
+    selected_quote_id: Option<&str>,
+) -> DesktopControlBuyerProcurementQuoteStatus {
+    DesktopControlBuyerProcurementQuoteStatus {
+        quote_id: quote.quote_id.clone(),
+        rfq_id: quote.rfq_id.clone(),
+        product_id: quote.product_id.clone(),
+        provider_id: quote.provider_id.clone(),
+        compute_family: quote.compute_family_label().to_string(),
+        backend: procurement_backend_label(quote.backend_family, quote.compute_family).to_string(),
+        execution: procurement_execution_label(quote.execution_kind).to_string(),
+        topology: procurement_topology_label(quote.topology_kind).to_string(),
+        provisioning: procurement_provisioning_label(quote.provisioning_kind).to_string(),
+        proof_posture: procurement_proof_posture_label(quote.proof_posture).to_string(),
+        requested_quantity: quote.requested_quantity,
+        available_quantity: quote.available_quantity,
+        price_sats: quote.price_sats,
+        delivery_window_label: quote.delivery_window_label.clone(),
+        environment_ref: procurement_environment_ref(quote.environment_binding.as_ref()),
+        sandbox_profile_ref: quote.sandbox_profile_ref.clone(),
+        source_badge: quote.source_badge.clone(),
+        terms_label: quote.terms_label.clone(),
+        capability_summary: quote.capability_summary.clone(),
+        collateral_summary: None,
+        remedy_summary: None,
+        selected: selected_quote_id == Some(quote.quote_id.as_str()),
+    }
+}
+
+fn desktop_control_procurement_forward_quote_status(
+    quote: &crate::state::operations::ForwardComputeQuoteCandidate,
+    selected_quote_id: Option<&str>,
+) -> DesktopControlBuyerProcurementQuoteStatus {
+    DesktopControlBuyerProcurementQuoteStatus {
+        quote_id: quote.quote_id.clone(),
+        rfq_id: quote.rfq_id.clone(),
+        product_id: quote.product_id.clone(),
+        provider_id: quote.provider_id.clone(),
+        compute_family: quote.compute_family_label().to_string(),
+        backend: procurement_backend_label(quote.backend_family, quote.compute_family).to_string(),
+        execution: procurement_execution_label(quote.execution_kind).to_string(),
+        topology: procurement_topology_label(quote.topology_kind).to_string(),
+        provisioning: procurement_provisioning_label(quote.provisioning_kind).to_string(),
+        proof_posture: procurement_proof_posture_label(quote.proof_posture).to_string(),
+        requested_quantity: quote.requested_quantity,
+        available_quantity: quote.available_quantity,
+        price_sats: quote.price_sats,
+        delivery_window_label: quote.delivery_window_label.clone(),
+        environment_ref: procurement_environment_ref(quote.environment_binding.as_ref()),
+        sandbox_profile_ref: quote.sandbox_profile_ref.clone(),
+        source_badge: quote.source_badge.clone(),
+        terms_label: quote.terms_label.clone(),
+        capability_summary: quote.capability_summary.clone(),
+        collateral_summary: Some(quote.collateral_summary.clone()),
+        remedy_summary: Some(quote.remedy_summary.clone()),
+        selected: selected_quote_id == Some(quote.quote_id.as_str()),
+    }
+}
+
+fn desktop_control_procurement_spot_order_status(
+    order: &crate::state::operations::AcceptedSpotComputeOrder,
+) -> DesktopControlBuyerProcurementOrderStatus {
+    DesktopControlBuyerProcurementOrderStatus {
+        order_id: order.order_id.clone(),
+        rfq_id: order.rfq_id.clone(),
+        quote_id: order.quote_id.clone(),
+        instrument_id: order.instrument_id.clone(),
+        product_id: order.product_id.clone(),
+        provider_id: order.provider_id.clone(),
+        compute_family: match order.compute_family {
+            openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
+            openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+            openagents_kernel_core::compute::ComputeFamily::SandboxExecution => "sandbox_execution",
+            openagents_kernel_core::compute::ComputeFamily::Evaluation => "evaluation",
+            openagents_kernel_core::compute::ComputeFamily::Training => "training",
+            openagents_kernel_core::compute::ComputeFamily::AdapterHosting => "adapter_hosting",
+        }
+        .to_string(),
+        backend: procurement_backend_label(order.backend_family, order.compute_family).to_string(),
+        execution: procurement_execution_label(order.execution_kind).to_string(),
+        topology: procurement_topology_label(order.topology_kind).to_string(),
+        provisioning: procurement_provisioning_label(order.provisioning_kind).to_string(),
+        proof_posture: procurement_proof_posture_label(order.proof_posture).to_string(),
+        quantity: order.quantity,
+        price_sats: order.price_sats,
+        delivery_window_label: order.delivery_window_label.clone(),
+        environment_ref: procurement_environment_ref(order.environment_binding.as_ref()),
+        sandbox_profile_ref: order.sandbox_profile_ref.clone(),
+        collateral_summary: None,
+        remedy_summary: None,
+        authority_status: order.authority_status.clone(),
+        accepted_at_epoch_seconds: order.accepted_at_epoch_seconds,
+    }
+}
+
+fn desktop_control_procurement_forward_order_status(
+    order: &crate::state::operations::AcceptedForwardComputeOrder,
+) -> DesktopControlBuyerProcurementOrderStatus {
+    DesktopControlBuyerProcurementOrderStatus {
+        order_id: order.order_id.clone(),
+        rfq_id: order.rfq_id.clone(),
+        quote_id: order.quote_id.clone(),
+        instrument_id: order.instrument_id.clone(),
+        product_id: order.product_id.clone(),
+        provider_id: order.provider_id.clone(),
+        compute_family: match order.compute_family {
+            openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
+            openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+            openagents_kernel_core::compute::ComputeFamily::SandboxExecution => "sandbox_execution",
+            openagents_kernel_core::compute::ComputeFamily::Evaluation => "evaluation",
+            openagents_kernel_core::compute::ComputeFamily::Training => "training",
+            openagents_kernel_core::compute::ComputeFamily::AdapterHosting => "adapter_hosting",
+        }
+        .to_string(),
+        backend: procurement_backend_label(order.backend_family, order.compute_family).to_string(),
+        execution: procurement_execution_label(order.execution_kind).to_string(),
+        topology: procurement_topology_label(order.topology_kind).to_string(),
+        provisioning: procurement_provisioning_label(order.provisioning_kind).to_string(),
+        proof_posture: procurement_proof_posture_label(order.proof_posture).to_string(),
+        quantity: order.quantity,
+        price_sats: order.price_sats,
+        delivery_window_label: order.delivery_window_label.clone(),
+        environment_ref: procurement_environment_ref(order.environment_binding.as_ref()),
+        sandbox_profile_ref: order.sandbox_profile_ref.clone(),
+        collateral_summary: Some(order.collateral_summary.clone()),
+        remedy_summary: Some(order.remedy_summary.clone()),
+        authority_status: order.authority_status.clone(),
+        accepted_at_epoch_seconds: order.accepted_at_epoch_seconds,
+    }
+}
+
+fn desktop_control_buyer_procurement_status(
+    requests: &crate::state::operations::NetworkRequestsState,
+) -> DesktopControlBuyerProcurementStatus {
+    DesktopControlBuyerProcurementStatus {
+        load_state: requests.load_state.label().to_string(),
+        quote_mode: requests.quote_mode.label().to_string(),
+        last_action: requests.last_action.clone(),
+        last_error: requests.last_error.clone(),
+        last_spot_rfq_summary: requests.last_spot_rfq.as_ref().map(|rfq| rfq.summary()),
+        last_forward_rfq_summary: requests.last_forward_rfq.as_ref().map(|rfq| rfq.summary()),
+        selected_spot_quote_id: requests.selected_spot_quote_id.clone(),
+        selected_forward_quote_id: requests.selected_forward_quote_id.clone(),
+        spot_quotes: requests
+            .spot_quote_candidates
+            .iter()
+            .take(8)
+            .map(|quote| {
+                desktop_control_procurement_spot_quote_status(
+                    quote,
+                    requests.selected_spot_quote_id.as_deref(),
+                )
+            })
+            .collect(),
+        forward_quotes: requests
+            .forward_quote_candidates
+            .iter()
+            .take(8)
+            .map(|quote| {
+                desktop_control_procurement_forward_quote_status(
+                    quote,
+                    requests.selected_forward_quote_id.as_deref(),
+                )
+            })
+            .collect(),
+        accepted_spot_orders: requests
+            .accepted_spot_orders
+            .iter()
+            .take(8)
+            .map(desktop_control_procurement_spot_order_status)
+            .collect(),
+        accepted_forward_orders: requests
+            .accepted_forward_orders
+            .iter()
+            .take(8)
+            .map(desktop_control_procurement_forward_order_status)
+            .collect(),
+    }
+}
+
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
     let now = Instant::now();
     let now_epoch_seconds = current_epoch_seconds();
@@ -3044,6 +3392,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         .collect::<Vec<_>>();
     let local_runtime = desktop_control_local_runtime_status(state);
     let inventory = crate::provider_inventory::inventory_status_for_state(state);
+    let buyer_procurement = desktop_control_buyer_procurement_status(&state.network_requests);
     let gpt_oss = desktop_control_gpt_oss_status(state);
 
     let mut snapshot = DesktopControlSnapshot {
@@ -3105,6 +3454,7 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         },
         tunnels: DesktopControlTunnelsStatus::default(),
         inventory,
+        buyer_procurement,
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         proofs: desktop_control_proof_status(),
@@ -3788,17 +4138,19 @@ mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
-        DesktopControlBuyModeTargetSelectionStatus, DesktopControlChallengeStatus,
-        DesktopControlClusterStatus, DesktopControlEventBatch, DesktopControlEventDraft,
-        DesktopControlGptOssStatus, DesktopControlInventoryProjectionStatus,
-        DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
-        DesktopControlLocalRuntimeStatus, DesktopControlMissionControlStatus,
-        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, apply_response_snapshot_metadata,
-        command_outcome_event, command_received_event, snapshot_change_events,
-        snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlBuyModeTargetSelectionStatus, DesktopControlBuyerProcurementOrderStatus,
+        DesktopControlBuyerProcurementQuoteStatus, DesktopControlBuyerProcurementStatus,
+        DesktopControlChallengeStatus, DesktopControlClusterStatus, DesktopControlEventBatch,
+        DesktopControlEventDraft, DesktopControlGptOssStatus,
+        DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
+        DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
+        DesktopControlMissionControlStatus, DesktopControlProofStatus,
+        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
+        DesktopControlWalletStatus, apply_response_snapshot_metadata, command_outcome_event,
+        command_received_event, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -4005,6 +4357,70 @@ mod tests {
                     },
                 ],
             },
+            buyer_procurement: DesktopControlBuyerProcurementStatus {
+                load_state: "ready".to_string(),
+                quote_mode: "spot".to_string(),
+                last_action: Some("Loaded 1 compute quote for rfq=rfq-spot-1".to_string()),
+                last_error: None,
+                last_spot_rfq_summary: Some(
+                    "rfq=rfq-spot-1 family=inference backend=gpt_oss qty=1 window=15m max_price=34 sats constraints=none"
+                        .to_string(),
+                ),
+                last_forward_rfq_summary: None,
+                selected_spot_quote_id: Some("quote-spot-1".to_string()),
+                selected_forward_quote_id: None,
+                spot_quotes: vec![DesktopControlBuyerProcurementQuoteStatus {
+                    quote_id: "quote-spot-1".to_string(),
+                    rfq_id: "rfq-spot-1".to_string(),
+                    product_id: "psionic.local.inference.gpt_oss.single_node".to_string(),
+                    provider_id: "npub1provider".to_string(),
+                    compute_family: "inference".to_string(),
+                    backend: "gpt_oss".to_string(),
+                    execution: "local_inference".to_string(),
+                    topology: "single_node".to_string(),
+                    provisioning: "desktop_local".to_string(),
+                    proof_posture: "delivery_proof_only".to_string(),
+                    requested_quantity: 1,
+                    available_quantity: 2,
+                    price_sats: 21,
+                    delivery_window_label: "15m".to_string(),
+                    environment_ref: None,
+                    sandbox_profile_ref: None,
+                    source_badge: "desktop.go_online".to_string(),
+                    terms_label: "spot session / local best effort".to_string(),
+                    capability_summary:
+                        "backend=gpt_oss execution=local_inference family=inference"
+                            .to_string(),
+                    collateral_summary: None,
+                    remedy_summary: None,
+                    selected: true,
+                }],
+                forward_quotes: Vec::new(),
+                accepted_spot_orders: vec![DesktopControlBuyerProcurementOrderStatus {
+                    order_id: "spot-order-1".to_string(),
+                    rfq_id: "rfq-spot-1".to_string(),
+                    quote_id: "quote-spot-1".to_string(),
+                    instrument_id: "instrument-spot-1".to_string(),
+                    product_id: "psionic.local.inference.gpt_oss.single_node".to_string(),
+                    provider_id: "npub1provider".to_string(),
+                    compute_family: "inference".to_string(),
+                    backend: "gpt_oss".to_string(),
+                    execution: "local_inference".to_string(),
+                    topology: "single_node".to_string(),
+                    provisioning: "desktop_local".to_string(),
+                    proof_posture: "delivery_proof_only".to_string(),
+                    quantity: 1,
+                    price_sats: 21,
+                    delivery_window_label: "15m".to_string(),
+                    environment_ref: None,
+                    sandbox_profile_ref: None,
+                    collateral_summary: None,
+                    remedy_summary: None,
+                    authority_status: "spot-accepted".to_string(),
+                    accepted_at_epoch_seconds: 1_762_000_000,
+                }],
+                accepted_forward_orders: Vec::new(),
+            },
             cluster: DesktopControlClusterStatus {
                 available: false,
                 topology_label: "not_integrated".to_string(),
@@ -4081,6 +4497,25 @@ mod tests {
         assert!(inventory.summary.contains("inventory authority=local_only"));
         assert_eq!(inventory.command_label, None);
         assert_eq!(inventory.success, None);
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_buyer_procurement_event_when_quote_truth_changes() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        current.buyer_procurement.quote_mode = "forward_physical".to_string();
+        current.buyer_procurement.last_forward_rfq_summary =
+            Some("rfq=rfq-forward-1 family=sandbox_execution".to_string());
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        let procurement = events
+            .iter()
+            .find(|event| event.event_type == "buyer_procurement.state.changed")
+            .expect("buyer procurement change event should be emitted");
+
+        assert!(procurement.summary.contains("buyer procurement load=ready"));
+        assert_eq!(procurement.command_label, None);
+        assert_eq!(procurement.success, None);
     }
 
     #[test]

@@ -1002,6 +1002,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Mission Control stays simple; advanced panes show the full inventory truth.
 
 41. **Desktop: add buyer RFQ and quote-selection flows for clustered and sandbox compute**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3525`.
    - Build human-legible buyer procurement for the new compute families rather than relying only on hidden automation.
    - The resulting flow should terminate in canonical lots and instruments.
 
