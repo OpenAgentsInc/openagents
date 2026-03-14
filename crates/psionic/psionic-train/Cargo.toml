@@ -1,0 +1,23 @@
+[package]
+name = "psionic-train"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Training checkpoint, recovery, and elastic membership substrate for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hex = { workspace = true }
+psionic-cluster = { path = "../psionic-cluster" }
+psionic-datastream = { path = "../psionic-datastream" }
+psionic-runtime = { path = "../psionic-runtime" }
+serde = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
