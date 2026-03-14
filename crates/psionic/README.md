@@ -80,6 +80,10 @@ Implemented now:
   unfinished APIs still refused explicitly.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
+- Psionic-owned local structured-output fallback on the generic server via
+  `psionic_grammar` plus OpenAI-style `response_format` for `json_object` and a
+  useful `json_schema` subset, with explicit response headers and refusal on
+  unsupported schema features instead of hidden prompt-only conventions.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded

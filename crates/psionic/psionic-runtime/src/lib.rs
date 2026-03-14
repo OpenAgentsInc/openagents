@@ -4,6 +4,7 @@ mod activation_fingerprint;
 mod gpt_oss;
 mod parity;
 mod proof;
+mod structured_output;
 mod validation;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -21,6 +22,7 @@ use psionic_ir::ExecutionPlan;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+pub use structured_output::*;
 use thiserror::Error;
 pub use validation::*;
 
@@ -10880,7 +10882,7 @@ mod tests {
                     ]
                 },
                 "cache_invalidation_policy": {
-                    "runtime_binary_version": "0.1.0",
+                    "runtime_binary_version": env!("CARGO_PKG_VERSION"),
                     "execution_plan": {
                         "scope": "process_local",
                         "format_version": 1,

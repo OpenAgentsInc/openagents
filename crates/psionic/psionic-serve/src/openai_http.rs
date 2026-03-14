@@ -31,6 +31,10 @@ use psionic_models::{
     PromptMessage, PromptMessageRole, PromptReasoningEffort, PromptRenderOptions,
     parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
 };
+use psionic_runtime::{
+    StructuredGrammarSyntax, StructuredOutputExecutionReport, StructuredOutputParser,
+    StructuredOutputRequest, local_structured_output_parsers,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -62,6 +66,13 @@ const CPU_SERVER_LOAD_STATUS: &str = "loaded";
 const CPU_SERVER_WARM_CONTROL: &str = "not_implemented";
 const CPU_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
 const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
+
+fn structured_output_parser_labels() -> Vec<&'static str> {
+    local_structured_output_parsers()
+        .into_iter()
+        .map(StructuredOutputParser::label)
+        .collect()
+}
 
 fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
     LocalBlobOpenOptions::default().with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel)
@@ -1121,6 +1132,8 @@ struct ModelCard {
     psionic_fallback_policy: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_performance_class: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_structured_outputs: Option<Vec<&'static str>>,
 }
 
 async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<ModelsResponse> {
@@ -1134,6 +1147,7 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             psionic_hybrid_offload: None,
             psionic_fallback_policy: None,
             psionic_performance_class: None,
+            psionic_structured_outputs: None,
         }],
     })
 }
@@ -1154,6 +1168,7 @@ struct GenericHealthResponse {
     warm_control: &'static str,
     unload_control: &'static str,
     memory_pressure_reporting: &'static str,
+    structured_output_fallbacks: Vec<&'static str>,
 }
 
 async fn generic_health(
@@ -1174,6 +1189,7 @@ async fn generic_health(
         warm_control: CPU_SERVER_WARM_CONTROL,
         unload_control: CPU_SERVER_UNLOAD_CONTROL,
         memory_pressure_reporting: CPU_SERVER_MEMORY_PRESSURE_REPORTING,
+        structured_output_fallbacks: structured_output_parser_labels(),
     })
 }
 
@@ -1191,6 +1207,7 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 psionic_hybrid_offload: Some(CPU_SERVER_HYBRID_OFFLOAD_MODE),
                 psionic_fallback_policy: Some(CPU_SERVER_FALLBACK_POLICY),
                 psionic_performance_class: Some(CPU_SERVER_PERFORMANCE_CLASS),
+                psionic_structured_outputs: Some(structured_output_parser_labels()),
             })
             .collect(),
     })
@@ -1209,6 +1226,10 @@ struct ChatCompletionRequest {
     stop: Option<StopSequences>,
     #[serde(default)]
     stream: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    response_format: Option<ChatCompletionResponseFormatRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_grammar: Option<PsionicGrammarRequest>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1227,12 +1248,90 @@ enum StopSequences {
     Many(Vec<String>),
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ChatCompletionResponseFormatRequest {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    json_schema: Option<ChatCompletionJsonSchemaRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schema: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ChatCompletionJsonSchemaRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    schema: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    strict: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PsionicGrammarRequest {
+    grammar: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    syntax: Option<StructuredGrammarSyntax>,
+}
+
 impl StopSequences {
     fn into_vec(self) -> Vec<String> {
         match self {
             Self::One(value) => vec![value],
             Self::Many(values) => values,
         }
+    }
+}
+
+fn structured_output_from_chat_request(
+    request: &ChatCompletionRequest,
+) -> Result<Option<StructuredOutputRequest>, OpenAiCompatHttpError> {
+    if request.response_format.is_some() && request.psionic_grammar.is_some() {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "structured output fallback accepts either `response_format` or `psionic_grammar`, not both",
+        )));
+    }
+
+    if let Some(grammar) = &request.psionic_grammar {
+        if grammar.grammar.trim().is_empty() {
+            return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                "`psionic_grammar.grammar` must not be empty",
+            )));
+        }
+        return Ok(Some(StructuredOutputRequest::Grammar {
+            syntax: grammar.syntax.unwrap_or(StructuredGrammarSyntax::Gbnf),
+            grammar: grammar.grammar.clone(),
+        }));
+    }
+
+    let Some(response_format) = &request.response_format else {
+        return Ok(None);
+    };
+    match response_format.kind.as_str() {
+        "json_object" => {
+            if let Some(schema) = response_format.schema.as_ref() {
+                Ok(Some(StructuredOutputRequest::JsonSchema {
+                    name: None,
+                    schema: schema.clone(),
+                }))
+            } else {
+                Ok(Some(StructuredOutputRequest::JsonObject))
+            }
+        }
+        "json_schema" => {
+            let Some(schema) = response_format.json_schema.as_ref() else {
+                return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                    "`response_format.type = json_schema` requires a `json_schema` object",
+                )));
+            };
+            Ok(Some(StructuredOutputRequest::JsonSchema {
+                name: schema.name.clone(),
+                schema: schema.schema.clone(),
+            }))
+        }
+        other => Err(OpenAiCompatHttpError::BadRequest(format!(
+            "unsupported `response_format.type` `{other}` for local structured output fallback"
+        ))),
     }
 }
 
@@ -1250,6 +1349,11 @@ async fn handle_chat_completions(
     state: Arc<GptOssOpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
+    if structured_output_from_chat_request(&request)?.is_some() {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "structured output fallback is only available on `psionic-openai-server` today",
+        )));
+    }
     if let Some(proxy) = state.proxy.as_ref() {
         return proxy_chat_completions(state.as_ref(), proxy, &request).await;
     }
@@ -1378,6 +1482,7 @@ async fn handle_chat_completions(
                 .map(|token| token.as_u32())
                 .collect()
         }),
+        psionic_structured_output: None,
     })
     .into_response();
     insert_execution_headers(response.headers_mut(), state.as_ref());
@@ -1399,6 +1504,7 @@ async fn handle_generic_chat_completions(
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
     let model = resolve_generic_model(state.as_ref(), request.model.as_deref())?;
+    let structured_output = structured_output_from_chat_request(&request)?;
     let prompt_messages =
         chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
     let rendered = render_prompt_for_model(model, prompt_messages.as_slice())?;
@@ -1412,6 +1518,8 @@ async fn handle_generic_chat_completions(
         model.family,
         rendered.stop_sequences.as_slice(),
     );
+    let mut options = options;
+    options.structured_output = structured_output;
     let generation_request = GenerationRequest::new_text(
         request_id.clone(),
         model.descriptor.clone(),
@@ -1441,6 +1549,10 @@ async fn handle_generic_chat_completions(
             None
         };
     let choice = completion_choice_for_family(model.family, &response, parsed.clone());
+    let structured_output_report = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.structured_output.clone());
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
             request_id.as_str(),
@@ -1461,7 +1573,11 @@ async fn handle_generic_chat_completions(
             Ok::<_, Infallible>(Event::default().data("[DONE]")),
         ];
         let mut response = Sse::new(iter(events)).into_response();
-        insert_generic_execution_headers(response.headers_mut(), state.as_ref());
+        insert_generic_execution_headers(
+            response.headers_mut(),
+            state.as_ref(),
+            structured_output_report.as_ref(),
+        );
         return Ok(response);
     }
 
@@ -1501,9 +1617,17 @@ async fn handle_generic_chat_completions(
                 .map(|token| token.as_u32())
                 .collect()
         }),
+        psionic_structured_output: response
+            .provenance
+            .as_ref()
+            .and_then(|value| value.structured_output.clone()),
     };
     let mut response = Json(body).into_response();
-    insert_generic_execution_headers(response.headers_mut(), state.as_ref());
+    insert_generic_execution_headers(
+        response.headers_mut(),
+        state.as_ref(),
+        structured_output_report.as_ref(),
+    );
     Ok(response)
 }
 
@@ -1588,6 +1712,8 @@ struct ChatCompletionResponse {
     psionic_output_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_output_tokens: Option<Vec<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_structured_output: Option<StructuredOutputExecutionReport>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1734,7 +1860,11 @@ fn next_generic_request_id(state: &OpenAiCompatState) -> String {
     format!("psionic-chatcmpl-{next}")
 }
 
-fn insert_generic_execution_headers(headers: &mut HeaderMap, state: &OpenAiCompatState) {
+fn insert_generic_execution_headers(
+    headers: &mut HeaderMap,
+    state: &OpenAiCompatState,
+    structured_output: Option<&StructuredOutputExecutionReport>,
+) {
     headers.insert(
         HeaderName::from_static("x-psionic-backend"),
         HeaderValue::from_static(state.backend_label),
@@ -1762,6 +1892,24 @@ fn insert_generic_execution_headers(headers: &mut HeaderMap, state: &OpenAiCompa
     headers.insert(
         HeaderName::from_static("x-psionic-performance-class"),
         HeaderValue::from_static(CPU_SERVER_PERFORMANCE_CLASS),
+    );
+    insert_structured_output_headers(headers, structured_output);
+}
+
+fn insert_structured_output_headers(
+    headers: &mut HeaderMap,
+    structured_output: Option<&StructuredOutputExecutionReport>,
+) {
+    let Some(structured_output) = structured_output else {
+        return;
+    };
+    headers.insert(
+        HeaderName::from_static("x-psionic-structured-output-mode"),
+        HeaderValue::from_static(structured_output.mode.label()),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-structured-output-parser"),
+        HeaderValue::from_static(structured_output.parser.label()),
     );
 }
 
@@ -2131,23 +2279,32 @@ struct OpenAiErrorBody {
 mod tests {
     use super::{
         CPU_SERVER_FALLBACK_POLICY, CPU_SERVER_HYBRID_OFFLOAD_MODE, CPU_SERVER_RESIDENCY_MODE,
-        ChatCompletionMessage, ChatCompletionRequest, GptOssMetalExecutionMode,
-        GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, OpenAiCompatConfig,
-        OpenAiCompatServer, PromptTokenCache, chat_messages_to_prompt_messages,
+        ChatCompletionJsonSchemaRequest, ChatCompletionMessage, ChatCompletionRequest,
+        ChatCompletionResponseFormatRequest, GptOssMetalExecutionMode, GptOssOpenAiCompatBackend,
+        HARMONY_CALL_STOP, HARMONY_RETURN_STOP, OpenAiCompatConfig, OpenAiCompatServer,
+        PromptTokenCache, PsionicGrammarRequest, chat_messages_to_prompt_messages,
         chat_messages_to_prompt_messages_for_family, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
         generation_options_from_chat_request, generation_options_from_chat_request_for_family,
-        generic_health, generic_list_models, prompt_request_cache_key, render_prompt_for_model,
-        resolve_execution_summary, resolve_generic_model,
+        generic_health, generic_list_models, handle_generic_chat_completions,
+        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
+        resolve_generic_model,
     };
-    use axum::extract::State;
     use crate::GenerationRequest;
+    use axum::{
+        Json,
+        body::to_bytes,
+        extract::State,
+        http::{HeaderMap, StatusCode},
+        response::Response,
+    };
     use psionic_models::{
         GgufDecoderFamily, GgufMetadataValue, GgufTensorType, GptOssHarmonyParseSource,
         GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, PromptChannelConfig, PromptMessage,
         PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, TokenId, TokenSequence,
         render_gpt_oss_harmony_prompt,
     };
+    use psionic_runtime::StructuredGrammarSyntax;
 
     #[test]
     fn chat_messages_map_to_prompt_messages() {
@@ -2278,6 +2435,8 @@ mod tests {
             max_tokens: Some(64),
             stop: None,
             stream: false,
+            response_format: None,
+            psionic_grammar: None,
         });
 
         assert!(
@@ -2493,6 +2652,10 @@ mod tests {
         assert_eq!(health.0.residency_mode, CPU_SERVER_RESIDENCY_MODE);
         assert_eq!(health.0.fallback_policy, CPU_SERVER_FALLBACK_POLICY);
         assert_eq!(health.0.hybrid_offload, CPU_SERVER_HYBRID_OFFLOAD_MODE);
+        assert_eq!(
+            health.0.structured_output_fallbacks,
+            vec!["gbnf_subset", "json_schema_subset", "json_object"]
+        );
         let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
             std::sync::Arc::clone(&server.state),
         )));
@@ -2503,6 +2666,14 @@ mod tests {
                 .data
                 .iter()
                 .all(|model| model.psionic_residency_mode == Some(CPU_SERVER_RESIDENCY_MODE))
+        );
+        assert!(
+            models
+                .0
+                .data
+                .iter()
+                .all(|model| model.psionic_structured_outputs.as_deref()
+                    == Some(["gbnf_subset", "json_schema_subset", "json_object"].as_slice()))
         );
 
         let request = ChatCompletionRequest {
@@ -2516,6 +2687,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            response_format: None,
+            psionic_grammar: None,
         };
         let prompt_messages =
             chat_messages_to_prompt_messages_for_family(&request.messages, qwen_model.family)?;
@@ -2567,6 +2740,8 @@ mod tests {
             max_tokens: Some(1),
             stop: None,
             stream: false,
+            response_format: None,
+            psionic_grammar: None,
         };
         let prompt_messages =
             chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
@@ -2590,6 +2765,194 @@ mod tests {
         )?;
         assert_eq!(response.usage.output_tokens, 1);
         Ok(())
+    }
+
+    #[test]
+    fn generic_server_grammar_fallback_is_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny grammar llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let request = ChatCompletionRequest {
+            model: Some(String::from("tiny-llama")),
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+            response_format: None,
+            psionic_grammar: Some(PsionicGrammarRequest {
+                grammar: String::from("root ::= \"psionic\"\n"),
+                syntax: Some(StructuredGrammarSyntax::Gbnf),
+            }),
+        };
+
+        let response = tokio::runtime::Runtime::new()?.block_on(
+            handle_generic_chat_completions(std::sync::Arc::clone(&server.state), request),
+        )?;
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-structured-output-mode"),
+            Some(String::from("fallback_grammar"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-structured-output-parser"),
+            Some(String::from("gbnf_subset"))
+        );
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["choices"][0]["message"]["content"], "psionic");
+        assert_eq!(
+            payload["psionic_structured_output"]["mode"],
+            serde_json::json!("fallback_grammar")
+        );
+        assert_eq!(
+            payload["psionic_structured_output"]["parser"],
+            serde_json::json!("gbnf_subset")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_json_schema_fallback_is_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-json-llama.gguf");
+        write_test_gguf(
+            &path,
+            json_llama_metadata("tiny json llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 8, 3, 6).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let request = ChatCompletionRequest {
+            model: Some(String::from("tiny-json-llama")),
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+            response_format: Some(ChatCompletionResponseFormatRequest {
+                kind: String::from("json_schema"),
+                json_schema: Some(ChatCompletionJsonSchemaRequest {
+                    name: Some(String::from("ok_object")),
+                    schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "ok": { "type": "boolean" }
+                        },
+                        "required": ["ok"],
+                        "additionalProperties": false
+                    }),
+                    strict: Some(true),
+                }),
+                schema: None,
+            }),
+            psionic_grammar: None,
+        };
+
+        let response = tokio::runtime::Runtime::new()?.block_on(
+            handle_generic_chat_completions(std::sync::Arc::clone(&server.state), request),
+        )?;
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-structured-output-mode"),
+            Some(String::from("fallback_json_schema"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-structured-output-parser"),
+            Some(String::from("json_schema_subset"))
+        );
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["choices"][0]["message"]["content"], "{\"ok\":true}");
+        assert_eq!(
+            payload["psionic_structured_output"]["mode"],
+            serde_json::json!("fallback_json_schema")
+        );
+        assert_eq!(
+            payload["psionic_structured_output"]["schema_name"],
+            serde_json::json!("ok_object")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_refuses_unsupported_json_schema_features()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-json-llama.gguf");
+        write_test_gguf(
+            &path,
+            json_llama_metadata("tiny json llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 8, 3, 6).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let request = ChatCompletionRequest {
+            model: Some(String::from("tiny-json-llama")),
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+            response_format: Some(ChatCompletionResponseFormatRequest {
+                kind: String::from("json_schema"),
+                json_schema: Some(ChatCompletionJsonSchemaRequest {
+                    name: None,
+                    schema: serde_json::json!({
+                        "type": "string",
+                        "pattern": "^ok$"
+                    }),
+                    strict: Some(true),
+                }),
+                schema: None,
+            }),
+            psionic_grammar: None,
+        };
+
+        let response = tokio::runtime::Runtime::new()?.block_on(super::generic_chat_completions(
+            State(std::sync::Arc::clone(&server.state)),
+            Json(request),
+        ));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("pattern"),
+            "unsupported schema feature should be reported explicitly"
+        );
+        Ok(())
+    }
+
+    async fn response_json(
+        response: Response,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let body = to_bytes(response.into_body(), usize::MAX).await?;
+        Ok(serde_json::from_slice(body.as_ref())?)
+    }
+
+    fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(String::from)
     }
 
     #[derive(Clone, Debug)]
@@ -2619,6 +2982,21 @@ mod tests {
     fn dense_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
         let mut metadata = dense_family_header("llama", name);
         metadata.extend(sentencepiece_tokenizer_metadata_entries());
+        metadata
+    }
+
+    fn json_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("llama", name);
+        metadata.extend(sentencepiece_tokenizer_metadata_entries_with_tokens(vec![
+            "<unk>",
+            "<s>",
+            "</s>",
+            "hello",
+            "world",
+            "psionic",
+            "{\"ok\":true}",
+            "{\"ok\":false}",
+        ]));
         metadata
     }
 
@@ -2674,6 +3052,14 @@ mod tests {
     }
 
     fn sentencepiece_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        sentencepiece_tokenizer_metadata_entries_with_tokens(vec![
+            "<unk>", "<s>", "</s>", "hello", "world", "psionic",
+        ])
+    }
+
+    fn sentencepiece_tokenizer_metadata_entries_with_tokens(
+        tokens: Vec<&str>,
+    ) -> Vec<(String, GgufMetadataValue)> {
         vec![
             (
                 String::from("tokenizer.ggml.model"),
@@ -2681,14 +3067,12 @@ mod tests {
             ),
             (
                 String::from("tokenizer.ggml.tokens"),
-                GgufMetadataValue::Array(vec![
-                    GgufMetadataValue::String(String::from("<unk>")),
-                    GgufMetadataValue::String(String::from("<s>")),
-                    GgufMetadataValue::String(String::from("</s>")),
-                    GgufMetadataValue::String(String::from("hello")),
-                    GgufMetadataValue::String(String::from("world")),
-                    GgufMetadataValue::String(String::from("psionic")),
-                ]),
+                GgufMetadataValue::Array(
+                    tokens
+                        .into_iter()
+                        .map(|token| GgufMetadataValue::String(String::from(token)))
+                        .collect(),
+                ),
             ),
             (
                 String::from("tokenizer.ggml.bos_token_id"),
@@ -2768,17 +3152,26 @@ mod tests {
         hello_token_index: usize,
         world_token_index: usize,
     ) -> Vec<TestGgufTensor> {
+        dense_decoder_tensors_with_vocab(include_qkv_bias, 6, hello_token_index, world_token_index)
+    }
+
+    fn dense_decoder_tensors_with_vocab(
+        include_qkv_bias: bool,
+        vocab_size: usize,
+        hello_token_index: usize,
+        output_token_index: usize,
+    ) -> Vec<TestGgufTensor> {
         let mut tensors = vec![
             dense_tensor(
                 "token_embd.weight",
-                vec![6, 4],
-                token_embedding_values(hello_token_index),
+                vec![vocab_size, 4],
+                token_embedding_values(vocab_size, hello_token_index),
             ),
             dense_tensor("output_norm.weight", vec![4], vec![1.0, 1.0, 1.0, 1.0]),
             dense_tensor(
                 "output.weight",
-                vec![6, 4],
-                output_values(world_token_index),
+                vec![vocab_size, 4],
+                output_values(vocab_size, output_token_index),
             ),
             dense_tensor("blk.0.attn_norm.weight", vec![4], vec![1.0, 1.0, 1.0, 1.0]),
             dense_tensor("blk.0.attn_q.weight", vec![4, 4], vec![0.0; 16]),
@@ -2798,15 +3191,15 @@ mod tests {
         tensors
     }
 
-    fn token_embedding_values(hello_token_index: usize) -> Vec<f32> {
-        let mut values = vec![0.0; 6 * 4];
+    fn token_embedding_values(vocab_size: usize, hello_token_index: usize) -> Vec<f32> {
+        let mut values = vec![0.0; vocab_size * 4];
         values[hello_token_index.saturating_mul(4)] = 2.0;
         values
     }
 
-    fn output_values(world_token_index: usize) -> Vec<f32> {
-        let mut values = vec![0.0; 6 * 4];
-        values[world_token_index.saturating_mul(4)] = 1.0;
+    fn output_values(vocab_size: usize, output_token_index: usize) -> Vec<f32> {
+        let mut values = vec![0.0; vocab_size * 4];
+        values[output_token_index.saturating_mul(4)] = 1.0;
         values
     }
 

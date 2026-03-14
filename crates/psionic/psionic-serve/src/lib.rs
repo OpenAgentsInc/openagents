@@ -71,8 +71,9 @@ use psionic_runtime::{
     QuantizationDispatchDecision, QuantizationDispatchRequest, QuantizationDispatchWorkload,
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
-    ShardedModelManifestError, TokenSampler, default_cache_invalidation_policy,
-    plan_model_admission, select_argmax_token,
+    ShardedModelManifestError, StructuredOutputError, StructuredOutputExecutionReport,
+    StructuredOutputMatchStatus, StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
+    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -913,6 +914,9 @@ pub struct GenerationOptions {
     /// Explicit stop sequences to truncate from generated text.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop_sequences: Vec<String>,
+    /// Optional structured-output fallback contract enforced by Psionic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured_output: Option<StructuredOutputRequest>,
 }
 
 impl GenerationOptions {
@@ -931,6 +935,7 @@ impl GenerationOptions {
             frequency_penalty: None,
             seed: None,
             stop_sequences: Vec::new(),
+            structured_output: None,
         }
     }
 
@@ -1485,6 +1490,9 @@ pub struct GenerationProvenance {
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+    /// Structured-output fallback report when the request used constrained generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured_output: Option<StructuredOutputExecutionReport>,
 }
 
 impl GenerationProvenance {
@@ -3450,6 +3458,12 @@ pub enum ReferenceTextGenerationError {
     /// CPU runtime execution failed.
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    /// Structured-output fallback request compilation failed.
+    #[error(transparent)]
+    StructuredOutput(#[from] StructuredOutputError),
+    /// The constrained generation fallback could not find a valid continuation.
+    #[error("structured output fallback could not find a valid continuation")]
+    StructuredOutputExhausted,
     /// An expected graph output was missing.
     #[error("missing graph output `{0}`")]
     MissingOutput(&'static str),
@@ -3485,6 +3499,16 @@ impl ReferenceTextGenerationError {
             Self::UnsupportedCacheGeometry { .. } => LocalRuntimeDiagnostic::new(
                 LocalRuntimeErrorCode::UnsupportedCapability,
                 503,
+                self.to_string(),
+            ),
+            Self::StructuredOutput(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedCapability,
+                400,
+                self.to_string(),
+            ),
+            Self::StructuredOutputExhausted => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidOutput,
+                422,
                 self.to_string(),
             ),
             Self::Model(error) => model_load_error_diagnostic(error),
@@ -4587,30 +4611,93 @@ pub type MetalProductTextGenerationService = MetalModelTextGenerationService;
 
 struct GenerationSampler {
     sampler: TokenSampler,
+    structured_output: Option<StructuredOutputMatcher>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GenerationSelection {
+    Token(TokenId),
+    Terminate,
 }
 
 impl GenerationSampler {
-    fn new(options: &GenerationOptions) -> Self {
-        Self {
+    fn new(options: &GenerationOptions) -> Result<Self, ReferenceTextGenerationError> {
+        Ok(Self {
             sampler: TokenSampler::new(&options.sampling_policy()),
-        }
+            structured_output: options
+                .structured_output
+                .clone()
+                .map(StructuredOutputMatcher::compile)
+                .transpose()?,
+        })
     }
 
-    fn select_next_token(&mut self, logits: &[f32], cache: &InMemoryKvCache) -> Option<TokenId> {
+    fn select_next_token(
+        &mut self,
+        tokenizer: &dyn TokenizerBoundary,
+        logits: &[f32],
+        cache: &InMemoryKvCache,
+        generated_tokens: &[TokenId],
+    ) -> Result<GenerationSelection, ReferenceTextGenerationError> {
         let history = cache
             .entries()
             .iter()
             .map(|entry| entry.token.as_u32())
             .collect::<Vec<_>>();
-        self.select_next_token_from_history(logits, &history)
+        self.select_next_token_from_history(tokenizer, logits, &history, generated_tokens)
     }
 
     fn select_next_token_from_history(
         &mut self,
+        tokenizer: &dyn TokenizerBoundary,
         logits: &[f32],
         history: &[u32],
-    ) -> Option<TokenId> {
-        self.sampler.select_next_token(logits, history).map(TokenId)
+        generated_tokens: &[TokenId],
+    ) -> Result<GenerationSelection, ReferenceTextGenerationError> {
+        let Some(matcher) = self.structured_output.as_ref() else {
+            return self
+                .sampler
+                .select_next_token(logits, history)
+                .map(TokenId)
+                .map_or(
+                    Err(ReferenceTextGenerationError::MissingOutput("next_token")),
+                    |token| Ok(GenerationSelection::Token(token)),
+                );
+        };
+
+        let current_text = tokenizer.decode(generated_tokens);
+        let current_match = matcher.classify(current_text.as_str());
+        if matcher.prefers_completion_termination()
+            && matches!(current_match.status, StructuredOutputMatchStatus::Complete)
+            && !current_match.can_continue
+        {
+            return Ok(GenerationSelection::Terminate);
+        }
+
+        let mut masked_logits = logits.to_vec();
+        for _ in 0..masked_logits.len() {
+            let Some(candidate) = self.sampler.select_next_token(&masked_logits, history) else {
+                return Err(ReferenceTextGenerationError::StructuredOutputExhausted);
+            };
+            let mut candidate_tokens = generated_tokens.to_vec();
+            candidate_tokens.push(TokenId(candidate));
+            let candidate_text = tokenizer.decode(candidate_tokens.as_slice());
+            let matched = matcher.classify(candidate_text.as_str());
+            if matched.is_allowed() {
+                return Ok(GenerationSelection::Token(TokenId(candidate)));
+            }
+            let index = candidate as usize;
+            if let Some(logit) = masked_logits.get_mut(index) {
+                *logit = f32::NEG_INFINITY;
+            }
+        }
+        Err(ReferenceTextGenerationError::StructuredOutputExhausted)
+    }
+
+    fn structured_output_report(&self) -> Option<StructuredOutputExecutionReport> {
+        self.structured_output
+            .as_ref()
+            .map(StructuredOutputMatcher::execution_report)
     }
 }
 
@@ -4887,7 +4974,7 @@ where
                 context_window,
                 previous_kv_state,
                 cache,
-                sampler: GenerationSampler::new(&request.options),
+                sampler: GenerationSampler::new(&request.options)?,
                 session_tokens,
                 prompt_tokens,
                 prefix_policy,
@@ -4991,6 +5078,7 @@ where
                 &self.previous_kv_state,
                 self.prefix_state,
             ),
+            structured_output: self.sampler.structured_output_report(),
         };
         GenerationResponse::new(
             &self.request,
@@ -5130,27 +5218,32 @@ where
                 ));
             }
 
-            let next_token = match self
-                .sampler
-                .select_next_token(&self.last_logits, &self.cache)
-            {
-                Some(token) => token,
-                None => {
+            let next_token = match self.sampler.select_next_token(
+                self.loaded_model.model().tokenizer(),
+                &self.last_logits,
+                &self.cache,
+                self.generated_tokens.as_slice(),
+            ) {
+                Ok(GenerationSelection::Token(token)) => token,
+                Ok(GenerationSelection::Terminate) => {
+                    return Some(self.emit_terminal_or_chunk(
+                        GenerationStreamStatus::Succeeded,
+                        TerminationReason::EndOfSequence,
+                        None,
+                        None,
+                    ));
+                }
+                Err(error) => {
                     return Some(
                         self.emit_terminal_or_chunk(
                             GenerationStreamStatus::Failed,
                             TerminationReason::Error,
-                            Some(String::from("missing next token")),
-                            Some(diagnostic_with_request_context(
-                                LocalRuntimeDiagnostic::new(
-                                    LocalRuntimeErrorCode::InvalidOutput,
-                                    500,
-                                    "missing next token",
-                                )
-                                .with_backend("cpu"),
-                                &self.request.product_id,
-                                &self.request.model.model.model_id,
-                            )),
+                            Some(error.to_string()),
+                            Some(
+                                error
+                                    .diagnostic_for_request(&self.request)
+                                    .with_backend("cpu"),
+                            ),
                         ),
                     );
                 }
@@ -5443,7 +5536,8 @@ where
         let prompt_cache = (shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len())
             .then(|| cache.clone());
 
-        let mut sampler = GenerationSampler::new(&request.options);
+        let mut sampler = GenerationSampler::new(&request.options)?;
+        let structured_output_report = sampler.structured_output_report();
         let mut generated_tokens = Vec::new();
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
@@ -5453,9 +5547,15 @@ where
                 break TerminationReason::ContextLimit;
             }
 
-            let next_token = sampler
-                .select_next_token(&last_logits, &cache)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            let next_token = match sampler.select_next_token(
+                loaded_model.tokenizer(),
+                &last_logits,
+                &cache,
+                generated_tokens.as_slice(),
+            )? {
+                GenerationSelection::Token(token) => token,
+                GenerationSelection::Terminate => break TerminationReason::EndOfSequence,
+            };
             if loaded_model.is_end_of_sequence(next_token) {
                 break TerminationReason::EndOfSequence;
             }
@@ -5581,6 +5681,7 @@ where
                 &previous_kv_state,
                 prefix_state,
             ),
+            structured_output: structured_output_report,
         };
         Ok(GenerationResponse::new(
             request,
@@ -7351,6 +7452,7 @@ mod tests {
             frequency_penalty: Some(0.3),
             seed: Some(17),
             stop_sequences: vec![String::from("</end>"), String::from("STOP")],
+            structured_output: None,
         };
 
         let encoded = serde_json::to_value(&options)?;
@@ -8376,17 +8478,35 @@ mod tests {
             frequency_penalty: None,
             seed: Some(42),
             stop_sequences: Vec::new(),
+            structured_output: None,
         };
         let cache = super::InMemoryKvCache::new(8, 1);
         let logits = vec![3.0, 2.9, 2.8];
-        let mut left = super::GenerationSampler::new(&options);
-        let mut right = super::GenerationSampler::new(&options);
+        let tokenizer = FixtureWordTokenizer::new();
+        let mut left = super::GenerationSampler::new(&options).expect("sampler");
+        let mut right = super::GenerationSampler::new(&options).expect("sampler");
 
         let left_draws = (0..4)
-            .map(|_| left.select_next_token(&logits, &cache).expect("sample"))
+            .map(|_| {
+                match left
+                    .select_next_token(&tokenizer, &logits, &cache, &[])
+                    .expect("sample")
+                {
+                    super::GenerationSelection::Token(token) => token,
+                    super::GenerationSelection::Terminate => panic!("unexpected terminate"),
+                }
+            })
             .collect::<Vec<_>>();
         let right_draws = (0..4)
-            .map(|_| right.select_next_token(&logits, &cache).expect("sample"))
+            .map(|_| {
+                match right
+                    .select_next_token(&tokenizer, &logits, &cache, &[])
+                    .expect("sample")
+                {
+                    super::GenerationSelection::Token(token) => token,
+                    super::GenerationSelection::Terminate => panic!("unexpected terminate"),
+                }
+            })
             .collect::<Vec<_>>();
 
         assert_eq!(left_draws, right_draws);
@@ -8406,15 +8526,17 @@ mod tests {
             frequency_penalty: Some(0.5),
             seed: None,
             stop_sequences: Vec::new(),
+            structured_output: None,
         };
         let mut cache = super::InMemoryKvCache::new(8, 1);
         cache.append(TokenId(1), vec![0.0], vec![0.0])?;
         cache.append(TokenId(1), vec![0.0], vec![0.0])?;
 
-        let mut sampler = super::GenerationSampler::new(&options);
+        let tokenizer = FixtureWordTokenizer::new();
+        let mut sampler = super::GenerationSampler::new(&options).expect("sampler");
         assert_eq!(
-            sampler.select_next_token(&[1.0, 3.0, 2.5], &cache),
-            Some(TokenId(2))
+            sampler.select_next_token(&tokenizer, &[1.0, 3.0, 2.5], &cache, &[])?,
+            super::GenerationSelection::Token(TokenId(2))
         );
         Ok(())
     }
@@ -8436,6 +8558,7 @@ mod tests {
             frequency_penalty: Some(0.1),
             seed: Some(42),
             stop_sequences: Vec::new(),
+            structured_output: None,
         };
         let left_request = GenerationRequest::new_text(
             "gen-ref-seeded-left",

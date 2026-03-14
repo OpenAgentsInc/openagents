@@ -801,12 +801,14 @@ The inference-generalization queue from
 in-tree through a generic GGUF CPU runtime that executes Llama, Qwen, and
 Mistral families through Psionic-owned paths. `PSI-234` /
 [#3539](https://github.com/OpenAgentsInc/openagents/issues/3539) is now landed
-too through the generic `psionic-openai-server` path, so the next
-dependency-ordered issue in that chain is `PSI-236` /
-[#3541](https://github.com/OpenAgentsInc/openagents/issues/3541). `PSI-235` /
+too through the generic `psionic-openai-server` path. `PSI-235` /
 [#3540](https://github.com/OpenAgentsInc/openagents/issues/3540) is now landed
 too through explicit CPU-lane residency, fallback, and control truth on the
-generic server surface.
+generic server surface. `PSI-236` /
+[#3541](https://github.com/OpenAgentsInc/openagents/issues/3541) is now landed
+too through Psionic-owned GBNF and JSON-schema constrained-generation fallback
+on the generic server, so the next dependency-ordered issue in that chain is
+`PSI-237` / [#3542](https://github.com/OpenAgentsInc/openagents/issues/3542).
 
 ## Current Reality
 
@@ -829,6 +831,10 @@ baseline on `main` is:
   offload, refuse-on-fallback behavior, and explicit non-implemented
   warm/unload or memory-pressure controls instead of implying a stronger local
   lane than is actually shipped today
+- that generic server now also has a Psionic-owned constrained-generation
+  fallback for `psionic_grammar`, `response_format.type = json_object`, and a
+  useful `json_schema` subset, with explicit response headers and refusal on
+  unsupported schema features instead of hiding structure behind prompt hacks
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
