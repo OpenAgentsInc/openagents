@@ -197,6 +197,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
+- **[docs/TOPOLOGY_ACCEPTANCE_MATRIX.md](docs/TOPOLOGY_ACCEPTANCE_MATRIX.md)** —
+  canonical support matrix and runnable validation entrypoint for local and
+  clustered serving topologies, including `DP`, `PP`, `TP`, `PD`, explicit
+  refusal boundaries, and current expert-parallel non-support.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
