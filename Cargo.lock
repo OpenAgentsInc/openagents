@@ -5558,6 +5558,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-validator-service"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "psionic-runtime",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "openai-harmony"
 version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
