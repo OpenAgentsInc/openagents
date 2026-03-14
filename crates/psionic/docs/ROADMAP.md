@@ -830,8 +830,13 @@ too through hierarchical KV residency accounting across host, device, and
 explicit datastream-backed distributed tiers, with spill/prefetch/write-back
 movement truth, external-locator validation, and cluster cache-capability
 reporting that only claims supported residency tiers. The next
-dependency-ordered issue in that chain is `PSI-242` /
-[#3547](https://github.com/OpenAgentsInc/openagents/issues/3547).
+dependency-ordered issue in that chain is now `PSI-243` /
+[#3548](https://github.com/OpenAgentsInc/openagents/issues/3548), because
+`PSI-242` / [#3547](https://github.com/OpenAgentsInc/openagents/issues/3547)
+is landed too through one canonical serving-semantics model shared across
+local and clustered lanes, explicit warm-route posture reporting, and aligned
+cluster capability and evidence truth for whole-request, replica-routed,
+pipeline-sharded, layer-sharded, and tensor-sharded serving.
 
 ## Current Reality
 

@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 
 use psionic_runtime::{
-    ClusterExecutionContext, ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
-    ClusterPolicyDigestKind, QueueDiscipline,
+    BatchExecutionPosture, ClusterExecutionContext, ClusterExecutionLane, ClusterFallbackReason,
+    ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterServingSemantics,
+    ClusterWarmRoutePosture, ExecutionCapabilityProfile, QueueDiscipline, QueuePolicy,
+    ThroughputClass,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -99,6 +101,35 @@ impl ClusterServingPolicy {
             overload_backpressure: ClusterBackpressureDisposition::QueueLocally,
             slow_node_backpressure: ClusterBackpressureDisposition::Reroute,
             cancellation: ClusterCancellationPolicy::AbortAfterCurrentToken,
+        }
+    }
+
+    /// Returns the canonical runtime queue policy for this clustered serving policy.
+    #[must_use]
+    pub const fn queue_policy(&self) -> QueuePolicy {
+        QueuePolicy {
+            discipline: self.queue_discipline,
+            max_active_requests: self.max_active_requests_per_node,
+            max_queued_requests: self.max_queued_requests_per_node,
+            per_model_serialization: true,
+        }
+    }
+
+    /// Returns the canonical execution profile implied by this clustered serving policy.
+    #[must_use]
+    pub const fn execution_profile(&self) -> ExecutionCapabilityProfile {
+        ExecutionCapabilityProfile {
+            batch_posture: if self.max_active_requests_per_node > 1 {
+                BatchExecutionPosture::SchedulerStaticBatch
+            } else {
+                BatchExecutionPosture::SingleRequestOnly
+            },
+            queue_policy: self.queue_policy(),
+            throughput_class: match self.queue_discipline {
+                QueueDiscipline::DirectCallerBackpressure => ThroughputClass::LatencyOptimized,
+                QueueDiscipline::Fifo => ThroughputClass::Balanced,
+            },
+            prefill_decode_capability: None,
         }
     }
 
@@ -561,8 +592,13 @@ pub fn plan_cluster_serving_admission(
                     ClusterServingDecisionCode::QueuedByBackpressure,
                     detail.clone(),
                 ));
-                let schedule =
-                    finalize_schedule(schedule, &policy_digest, &fallback_history, Some(&detail));
+                let schedule = finalize_schedule(
+                    schedule,
+                    policy,
+                    &policy_digest,
+                    &fallback_history,
+                    Some(&detail),
+                );
                 return Ok(ClusterServingDecision {
                     request_id: serving_request.request_id.clone(),
                     work_class: serving_request.work_class,
@@ -637,8 +673,13 @@ pub fn plan_cluster_serving_admission(
                     ClusterServingDecisionCode::PrefillYieldedToDecode,
                     detail.clone(),
                 ));
-                let schedule =
-                    finalize_schedule(schedule, &policy_digest, &fallback_history, Some(&detail));
+                let schedule = finalize_schedule(
+                    schedule,
+                    policy,
+                    &policy_digest,
+                    &fallback_history,
+                    Some(&detail),
+                );
                 return Ok(ClusterServingDecision {
                     request_id: serving_request.request_id.clone(),
                     work_class: serving_request.work_class,
@@ -711,8 +752,13 @@ pub fn plan_cluster_serving_admission(
                     ClusterServingDecisionCode::QueuedByBackpressure,
                     detail.clone(),
                 ));
-                let schedule =
-                    finalize_schedule(schedule, &policy_digest, &fallback_history, Some(&detail));
+                let schedule = finalize_schedule(
+                    schedule,
+                    policy,
+                    &policy_digest,
+                    &fallback_history,
+                    Some(&detail),
+                );
                 return Ok(ClusterServingDecision {
                     request_id: serving_request.request_id.clone(),
                     work_class: serving_request.work_class,
@@ -778,7 +824,7 @@ pub fn plan_cluster_serving_admission(
                 schedule.selected_node_id.as_str()
             ),
         ));
-        let schedule = finalize_schedule(schedule, &policy_digest, &fallback_history, None);
+        let schedule = finalize_schedule(schedule, policy, &policy_digest, &fallback_history, None);
         return Ok(ClusterServingDecision {
             request_id: serving_request.request_id.clone(),
             work_class: serving_request.work_class,
@@ -801,6 +847,7 @@ struct PendingReroute {
 
 fn finalize_schedule(
     mut schedule: WholeRequestClusterSchedule,
+    policy: &ClusterServingPolicy,
     policy_digest: &str,
     fallback_history: &[ClusterFallbackStep],
     additional_degraded_reason: Option<&str>,
@@ -816,6 +863,18 @@ fn finalize_schedule(
         .cluster_execution
         .fallback_history
         .extend(fallback_history.iter().cloned());
+    schedule.cluster_execution = schedule
+        .cluster_execution
+        .with_serving_semantics(
+            ClusterServingSemantics::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                policy.execution_profile(),
+                ClusterWarmRoutePosture::ReadyNodeSelection,
+            )
+            .with_detail(
+                "cluster serving reused the canonical local execution-profile model for whole-request remote admission",
+            ),
+        );
     if let Some(additional_degraded_reason) = additional_degraded_reason {
         append_degraded_reason(&mut schedule.cluster_execution, additional_degraded_reason);
     }
@@ -975,6 +1034,16 @@ mod tests {
                     "remote whole-request serving keeps prefill and decode split inside the selected runtime owner",
                 ),
             ))
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::RemoteWholeRequest,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::ReadyNodeSelection,
+                )
+                .with_detail(
+                    "remote whole-request serving keeps canonical local single-request semantics while only requiring selection of one ready node",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             )
@@ -1096,6 +1165,15 @@ mod tests {
                 .and_then(|node| node.artifact_residency),
             Some(ClusterArtifactResidencyDisposition::Resident)
         );
+        assert_eq!(
+            decision
+                .schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.execution_profile.queue_policy.discipline),
+            Some(QueueDiscipline::Fifo)
+        );
         Ok(())
     }
 
@@ -1141,6 +1219,15 @@ mod tests {
                         && step.to_node_id == "worker-b"
                         && step.reason == ClusterFallbackReason::SlowNodeBackpressure
                 })
+        );
+        assert_eq!(
+            decision
+                .schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.warm_route_posture),
+            Some(ClusterWarmRoutePosture::ReadyNodeSelection)
         );
         Ok(())
     }

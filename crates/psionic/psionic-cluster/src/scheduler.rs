@@ -902,6 +902,13 @@ pub fn schedule_remote_whole_request(
         ClusterPolicyDigestKind::Admission,
         state.admission_policy().stable_digest(),
     ));
+    if let Some(serving_semantics) = request
+        .capability_profile
+        .serving_semantics_capability(ClusterExecutionLane::RemoteWholeRequest)
+        .cloned()
+    {
+        cluster_execution = cluster_execution.with_serving_semantics(serving_semantics);
+    }
     cluster_execution = cluster_execution
         .with_command_provenance(command_provenance_for_request(state, request, &best));
     if let Some(artifact_residency_digest) = artifact_residency_digest {
@@ -1495,7 +1502,8 @@ mod tests {
     use psionic_runtime::{
         ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterExecutionCapabilityProfile,
         ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ClusterPrefillDecodeCapability, ExecutionTopologyKind, PrefillDecodeCapability,
+        ClusterPrefillDecodeCapability, ClusterServingSemantics, ClusterWarmRoutePosture,
+        ExecutionCapabilityProfile, ExecutionTopologyKind, PrefillDecodeCapability,
         PrefillDecodeExecutionMode,
     };
 
@@ -1580,6 +1588,16 @@ mod tests {
                     "remote whole-request execution only supports co-located prefill/decode split inside the selected runtime owner",
                 ),
             ))
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::RemoteWholeRequest,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::ReadyNodeSelection,
+                )
+                .with_detail(
+                    "remote whole-request serving keeps canonical local single-request semantics while only requiring selection of one ready node",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             )
@@ -1806,6 +1824,22 @@ mod tests {
                 .first()
                 .and_then(|node| node.artifact_residency),
             Some(psionic_runtime::ClusterArtifactResidencyDisposition::Resident)
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.lane),
+            Some(ClusterExecutionLane::RemoteWholeRequest)
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.warm_route_posture),
+            Some(ClusterWarmRoutePosture::ReadyNodeSelection)
         );
         assert_eq!(schedule.cluster_execution.command_provenance.len(), 4);
         assert_eq!(

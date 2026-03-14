@@ -5,7 +5,8 @@ use psionic_runtime::{
     ClusterExecutionDisposition, ClusterExecutionLane, ClusterPolicyDigest,
     ClusterPolicyDigestKind, ClusterReplicaNode, ClusterReplicaRoutingDisposition,
     ClusterReplicaWarmState, ClusterSelectedNode as RuntimeClusterSelectedNode,
-    DeviceInventoryQualifiers, ExecutionTopologyPlan,
+    ClusterServingSemantics, ClusterWarmRoutePosture, DeviceInventoryQualifiers,
+    ExecutionTopologyPlan,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -407,6 +408,7 @@ pub fn plan_replicated_serving(
             ClusterPolicyDigestKind::Replication,
             lifecycle_policy_digest.clone(),
         ))
+        .with_serving_semantics(replica_routed_serving_semantics(serving_policy))
         .with_clustered_cache_usage(clustered_cache_usage)
         .with_replica_nodes(replica_nodes);
     if let Some(sharded_model_manifest_digest) =
@@ -440,6 +442,19 @@ fn restricted_replica_scheduling_request(
         }
     }
     route_request
+}
+
+fn replica_routed_serving_semantics(
+    serving_policy: &ClusterServingPolicy,
+) -> ClusterServingSemantics {
+    ClusterServingSemantics::new(
+        ClusterExecutionLane::ReplicaRouted,
+        serving_policy.execution_profile(),
+        ClusterWarmRoutePosture::RoutePinned,
+    )
+    .with_detail(
+        "replica-routed serving reused the canonical local execution-profile model while pinning truthful warm reuse to the same replica identity",
+    )
 }
 
 fn build_replica_nodes(
@@ -593,7 +608,8 @@ mod tests {
     use psionic_runtime::{
         CacheAction, CacheInvalidationTrigger, ClusterAdmissionFactKind, ClusterCacheCapability,
         ClusterCacheScope, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
-        ClusterPolicyDigestKind, ClusterPrefillDecodeCapability, KvResidencyTier,
+        ClusterPolicyDigestKind, ClusterPrefillDecodeCapability, ClusterServingSemantics,
+        ClusterWarmRoutePosture, ExecutionCapabilityProfile, KvResidencyTier,
         PrefillDecodeCapability,
     };
 
@@ -699,6 +715,16 @@ mod tests {
                     "replica-routed serving keeps prefill and decode split on the winning warm replica rather than moving KV across replicas",
                 ),
             ))
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::RoutePinned,
+                )
+                .with_detail(
+                    "replica-routed serving keeps canonical local single-request semantics while requiring the same warm replica identity for truthful reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::ReplicaRouted,
@@ -1003,6 +1029,16 @@ mod tests {
                 .map(|usage| usage.prefix_action),
             Some(CacheAction::Reuse)
         );
+        assert_eq!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.warm_route_posture),
+            Some(ClusterWarmRoutePosture::RoutePinned)
+        );
         Ok(())
     }
 
@@ -1077,6 +1113,16 @@ mod tests {
                 .as_ref()
                 .and_then(|usage| usage.invalidation_trigger),
             Some(CacheInvalidationTrigger::ClusterRouteChange)
+        );
+        assert_eq!(
+            decision
+                .serving_decision
+                .schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.execution_profile.queue_policy.discipline),
+            Some(psionic_runtime::QueueDiscipline::DirectCallerBackpressure)
         );
         Ok(())
     }
