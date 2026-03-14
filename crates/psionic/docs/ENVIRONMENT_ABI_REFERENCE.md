@@ -69,7 +69,9 @@ This issue intentionally does not claim:
 - environment registry install or composition flows
 - eval runtime implementation
 - rollout worker or sandbox pooling protocols
-- benchmark packages or validator adjudication
+- broader benchmark adjudication beyond the package contract itself
 
-Those remain later issues. This issue makes the reusable ABI and runtime
-session contract real first.
+Package-shape metadata for workload classes, policy refs, difficulty metadata,
+and benchmark profiles now live in the follow-on record
+`ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md`. This issue makes the reusable ABI
+and runtime session contract real first.

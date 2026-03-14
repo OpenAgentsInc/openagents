@@ -190,7 +190,7 @@ shape already includes at least:
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
-| Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
+| Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
@@ -1056,7 +1056,7 @@ crate names.
 | Weight broadcast | present in `psionic-datastream` | staged policy-weight broadcast with freshness cutoffs and relay policy |
 | Training steps | typed fixed-budget reference loop present | broader Rust-native trainer-step engine |
 | RL rollouts | typed rollout, bounded stale-rollout budgeting, and worker-protocol contracts present | validator-ready lineage and sampled adjudication |
-| Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
+| Environment ABI | typed runtime ABI plus typed package shape present | broader package loading, composition, and environment system |
 | Eval runtime | present in `psionic-eval` | shared online/offline eval and rubric runtime, benchmark packages, and local validator simulation |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
 | Validators for RL | rollout-verification bundles and sampled adjudication contracts present | broader service productization, batch-level adjudication, and authority integration |
@@ -1464,14 +1464,30 @@ integration are still later layers.
 
 ### 14. `Environments: define a package contract for SFT, RL, and eval`
 
-The environment ABI issue defines execution mechanics; this issue should define
-the package contents and product shape. Packages should carry dataset refs,
-tool schemas, rubric refs, sandbox requirements, difficulty metadata, and
-policy references so the same environment artifact can power SFT, RL, online
-eval, and offline eval. The same package family should also be able to describe
-validator-owned benchmark profiles so local simulation and validator execution
-can share one packaged contract. This is how environment-bound training becomes
-composable.
+Status: implemented on 2026-03-14 via GitHub issue `#3577`.
+
+Added package-shape contracts inside `psionic-environments` for:
+
+- `EnvironmentWorkloadClass` so one package can declare SFT, RL, online-eval,
+  offline-eval, and validator-benchmark use explicitly
+- typed `EnvironmentPolicyReference` and `EnvironmentDifficultyMetadata`
+  instead of burying those semantics in free-form metadata
+- `EnvironmentBenchmarkProfile` for validator-owned benchmark identity,
+  runtime-profile identity, verification posture, and declared
+  execution-strategy expectations
+- package validation and digest coverage for workload classes, policy refs,
+  difficulty metadata, and benchmark profiles
+- replay-safe tests proving one package can carry both ordinary environment
+  execution contracts and a reusable benchmark profile
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md`
+- `scripts/release/check-psionic-environment-package-contract.sh`
+
+This issue makes environment packages composable across training, eval, and
+validator-local simulation instead of relying on raw metadata blobs or hidden
+side settings. Registry install and composition flows remain the next issue.
 
 ### 15. `Environments Registry: add package install, version pinning, composition, and eval parity`
 

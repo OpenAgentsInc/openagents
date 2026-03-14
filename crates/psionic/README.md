@@ -42,7 +42,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-data`: versioned dataset manifests, tokenizer digests, split declarations, streamed iteration contracts, and long-context packing policies.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh, bandwidth-aware local/global sync planning, and benchmark-gated collective policy for training-class lanes.
-- `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
+- `psionic-environments`: Rust-native environment package ABI, typed workload/difficulty/policy/benchmark package contracts, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
 - `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, window lifecycle, rollout-worker protocol, and orchestrator control on top of ordered cluster state and datastream manifests.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
@@ -238,6 +238,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ENVIRONMENT_ABI_REFERENCE.md](docs/ENVIRONMENT_ABI_REFERENCE.md)** —
   canonical package ABI, runtime-session runbook, and acceptance criteria for
   the first Psionic-native environment contract.
+- **[docs/ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md](docs/ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md)** —
+  canonical package-shape runbook for workload classes, policy refs,
+  difficulty metadata, and validator benchmark profiles in
+  `psionic-environments`.
 - **[docs/DATASET_TOKENIZER_PACKING_REFERENCE.md](docs/DATASET_TOKENIZER_PACKING_REFERENCE.md)** —
   canonical versioned-dataset, tokenizer-digest, streamed-iteration, and
   long-context packing runbook for the first Psionic-native data-contract

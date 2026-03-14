@@ -144,7 +144,7 @@ Psionic is also not:
 | Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
-| Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
+| Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
 
@@ -324,6 +324,7 @@ training subsystems.
 | `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
 | `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
+| `EnvironmentBenchmarkProfile` | `psionic-environments` | validator- or operator-reusable benchmark profile bound into one environment package | `implemented_early` |
 | `BenchmarkPackage` | `psionic-eval` | validator-owned packaged benchmark harness or reference evaluation profile with repeat-run aggregation | `implemented_early` |
 | `EvalRun` | `psionic-eval` | one local evaluation execution over a declared environment and artifact set | `implemented_early` |
 
