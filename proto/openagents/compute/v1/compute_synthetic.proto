@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
+import "openagents/compute/v1/compute_evals.proto";
+
+enum ComputeSyntheticDataJobStatus {
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_UNSPECIFIED = 0;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_QUEUED = 1;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_GENERATING = 2;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_GENERATED = 3;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_VERIFYING = 4;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_VERIFIED = 5;
+  COMPUTE_SYNTHETIC_DATA_JOB_STATUS_FAILED = 6;
+}
+
+enum ComputeSyntheticDataSampleStatus {
+  COMPUTE_SYNTHETIC_DATA_SAMPLE_STATUS_UNSPECIFIED = 0;
+  COMPUTE_SYNTHETIC_DATA_SAMPLE_STATUS_GENERATED = 1;
+  COMPUTE_SYNTHETIC_DATA_SAMPLE_STATUS_VERIFIED = 2;
+  COMPUTE_SYNTHETIC_DATA_SAMPLE_STATUS_REJECTED = 3;
+  COMPUTE_SYNTHETIC_DATA_SAMPLE_STATUS_ERRORED = 4;
+}
+
+message ComputeSyntheticDataJob {
+  string synthetic_job_id = 1;
+  ComputeEnvironmentBinding environment_binding = 2;
+  string teacher_model_ref = 3;
+  optional string generation_product_id = 4;
+  optional string generation_delivery_proof_id = 5;
+  optional string output_artifact_ref = 6;
+  int64 created_at_ms = 7;
+  optional int64 generated_at_ms = 8;
+  optional string verification_eval_run_id = 9;
+  optional int64 verified_at_ms = 10;
+  optional uint64 target_sample_count = 11;
+  ComputeSyntheticDataJobStatus status = 12;
+  optional ComputeEvaluationSummary verification_summary = 13;
+  string metadata_json = 14;
+}
+
+message ComputeSyntheticDataSample {
+  string synthetic_job_id = 1;
+  string sample_id = 2;
+  optional uint64 ordinal = 3;
+  string prompt_ref = 4;
+  string output_ref = 5;
+  optional string generation_config_ref = 6;
+  optional string generator_machine_ref = 7;
+  optional string verification_eval_sample_id = 8;
+  optional ComputeEvaluationSampleStatus verification_status = 9;
+  optional uint32 verification_score_bps = 10;
+  ComputeSyntheticDataSampleStatus status = 11;
+  int64 recorded_at_ms = 12;
+  string metadata_json = 13;
+}
+
+message CreateComputeSyntheticDataJobRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeSyntheticDataJob synthetic_job = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateComputeSyntheticDataJobResponse {
+  ComputeSyntheticDataJob synthetic_job = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message AppendComputeSyntheticDataSamplesRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string synthetic_job_id = 4;
+  repeated ComputeSyntheticDataSample samples = 5;
+  repeated openagents.common.v1.EvidenceRef evidence = 6;
+  openagents.economy.v1.ReceiptHints hints = 7;
+}
+
+message AppendComputeSyntheticDataSamplesResponse {
+  ComputeSyntheticDataJob synthetic_job = 1;
+  repeated ComputeSyntheticDataSample samples = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}
+
+message FinalizeComputeSyntheticDataGenerationRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string synthetic_job_id = 4;
+  ComputeSyntheticDataJobStatus status = 5;
+  int64 generated_at_ms = 6;
+  optional string output_artifact_ref = 7;
+  string metadata_json = 8;
+  repeated openagents.common.v1.EvidenceRef evidence = 9;
+  openagents.economy.v1.ReceiptHints hints = 10;
+}
+
+message FinalizeComputeSyntheticDataGenerationResponse {
+  ComputeSyntheticDataJob synthetic_job = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message RecordComputeSyntheticDataVerificationRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string synthetic_job_id = 4;
+  string verification_eval_run_id = 5;
+  int64 verified_at_ms = 6;
+  string metadata_json = 7;
+  repeated openagents.common.v1.EvidenceRef evidence = 8;
+  openagents.economy.v1.ReceiptHints hints = 9;
+}
+
+message RecordComputeSyntheticDataVerificationResponse {
+  ComputeSyntheticDataJob synthetic_job = 1;
+  repeated ComputeSyntheticDataSample samples = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}
+
+message ListComputeSyntheticDataJobsRequest {
+  optional string environment_ref = 1;
+  optional string generation_product_id = 2;
+  optional ComputeSyntheticDataJobStatus status = 3;
+}
+
+message ListComputeSyntheticDataJobsResponse {
+  repeated ComputeSyntheticDataJob synthetic_jobs = 1;
+}
+
+message GetComputeSyntheticDataJobRequest {
+  string synthetic_job_id = 1;
+}
+
+message GetComputeSyntheticDataJobResponse {
+  ComputeSyntheticDataJob synthetic_job = 1;
+}
+
+message ListComputeSyntheticDataSamplesRequest {
+  string synthetic_job_id = 1;
+}
+
+message ListComputeSyntheticDataSamplesResponse {
+  repeated ComputeSyntheticDataSample samples = 1;
+}

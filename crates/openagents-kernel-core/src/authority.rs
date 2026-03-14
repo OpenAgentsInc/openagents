@@ -3,7 +3,8 @@ use crate::compute::{
     CapacityLotStatus, CapacityNonDeliveryReason, ComputeEnvironmentPackage,
     ComputeEnvironmentPackageStatus, ComputeEvaluationRun, ComputeEvaluationRunStatus,
     ComputeEvaluationSample, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
-    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
+    ComputeProductStatus, ComputeSettlementFailureReason, ComputeSyntheticDataJob,
+    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample, DeliveryProof, DeliveryProofStatus,
     StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
@@ -50,6 +51,22 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: FinalizeComputeEvaluationRunRequest,
     ) -> Result<FinalizeComputeEvaluationRunResponse>;
+    async fn create_compute_synthetic_data_job(
+        &self,
+        req: CreateComputeSyntheticDataJobRequest,
+    ) -> Result<CreateComputeSyntheticDataJobResponse>;
+    async fn append_compute_synthetic_data_samples(
+        &self,
+        req: AppendComputeSyntheticDataSamplesRequest,
+    ) -> Result<AppendComputeSyntheticDataSamplesResponse>;
+    async fn finalize_compute_synthetic_data_generation(
+        &self,
+        req: FinalizeComputeSyntheticDataGenerationRequest,
+    ) -> Result<FinalizeComputeSyntheticDataGenerationResponse>;
+    async fn record_compute_synthetic_data_verification(
+        &self,
+        req: RecordComputeSyntheticDataVerificationRequest,
+    ) -> Result<RecordComputeSyntheticDataVerificationResponse>;
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -112,6 +129,20 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         eval_run_id: &str,
     ) -> Result<Vec<ComputeEvaluationSample>>;
+    async fn list_compute_synthetic_data_jobs(
+        &self,
+        environment_ref: Option<&str>,
+        generation_product_id: Option<&str>,
+        status: Option<ComputeSyntheticDataJobStatus>,
+    ) -> Result<Vec<ComputeSyntheticDataJob>>;
+    async fn get_compute_synthetic_data_job(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Result<ComputeSyntheticDataJob>;
+    async fn list_compute_synthetic_data_samples(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Result<Vec<ComputeSyntheticDataSample>>;
     async fn list_capacity_lots(
         &self,
         product_id: Option<&str>,
@@ -387,6 +418,94 @@ pub struct FinalizeComputeEvaluationRunRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FinalizeComputeEvaluationRunResponse {
     pub eval_run: ComputeEvaluationRun,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeSyntheticDataJobRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub synthetic_job: ComputeSyntheticDataJob,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeSyntheticDataJobResponse {
+    pub synthetic_job: ComputeSyntheticDataJob,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AppendComputeSyntheticDataSamplesRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub synthetic_job_id: String,
+    #[serde(default)]
+    pub samples: Vec<ComputeSyntheticDataSample>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AppendComputeSyntheticDataSamplesResponse {
+    pub synthetic_job: ComputeSyntheticDataJob,
+    #[serde(default)]
+    pub samples: Vec<ComputeSyntheticDataSample>,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeSyntheticDataGenerationRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub synthetic_job_id: String,
+    pub status: ComputeSyntheticDataJobStatus,
+    pub generated_at_ms: i64,
+    #[serde(default)]
+    pub output_artifact_ref: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeSyntheticDataGenerationResponse {
+    pub synthetic_job: ComputeSyntheticDataJob,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecordComputeSyntheticDataVerificationRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub synthetic_job_id: String,
+    pub verification_eval_run_id: String,
+    pub verified_at_ms: i64,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecordComputeSyntheticDataVerificationResponse {
+    pub synthetic_job: ComputeSyntheticDataJob,
+    #[serde(default)]
+    pub samples: Vec<ComputeSyntheticDataSample>,
     pub receipt: Receipt,
 }
 
@@ -1102,6 +1221,61 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::finalize_compute_evaluation_run_response_from_proto(&response)
     }
 
+    async fn create_compute_synthetic_data_job(
+        &self,
+        req: CreateComputeSyntheticDataJobRequest,
+    ) -> Result<CreateComputeSyntheticDataJobResponse> {
+        let wire = compute_contracts::create_compute_synthetic_data_job_request_to_proto(&req)?;
+        let response: proto_compute::CreateComputeSyntheticDataJobResponse = self
+            .post_json("/v1/kernel/compute/synthetic", &wire)
+            .await?;
+        compute_contracts::create_compute_synthetic_data_job_response_from_proto(&response)
+    }
+
+    async fn append_compute_synthetic_data_samples(
+        &self,
+        req: AppendComputeSyntheticDataSamplesRequest,
+    ) -> Result<AppendComputeSyntheticDataSamplesResponse> {
+        let path = format!(
+            "/v1/kernel/compute/synthetic/{}/samples",
+            req.synthetic_job_id.trim()
+        );
+        let wire = compute_contracts::append_compute_synthetic_data_samples_request_to_proto(&req)?;
+        let response: proto_compute::AppendComputeSyntheticDataSamplesResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::append_compute_synthetic_data_samples_response_from_proto(&response)
+    }
+
+    async fn finalize_compute_synthetic_data_generation(
+        &self,
+        req: FinalizeComputeSyntheticDataGenerationRequest,
+    ) -> Result<FinalizeComputeSyntheticDataGenerationResponse> {
+        let path = format!(
+            "/v1/kernel/compute/synthetic/{}/finalize_generation",
+            req.synthetic_job_id.trim()
+        );
+        let wire =
+            compute_contracts::finalize_compute_synthetic_data_generation_request_to_proto(&req)?;
+        let response: proto_compute::FinalizeComputeSyntheticDataGenerationResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::finalize_compute_synthetic_data_generation_response_from_proto(&response)
+    }
+
+    async fn record_compute_synthetic_data_verification(
+        &self,
+        req: RecordComputeSyntheticDataVerificationRequest,
+    ) -> Result<RecordComputeSyntheticDataVerificationResponse> {
+        let path = format!(
+            "/v1/kernel/compute/synthetic/{}/record_verification",
+            req.synthetic_job_id.trim()
+        );
+        let wire =
+            compute_contracts::record_compute_synthetic_data_verification_request_to_proto(&req)?;
+        let response: proto_compute::RecordComputeSyntheticDataVerificationResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::record_compute_synthetic_data_verification_response_from_proto(&response)
+    }
+
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -1299,6 +1473,48 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::ListComputeEvaluationSamplesResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::list_compute_evaluation_samples_response_from_proto(&response)
+    }
+
+    async fn list_compute_synthetic_data_jobs(
+        &self,
+        environment_ref: Option<&str>,
+        generation_product_id: Option<&str>,
+        status: Option<ComputeSyntheticDataJobStatus>,
+    ) -> Result<Vec<ComputeSyntheticDataJob>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/synthetic",
+            &[
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+                (
+                    "generation_product_id",
+                    generation_product_id.map(ToOwned::to_owned),
+                ),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeSyntheticDataJobsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_synthetic_data_jobs_response_from_proto(&response)
+    }
+
+    async fn get_compute_synthetic_data_job(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Result<ComputeSyntheticDataJob> {
+        let path = format!("/v1/kernel/compute/synthetic/{synthetic_job_id}");
+        let response: proto_compute::GetComputeSyntheticDataJobResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_synthetic_data_job_response_from_proto(&response)
+    }
+
+    async fn list_compute_synthetic_data_samples(
+        &self,
+        synthetic_job_id: &str,
+    ) -> Result<Vec<ComputeSyntheticDataSample>> {
+        let path = format!("/v1/kernel/compute/synthetic/{synthetic_job_id}/samples");
+        let response: proto_compute::ListComputeSyntheticDataSamplesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_synthetic_data_samples_response_from_proto(&response)
     }
 
     async fn list_capacity_lots(
