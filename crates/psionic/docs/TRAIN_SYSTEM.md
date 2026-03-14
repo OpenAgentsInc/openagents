@@ -1579,12 +1579,26 @@ Instability telemetry and halt policy remain the next train issue.
 
 ### 19. `Psionic Train: add instability telemetry, halt policies, and risky-optimization gating`
 
-The mature train system needs operational safety signals. This issue should add
-telemetry for gradient norms, clipping ratios, entropy drift, stale-rollout
-drop rate, checkpoint catch-up latency, topology churn, environment failure
-rates, and sandbox failure rates, then connect those signals to machine-legible
-halt or quarantine policy. Risky runtime optimizations should become explicit
-policy, not hidden flags.
+Status: implemented on 2026-03-14 via GitHub issue `#3582`.
+
+Added the first train-safety controller inside `psionic-train`:
+
+- aggregated instability telemetry over gradient norms, clipping ratios, and
+  rollout-drop rate, with explicit extension points for entropy drift,
+  checkpoint catch-up latency, topology churn, and failure rates
+- digest-bound threshold rules that map signals to `continue`, `quarantine`, or
+  `halt`
+- explicit risky-optimization rules so dangerous runtime shortcuts are policy,
+  not hidden flags
+- final typed verdicts carrying both signal receipts and optimization receipts
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_STABILITY_REFERENCE.md`
+- `scripts/release/check-psionic-train-stability.sh`
+
+This issue makes halt/quarantine policy machine-legible. Operator product
+surfaces and authority publication remain later layers.
 
 ### 20. `Kernel and Nexus: add training and eval receipt families, policy registries, and read models`
 

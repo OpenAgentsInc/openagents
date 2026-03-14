@@ -27,6 +27,7 @@ mod orchestrator;
 mod rl_artifacts;
 mod rollout_validation;
 mod run_graph;
+mod stability;
 mod stage_program;
 mod worker_protocol;
 
@@ -37,6 +38,7 @@ pub use orchestrator::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
 pub use run_graph::*;
+pub use stability::*;
 pub use stage_program::*;
 pub use worker_protocol::*;
 
