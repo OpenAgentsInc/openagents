@@ -916,6 +916,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This keeps operator truth inside the app-owned control plane instead of spawning a separate hidden system.
 
 25. **Compute Control: add an OpenAgents compute MCP server**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3509`.
    - Rebuild the useful `prime-mcp-server` pattern over OpenAgents-owned control schemas.
    - It should expose inventory, lots, jobs, cluster status, and sandbox operations, but not bypass authority policy.
 

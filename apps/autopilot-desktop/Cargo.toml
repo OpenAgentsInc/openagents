@@ -32,6 +32,10 @@ name = "autopilotctl"
 path = "src/bin/autopilotctl.rs"
 
 [[bin]]
+name = "autopilot-compute-mcp"
+path = "src/bin/autopilot_compute_mcp.rs"
+
+[[bin]]
 name = "autopilot-throughput-bench"
 path = "src/bin/autopilot_throughput_bench.rs"
 
