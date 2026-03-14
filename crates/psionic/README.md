@@ -97,6 +97,8 @@ Still planned:
   serving semantics.
 - Psionic-native environment and eval runtime crates.
 - full Rust-native training core, rollout artifacts, and orchestrator layers.
+- training-window protocol, checkpoint pointer/manifest discipline, and
+  validator-owned benchmark packages for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
   session-claims discipline for clustered and sandboxed execution.
 - AMD execution support.

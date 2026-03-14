@@ -3,6 +3,7 @@
 > Status: updated 2026-03-14 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`, `crates/psionic/README.md`,
 > `crates/psionic/docs/TRAIN_SYSTEM.md`,
+> `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`,
 > `crates/psionic/docs/INFERENCE_ENGINE.md`,
 > `crates/psionic/psionic-runtime/src/lib.rs`,
 > `crates/psionic/psionic-cluster/src/lib.rs`,
@@ -11,7 +12,7 @@
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`, and
 > `crates/psionic/psionic-adapters/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3593`.
+> recently closed issue backlog through `#3609`.
 
 ## Why This Doc Exists
 
@@ -139,7 +140,7 @@ Psionic is also not:
 | Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
-| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate exists yet |
+| Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate, validator-owned benchmark package runtime, or local validator simulator exists yet |
 | Environment package runtime | `partial_outside_psionic` | environment package descriptors, registry, and binding flows now exist in kernel/Nexus, but no canonical Psionic-native runtime ABI exists yet |
 | Full training core | `planned` | no Rust-native trainer-step and optimizer substrate yet |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
@@ -293,6 +294,7 @@ training subsystems.
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | planned train layer | root identity for one training program | `planned` |
 | `EnvironmentPackage` | planned environment layer | reusable task, rubric, and tool environment package | `planned` |
+| `BenchmarkPackage` | planned eval layer | validator-owned packaged benchmark harness or reference evaluation profile | `planned` |
 | `EvalRun` | planned eval layer | one evaluation execution over a declared environment and artifact set | `planned` |
 
 The important point is not that every object already exists. The important
@@ -312,9 +314,13 @@ and authority layers.
 | artifact truth | what manifests, digests, package refs, and staged bytes were actually bound to execution |
 | runtime identity | the verified execution origin responsible for a work item |
 | session claims bundle | the signed session-scoped claim set that ties peer or session keys to runtime and artifact identity |
+| training window | one bounded contributor or trainer interval with explicit control-plane state |
 | checkpoint lineage | the chain of checkpoint identities, manifests, and durability transitions that define recoverable train state |
+| checkpoint pointer | the stable reference to the latest accepted checkpoint for a run, stage, or window |
+| checkpoint manifest | the typed shard, digest, writer, and durability description for one checkpoint flush |
 | policy revision | the specific weight or policy version a worker, trainer, or eval run consumed |
 | environment package | a versioned task, rubric, tool, and sandbox contract used by training or eval |
+| benchmark package | a validator-owned packaged benchmark or reference evaluation profile reused for repeatable scoring |
 | proof posture | the declared strength and availability of execution evidence |
 | validator posture | the declared verification policy and adjudication expectations for a workload |
 | manifest registry | a versioned allowlist or policy registry for manifests, proof profiles, or environment packages |
@@ -333,6 +339,7 @@ Psionic is also an artifact system, not only an execution engine.
 | Checkpoint | `DatastreamSubjectKind::Checkpoint` plus `TrainingCheckpointReference` | recoverable training or optimizer state |
 | Tokenized corpus | `DatastreamSubjectKind::TokenizedCorpus` | tokenized dataset shard delivered for training or eval |
 | Eval bundle | `DatastreamSubjectKind::EvalBundle` | benchmark or evaluation harness artifact |
+| Benchmark package | planned | validator-owned packaged benchmark harness or reference evaluation profile |
 | Adapter package | `DatastreamSubjectKind::AdapterPackage` plus adapter manifests | adapter or LoRA artifact delivered with lineage |
 | Proof artifact | execution-proof bundle or augmentation | evidence about what the runtime or cluster actually did |
 | Sandbox artifact | sandbox input/output digest sets | staged inputs and outputs of bounded execution |
