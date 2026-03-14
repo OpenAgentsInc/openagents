@@ -597,8 +597,8 @@ Implemented now: `PSI-234` is materially landed in-tree through the generic
 `OpenAiCompatServer` plus the shipped `psionic-openai-server` binary. That path
 can front GPT-OSS and representative non-GPT-OSS GGUF families through one
 Psionic-owned `/v1/chat/completions` surface, exposes explicit model inventory,
-and still refuses unfinished APIs such as `/v1/embeddings` instead of
-pretending the broader serving plane is already complete.
+and now forms the base for heterogeneous decoder plus embeddings serving
+instead of a GPT-OSS-specific HTTP lane.
 
 Implemented now: `PSI-235` is materially landed in-tree through explicit
 CPU-lane serving truth on that generic server. `/health`, `/v1/models`, and
@@ -628,6 +628,14 @@ deterministic allocation and reclaim, oldest-page eviction support, backend
 current-state accounting, scheduler KV peak metrics, and per-response KV
 ownership receipts instead of only exposing a logical KV policy schema.
 
+Implemented now: `PSI-243` is materially landed in-tree too. The generic
+`psionic-openai-server` now runs real `/v1/embeddings` requests on the existing
+Psionic embeddings substrate, exposes a first Psionic-owned non-streaming
+`/v1/responses` contract on top of the shared decoder runtime, and reports
+per-model supported endpoints, model family, scheduler truth, and embeddings
+metadata explicitly through `/v1/models` and `/health` instead of implying that
+every loaded artifact supports every OpenAI-shaped surface.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
@@ -651,7 +659,7 @@ ownership receipts instead of only exposing a logical KV policy schema.
 
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-243` | Psionic Serve: add `/v1/embeddings`, `/v1/responses`, and a broader generic serving surface | `psionic-serve` | `vLLM` plus `SGLang` | Bring the server beyond `/v1/chat/completions` so the serving plane can honestly support embeddings and response-oriented flows under one generic runtime. | `PSI-234` |
+| `PSI-243` | Psionic Serve: add `/v1/embeddings`, `/v1/responses`, and a broader generic serving surface | `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3548`. The generic server now fronts real embeddings and a first Psionic-owned responses contract, with truthful per-model endpoint support and heterogeneous decoder/embeddings model inventory. | `PSI-234` |
 | `PSI-244` | Psionic Serve: add structured outputs for choice, regex, JSON schema, grammar, and tagged structure | `psionic-serve`, `psionic-runtime` | `SGLang` plus `vLLM` plus `llama.cpp` | Treat constrained generation as a first-class capability instead of a narrow local-only fallback or ad hoc prompt convention. | `PSI-243`, `PSI-236` |
 | `PSI-245` | Psionic Serve: add named, auto, required, and none tool-calling modes with parser-backed validation | `psionic-serve` | `vLLM` plus `SGLang` | Rebuild the strongest `vLLM` tool-calling contract shape while keeping the parser and runtime ownership inside Psionic. | `PSI-243`, `PSI-244` |
 | `PSI-246` | Psionic Serve: add reasoning-parser seam and explicit reasoning/content separation | `psionic-serve`, `psionic-models` | `SGLang` | Rebuild the `SGLang` lesson that reasoning-bearing models need explicit parser handling and response fields instead of stringly typed conventions. | `PSI-243`, `PSI-244` |

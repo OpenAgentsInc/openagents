@@ -46,12 +46,15 @@ use tokio::{
 use tokio_stream::iter;
 
 use crate::{
-    CpuGgufTextGenerationService, CudaGgufGptOssTextGenerationService,
-    CudaGptOssTextGenerationError, DecodeStrategy, DecoderModelDescriptor, GenerationMetrics,
-    GenerationOptions, GenerationRequest, GgufDecoderAdapterLoader, GptOssPerformanceMetrics,
-    MetalGgufGptOssTextGenerationService, MetalGptOssTextGenerationError, PromptRenderError,
+    CpuGgufTextGenerationService, CpuModelEmbeddingsService, CudaGgufGptOssTextGenerationService,
+    CudaGptOssTextGenerationError, DecodeStrategy, DecoderModelDescriptor, EmbeddingMetrics,
+    EmbeddingNormalization, EmbeddingProvenance, EmbeddingRequest, EmbeddingResponse,
+    EmbeddingsExecutor, GenerationMetrics, GenerationOptions, GenerationRequest,
+    GgufDecoderAdapterLoader, GptOssPerformanceMetrics, MetalGgufGptOssTextGenerationService,
+    MetalGptOssTextGenerationError, ModelEmbeddingsError, PromptRenderError,
     ReferenceTextGenerationError, TerminationReason, TextGenerationExecutor, TokenSequence,
-    continuous_batch_text_generation_execution_profile, default_generation_scheduler_policy,
+    continuous_batch_text_generation_execution_profile, default_embeddings_execution_profile,
+    default_generation_scheduler_policy,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -351,8 +354,10 @@ impl GptOssOpenAiCompatServer {
         let descriptor = adapter.descriptor().clone();
         let tokenizer = GptOssTokenizer::from_gguf(adapter.tokenizer())
             .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
-        let default_model_name = default_model_name(&config.model_path, &descriptor);
-        let accepted_model_names = accepted_model_names(&config.model_path, &descriptor);
+        let default_model_name =
+            default_model_name(&config.model_path, descriptor.model.model_id.as_str());
+        let accepted_model_names =
+            accepted_model_names(&config.model_path, descriptor.model.model_id.as_str());
         let prompt_options = PromptRenderOptions {
             gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
                 reasoning_effort: Some(reasoning_effort(config.reasoning_budget)),
@@ -509,16 +514,112 @@ struct OpenAiCompatState {
     request_counter: AtomicU64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum OpenAiCompatEndpoint {
+    ChatCompletions,
+    Responses,
+    Embeddings,
+}
+
+impl OpenAiCompatEndpoint {
+    fn path(self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "/v1/chat/completions",
+            Self::Responses => "/v1/responses",
+            Self::Embeddings => "/v1/embeddings",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenAiCompatRuntimeKind {
+    GgufDecoder,
+    SafetensorsEmbeddings,
+}
+
+#[derive(Clone, Debug)]
+struct OpenAiCompatModelLoadPlan {
+    path: PathBuf,
+    runtime_kind: OpenAiCompatRuntimeKind,
+}
+
 #[derive(Clone)]
 struct OpenAiCompatLoadedModel {
     model_key: String,
     canonical_name: String,
+    supported_endpoints: Vec<OpenAiCompatEndpoint>,
+    kind: OpenAiCompatLoadedModelKind,
+}
+
+#[derive(Clone)]
+enum OpenAiCompatLoadedModelKind {
+    Decoder(OpenAiCompatLoadedDecoderModel),
+    Embeddings(OpenAiCompatLoadedEmbeddingsModel),
+}
+
+#[derive(Clone)]
+struct OpenAiCompatLoadedDecoderModel {
     descriptor: DecoderModelDescriptor,
     family: GgufDecoderFamily,
     prompt_renderer: Option<GgufPromptTemplateRenderer>,
     prompt_options: PromptRenderOptions,
     execution_profile: ExecutionCapabilityProfile,
     scheduler_policy: GenerationSchedulerPolicy,
+}
+
+#[derive(Clone)]
+struct OpenAiCompatLoadedEmbeddingsModel {
+    descriptor: psionic_models::EmbeddingModelDescriptor,
+    execution_profile: ExecutionCapabilityProfile,
+}
+
+impl OpenAiCompatLoadedModel {
+    fn decoder(&self) -> Option<&OpenAiCompatLoadedDecoderModel> {
+        match &self.kind {
+            OpenAiCompatLoadedModelKind::Decoder(model) => Some(model),
+            OpenAiCompatLoadedModelKind::Embeddings(_) => None,
+        }
+    }
+
+    fn embeddings(&self) -> Option<&OpenAiCompatLoadedEmbeddingsModel> {
+        match &self.kind {
+            OpenAiCompatLoadedModelKind::Decoder(_) => None,
+            OpenAiCompatLoadedModelKind::Embeddings(model) => Some(model),
+        }
+    }
+
+    fn execution_profile(&self) -> &ExecutionCapabilityProfile {
+        match &self.kind {
+            OpenAiCompatLoadedModelKind::Decoder(model) => &model.execution_profile,
+            OpenAiCompatLoadedModelKind::Embeddings(model) => &model.execution_profile,
+        }
+    }
+
+    fn scheduler_policy(&self) -> Option<&GenerationSchedulerPolicy> {
+        self.decoder().map(|model| &model.scheduler_policy)
+    }
+
+    fn structured_output_labels(&self) -> Option<Vec<&'static str>> {
+        self.decoder().map(|_| structured_output_parser_labels())
+    }
+
+    fn family_label(&self) -> &str {
+        match &self.kind {
+            OpenAiCompatLoadedModelKind::Decoder(model) => model.descriptor.model.family.as_str(),
+            OpenAiCompatLoadedModelKind::Embeddings(model) => {
+                model.descriptor.model.family.as_str()
+            }
+        }
+    }
+
+    fn embedding_dimensions(&self) -> Option<usize> {
+        self.embeddings().map(|model| model.descriptor.dimensions)
+    }
+
+    fn embedding_normalization(&self) -> Option<EmbeddingNormalization> {
+        self.embeddings()
+            .map(|model| model.descriptor.normalization)
+    }
 }
 
 #[derive(Clone)]
@@ -531,6 +632,11 @@ enum OpenAiCompatWorkerCommand {
         model_key: String,
         request: GenerationRequest,
         reply: oneshot::Sender<Result<crate::GenerationResponse, ReferenceTextGenerationError>>,
+    },
+    Embed {
+        model_key: String,
+        request: EmbeddingRequest,
+        reply: oneshot::Sender<Result<EmbeddingResponse, ModelEmbeddingsError>>,
     },
 }
 
@@ -555,29 +661,23 @@ impl OpenAiCompatServer {
         let mut model_aliases = BTreeMap::new();
         let mut default_model_key = None;
         let mut default_canonical_model_name = None;
+        let mut load_plans = Vec::new();
 
         for model_path in &config.model_paths {
-            let artifact =
-                GgufBlobArtifact::open_path(model_path, gpt_oss_local_blob_open_options())
-                    .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
-            let adapter = GgufDecoderAdapterLoader
-                .load_blob_artifact(&artifact)
-                .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
-            let descriptor = adapter.descriptor().clone();
-            let family = adapter.family_metadata().family;
-            let canonical_name = default_model_name(model_path, &descriptor);
-            let accepted_names = accepted_model_names(model_path, &descriptor);
-            let prompt_options = prompt_options_for_family(family, config.reasoning_budget);
-            let loaded_model = OpenAiCompatLoadedModel {
-                model_key: descriptor.model.model_id.clone(),
-                canonical_name: canonical_name.clone(),
-                descriptor: descriptor.clone(),
-                family,
-                prompt_renderer: (!matches!(family, GgufDecoderFamily::GptOss))
-                    .then(|| adapter.prompt_renderer()),
-                prompt_options,
-                execution_profile: continuous_batch_text_generation_execution_profile(),
-                scheduler_policy: default_generation_scheduler_policy(),
+            let decoder_attempt = load_generic_decoder_model(model_path, config.reasoning_budget);
+            let embeddings_attempt = load_generic_embeddings_model(model_path);
+            let (loaded_model, accepted_names, load_plan) = match (
+                decoder_attempt,
+                embeddings_attempt,
+            ) {
+                (Ok(result), _) => result,
+                (Err(_), Ok(result)) => result,
+                (Err(decoder_error), Err(embeddings_error)) => {
+                    return Err(OpenAiCompatServerError::Config(format!(
+                        "unsupported generic model artifact `{}`: decoder load failed: {decoder_error}; embeddings load failed: {embeddings_error}",
+                        model_path.display()
+                    )));
+                }
             };
             if models_by_key
                 .insert(loaded_model.model_key.clone(), loaded_model.clone())
@@ -585,26 +685,27 @@ impl OpenAiCompatServer {
             {
                 return Err(OpenAiCompatServerError::Config(format!(
                     "duplicate loaded model id `{}`",
-                    descriptor.model.model_id
+                    loaded_model.model_key
                 )));
             }
             for accepted_name in accepted_names {
                 if let Some(existing) =
-                    model_aliases.insert(accepted_name.clone(), descriptor.model.model_id.clone())
+                    model_aliases.insert(accepted_name.clone(), loaded_model.model_key.clone())
                 {
                     return Err(OpenAiCompatServerError::Config(format!(
                         "model alias `{accepted_name}` collides between `{existing}` and `{}`",
-                        descriptor.model.model_id
+                        loaded_model.model_key
                     )));
                 }
             }
             if default_model_key.is_none() {
-                default_model_key = Some(descriptor.model.model_id.clone());
-                default_canonical_model_name = Some(canonical_name);
+                default_model_key = Some(loaded_model.model_key.clone());
+                default_canonical_model_name = Some(loaded_model.canonical_name.clone());
             }
+            load_plans.push(load_plan);
         }
 
-        let worker = OpenAiCompatWorker::spawn(config.model_paths.clone())?;
+        let worker = OpenAiCompatWorker::spawn(load_plans)?;
         Ok(Self {
             state: Arc::new(OpenAiCompatState {
                 worker,
@@ -642,7 +743,8 @@ impl OpenAiCompatServer {
             .route("/health", get(generic_health))
             .route("/v1/models", get(generic_list_models))
             .route("/v1/chat/completions", post(generic_chat_completions))
-            .route("/v1/embeddings", post(generic_embeddings_unsupported))
+            .route("/v1/responses", post(generic_responses))
+            .route("/v1/embeddings", post(generic_embeddings))
             .with_state(Arc::clone(&self.state))
     }
 
@@ -654,22 +756,43 @@ impl OpenAiCompatServer {
 }
 
 impl OpenAiCompatWorker {
-    fn spawn(model_paths: Vec<PathBuf>) -> Result<Self, OpenAiCompatServerError> {
+    fn spawn(load_plans: Vec<OpenAiCompatModelLoadPlan>) -> Result<Self, OpenAiCompatServerError> {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
         std::thread::Builder::new()
             .name(String::from("psionic-openai-cpu-worker"))
             .spawn(move || {
-                let mut services = BTreeMap::new();
-                for model_path in &model_paths {
-                    match CpuGgufTextGenerationService::from_gguf_path(model_path) {
-                        Ok(service) => {
-                            let model_key = service.model_descriptor().model.model_id.clone();
-                            services.insert(model_key, service);
+                let mut generation_services = BTreeMap::new();
+                let mut embeddings_services = BTreeMap::new();
+                for load_plan in &load_plans {
+                    match load_plan.runtime_kind {
+                        OpenAiCompatRuntimeKind::GgufDecoder => {
+                            match CpuGgufTextGenerationService::from_gguf_path(&load_plan.path) {
+                                Ok(service) => {
+                                    let model_key =
+                                        service.model_descriptor().model.model_id.clone();
+                                    generation_services.insert(model_key, service);
+                                }
+                                Err(error) => {
+                                    let _ = ready_tx.send(Err::<(), String>(error.to_string()));
+                                    return;
+                                }
+                            }
                         }
-                        Err(error) => {
-                            let _ = ready_tx.send(Err::<(), String>(error.to_string()));
-                            return;
+                        OpenAiCompatRuntimeKind::SafetensorsEmbeddings => {
+                            match CpuModelEmbeddingsService::from_safetensors_artifact(
+                                &load_plan.path,
+                            ) {
+                                Ok(service) => {
+                                    let model_key =
+                                        service.model_descriptor().model.model_id.clone();
+                                    embeddings_services.insert(model_key, service);
+                                }
+                                Err(error) => {
+                                    let _ = ready_tx.send(Err::<(), String>(error.to_string()));
+                                    return;
+                                }
+                            }
                         }
                     }
                 }
@@ -689,9 +812,31 @@ impl OpenAiCompatWorker {
 
                     let Some(model_key) = pending_commands.front().map(|command| match command {
                         OpenAiCompatWorkerCommand::Generate { model_key, .. } => model_key.clone(),
+                        OpenAiCompatWorkerCommand::Embed { model_key, .. } => model_key.clone(),
                     }) else {
                         continue;
                     };
+                    if matches!(
+                        pending_commands.front(),
+                        Some(OpenAiCompatWorkerCommand::Embed { .. })
+                    ) {
+                        let Some(OpenAiCompatWorkerCommand::Embed {
+                            model_key,
+                            request,
+                            reply,
+                        }) = pending_commands.pop_front()
+                        else {
+                            continue;
+                        };
+                        let Some(service) = embeddings_services.get_mut(model_key.as_str()) else {
+                            let _ = reply.send(Err(ModelEmbeddingsError::UnsupportedModel(
+                                model_key.clone(),
+                            )));
+                            continue;
+                        };
+                        let _ = reply.send(service.embed(&request));
+                        continue;
+                    }
                     let mut selected = Vec::new();
                     let mut remaining = VecDeque::new();
                     while let Some(command) = pending_commands.pop_front() {
@@ -703,12 +848,23 @@ impl OpenAiCompatWorker {
                             } if command_model_key == model_key => {
                                 selected.push((request, reply));
                             }
+                            OpenAiCompatWorkerCommand::Embed {
+                                model_key: command_model_key,
+                                request,
+                                reply,
+                            } if command_model_key == model_key => {
+                                remaining.push_back(OpenAiCompatWorkerCommand::Embed {
+                                    model_key: command_model_key,
+                                    request,
+                                    reply,
+                                });
+                            }
                             other => remaining.push_back(other),
                         }
                     }
                     pending_commands = remaining;
 
-                    let Some(service) = services.get_mut(model_key.as_str()) else {
+                    let Some(service) = generation_services.get_mut(model_key.as_str()) else {
                         for (_, reply) in selected {
                             let _ = reply.send(Err(
                                 ReferenceTextGenerationError::UnsupportedModel(model_key.clone()),
@@ -757,6 +913,30 @@ impl OpenAiCompatWorker {
             ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
                 String::from("generic OpenAI worker dropped the response channel"),
             ))
+        })?
+    }
+
+    async fn embed(
+        &self,
+        model_key: String,
+        request: EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, ModelEmbeddingsError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(OpenAiCompatWorkerCommand::Embed {
+                model_key,
+                request,
+                reply: reply_tx,
+            })
+            .map_err(|_| {
+                ModelEmbeddingsError::Runtime(psionic_runtime::RuntimeError::Backend(String::from(
+                    "generic OpenAI worker is no longer available",
+                )))
+            })?;
+        reply_rx.await.map_err(|_| {
+            ModelEmbeddingsError::Runtime(psionic_runtime::RuntimeError::Backend(String::from(
+                "generic OpenAI worker dropped the response channel",
+            )))
         })?
     }
 }
@@ -1087,6 +1267,8 @@ enum OpenAiCompatHttpError {
     #[error(transparent)]
     PromptRender(Box<PromptRenderError>),
     #[error(transparent)]
+    Embeddings(Box<ModelEmbeddingsError>),
+    #[error(transparent)]
     Generation(Box<GptOssOpenAiCompatGenerationError>),
 }
 
@@ -1102,12 +1284,23 @@ impl From<GptOssOpenAiCompatGenerationError> for OpenAiCompatHttpError {
     }
 }
 
+impl From<ModelEmbeddingsError> for OpenAiCompatHttpError {
+    fn from(value: ModelEmbeddingsError) -> Self {
+        Self::Embeddings(Box::new(value))
+    }
+}
+
 impl IntoResponse for OpenAiCompatHttpError {
     fn into_response(self) -> Response {
         let (status, kind) = match &self {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
             Self::PromptRender(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
+            Self::Embeddings(error) => (
+                StatusCode::from_u16(error.diagnostic().status)
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                "embeddings_error",
+            ),
             Self::Generation(error) => match error.as_ref() {
                 GptOssOpenAiCompatGenerationError::BackendUnavailable { .. } => {
                     (StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable")
@@ -1161,6 +1354,8 @@ struct ModelCard {
     id: String,
     object: &'static str,
     owned_by: &'static str,
+    psionic_supported_endpoints: Vec<&'static str>,
+    psionic_model_family: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_served_backend: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1177,6 +1372,10 @@ struct ModelCard {
     psionic_execution_profile: Option<ExecutionCapabilityProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_scheduler_policy: Option<GenerationSchedulerPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_embedding_dimensions: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_embedding_normalization: Option<EmbeddingNormalization>,
 }
 
 async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<ModelsResponse> {
@@ -1185,6 +1384,8 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             id: state.default_model_name.clone(),
             object: "model",
             owned_by: "psionic",
+            psionic_supported_endpoints: vec![OpenAiCompatEndpoint::ChatCompletions.path()],
+            psionic_model_family: state.descriptor.model.family.clone(),
             psionic_served_backend: None,
             psionic_residency_mode: None,
             psionic_hybrid_offload: None,
@@ -1193,6 +1394,8 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             psionic_structured_outputs: None,
             psionic_execution_profile: None,
             psionic_scheduler_policy: None,
+            psionic_embedding_dimensions: None,
+            psionic_embedding_normalization: None,
         }],
     })
 }
@@ -1213,14 +1416,22 @@ struct GenericHealthResponse {
     warm_control: &'static str,
     unload_control: &'static str,
     memory_pressure_reporting: &'static str,
-    structured_output_fallbacks: Vec<&'static str>,
+    default_model_supported_endpoints: Vec<&'static str>,
+    supported_endpoints: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    structured_output_fallbacks: Option<Vec<&'static str>>,
     execution_profile: ExecutionCapabilityProfile,
-    scheduler_policy: GenerationSchedulerPolicy,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scheduler_policy: Option<GenerationSchedulerPolicy>,
 }
 
 async fn generic_health(
     State(state): State<Arc<OpenAiCompatState>>,
 ) -> Json<GenericHealthResponse> {
+    let default_model = state
+        .models_by_key
+        .get(&state.default_model_key)
+        .expect("default model should exist");
     Json(GenericHealthResponse {
         status: "ok",
         backend: state.backend_label,
@@ -1236,9 +1447,11 @@ async fn generic_health(
         warm_control: CPU_SERVER_WARM_CONTROL,
         unload_control: CPU_SERVER_UNLOAD_CONTROL,
         memory_pressure_reporting: CPU_SERVER_MEMORY_PRESSURE_REPORTING,
-        structured_output_fallbacks: structured_output_parser_labels(),
-        execution_profile: continuous_batch_text_generation_execution_profile(),
-        scheduler_policy: default_generation_scheduler_policy(),
+        default_model_supported_endpoints: model_endpoint_paths(default_model),
+        supported_endpoints: union_supported_endpoint_paths(state.as_ref()),
+        structured_output_fallbacks: default_model.structured_output_labels(),
+        execution_profile: default_model.execution_profile().clone(),
+        scheduler_policy: default_model.scheduler_policy().cloned(),
     })
 }
 
@@ -1251,14 +1464,18 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 id: model.canonical_name.clone(),
                 object: "model",
                 owned_by: "psionic",
+                psionic_supported_endpoints: model_endpoint_paths(model),
+                psionic_model_family: model.family_label().to_string(),
                 psionic_served_backend: Some("cpu"),
                 psionic_residency_mode: Some(CPU_SERVER_RESIDENCY_MODE),
                 psionic_hybrid_offload: Some(CPU_SERVER_HYBRID_OFFLOAD_MODE),
                 psionic_fallback_policy: Some(CPU_SERVER_FALLBACK_POLICY),
                 psionic_performance_class: Some(CPU_SERVER_PERFORMANCE_CLASS),
-                psionic_structured_outputs: Some(structured_output_parser_labels()),
-                psionic_execution_profile: Some(model.execution_profile.clone()),
-                psionic_scheduler_policy: Some(model.scheduler_policy.clone()),
+                psionic_structured_outputs: model.structured_output_labels(),
+                psionic_execution_profile: Some(model.execution_profile().clone()),
+                psionic_scheduler_policy: model.scheduler_policy().cloned(),
+                psionic_embedding_dimensions: model.embedding_dimensions(),
+                psionic_embedding_normalization: model.embedding_normalization(),
             })
             .collect(),
     })
@@ -1325,6 +1542,61 @@ struct PsionicGrammarRequest {
     grammar: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     syntax: Option<StructuredGrammarSyntax>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct EmbeddingsRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    input: EmbeddingsInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dimensions: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    encoding_format: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum EmbeddingsInput {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl EmbeddingsInput {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::One(value) => vec![value],
+            Self::Many(values) => values,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ResponsesRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    instructions: Option<String>,
+    input: ResponsesInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stop: Option<StopSequences>,
+    #[serde(default)]
+    stream: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    previous_response_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_prefix_cache: Option<PrefixCacheControl>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ResponsesInput {
+    Text(String),
+    Messages(Vec<ChatCompletionMessage>),
 }
 
 impl StopSequences {
@@ -1558,16 +1830,26 @@ async fn handle_generic_chat_completions(
     state: Arc<OpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
-    let model = resolve_generic_model(state.as_ref(), request.model.as_deref())?;
+    let loaded_model = resolve_generic_model_for_endpoint(
+        state.as_ref(),
+        request.model.as_deref(),
+        OpenAiCompatEndpoint::ChatCompletions,
+    )?;
+    let model = loaded_model.decoder().ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!(
+            "loaded model `{}` is missing decoder metadata",
+            loaded_model.model_key
+        ))
+    })?;
     let structured_output = structured_output_from_chat_request(&request)?;
     let prompt_messages =
         chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
-    let rendered = render_prompt_for_model(model, prompt_messages.as_slice())?;
-    let request_id = next_generic_request_id(&state);
+    let rendered = render_prompt_for_model(loaded_model, prompt_messages.as_slice())?;
+    let request_id = next_generic_request_id(&state, "psionic-chatcmpl");
     let response_model_name = request
         .model
         .clone()
-        .unwrap_or_else(|| model.canonical_name.clone());
+        .unwrap_or_else(|| loaded_model.canonical_name.clone());
     let options = generation_options_from_chat_request_for_family(
         &request,
         model.family,
@@ -1586,7 +1868,7 @@ async fn handle_generic_chat_completions(
 
     let response = state
         .worker
-        .generate(model.model_key.clone(), generation_request)
+        .generate(loaded_model.model_key.clone(), generation_request)
         .await
         .map_err(|error| {
             OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
@@ -1731,11 +2013,268 @@ async fn handle_generic_chat_completions(
     Ok(response)
 }
 
-async fn generic_embeddings_unsupported() -> Response {
-    OpenAiCompatHttpError::BadRequest(String::from(
-        "/v1/embeddings is not implemented on the generic Psionic server yet",
-    ))
-    .into_response()
+async fn generic_responses(
+    State(state): State<Arc<OpenAiCompatState>>,
+    Json(request): Json<ResponsesRequest>,
+) -> Response {
+    match handle_generic_responses(state, request).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn handle_generic_responses(
+    state: Arc<OpenAiCompatState>,
+    request: ResponsesRequest,
+) -> Result<Response, OpenAiCompatHttpError> {
+    if request.stream {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "streaming `/v1/responses` is not implemented on the generic Psionic server yet",
+        )));
+    }
+    let loaded_model = resolve_generic_model_for_endpoint(
+        state.as_ref(),
+        request.model.as_deref(),
+        OpenAiCompatEndpoint::Responses,
+    )?;
+    let model = loaded_model.decoder().ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!(
+            "loaded model `{}` is missing decoder metadata",
+            loaded_model.model_key
+        ))
+    })?;
+    let prompt_messages = response_input_to_prompt_messages(&request, model.family)?;
+    let rendered = render_prompt_for_model(loaded_model, prompt_messages.as_slice())?;
+    let request_id = next_generic_request_id(&state, "psionic-resp");
+    let response_model_name = request
+        .model
+        .clone()
+        .unwrap_or_else(|| loaded_model.canonical_name.clone());
+    let generation_request = GenerationRequest::new_text(
+        request_id.clone(),
+        model.descriptor.clone(),
+        None,
+        rendered.text,
+        generation_options_from_responses_request(
+            &request,
+            model.family,
+            rendered.stop_sequences.as_slice(),
+        ),
+    )
+    .with_prefix_cache_control(request.psionic_prefix_cache.clone().unwrap_or_default());
+
+    let response = state
+        .worker
+        .generate(loaded_model.model_key.clone(), generation_request)
+        .await
+        .map_err(|error| {
+            OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
+        })?;
+    let parsed =
+        if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
+            parse_gpt_oss_harmony_text(
+                response.output.text.as_str(),
+                GptOssHarmonyParseOptions {
+                    role_hint: Some(PromptMessageRole::Assistant),
+                    strict: false,
+                },
+            )
+            .ok()
+        } else {
+            None
+        };
+    let content = completion_choice_for_family(model.family, &response, parsed.clone()).content;
+    let structured_output_report = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.structured_output.clone());
+    let scheduler_receipt = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.scheduler.clone());
+    let prefix_cache_state = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.prefix_cache_state);
+    let prefix_cache_refusal_reason = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.prefix_cache_refusal_reason);
+    let prefix_tokens_reused = response.metrics.prefix_tokens_reused;
+    let prefill_decode_mode = scheduler_receipt
+        .as_ref()
+        .and_then(|receipt| receipt.prefill_decode_mode)
+        .or_else(|| {
+            response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .and_then(|proof| proof.prefill_decode_handoff.as_ref())
+                .map(|handoff| handoff.mode)
+        });
+    let time_to_first_token_ns = response.metrics.time_to_first_token_ns;
+    let inter_token_latency_ns = response.metrics.inter_token_latency_ns;
+    let body = ResponsesResponse {
+        id: request_id.clone(),
+        object: "response",
+        created_at: unix_timestamp_secs(),
+        status: "completed",
+        model: response_model_name,
+        output: vec![ResponsesOutputItem {
+            id: format!("{request_id}-msg-0"),
+            kind: "message",
+            status: "completed",
+            role: "assistant",
+            content: vec![ResponsesOutputContent {
+                kind: "output_text",
+                text: content.clone(),
+            }],
+        }],
+        output_text: content,
+        usage: ResponsesUsage {
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
+            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        },
+        previous_response_id: request.previous_response_id.clone(),
+        psionic_metrics: state
+            .include_psionic_fields
+            .then(|| response.metrics.clone()),
+        psionic_harmony: state.include_psionic_fields.then_some(parsed).flatten(),
+        psionic_perf: state
+            .include_psionic_fields
+            .then(|| response.metrics.gpt_oss_perf.clone())
+            .flatten(),
+        psionic_output_tokens: state.include_psionic_fields.then(|| {
+            response
+                .output
+                .tokens
+                .as_slice()
+                .iter()
+                .map(|token| token.as_u32())
+                .collect()
+        }),
+        psionic_structured_output: response
+            .provenance
+            .as_ref()
+            .and_then(|value| value.structured_output.clone()),
+        psionic_scheduler: state
+            .include_psionic_fields
+            .then(|| scheduler_receipt.clone())
+            .flatten(),
+    };
+    let mut response = Json(body).into_response();
+    insert_generic_execution_headers(
+        response.headers_mut(),
+        state.as_ref(),
+        structured_output_report.as_ref(),
+        scheduler_receipt.as_ref(),
+        prefill_decode_mode,
+        time_to_first_token_ns,
+        inter_token_latency_ns,
+        prefix_cache_state,
+        prefix_cache_refusal_reason,
+        prefix_tokens_reused,
+    );
+    Ok(response)
+}
+
+async fn generic_embeddings(
+    State(state): State<Arc<OpenAiCompatState>>,
+    Json(request): Json<EmbeddingsRequest>,
+) -> Response {
+    match handle_generic_embeddings(state, request).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn handle_generic_embeddings(
+    state: Arc<OpenAiCompatState>,
+    request: EmbeddingsRequest,
+) -> Result<Response, OpenAiCompatHttpError> {
+    if let Some(encoding_format) = request.encoding_format.as_deref()
+        && encoding_format != "float"
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(format!(
+            "unsupported `encoding_format` `{encoding_format}` for `/v1/embeddings`; only `float` is supported"
+        )));
+    }
+    let loaded_model = resolve_generic_model_for_endpoint(
+        state.as_ref(),
+        request.model.as_deref(),
+        OpenAiCompatEndpoint::Embeddings,
+    )?;
+    let model = loaded_model.embeddings().ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!(
+            "loaded model `{}` is missing embeddings metadata",
+            loaded_model.model_key
+        ))
+    })?;
+    let request_id = next_generic_request_id(&state, "psionic-embed");
+    let response_model_name = request
+        .model
+        .clone()
+        .unwrap_or_else(|| loaded_model.canonical_name.clone());
+    let embedding_request = if let Some(dimensions) = request.dimensions {
+        EmbeddingRequest::new(
+            request_id.clone(),
+            model.descriptor.clone(),
+            request.input.into_vec(),
+        )
+        .with_output_dimensions(dimensions)
+    } else {
+        EmbeddingRequest::new(
+            request_id.clone(),
+            model.descriptor.clone(),
+            request.input.into_vec(),
+        )
+    };
+    let response = state
+        .worker
+        .embed(loaded_model.model_key.clone(), embedding_request)
+        .await?;
+    let body = EmbeddingsResponse {
+        object: "list",
+        data: response
+            .embeddings
+            .iter()
+            .map(|embedding| EmbeddingsResponseData {
+                object: "embedding",
+                index: embedding.index,
+                embedding: embedding.values.clone(),
+            })
+            .collect(),
+        model: response_model_name,
+        usage: response
+            .metrics
+            .prompt_eval_count
+            .map(|prompt_tokens| EmbeddingsUsage {
+                prompt_tokens,
+                total_tokens: prompt_tokens,
+            }),
+        psionic_metrics: state
+            .include_psionic_fields
+            .then(|| response.metrics.clone()),
+        psionic_provenance: state
+            .include_psionic_fields
+            .then(|| response.provenance.clone())
+            .flatten(),
+    };
+    let mut response = Json(body).into_response();
+    insert_generic_execution_headers(
+        response.headers_mut(),
+        state.as_ref(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    Ok(response)
 }
 
 async fn proxy_chat_completions(
@@ -1819,6 +2358,56 @@ struct ChatCompletionResponse {
 }
 
 #[derive(Clone, Debug, Serialize)]
+struct ResponsesResponse {
+    id: String,
+    object: &'static str,
+    created_at: u64,
+    status: &'static str,
+    model: String,
+    output: Vec<ResponsesOutputItem>,
+    output_text: String,
+    usage: ResponsesUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_response_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_metrics: Option<GenerationMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_harmony: Option<GptOssHarmonyParsedOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_perf: Option<GptOssPerformanceMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_output_tokens: Option<Vec<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_structured_output: Option<StructuredOutputExecutionReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_scheduler: Option<GenerationSchedulerRequestReceipt>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ResponsesOutputItem {
+    id: String,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    status: &'static str,
+    role: &'static str,
+    content: Vec<ResponsesOutputContent>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ResponsesOutputContent {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ResponsesUsage {
+    input_tokens: usize,
+    output_tokens: usize,
+    total_tokens: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct ChatCompletionChoice {
     index: usize,
     message: ChatCompletionResponseMessage,
@@ -1835,6 +2424,32 @@ struct ChatCompletionResponseMessage {
 struct ChatCompletionUsage {
     prompt_tokens: usize,
     completion_tokens: usize,
+    total_tokens: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct EmbeddingsResponse {
+    object: &'static str,
+    data: Vec<EmbeddingsResponseData>,
+    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<EmbeddingsUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_metrics: Option<EmbeddingMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_provenance: Option<EmbeddingProvenance>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct EmbeddingsResponseData {
+    object: &'static str,
+    index: usize,
+    embedding: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct EmbeddingsUsage {
+    prompt_tokens: usize,
     total_tokens: usize,
 }
 
@@ -1957,9 +2572,9 @@ fn next_request_id(state: &GptOssOpenAiCompatState) -> String {
     format!("psionic-chatcmpl-{next}")
 }
 
-fn next_generic_request_id(state: &OpenAiCompatState) -> String {
+fn next_generic_request_id(state: &OpenAiCompatState, prefix: &str) -> String {
     let next = state.request_counter.fetch_add(1, Ordering::Relaxed);
-    format!("psionic-chatcmpl-{next}")
+    format!("{prefix}-{next}")
 }
 
 fn insert_generic_execution_headers(
@@ -2119,6 +2734,42 @@ fn resolve_generic_model<'a>(
     })
 }
 
+fn resolve_generic_model_for_endpoint<'a>(
+    state: &'a OpenAiCompatState,
+    requested: Option<&str>,
+    endpoint: OpenAiCompatEndpoint,
+) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
+    let model = resolve_generic_model(state, requested)?;
+    if model.supported_endpoints.contains(&endpoint) {
+        Ok(model)
+    } else {
+        Err(OpenAiCompatHttpError::BadRequest(format!(
+            "model `{}` does not support `{}`; supported endpoints: {}",
+            requested.unwrap_or(model.canonical_name.as_str()),
+            endpoint.path(),
+            model_endpoint_paths(model).join(", ")
+        )))
+    }
+}
+
+fn model_endpoint_paths(model: &OpenAiCompatLoadedModel) -> Vec<&'static str> {
+    model
+        .supported_endpoints
+        .iter()
+        .map(|endpoint| endpoint.path())
+        .collect()
+}
+
+fn union_supported_endpoint_paths(state: &OpenAiCompatState) -> Vec<&'static str> {
+    let mut endpoints = BTreeSet::new();
+    for model in state.models_by_key.values() {
+        for endpoint in &model.supported_endpoints {
+            endpoints.insert(endpoint.path());
+        }
+    }
+    endpoints.into_iter().collect()
+}
+
 fn prompt_options_for_family(
     family: GgufDecoderFamily,
     reasoning_budget: u8,
@@ -2136,12 +2787,95 @@ fn prompt_options_for_family(
     }
 }
 
+fn load_generic_decoder_model(
+    model_path: &Path,
+    reasoning_budget: u8,
+) -> Result<
+    (
+        OpenAiCompatLoadedModel,
+        BTreeSet<String>,
+        OpenAiCompatModelLoadPlan,
+    ),
+    String,
+> {
+    let artifact = GgufBlobArtifact::open_path(model_path, gpt_oss_local_blob_open_options())
+        .map_err(|error| error.to_string())?;
+    let adapter = GgufDecoderAdapterLoader
+        .load_blob_artifact(&artifact)
+        .map_err(|error| error.to_string())?;
+    let descriptor = adapter.descriptor().clone();
+    let family = adapter.family_metadata().family;
+    let loaded_model = OpenAiCompatLoadedModel {
+        model_key: descriptor.model.model_id.clone(),
+        canonical_name: default_model_name(model_path, descriptor.model.model_id.as_str()),
+        supported_endpoints: vec![
+            OpenAiCompatEndpoint::ChatCompletions,
+            OpenAiCompatEndpoint::Responses,
+        ],
+        kind: OpenAiCompatLoadedModelKind::Decoder(OpenAiCompatLoadedDecoderModel {
+            descriptor: descriptor.clone(),
+            family,
+            prompt_renderer: (!matches!(family, GgufDecoderFamily::GptOss))
+                .then(|| adapter.prompt_renderer()),
+            prompt_options: prompt_options_for_family(family, reasoning_budget),
+            execution_profile: continuous_batch_text_generation_execution_profile(),
+            scheduler_policy: default_generation_scheduler_policy(),
+        }),
+    };
+    Ok((
+        loaded_model,
+        accepted_model_names(model_path, descriptor.model.model_id.as_str()),
+        OpenAiCompatModelLoadPlan {
+            path: model_path.to_path_buf(),
+            runtime_kind: OpenAiCompatRuntimeKind::GgufDecoder,
+        },
+    ))
+}
+
+fn load_generic_embeddings_model(
+    model_path: &Path,
+) -> Result<
+    (
+        OpenAiCompatLoadedModel,
+        BTreeSet<String>,
+        OpenAiCompatModelLoadPlan,
+    ),
+    String,
+> {
+    let service = CpuModelEmbeddingsService::from_safetensors_artifact(model_path)
+        .map_err(|error| error.to_string())?;
+    let descriptor = service.model_descriptor().clone();
+    let loaded_model = OpenAiCompatLoadedModel {
+        model_key: descriptor.model.model_id.clone(),
+        canonical_name: default_model_name(model_path, descriptor.model.model_id.as_str()),
+        supported_endpoints: vec![OpenAiCompatEndpoint::Embeddings],
+        kind: OpenAiCompatLoadedModelKind::Embeddings(OpenAiCompatLoadedEmbeddingsModel {
+            descriptor: descriptor.clone(),
+            execution_profile: default_embeddings_execution_profile(),
+        }),
+    };
+    Ok((
+        loaded_model,
+        accepted_model_names(model_path, descriptor.model.model_id.as_str()),
+        OpenAiCompatModelLoadPlan {
+            path: model_path.to_path_buf(),
+            runtime_kind: OpenAiCompatRuntimeKind::SafetensorsEmbeddings,
+        },
+    ))
+}
+
 fn render_prompt_for_model(
     model: &OpenAiCompatLoadedModel,
     messages: &[PromptMessage],
 ) -> Result<GenericRenderedPrompt, OpenAiCompatHttpError> {
-    if matches!(model.family, GgufDecoderFamily::GptOss) {
-        let text = render_gpt_oss_harmony_prompt(messages, true, Some(&model.prompt_options))
+    let decoder = model.decoder().ok_or_else(|| {
+        OpenAiCompatHttpError::BadRequest(format!(
+            "model `{}` does not support text-generation prompts",
+            model.canonical_name
+        ))
+    })?;
+    if matches!(decoder.family, GgufDecoderFamily::GptOss) {
+        let text = render_gpt_oss_harmony_prompt(messages, true, Some(&decoder.prompt_options))
             .map_err(|error| {
                 OpenAiCompatHttpError::from(PromptRenderError::HarmonyRendering {
                     message: error.to_string(),
@@ -2155,19 +2889,22 @@ fn render_prompt_for_model(
             ],
         });
     }
-    let renderer = model.prompt_renderer.as_ref().ok_or_else(|| {
+    let renderer = decoder.prompt_renderer.as_ref().ok_or_else(|| {
         OpenAiCompatHttpError::Internal(format!(
             "model `{}` is missing a generic prompt renderer",
             model.model_key
         ))
     })?;
-    let rendered = match renderer.render_with_options(None, messages, true, &model.prompt_options) {
+    let rendered = match renderer.render_with_options(None, messages, true, &decoder.prompt_options)
+    {
         Ok(rendered) => rendered,
         Err(PromptRenderError::MissingDefaultTemplate)
-            if messages.len() == 1 && messages[0].role == PromptMessageRole::User =>
+            if messages
+                .iter()
+                .all(|message| message.role != PromptMessageRole::Tool) =>
         {
             return Ok(GenericRenderedPrompt {
-                text: messages[0].content.clone(),
+                text: fallback_prompt_text(messages),
                 stop_sequences: Vec::new(),
             });
         }
@@ -2177,6 +2914,26 @@ fn render_prompt_for_model(
         text: rendered.text,
         stop_sequences: rendered.stop_sequences,
     })
+}
+
+fn fallback_prompt_text(messages: &[PromptMessage]) -> String {
+    if messages.len() == 1 && messages[0].role == PromptMessageRole::User {
+        return messages[0].content.clone();
+    }
+    messages
+        .iter()
+        .map(|message| {
+            let role = match message.role {
+                PromptMessageRole::System => "system",
+                PromptMessageRole::Developer => "developer",
+                PromptMessageRole::User => "user",
+                PromptMessageRole::Assistant => "assistant",
+                PromptMessageRole::Tool => "tool",
+            };
+            format!("{role}:\n{}", message.content)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn completion_choice_for_family(
@@ -2250,6 +3007,62 @@ fn generation_options_from_chat_request_for_family(
         ensure_harmony_stop_sequences(&mut options.stop_sequences);
     }
     options
+}
+
+fn generation_options_from_responses_request(
+    request: &ResponsesRequest,
+    family: GgufDecoderFamily,
+    default_stop_sequences: &[String],
+) -> GenerationOptions {
+    let max_output_tokens = request.max_output_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
+    let temperature = request.temperature.unwrap_or(0.0);
+    let mut options = if temperature <= f32::EPSILON {
+        GenerationOptions::greedy(max_output_tokens)
+    } else {
+        let mut options = GenerationOptions::sample(max_output_tokens);
+        options.temperature = Some(temperature);
+        options
+    };
+    options.decode_strategy = if temperature <= f32::EPSILON {
+        DecodeStrategy::Greedy
+    } else {
+        DecodeStrategy::Sample
+    };
+    if let Some(stop) = &request.stop {
+        options.stop_sequences.extend(stop.clone().into_vec());
+    }
+    for stop in default_stop_sequences {
+        if !options.stop_sequences.iter().any(|value| value == stop) {
+            options.stop_sequences.push(stop.clone());
+        }
+    }
+    if matches!(family, GgufDecoderFamily::GptOss) {
+        ensure_harmony_stop_sequences(&mut options.stop_sequences);
+    }
+    options
+}
+
+fn response_input_to_prompt_messages(
+    request: &ResponsesRequest,
+    family: GgufDecoderFamily,
+) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
+    let mut messages = Vec::new();
+    if let Some(instructions) = request.instructions.as_ref() {
+        messages.push(ChatCompletionMessage {
+            role: String::from("developer"),
+            content: instructions.clone(),
+            name: None,
+        });
+    }
+    match &request.input {
+        ResponsesInput::Text(text) => messages.push(ChatCompletionMessage {
+            role: String::from("user"),
+            content: text.clone(),
+            name: None,
+        }),
+        ResponsesInput::Messages(input_messages) => messages.extend(input_messages.clone()),
+    }
+    chat_messages_to_prompt_messages_for_family(messages.as_slice(), family)
 }
 
 fn ensure_harmony_stop_sequences(stop_sequences: &mut Vec<String>) {
@@ -2418,17 +3231,17 @@ fn validate_requested_model(
     )))
 }
 
-fn default_model_name(path: &Path, descriptor: &DecoderModelDescriptor) -> String {
+fn default_model_name(path: &Path, model_id: &str) -> String {
     path.file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .map(String::from)
-        .unwrap_or_else(|| descriptor.model.model_id.clone())
+        .unwrap_or_else(|| model_id.to_string())
 }
 
-fn accepted_model_names(path: &Path, descriptor: &DecoderModelDescriptor) -> BTreeSet<String> {
+fn accepted_model_names(path: &Path, model_id: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
-    names.insert(descriptor.model.model_id.clone());
+    names.insert(model_id.to_string());
     if let Some(file_name) = path.file_name().and_then(|value| value.to_str()) {
         names.insert(file_name.to_string());
     }
@@ -2463,15 +3276,16 @@ mod tests {
     use super::{
         CPU_SERVER_FALLBACK_POLICY, CPU_SERVER_HYBRID_OFFLOAD_MODE, CPU_SERVER_RESIDENCY_MODE,
         ChatCompletionJsonSchemaRequest, ChatCompletionMessage, ChatCompletionRequest,
-        ChatCompletionResponseFormatRequest, GptOssMetalExecutionMode, GptOssOpenAiCompatBackend,
-        HARMONY_CALL_STOP, HARMONY_RETURN_STOP, OpenAiCompatConfig, OpenAiCompatServer,
-        PromptTokenCache, PsionicGrammarRequest, chat_messages_to_prompt_messages,
+        ChatCompletionResponseFormatRequest, EmbeddingsInput, EmbeddingsRequest,
+        GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, HARMONY_CALL_STOP,
+        HARMONY_RETURN_STOP, OpenAiCompatConfig, OpenAiCompatServer, PromptTokenCache,
+        PsionicGrammarRequest, ResponsesInput, ResponsesRequest, chat_messages_to_prompt_messages,
         chat_messages_to_prompt_messages_for_family, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
         generation_options_from_chat_request, generation_options_from_chat_request_for_family,
-        generic_health, generic_list_models, handle_generic_chat_completions,
-        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
-        resolve_generic_model,
+        generic_embeddings, generic_health, generic_list_models, handle_generic_chat_completions,
+        handle_generic_responses, prompt_request_cache_key, render_prompt_for_model,
+        resolve_execution_summary, resolve_generic_model,
     };
     use crate::GenerationRequest;
     use axum::{
@@ -2479,13 +3293,13 @@ mod tests {
         body::to_bytes,
         extract::State,
         http::{HeaderMap, StatusCode},
-        response::Response,
+        response::{IntoResponse, Response},
     };
     use psionic_models::{
-        GgufDecoderFamily, GgufMetadataValue, GgufTensorType, GptOssHarmonyParseSource,
-        GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, PromptChannelConfig, PromptMessage,
-        PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, TokenId, TokenSequence,
-        render_gpt_oss_harmony_prompt,
+        ByteProjectionEmbedder, GgufDecoderFamily, GgufMetadataValue, GgufTensorType,
+        GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext,
+        PromptChannelConfig, PromptMessage, PromptMessageRole, PromptReasoningEffort,
+        PromptRenderOptions, TokenId, TokenSequence, render_gpt_oss_harmony_prompt,
     };
     use psionic_runtime::{
         BatchExecutionPosture, PrefixCacheControl, PrefixCacheMode, QueueDiscipline,
@@ -2830,9 +3644,11 @@ mod tests {
             .expect("llama model should resolve");
         let qwen_model = resolve_generic_model(server.state.as_ref(), Some("tiny-qwen"))
             .expect("qwen model should resolve");
+        let llama_decoder = llama_model.decoder().expect("llama decoder model");
+        let qwen_decoder = qwen_model.decoder().expect("qwen decoder model");
 
-        assert_eq!(llama_model.family, GgufDecoderFamily::Llama);
-        assert_eq!(qwen_model.family, GgufDecoderFamily::Qwen);
+        assert_eq!(llama_decoder.family, GgufDecoderFamily::Llama);
+        assert_eq!(qwen_decoder.family, GgufDecoderFamily::Qwen);
         assert_eq!(server.state.models_by_key.len(), 2);
         let health = tokio::runtime::Runtime::new()?
             .block_on(generic_health(State(std::sync::Arc::clone(&server.state))));
@@ -2841,7 +3657,7 @@ mod tests {
         assert_eq!(health.0.hybrid_offload, CPU_SERVER_HYBRID_OFFLOAD_MODE);
         assert_eq!(
             health.0.structured_output_fallbacks,
-            vec!["gbnf_subset", "json_schema_subset", "json_object"]
+            Some(vec!["gbnf_subset", "json_schema_subset", "json_object"])
         );
         assert_eq!(
             health.0.execution_profile.batch_posture,
@@ -2851,7 +3667,13 @@ mod tests {
             health.0.execution_profile.queue_policy.discipline,
             QueueDiscipline::Fifo
         );
-        assert!(health.0.scheduler_policy.max_active_requests > 0);
+        assert!(
+            health
+                .0
+                .scheduler_policy
+                .as_ref()
+                .is_some_and(|policy| policy.max_active_requests > 0)
+        );
         let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
             std::sync::Arc::clone(&server.state),
         )));
@@ -2902,16 +3724,16 @@ mod tests {
             psionic_prefix_cache: None,
         };
         let prompt_messages =
-            chat_messages_to_prompt_messages_for_family(&request.messages, qwen_model.family)?;
+            chat_messages_to_prompt_messages_for_family(&request.messages, qwen_decoder.family)?;
         let rendered = render_prompt_for_model(qwen_model, prompt_messages.as_slice())?;
         let generation_request = GenerationRequest::new_text(
             String::from("generic-server-qwen"),
-            qwen_model.descriptor.clone(),
+            qwen_decoder.descriptor.clone(),
             None,
             rendered.text,
             generation_options_from_chat_request_for_family(
                 &request,
-                qwen_model.family,
+                qwen_decoder.family,
                 rendered.stop_sequences.as_slice(),
             ),
         );
@@ -2938,7 +3760,8 @@ mod tests {
         let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
         let model = resolve_generic_model(server.state.as_ref(), None)
             .expect("default model should resolve");
-        assert_eq!(model.family, GgufDecoderFamily::GptOss);
+        let decoder = model.decoder().expect("gpt-oss decoder model");
+        assert_eq!(decoder.family, GgufDecoderFamily::GptOss);
 
         let request = ChatCompletionRequest {
             model: None,
@@ -2956,16 +3779,16 @@ mod tests {
             psionic_prefix_cache: None,
         };
         let prompt_messages =
-            chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
+            chat_messages_to_prompt_messages_for_family(&request.messages, decoder.family)?;
         let rendered = render_prompt_for_model(model, prompt_messages.as_slice())?;
         let generation_request = GenerationRequest::new_text(
             String::from("generic-server-gpt-oss"),
-            model.descriptor.clone(),
+            decoder.descriptor.clone(),
             None,
             rendered.text,
             generation_options_from_chat_request_for_family(
                 &request,
-                model.family,
+                decoder.family,
                 rendered.stop_sequences.as_slice(),
             ),
         );
@@ -2976,6 +3799,164 @@ mod tests {
                 .generate(model.model_key.clone(), generation_request),
         )?;
         assert_eq!(response.usage.output_tokens, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_surfaces_embeddings_truthfully() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let llama_path = temp.path().join("tiny-llama.gguf");
+        let embeddings_path = temp.path().join("tiny-embed.safetensors");
+        write_test_gguf(
+            &llama_path,
+            dense_llama_metadata("tiny server llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+        ByteProjectionEmbedder::write_default_safetensors_artifact(&embeddings_path)?;
+
+        let mut config = OpenAiCompatConfig::new(&llama_path);
+        config.add_model_path(&embeddings_path);
+        let server = OpenAiCompatServer::from_config(&config)?;
+
+        let health = tokio::runtime::Runtime::new()?
+            .block_on(generic_health(State(std::sync::Arc::clone(&server.state))));
+        assert_eq!(
+            health.0.supported_endpoints,
+            vec!["/v1/chat/completions", "/v1/embeddings", "/v1/responses"]
+        );
+
+        let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
+            std::sync::Arc::clone(&server.state),
+        )));
+        let embeddings_model = models
+            .0
+            .data
+            .iter()
+            .find(|model| model.psionic_supported_endpoints == vec!["/v1/embeddings"])
+            .expect("embeddings model should be listed");
+        assert_eq!(embeddings_model.psionic_embedding_dimensions, Some(8));
+
+        let response = tokio::runtime::Runtime::new()?.block_on(generic_embeddings(
+            State(std::sync::Arc::clone(&server.state)),
+            Json(EmbeddingsRequest {
+                model: Some(String::from("tiny-embed")),
+                input: EmbeddingsInput::Many(vec![String::from("hello"), String::from("world")]),
+                dimensions: Some(4),
+                encoding_format: Some(String::from("float")),
+            }),
+        ));
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["object"], serde_json::json!("list"));
+        assert_eq!(payload["data"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            payload["data"][0]["embedding"].as_array().map(Vec::len),
+            Some(4)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_responses_surface_runs_real_generation() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny response llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response = tokio::runtime::Runtime::new()?.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-llama")),
+                instructions: Some(String::from("Be brief.")),
+                input: ResponsesInput::Text(String::from("hello")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                previous_response_id: Some(String::from("resp-prev-1")),
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["object"], serde_json::json!("response"));
+        assert_eq!(payload["status"], serde_json::json!("completed"));
+        assert_eq!(payload["output_text"], serde_json::json!("world"));
+        assert_eq!(
+            payload["previous_response_id"],
+            serde_json::json!("resp-prev-1")
+        );
+        assert_eq!(payload["output"][0]["type"], serde_json::json!("message"));
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_refuses_model_endpoint_mismatches() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let llama_path = temp.path().join("tiny-llama.gguf");
+        let embeddings_path = temp.path().join("tiny-embed.safetensors");
+        write_test_gguf(
+            &llama_path,
+            dense_llama_metadata("tiny server llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+        ByteProjectionEmbedder::write_default_safetensors_artifact(&embeddings_path)?;
+
+        let mut config = OpenAiCompatConfig::new(&llama_path);
+        config.add_model_path(&embeddings_path);
+        let server = OpenAiCompatServer::from_config(&config)?;
+
+        let embeddings_response = tokio::runtime::Runtime::new()?.block_on(generic_embeddings(
+            State(std::sync::Arc::clone(&server.state)),
+            Json(EmbeddingsRequest {
+                model: Some(String::from("tiny-llama")),
+                input: EmbeddingsInput::One(String::from("hello")),
+                dimensions: None,
+                encoding_format: None,
+            }),
+        ));
+        assert_eq!(embeddings_response.status(), StatusCode::BAD_REQUEST);
+        let embeddings_payload =
+            tokio::runtime::Runtime::new()?.block_on(response_json(embeddings_response))?;
+        assert!(
+            embeddings_payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("/v1/chat/completions"),
+            "unsupported endpoint error should describe supported surfaces"
+        );
+
+        let responses_response = tokio::runtime::Runtime::new()?
+            .block_on(handle_generic_responses(
+                std::sync::Arc::clone(&server.state),
+                ResponsesRequest {
+                    model: Some(String::from("tiny-embed")),
+                    instructions: None,
+                    input: ResponsesInput::Text(String::from("hello")),
+                    temperature: Some(0.0),
+                    max_output_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    previous_response_id: None,
+                    psionic_prefix_cache: None,
+                },
+            ))
+            .expect_err("embeddings-only model should refuse responses");
+        let response = responses_response.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("/v1/embeddings"),
+            "unsupported endpoint error should describe supported surfaces"
+        );
         Ok(())
     }
 

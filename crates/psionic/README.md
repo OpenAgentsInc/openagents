@@ -76,8 +76,9 @@ Implemented now:
 - generic CPU GGUF decoder execution for GPT-OSS plus representative Llama,
   Qwen, and Mistral families through one Psionic-owned runtime surface.
 - generic `psionic-openai-server` boot and model inventory for GPT-OSS plus
-  non-GPT-OSS GGUF families on one `/v1/chat/completions` surface, with
-  unfinished APIs still refused explicitly.
+  non-GPT-OSS GGUF families on one `/v1/chat/completions` surface, plus
+  safetensors-backed embeddings on `/v1/embeddings` and a first Psionic-owned
+  `/v1/responses` surface, with per-model endpoint support reported explicitly.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
 - Psionic-owned local structured-output fallback on the generic server via
