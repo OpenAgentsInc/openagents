@@ -211,6 +211,11 @@ Implemented now:
   policy-weight delivery, sandbox reuse, rollout-worker protocol, validator
   verdicts, benchmark aggregation, and one fixed-budget trainer step together
   in one typed report instead of isolated subsystem tests.
+- a first explicit distributed-optimizer contract in `psionic-train`, making
+  parameter sharding, gradient accumulation, optimizer-state sharding,
+  precision policy, activation checkpointing, long-run memory planning, and
+  collective sync attachment machine-legible on top of the fixed-budget trainer
+  core.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
@@ -296,6 +301,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical end-to-end agentic-SFT-plus-RL pilot, including environment and
   dataset lineage, sandbox reuse, rollout-worker receipts, validator verdicts,
   online eval, benchmark aggregation, and operator-view pass criteria.
+- **[docs/DISTRIBUTED_OPTIMIZER_REFERENCE.md](docs/DISTRIBUTED_OPTIMIZER_REFERENCE.md)** —
+  canonical parameter-sharding, optimizer-state-sharding, precision,
+  microbatch-accumulation, activation-checkpointing, and memory-budget runbook
+  for the distributed optimizer layer in `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.

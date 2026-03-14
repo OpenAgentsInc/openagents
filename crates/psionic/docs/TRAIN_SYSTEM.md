@@ -1688,12 +1688,33 @@ security hardening, artifact lifecycle, or research-loop layers are complete.
 
 ### 23. `Psionic Train: define distributed optimizer, precision, and memory-sharding contracts`
 
-The training core issue is necessary but not specific enough about the actual
-distributed optimizer family. This issue should make parameter sharding,
-optimizer-state sharding, gradient accumulation, activation checkpointing or
-rematerialization, long-run memory planning, and precision policy explicit.
-That moves the train system from "a loop exists" to "the distributed training
-model is real and inspectable."
+Implemented on Saturday, March 14, 2026.
+
+`psionic-train` now owns an explicit distributed-optimizer layer in
+`src/distributed_optimizer.rs` on top of the existing fixed-budget core.
+
+The new contract makes all of the following first-class:
+
+- distributed optimizer family selection
+- parameter sharding per group
+- gradient-buffer sharding per group
+- optimizer-state sharding plus residency
+- master-weight residency
+- precision policy across parameter, gradient, optimizer-state, master-weight,
+  and reduction paths
+- activation checkpointing or rematerialization policy
+- long-run host/device memory budgeting and derived memory-plan receipts
+- microbatch accumulation and flush discipline
+- collective sync-plan attachment to the optimizer contract itself
+
+The runtime wrapper is still intentionally bounded. It buffers microbatches,
+refuses incomplete flushes, derives an explicit memory plan, and then flushes
+one accumulated step through the existing fixed-budget trainer core while
+preserving the higher-level distributed receipt.
+
+This does not claim that the full multi-device runtime already exists. It does
+mean the distributed optimizer, precision, and memory-sharding model is now
+typed and inspectable instead of implied by future plans.
 
 ### 24. `Model IO: add Rust-native checkpoint, tokenizer, and model-format interoperability`
 
