@@ -273,6 +273,13 @@ fn paint_runtime_snapshot(
         paint,
         bounds.origin.x + 12.0,
         y,
+        "Provider HUD",
+        snapshot.provider_control_hud.state_summary().as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
         "Rive Preview",
         snapshot.rive_preview.state_summary().as_str(),
     );
@@ -291,13 +298,14 @@ fn paint_runtime_snapshot(
         y + 10.0,
         "Driver counts",
         &format!(
-            "bg {} hotbar {} provider {} chat {} debug {} text {} rive {} present {}",
+            "bg {} hotbar {} provider {} chat {} debug {} text {} provider_hud {} rive {} present {}",
             counters.background_changed,
             counters.hotbar_flashing,
             counters.provider_animating,
             counters.chat_pending,
             counters.debug_probe_active,
             counters.text_input_focused,
+            counters.provider_control_hud,
             counters.rive_preview,
             counters.presentation
         ),

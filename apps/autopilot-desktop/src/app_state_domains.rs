@@ -142,6 +142,7 @@ pub struct FrameRedrawPressureSnapshot {
     pub debug_probe_active: bool,
     pub text_input_focused: bool,
     pub poll_interval_ms: u32,
+    pub provider_control_hud: RiveCadenceSnapshot,
     pub rive_preview: RiveCadenceSnapshot,
     pub presentation: RiveCadenceSnapshot,
 }
@@ -166,6 +167,9 @@ impl FrameRedrawPressureSnapshot {
         }
         if self.text_input_focused {
             labels.push("text_input");
+        }
+        if self.provider_control_hud.needs_redraw {
+            labels.push("provider_control_hud");
         }
         if self.rive_preview.needs_redraw {
             labels.push("rive_preview");
@@ -194,6 +198,7 @@ pub struct FrameRedrawReasonCounters {
     pub chat_pending: u64,
     pub debug_probe_active: u64,
     pub text_input_focused: u64,
+    pub provider_control_hud: u64,
     pub rive_preview: u64,
     pub presentation: u64,
 }
@@ -311,6 +316,12 @@ impl FrameDebuggerPaneState {
                 self.redraw_reason_counters.text_input_focused = self
                     .redraw_reason_counters
                     .text_input_focused
+                    .saturating_add(1);
+            }
+            if snapshot.provider_control_hud.needs_redraw {
+                self.redraw_reason_counters.provider_control_hud = self
+                    .redraw_reason_counters
+                    .provider_control_hud
                     .saturating_add(1);
             }
             if snapshot.rive_preview.needs_redraw {
