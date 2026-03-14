@@ -60,6 +60,9 @@ pub struct PolicyRevision {
     pub policy_family: String,
     /// Stable revision identifier.
     pub revision_id: String,
+    /// Monotonic revision number when the control plane tracks one explicitly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision_number: Option<u64>,
     /// Stable digest over the effective policy state.
     pub policy_digest: String,
     /// Parent revision when this is an incremental update.
@@ -84,11 +87,19 @@ impl PolicyRevision {
         Self {
             policy_family: policy_family.into(),
             revision_id: revision_id.into(),
+            revision_number: None,
             policy_digest: policy_digest.into(),
             parent_revision_id: None,
             checkpoint: None,
             produced_at_ms,
         }
+    }
+
+    /// Attaches a monotonic revision number.
+    #[must_use]
+    pub const fn with_revision_number(mut self, revision_number: u64) -> Self {
+        self.revision_number = Some(revision_number);
+        self
     }
 
     /// Attaches a parent revision.
@@ -103,6 +114,19 @@ impl PolicyRevision {
     pub fn with_checkpoint(mut self, checkpoint: TrainingCheckpointReference) -> Self {
         self.checkpoint = Some(checkpoint);
         self
+    }
+
+    /// Returns the target-minus-source revision drift when both revisions carry
+    /// monotonic numbering and belong to the same family.
+    #[must_use]
+    pub fn revision_drift_from(&self, source: &Self) -> Option<u64> {
+        if self.policy_family != source.policy_family {
+            return None;
+        }
+        match (self.revision_number, source.revision_number) {
+            (Some(target), Some(observed)) if target >= observed => Some(target - observed),
+            _ => None,
+        }
     }
 }
 
@@ -555,7 +579,6 @@ mod tests {
         net::{IpAddr, Ipv4Addr, SocketAddr},
     };
 
-    use psionic_environments::EnvironmentPackageKey;
     use psionic_cluster::{
         AdmissionToken, ClusterId, ClusterMembershipRecord, ClusterMembershipStatus,
         ClusterNamespace, ClusterNodeIdentity, ClusterSnapshot, ClusterState, NodeEpoch, NodeId,
@@ -564,6 +587,7 @@ mod tests {
     use psionic_datastream::{
         DatastreamCheckpointBinding, DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind,
     };
+    use psionic_environments::EnvironmentPackageKey;
 
     use crate::TrainingSessionState;
 
@@ -639,23 +663,23 @@ mod tests {
         let write =
             session.begin_async_checkpoint(&state, &manifest, &NodeId::new("worker-a"), 1_000)?;
         session.mark_checkpoint_durable(write.write_id.as_str(), 1_040)?;
-        Ok(PolicyRevision::new("train.decoder", revision_id, policy_digest, 1_050)
-            .with_checkpoint(
-                session
-                    .latest_durable_checkpoint()
-                    .expect("durable checkpoint")
-                    .clone(),
-            ))
+        Ok(
+            PolicyRevision::new("train.decoder", revision_id, policy_digest, 1_050)
+                .with_checkpoint(
+                    session
+                        .latest_durable_checkpoint()
+                        .expect("durable checkpoint")
+                        .clone(),
+                ),
+        )
     }
 
     #[test]
-    fn rollout_artifacts_and_trainer_batch_are_machine_legible()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let source_a =
-            checkpoint_backed_policy("policy-r1", "digest-r1", "step-12", 12)?;
-        let source_b =
-            checkpoint_backed_policy("policy-r2", "digest-r2", "step-16", 16)?
-                .with_parent_revision_id("policy-r1");
+    fn rollout_artifacts_and_trainer_batch_are_machine_legible(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let source_a = checkpoint_backed_policy("policy-r1", "digest-r1", "step-12", 12)?;
+        let source_b = checkpoint_backed_policy("policy-r2", "digest-r2", "step-16", 16)?
+            .with_parent_revision_id("policy-r1");
         let target = PolicyRevision::new("train.decoder", "policy-r3", "digest-r3", 1_200)
             .with_parent_revision_id("policy-r2");
         let rollout_a = RolloutArtifact::new(
@@ -702,15 +726,22 @@ mod tests {
             1_110,
         )?;
 
-        let batch = TrainerBatch::assemble("trainer-batch-1", target, vec![rollout_a, rollout_b], 1_300)?;
+        let batch =
+            TrainerBatch::assemble("trainer-batch-1", target, vec![rollout_a, rollout_b], 1_300)?;
 
         assert_eq!(batch.rollout_count, 2);
         assert_eq!(batch.token_count, 4);
         assert!((batch.reward_sum - 0.6).abs() < 0.0001);
         assert!((batch.advantage_sum - 0.53).abs() < 0.0001);
         assert_eq!(batch.policy_lineage.source_revisions.len(), 2);
-        assert_eq!(batch.policy_lineage.source_revisions[0].revision_id, "policy-r1");
-        assert_eq!(batch.policy_lineage.source_revisions[1].revision_id, "policy-r2");
+        assert_eq!(
+            batch.policy_lineage.source_revisions[0].revision_id,
+            "policy-r1"
+        );
+        assert_eq!(
+            batch.policy_lineage.source_revisions[1].revision_id,
+            "policy-r2"
+        );
         assert_eq!(batch.proof_references.len(), 3);
         assert!(!batch.batch_digest.is_empty());
         assert!(!batch.policy_lineage.lineage_digest.is_empty());

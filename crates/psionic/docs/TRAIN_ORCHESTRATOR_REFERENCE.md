@@ -69,11 +69,11 @@ The current harness should prove:
 
 This issue intentionally does not claim:
 
-- off-policy pruning or stale-rollout budgeting
 - worker-heartbeat or claim protocol completion
 - validator-owned sampled adjudication over rollout uploads
 - environment runtime execution or eval runtime interleaving beyond assignment
   refs
 
-Those remain later issues. This issue makes window control, assignment posture,
-and trainer-batch orchestration real first.
+Off-policy pruning and stale-rollout budgeting now live in the follow-on record
+`TRAIN_OFF_POLICY_BUDGET_REFERENCE.md`. This issue makes window control,
+assignment posture, and trainer-batch orchestration real first.

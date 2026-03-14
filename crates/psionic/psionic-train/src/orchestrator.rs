@@ -6,8 +6,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    PolicyRevision, RolloutArtifact, RolloutContractError, TrainingRunGraphError, TrainingRunState,
-    TrainingWindowAssignmentRule, TrainingWindowStatus, TrainerBatch,
+    PolicyRevision, RolloutArtifact, RolloutContractError, RolloutTerminationReason, TrainerBatch,
+    TrainingRunGraphError, TrainingRunState, TrainingWindowAssignmentRule, TrainingWindowStatus,
 };
 
 /// Control-plane failure for the train orchestrator.
@@ -76,6 +76,18 @@ pub enum TrainingOrchestratorError {
         /// Actual policy revision.
         actual_revision_id: String,
     },
+    /// A rollout targeted a different policy family than the active window.
+    #[error(
+        "rollout `{artifact_id}` targeted policy family `{actual_policy_family}` but orchestrator expects `{expected_policy_family}`"
+    )]
+    RolloutPolicyFamilyMismatch {
+        /// Stable artifact identifier.
+        artifact_id: String,
+        /// Expected policy family.
+        expected_policy_family: String,
+        /// Actual policy family.
+        actual_policy_family: String,
+    },
     /// One requested rollout id was not present in the current window.
     #[error("training orchestrator window `{window_id}` does not know rollout `{artifact_id}`")]
     UnknownRolloutArtifact {
@@ -94,6 +106,257 @@ pub enum TrainingOrchestratorError {
         /// Observed status.
         status: String,
     },
+}
+
+/// Budget contract for asynchronous off-policy rollout admission.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingOffPolicyBudget {
+    /// Maximum revision drift accepted directly into trainer batches.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_revision_drift: Option<u64>,
+    /// Maximum revision drift retained only under quarantine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_revision_drift: Option<u64>,
+    /// Maximum policy age accepted directly into trainer batches.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_policy_age_ms: Option<u64>,
+    /// Maximum policy age retained only under quarantine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_policy_age_ms: Option<u64>,
+    /// Maximum rollout age accepted directly into trainer batches.
+    pub max_rollout_age_ms: u64,
+    /// Maximum rollout age retained only under quarantine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_rollout_age_ms: Option<u64>,
+}
+
+impl Default for TrainingOffPolicyBudget {
+    fn default() -> Self {
+        Self {
+            max_revision_drift: Some(3),
+            quarantine_revision_drift: Some(5),
+            max_policy_age_ms: None,
+            quarantine_policy_age_ms: None,
+            max_rollout_age_ms: 30_000,
+            quarantine_rollout_age_ms: Some(60_000),
+        }
+    }
+}
+
+impl TrainingOffPolicyBudget {
+    /// Creates a budget contract with only rollout-age enforcement enabled.
+    #[must_use]
+    pub const fn new(max_rollout_age_ms: u64) -> Self {
+        Self {
+            max_revision_drift: None,
+            quarantine_revision_drift: None,
+            max_policy_age_ms: None,
+            quarantine_policy_age_ms: None,
+            max_rollout_age_ms,
+            quarantine_rollout_age_ms: None,
+        }
+    }
+
+    /// Attaches revision-drift budgets.
+    #[must_use]
+    pub const fn with_revision_drift(
+        mut self,
+        max_revision_drift: u64,
+        quarantine_revision_drift: Option<u64>,
+    ) -> Self {
+        self.max_revision_drift = Some(max_revision_drift);
+        self.quarantine_revision_drift = quarantine_revision_drift;
+        self
+    }
+
+    /// Attaches policy-age budgets.
+    #[must_use]
+    pub const fn with_policy_age_ms(
+        mut self,
+        max_policy_age_ms: u64,
+        quarantine_policy_age_ms: Option<u64>,
+    ) -> Self {
+        self.max_policy_age_ms = Some(max_policy_age_ms);
+        self.quarantine_policy_age_ms = quarantine_policy_age_ms;
+        self
+    }
+
+    /// Attaches a quarantine-only rollout-age budget.
+    #[must_use]
+    pub const fn with_rollout_quarantine_age_ms(
+        mut self,
+        quarantine_rollout_age_ms: Option<u64>,
+    ) -> Self {
+        self.quarantine_rollout_age_ms = quarantine_rollout_age_ms;
+        self
+    }
+}
+
+/// Admission outcome for one rollout artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RolloutReceiptOutcome {
+    /// The rollout matched the target policy exactly and is batch-eligible.
+    AcceptedExact,
+    /// The rollout is off-policy but still within the admitted budget.
+    AcceptedOffPolicy,
+    /// The rollout is retained for later validation but not batch-eligible.
+    Quarantined,
+    /// The rollout is too stale or otherwise inadmissible.
+    Discarded,
+}
+
+/// Inspectable reason code attached to one rollout freshness or drift signal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RolloutAdmissionSignalKind {
+    /// The rollout used an older policy revision than the target.
+    RevisionDrift,
+    /// The rollout used an older policy build time than the target.
+    PolicyAge,
+    /// The rollout sat too long before submission.
+    RolloutAge,
+    /// The rollout used a policy revision that is ahead of the target window.
+    SourceRevisionAheadOfTarget,
+    /// The rollout used a policy timestamp ahead of the target window.
+    SourcePolicyTimestampAheadOfTarget,
+    /// The rollout reported a creation time after its submission time.
+    RolloutTimestampAheadOfSubmission,
+    /// The rollout changed policy revision without enough lineage to budget it.
+    RevisionMismatchUnbudgeted,
+}
+
+/// One inspectable signal attached to a rollout admission receipt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RolloutAdmissionSignal {
+    /// Reason-code family.
+    pub kind: RolloutAdmissionSignalKind,
+    /// Observed value for the signal.
+    pub observed_value: u64,
+    /// Maximum accepted value when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_budget: Option<u64>,
+    /// Maximum quarantined value when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_budget: Option<u64>,
+}
+
+impl RolloutAdmissionSignal {
+    fn new(
+        kind: RolloutAdmissionSignalKind,
+        observed_value: u64,
+        accepted_budget: Option<u64>,
+        quarantine_budget: Option<u64>,
+    ) -> Self {
+        Self {
+            kind,
+            observed_value,
+            accepted_budget,
+            quarantine_budget,
+        }
+    }
+}
+
+/// Typed receipt for one rollout artifact and its acceptance result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RolloutAdmissionReceipt {
+    /// Stable receipt identifier.
+    pub receipt_id: String,
+    /// Stable run identifier.
+    pub run_id: String,
+    /// Stable stage identifier.
+    pub stage_id: String,
+    /// Stable window identifier.
+    pub window_id: String,
+    /// Stable artifact identifier.
+    pub artifact_id: String,
+    /// Stable artifact digest.
+    pub artifact_digest: String,
+    /// Stable worker identifier.
+    pub worker_id: String,
+    /// Environment key bound to the rollout.
+    pub environment_key: String,
+    /// Target policy revision for the active window.
+    pub target_policy_revision_id: String,
+    /// Source policy revision used to generate the rollout.
+    pub source_policy_revision_id: String,
+    /// Source policy digest used by the worker.
+    pub source_policy_digest: String,
+    /// Final admission outcome.
+    pub outcome: RolloutReceiptOutcome,
+    /// Revision drift when one can be measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_drift: Option<u64>,
+    /// Policy age in milliseconds when one can be measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_age_ms: Option<u64>,
+    /// Submission-age of the rollout in milliseconds.
+    pub rollout_age_ms: u64,
+    /// Machine-readable signals that explain the outcome.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signals: Vec<RolloutAdmissionSignal>,
+    /// Number of token or step samples carried by the rollout.
+    pub token_count: u64,
+    /// Aggregate reward carried by the rollout.
+    pub reward_sum: f32,
+    /// Terminal posture for the rollout.
+    pub termination_reason: RolloutTerminationReason,
+    /// Logical submission timestamp.
+    pub observed_at_ms: u64,
+    /// Stable digest over the receipt.
+    pub receipt_digest: String,
+}
+
+/// Aggregate telemetry over accepted, quarantined, and discarded rollouts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RolloutIngestionTelemetry {
+    /// Accepted rollouts at exact policy.
+    pub accepted_exact_rollout_count: u64,
+    /// Accepted rollouts under bounded off-policy drift.
+    pub accepted_off_policy_rollout_count: u64,
+    /// Quarantined rollouts.
+    pub quarantined_rollout_count: u64,
+    /// Discarded rollouts.
+    pub discarded_rollout_count: u64,
+    /// Accepted sample count.
+    pub accepted_token_count: u64,
+    /// Quarantined sample count.
+    pub quarantined_token_count: u64,
+    /// Discarded sample count.
+    pub discarded_token_count: u64,
+}
+
+impl RolloutIngestionTelemetry {
+    fn observe(&mut self, receipt: &RolloutAdmissionReceipt) {
+        match receipt.outcome {
+            RolloutReceiptOutcome::AcceptedExact => {
+                self.accepted_exact_rollout_count =
+                    self.accepted_exact_rollout_count.saturating_add(1);
+                self.accepted_token_count = self
+                    .accepted_token_count
+                    .saturating_add(receipt.token_count);
+            }
+            RolloutReceiptOutcome::AcceptedOffPolicy => {
+                self.accepted_off_policy_rollout_count =
+                    self.accepted_off_policy_rollout_count.saturating_add(1);
+                self.accepted_token_count = self
+                    .accepted_token_count
+                    .saturating_add(receipt.token_count);
+            }
+            RolloutReceiptOutcome::Quarantined => {
+                self.quarantined_rollout_count = self.quarantined_rollout_count.saturating_add(1);
+                self.quarantined_token_count = self
+                    .quarantined_token_count
+                    .saturating_add(receipt.token_count);
+            }
+            RolloutReceiptOutcome::Discarded => {
+                self.discarded_rollout_count = self.discarded_rollout_count.saturating_add(1);
+                self.discarded_token_count = self
+                    .discarded_token_count
+                    .saturating_add(receipt.token_count);
+            }
+        }
+    }
 }
 
 /// Deterministic assignment posture for one orchestrated window.
@@ -255,9 +518,20 @@ pub struct TrainingOrchestratorBatchRecord {
 /// One accepted rollout stored under the current window.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AcceptedRolloutRecord {
+    /// Typed rollout receipt.
+    pub receipt: RolloutAdmissionReceipt,
     /// Lightweight rollout ref.
     pub reference: RolloutArtifactRef,
     /// Full rollout artifact retained for trainer-batch assembly.
+    pub artifact: RolloutArtifact,
+}
+
+/// One quarantined rollout retained for later validation or adjudication.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct QuarantinedRolloutRecord {
+    /// Typed rollout receipt.
+    pub receipt: RolloutAdmissionReceipt,
+    /// Full rollout artifact retained for later validator review.
     pub artifact: RolloutArtifact,
 }
 
@@ -277,6 +551,15 @@ pub struct TrainingOrchestratorWindow {
     /// Accepted rollout artifacts for this window.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub accepted_rollouts: Vec<AcceptedRolloutRecord>,
+    /// Quarantined rollout artifacts retained out of trainer batches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quarantined_rollouts: Vec<QuarantinedRolloutRecord>,
+    /// Discard receipts for inadmissible rollouts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discarded_rollout_receipts: Vec<RolloutAdmissionReceipt>,
+    /// Aggregate accepted/quarantined/discarded counters for the window.
+    #[serde(default)]
+    pub rollout_telemetry: RolloutIngestionTelemetry,
     /// Trainer batches assembled for this window.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trainer_batches: Vec<TrainingOrchestratorBatchRecord>,
@@ -304,6 +587,8 @@ pub struct TrainingOrchestratorState {
     pub target_policy_revision: PolicyRevision,
     /// Lightweight policy-weight broadcast for the active policy revision.
     pub policy_weight_broadcast: DatastreamPolicyWeightBroadcastManifest,
+    /// Explicit bounded off-policy admission contract.
+    pub off_policy_budget: TrainingOffPolicyBudget,
     /// Current planned or active window id when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_window_id: Option<String>,
@@ -319,6 +604,21 @@ impl TrainingOrchestratorState {
         target_policy_revision: PolicyRevision,
         policy_weight_broadcast: DatastreamPolicyWeightBroadcastManifest,
     ) -> Result<Self, TrainingOrchestratorError> {
+        Self::new_with_budget(
+            run,
+            target_policy_revision,
+            policy_weight_broadcast,
+            TrainingOffPolicyBudget::default(),
+        )
+    }
+
+    /// Creates an orchestrator with an explicit off-policy admission contract.
+    pub fn new_with_budget(
+        run: TrainingRunState,
+        target_policy_revision: PolicyRevision,
+        policy_weight_broadcast: DatastreamPolicyWeightBroadcastManifest,
+        off_policy_budget: TrainingOffPolicyBudget,
+    ) -> Result<Self, TrainingOrchestratorError> {
         if policy_weight_broadcast.policy_id != target_policy_revision.policy_family {
             return Err(TrainingOrchestratorError::PolicyWeightBroadcastMismatch {
                 expected_policy_id: target_policy_revision.policy_family.clone(),
@@ -329,6 +629,7 @@ impl TrainingOrchestratorState {
             run,
             target_policy_revision,
             policy_weight_broadcast,
+            off_policy_budget,
             current_window_id: None,
             orchestrator_windows: Vec::new(),
         })
@@ -389,7 +690,10 @@ impl TrainingOrchestratorState {
                 batch_slice_index: assignment.slice_index,
                 environment_key: environment_key.clone(),
                 policy_revision_id: self.target_policy_revision.revision_id.clone(),
-                policy_weight_broadcast_digest: self.policy_weight_broadcast.broadcast_digest.clone(),
+                policy_weight_broadcast_digest: self
+                    .policy_weight_broadcast
+                    .broadcast_digest
+                    .clone(),
                 policy_weight_shard_manifest_digests: policy_weight_shard_manifest_digests.clone(),
                 assignment_digest: stable_rollout_assignment_digest(
                     window.window_id.as_str(),
@@ -428,6 +732,9 @@ impl TrainingOrchestratorState {
             rollout_assignments,
             eval_assignments,
             accepted_rollouts: Vec::new(),
+            quarantined_rollouts: Vec::new(),
+            discarded_rollout_receipts: Vec::new(),
+            rollout_telemetry: RolloutIngestionTelemetry::default(),
             trainer_batches: Vec::new(),
         });
         self.orchestrator_windows
@@ -445,8 +752,11 @@ impl TrainingOrchestratorState {
             .current_window_id
             .clone()
             .ok_or(TrainingOrchestratorError::MissingCurrentWindow)?;
-        self.run
-            .transition_window(window_id.as_str(), TrainingWindowStatus::Active, active_at_ms)?;
+        self.run.transition_window(
+            window_id.as_str(),
+            TrainingWindowStatus::Active,
+            active_at_ms,
+        )?;
         Ok(())
     }
 
@@ -454,7 +764,8 @@ impl TrainingOrchestratorState {
     pub fn submit_rollout(
         &mut self,
         artifact: RolloutArtifact,
-    ) -> Result<RolloutArtifactRef, TrainingOrchestratorError> {
+        observed_at_ms: u64,
+    ) -> Result<RolloutAdmissionReceipt, TrainingOrchestratorError> {
         let current_window_id = self
             .current_window_id
             .clone()
@@ -465,37 +776,62 @@ impl TrainingOrchestratorState {
             .iter()
             .find(|candidate| candidate.window_id == current_window_id)
             .ok_or(TrainingOrchestratorError::MissingCurrentWindow)?;
-        let expected_revision_id = self.target_policy_revision.revision_id.clone();
         if current_window.status != TrainingWindowStatus::Active {
             return Err(TrainingOrchestratorError::WindowNotCollecting {
                 window_id: current_window_id,
                 status: training_window_status_label(current_window.status).to_string(),
             });
         }
-        if artifact.source_policy_revision.revision_id != expected_revision_id {
-            return Err(TrainingOrchestratorError::RolloutPolicyRevisionMismatch {
+        if artifact.source_policy_revision.policy_family
+            != self.target_policy_revision.policy_family
+        {
+            return Err(TrainingOrchestratorError::RolloutPolicyFamilyMismatch {
                 artifact_id: artifact.artifact_id.clone(),
-                expected_revision_id,
-                actual_revision_id: artifact.source_policy_revision.revision_id.clone(),
+                expected_policy_family: self.target_policy_revision.policy_family.clone(),
+                actual_policy_family: artifact.source_policy_revision.policy_family.clone(),
             });
         }
-        let window = self.current_window_mut()?;
-        if !window
+        let assigned_worker = self
+            .orchestrator_windows
+            .iter()
+            .find(|window| window.window_id == current_window_id)
+            .ok_or(TrainingOrchestratorError::MissingCurrentWindow)?
             .assigned_contributor_node_ids()
-            .contains(&artifact.worker_id)
-        {
+            .contains(&artifact.worker_id);
+        if !assigned_worker {
             return Err(TrainingOrchestratorError::RolloutWorkerNotAssigned {
                 artifact_id: artifact.artifact_id.clone(),
                 worker_id: artifact.worker_id.clone(),
-                window_id: window.window_id.clone(),
+                window_id: current_window_id,
             });
         }
-        let reference = RolloutArtifactRef::from_artifact(&artifact);
-        window.accepted_rollouts.push(AcceptedRolloutRecord {
-            reference: reference.clone(),
-            artifact,
-        });
-        Ok(reference)
+        let receipt = self.build_rollout_receipt(
+            current_window.window_id.as_str(),
+            &artifact,
+            observed_at_ms,
+        );
+        let window = self.current_window_mut()?;
+        window.rollout_telemetry.observe(&receipt);
+        match receipt.outcome {
+            RolloutReceiptOutcome::AcceptedExact | RolloutReceiptOutcome::AcceptedOffPolicy => {
+                let reference = RolloutArtifactRef::from_artifact(&artifact);
+                window.accepted_rollouts.push(AcceptedRolloutRecord {
+                    receipt: receipt.clone(),
+                    reference,
+                    artifact,
+                });
+            }
+            RolloutReceiptOutcome::Quarantined => {
+                window.quarantined_rollouts.push(QuarantinedRolloutRecord {
+                    receipt: receipt.clone(),
+                    artifact,
+                });
+            }
+            RolloutReceiptOutcome::Discarded => {
+                window.discarded_rollout_receipts.push(receipt.clone());
+            }
+        }
+        Ok(receipt)
     }
 
     /// Seals the current window.
@@ -507,8 +843,11 @@ impl TrainingOrchestratorState {
             .current_window_id
             .clone()
             .ok_or(TrainingOrchestratorError::MissingCurrentWindow)?;
-        self.run
-            .transition_window(window_id.as_str(), TrainingWindowStatus::Sealed, sealed_at_ms)?;
+        self.run.transition_window(
+            window_id.as_str(),
+            TrainingWindowStatus::Sealed,
+            sealed_at_ms,
+        )?;
         Ok(())
     }
 
@@ -552,12 +891,12 @@ impl TrainingOrchestratorState {
             .map(|record| (record.reference.artifact_id.clone(), record))
             .collect::<BTreeMap<_, _>>();
         for rollout_id in &rollout_ids {
-            let record = accepted_rollouts_by_id
-                .get(rollout_id)
-                .ok_or_else(|| TrainingOrchestratorError::UnknownRolloutArtifact {
+            let record = accepted_rollouts_by_id.get(rollout_id).ok_or_else(|| {
+                TrainingOrchestratorError::UnknownRolloutArtifact {
                     window_id: window.window_id.clone(),
                     artifact_id: rollout_id.clone(),
-                })?;
+                }
+            })?;
             rollout_digests.push(record.reference.artifact_digest.clone());
             selected_rollouts.push(record.artifact.clone());
         }
@@ -602,8 +941,11 @@ impl TrainingOrchestratorState {
             .current_window_id
             .clone()
             .ok_or(TrainingOrchestratorError::MissingCurrentWindow)?;
-        self.run
-            .transition_window(window_id.as_str(), TrainingWindowStatus::Scored, scored_at_ms)?;
+        self.run.transition_window(
+            window_id.as_str(),
+            TrainingWindowStatus::Scored,
+            scored_at_ms,
+        )?;
         Ok(())
     }
 
@@ -636,6 +978,214 @@ impl TrainingOrchestratorState {
             .iter_mut()
             .find(|window| window.window_id == window_id)
             .ok_or(TrainingOrchestratorError::MissingCurrentWindow)
+    }
+
+    fn build_rollout_receipt(
+        &self,
+        window_id: &str,
+        artifact: &RolloutArtifact,
+        observed_at_ms: u64,
+    ) -> RolloutAdmissionReceipt {
+        let exact_revision =
+            artifact.source_policy_revision.revision_id == self.target_policy_revision.revision_id;
+        let revision_drift = self
+            .target_policy_revision
+            .revision_drift_from(&artifact.source_policy_revision);
+        let policy_age_ms = (self.target_policy_revision.produced_at_ms
+            >= artifact.source_policy_revision.produced_at_ms)
+            .then_some(
+                self.target_policy_revision.produced_at_ms
+                    - artifact.source_policy_revision.produced_at_ms,
+            );
+        let rollout_age_ms = observed_at_ms.saturating_sub(artifact.created_at_ms);
+        let mut signals = Vec::new();
+        let mut needs_quarantine = false;
+        let mut must_discard = false;
+
+        if let (Some(target), Some(source)) = (
+            self.target_policy_revision.revision_number,
+            artifact.source_policy_revision.revision_number,
+        ) {
+            if source > target {
+                signals.push(RolloutAdmissionSignal::new(
+                    RolloutAdmissionSignalKind::SourceRevisionAheadOfTarget,
+                    source - target,
+                    Some(0),
+                    Some(0),
+                ));
+                must_discard = true;
+            }
+        }
+
+        if artifact.source_policy_revision.produced_at_ms
+            > self.target_policy_revision.produced_at_ms
+        {
+            signals.push(RolloutAdmissionSignal::new(
+                RolloutAdmissionSignalKind::SourcePolicyTimestampAheadOfTarget,
+                artifact.source_policy_revision.produced_at_ms
+                    - self.target_policy_revision.produced_at_ms,
+                Some(0),
+                Some(0),
+            ));
+            must_discard = true;
+        }
+
+        if artifact.created_at_ms > observed_at_ms {
+            signals.push(RolloutAdmissionSignal::new(
+                RolloutAdmissionSignalKind::RolloutTimestampAheadOfSubmission,
+                artifact.created_at_ms - observed_at_ms,
+                Some(0),
+                Some(0),
+            ));
+            must_discard = true;
+        }
+
+        if !exact_revision
+            && revision_drift.is_none()
+            && self.off_policy_budget.max_policy_age_ms.is_none()
+            && self.off_policy_budget.quarantine_policy_age_ms.is_none()
+        {
+            signals.push(RolloutAdmissionSignal::new(
+                RolloutAdmissionSignalKind::RevisionMismatchUnbudgeted,
+                1,
+                None,
+                None,
+            ));
+            must_discard = true;
+        }
+
+        if let Some(drift) = revision_drift {
+            signals.push(RolloutAdmissionSignal::new(
+                RolloutAdmissionSignalKind::RevisionDrift,
+                drift,
+                self.off_policy_budget.max_revision_drift,
+                self.off_policy_budget.quarantine_revision_drift,
+            ));
+            match budget_admission(
+                drift,
+                self.off_policy_budget.max_revision_drift,
+                self.off_policy_budget.quarantine_revision_drift,
+            ) {
+                BudgetAdmission::Within => {}
+                BudgetAdmission::Quarantine => needs_quarantine = true,
+                BudgetAdmission::Discard => must_discard = true,
+            }
+        }
+
+        if let Some(policy_age_ms) = policy_age_ms {
+            if !exact_revision
+                || self.off_policy_budget.max_policy_age_ms.is_some()
+                || self.off_policy_budget.quarantine_policy_age_ms.is_some()
+            {
+                signals.push(RolloutAdmissionSignal::new(
+                    RolloutAdmissionSignalKind::PolicyAge,
+                    policy_age_ms,
+                    self.off_policy_budget.max_policy_age_ms,
+                    self.off_policy_budget.quarantine_policy_age_ms,
+                ));
+                match budget_admission(
+                    policy_age_ms,
+                    self.off_policy_budget.max_policy_age_ms,
+                    self.off_policy_budget.quarantine_policy_age_ms,
+                ) {
+                    BudgetAdmission::Within => {}
+                    BudgetAdmission::Quarantine => needs_quarantine = true,
+                    BudgetAdmission::Discard => must_discard = true,
+                }
+            }
+        }
+
+        signals.push(RolloutAdmissionSignal::new(
+            RolloutAdmissionSignalKind::RolloutAge,
+            rollout_age_ms,
+            Some(self.off_policy_budget.max_rollout_age_ms),
+            self.off_policy_budget.quarantine_rollout_age_ms,
+        ));
+        match budget_admission(
+            rollout_age_ms,
+            Some(self.off_policy_budget.max_rollout_age_ms),
+            self.off_policy_budget.quarantine_rollout_age_ms,
+        ) {
+            BudgetAdmission::Within => {}
+            BudgetAdmission::Quarantine => needs_quarantine = true,
+            BudgetAdmission::Discard => must_discard = true,
+        }
+
+        let outcome = if must_discard {
+            RolloutReceiptOutcome::Discarded
+        } else if needs_quarantine {
+            RolloutReceiptOutcome::Quarantined
+        } else if exact_revision {
+            RolloutReceiptOutcome::AcceptedExact
+        } else {
+            RolloutReceiptOutcome::AcceptedOffPolicy
+        };
+        let receipt_id = format!("{window_id}-rollout-receipt-{}", artifact.artifact_id);
+        let receipt_digest = stable_rollout_receipt_digest(
+            self.run.run_id.as_str(),
+            self.run.stage_id.as_str(),
+            window_id,
+            artifact,
+            outcome,
+            revision_drift,
+            policy_age_ms,
+            rollout_age_ms,
+            signals.as_slice(),
+            observed_at_ms,
+        );
+        RolloutAdmissionReceipt {
+            receipt_id,
+            run_id: self.run.run_id.clone(),
+            stage_id: self.run.stage_id.clone(),
+            window_id: String::from(window_id),
+            artifact_id: artifact.artifact_id.clone(),
+            artifact_digest: artifact.artifact_digest.clone(),
+            worker_id: artifact.worker_id.clone(),
+            environment_key: artifact.environment.storage_key(),
+            target_policy_revision_id: self.target_policy_revision.revision_id.clone(),
+            source_policy_revision_id: artifact.source_policy_revision.revision_id.clone(),
+            source_policy_digest: artifact.source_policy_revision.policy_digest.clone(),
+            outcome,
+            revision_drift,
+            policy_age_ms,
+            rollout_age_ms,
+            signals,
+            token_count: artifact.token_count(),
+            reward_sum: artifact.reward_sum(),
+            termination_reason: artifact.termination_reason,
+            observed_at_ms,
+            receipt_digest,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BudgetAdmission {
+    Within,
+    Quarantine,
+    Discard,
+}
+
+fn budget_admission(
+    observed_value: u64,
+    accepted_budget: Option<u64>,
+    quarantine_budget: Option<u64>,
+) -> BudgetAdmission {
+    if let Some(accepted_budget) = accepted_budget {
+        if observed_value <= accepted_budget {
+            return BudgetAdmission::Within;
+        }
+        return match quarantine_budget {
+            Some(quarantine_budget) if observed_value <= quarantine_budget => {
+                BudgetAdmission::Quarantine
+            }
+            Some(_) | None => BudgetAdmission::Discard,
+        };
+    }
+    match quarantine_budget {
+        Some(quarantine_budget) if observed_value <= quarantine_budget => BudgetAdmission::Within,
+        Some(_) => BudgetAdmission::Discard,
+        None => BudgetAdmission::Within,
     }
 }
 
@@ -757,6 +1307,64 @@ fn stable_batch_request_digest(
     hex::encode(hasher.finalize())
 }
 
+fn stable_rollout_receipt_digest(
+    run_id: &str,
+    stage_id: &str,
+    window_id: &str,
+    artifact: &RolloutArtifact,
+    outcome: RolloutReceiptOutcome,
+    revision_drift: Option<u64>,
+    policy_age_ms: Option<u64>,
+    rollout_age_ms: u64,
+    signals: &[RolloutAdmissionSignal],
+    observed_at_ms: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_training_rollout_receipt|");
+    hasher.update(run_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(stage_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(window_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(artifact.artifact_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(artifact.artifact_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(artifact.worker_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(artifact.source_policy_revision.revision_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(rollout_receipt_outcome_label(outcome));
+    if let Some(revision_drift) = revision_drift {
+        hasher.update(b"|revision_drift|");
+        hasher.update(revision_drift.to_string().as_bytes());
+    }
+    if let Some(policy_age_ms) = policy_age_ms {
+        hasher.update(b"|policy_age_ms|");
+        hasher.update(policy_age_ms.to_string().as_bytes());
+    }
+    hasher.update(b"|rollout_age_ms|");
+    hasher.update(rollout_age_ms.to_string().as_bytes());
+    hasher.update(b"|observed_at_ms|");
+    hasher.update(observed_at_ms.to_string().as_bytes());
+    for signal in signals {
+        hasher.update(b"|signal|");
+        hasher.update(rollout_admission_signal_kind_label(signal.kind));
+        hasher.update(b"|");
+        hasher.update(signal.observed_value.to_string().as_bytes());
+        if let Some(accepted_budget) = signal.accepted_budget {
+            hasher.update(b"|accepted|");
+            hasher.update(accepted_budget.to_string().as_bytes());
+        }
+        if let Some(quarantine_budget) = signal.quarantine_budget {
+            hasher.update(b"|quarantine|");
+            hasher.update(quarantine_budget.to_string().as_bytes());
+        }
+    }
+    hex::encode(hasher.finalize())
+}
+
 fn training_window_status_label(status: TrainingWindowStatus) -> &'static str {
     match status {
         TrainingWindowStatus::Planned => "planned",
@@ -764,6 +1372,33 @@ fn training_window_status_label(status: TrainingWindowStatus) -> &'static str {
         TrainingWindowStatus::Sealed => "sealed",
         TrainingWindowStatus::Scored => "scored",
         TrainingWindowStatus::Reconciled => "reconciled",
+    }
+}
+
+fn rollout_receipt_outcome_label(outcome: RolloutReceiptOutcome) -> &'static [u8] {
+    match outcome {
+        RolloutReceiptOutcome::AcceptedExact => b"accepted_exact",
+        RolloutReceiptOutcome::AcceptedOffPolicy => b"accepted_off_policy",
+        RolloutReceiptOutcome::Quarantined => b"quarantined",
+        RolloutReceiptOutcome::Discarded => b"discarded",
+    }
+}
+
+fn rollout_admission_signal_kind_label(kind: RolloutAdmissionSignalKind) -> &'static [u8] {
+    match kind {
+        RolloutAdmissionSignalKind::RevisionDrift => b"revision_drift",
+        RolloutAdmissionSignalKind::PolicyAge => b"policy_age",
+        RolloutAdmissionSignalKind::RolloutAge => b"rollout_age",
+        RolloutAdmissionSignalKind::SourceRevisionAheadOfTarget => {
+            b"source_revision_ahead_of_target"
+        }
+        RolloutAdmissionSignalKind::SourcePolicyTimestampAheadOfTarget => {
+            b"source_policy_timestamp_ahead_of_target"
+        }
+        RolloutAdmissionSignalKind::RolloutTimestampAheadOfSubmission => {
+            b"rollout_timestamp_ahead_of_submission"
+        }
+        RolloutAdmissionSignalKind::RevisionMismatchUnbudgeted => b"revision_mismatch_unbudgeted",
     }
 }
 
@@ -785,7 +1420,10 @@ mod tests {
     use psionic_environments::EnvironmentPackageKey;
     use sha2::{Digest, Sha256};
 
-    use super::{TrainingOrchestratorError, TrainingOrchestratorState};
+    use super::{
+        RolloutAdmissionSignalKind, RolloutReceiptOutcome, TrainingOffPolicyBudget,
+        TrainingOrchestratorError, TrainingOrchestratorState,
+    };
     use crate::{
         PolicyRevision, RolloutArtifact, RolloutProofKind, RolloutProofReference, RolloutSample,
         TrainingRunState, TrainingWindowAssignmentRule,
@@ -851,9 +1489,10 @@ mod tests {
         psionic_cluster::ClusterState::from_snapshot(snapshot)
     }
 
-    fn policy_weight_broadcast()
-    -> Result<psionic_datastream::DatastreamPolicyWeightBroadcastManifest, Box<dyn std::error::Error>>
-    {
+    fn policy_weight_broadcast() -> Result<
+        psionic_datastream::DatastreamPolicyWeightBroadcastManifest,
+        Box<dyn std::error::Error>,
+    > {
         let shard_a = b"weights-a".repeat(16);
         let shard_b = b"weights-b".repeat(16);
         let assembled = {
@@ -898,17 +1537,15 @@ mod tests {
             1_000,
             10_000,
         ));
-        Ok(
-            InMemoryPolicyWeightBroadcast::new(
-                vec![
-                    InMemoryDatastreamServer::new(manifest_a, shard_a)?,
-                    InMemoryDatastreamServer::new(manifest_b, shard_b)?,
-                ],
-                1_500,
-            )?
-            .broadcast()
-            .clone(),
-        )
+        Ok(InMemoryPolicyWeightBroadcast::new(
+            vec![
+                InMemoryDatastreamServer::new(manifest_a, shard_a)?,
+                InMemoryDatastreamServer::new(manifest_b, shard_b)?,
+            ],
+            1_500,
+        )?
+        .broadcast()
+        .clone())
     }
 
     fn orchestrator() -> Result<TrainingOrchestratorState, Box<dyn std::error::Error>> {
@@ -926,25 +1563,29 @@ mod tests {
         run.update_participant_priority(&NodeId::new("trainer-a"), 8_700, 8_500, 1_020)?;
         run.update_participant_priority(&NodeId::new("worker-c"), 4_800, 4_900, 1_030)?;
         let policy_revision =
-            PolicyRevision::new("train.decoder", "policy-rev-7", "policy-digest-7", 1_100);
-        Ok(TrainingOrchestratorState::new(
+            PolicyRevision::new("train.decoder", "policy-rev-7", "policy-digest-7", 1_100)
+                .with_revision_number(7)
+                .with_parent_revision_id("policy-rev-6");
+        Ok(TrainingOrchestratorState::new_with_budget(
             run,
             policy_revision,
             policy_weight_broadcast()?,
+            TrainingOffPolicyBudget::default(),
         )?)
     }
 
     fn rollout(
         worker_id: &str,
         artifact_id: &str,
-        target_policy_revision: PolicyRevision,
+        source_policy_revision: PolicyRevision,
+        created_at_ms: u64,
     ) -> Result<RolloutArtifact, Box<dyn std::error::Error>> {
         Ok(RolloutArtifact::new(
             artifact_id,
             worker_id,
             EnvironmentPackageKey::new("oa.train", "2026.03"),
             format!("task-{artifact_id}"),
-            target_policy_revision,
+            source_policy_revision,
             vec![
                 RolloutSample::new(1, -0.2, 1.0, 0.8),
                 RolloutSample::new(2, -0.1, 0.6, 0.4),
@@ -955,13 +1596,13 @@ mod tests {
                 format!("proof-{artifact_id}"),
                 format!("exec://{artifact_id}"),
             )],
-            1_200,
+            created_at_ms,
         )?)
     }
 
     #[test]
-    fn orchestrator_window_selection_and_batch_assembly_are_typed()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_window_selection_and_batch_assembly_are_typed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         let window = orchestrator.plan_next_window(
             2,
@@ -982,9 +1623,24 @@ mod tests {
         );
 
         orchestrator.activate_current_window(1_110)?;
-        let policy_revision = orchestrator.target_policy_revision.clone();
-        orchestrator.submit_rollout(rollout("worker-b", "artifact-b", policy_revision.clone())?)?;
-        orchestrator.submit_rollout(rollout("trainer-a", "artifact-a", policy_revision)?)?;
+        let exact_policy_revision = orchestrator.target_policy_revision.clone();
+        let off_policy_revision =
+            PolicyRevision::new("train.decoder", "policy-rev-6", "policy-digest-6", 1_090)
+                .with_revision_number(6)
+                .with_parent_revision_id("policy-rev-5");
+        let off_policy_receipt = orchestrator.submit_rollout(
+            rollout("worker-b", "artifact-b", off_policy_revision, 1_115)?,
+            1_120,
+        )?;
+        let exact_receipt = orchestrator.submit_rollout(
+            rollout("trainer-a", "artifact-a", exact_policy_revision, 1_118)?,
+            1_121,
+        )?;
+        assert_eq!(
+            off_policy_receipt.outcome,
+            RolloutReceiptOutcome::AcceptedOffPolicy
+        );
+        assert_eq!(exact_receipt.outcome, RolloutReceiptOutcome::AcceptedExact);
         orchestrator.seal_current_window(1_120)?;
         let batch = orchestrator.assemble_trainer_batch(
             "batch-1",
@@ -993,11 +1649,22 @@ mod tests {
         )?;
         assert_eq!(batch.batch.rollout_count, 1);
         assert_eq!(contributor_count, 2);
-        assert_ne!(orchestrator.run.participants.len(), batch.batch.rollout_count as usize);
         assert_ne!(
-            contributor_count,
+            orchestrator.run.participants.len(),
             batch.batch.rollout_count as usize
         );
+        assert_ne!(contributor_count, batch.batch.rollout_count as usize);
+        let window = orchestrator
+            .orchestrator_windows
+            .iter()
+            .find(|window| window.window_id == "run-1-window-1")
+            .expect("window should exist");
+        assert_eq!(window.rollout_telemetry.accepted_exact_rollout_count, 1);
+        assert_eq!(
+            window.rollout_telemetry.accepted_off_policy_rollout_count,
+            1
+        );
+        assert_eq!(window.rollout_telemetry.accepted_token_count, 4);
         orchestrator.score_current_window(1_140)?;
         orchestrator.reconcile_current_window(1_150)?;
         assert!(orchestrator.current_window_id.is_none());
@@ -1005,8 +1672,8 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_refuses_rollout_from_standby_participant()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_refuses_rollout_from_standby_participant(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         orchestrator.plan_next_window(
             2,
@@ -1019,11 +1686,16 @@ mod tests {
         )?;
         orchestrator.activate_current_window(1_110)?;
         let error = orchestrator
-            .submit_rollout(rollout(
-                "worker-c",
-                "artifact-c",
-                orchestrator.target_policy_revision.clone(),
-            )?)
+            .submit_rollout(
+                rollout(
+                    "worker-c",
+                    "artifact-c",
+                    orchestrator.target_policy_revision.clone(),
+                    1_120,
+                )?,
+                1_121,
+            )
+            .map(|_| ())
             .expect_err("standby worker should be refused");
         assert_eq!(
             error,
@@ -1033,6 +1705,111 @@ mod tests {
                 window_id: String::from("run-1-window-1"),
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn orchestrator_quarantines_stale_rollouts_outside_accept_budget(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let state = cluster_state();
+        let environment = EnvironmentPackageKey::new("oa.train", "2026.03");
+        let mut run = TrainingRunState::new(
+            "run-1",
+            "stage-rl",
+            state.cluster_id().as_str(),
+            "train.decoder",
+            environment,
+        )?;
+        run.apply_cluster_membership_snapshot(&state, 1_000)?;
+        run.update_participant_priority(&NodeId::new("worker-b"), 9_200, 9_000, 1_010)?;
+        run.update_participant_priority(&NodeId::new("trainer-a"), 8_700, 8_500, 1_020)?;
+        let policy_revision =
+            PolicyRevision::new("train.decoder", "policy-rev-7", "policy-digest-7", 1_100)
+                .with_revision_number(7);
+        let mut orchestrator = TrainingOrchestratorState::new_with_budget(
+            run,
+            policy_revision,
+            policy_weight_broadcast()?,
+            TrainingOffPolicyBudget::new(100)
+                .with_revision_drift(1, Some(2))
+                .with_rollout_quarantine_age_ms(Some(200)),
+        )?;
+        orchestrator.plan_next_window(
+            2,
+            TrainingWindowAssignmentRule::RoundRobinByPriority {
+                batch_slice_count: 2,
+                eval_slice_count: 1,
+            },
+            7,
+            1_100,
+        )?;
+        orchestrator.activate_current_window(1_110)?;
+        let receipt = orchestrator.submit_rollout(
+            rollout(
+                "worker-b",
+                "artifact-q",
+                PolicyRevision::new("train.decoder", "policy-rev-6", "policy-digest-6", 1_090)
+                    .with_revision_number(6),
+                1_000,
+            )?,
+            1_150,
+        )?;
+        assert_eq!(receipt.outcome, RolloutReceiptOutcome::Quarantined);
+        assert!(receipt
+            .signals
+            .iter()
+            .any(|signal| signal.kind == RolloutAdmissionSignalKind::RolloutAge));
+        let window = orchestrator
+            .orchestrator_windows
+            .iter()
+            .find(|window| window.window_id == "run-1-window-1")
+            .expect("window should exist");
+        assert!(window.accepted_rollouts.is_empty());
+        assert_eq!(window.quarantined_rollouts.len(), 1);
+        assert_eq!(window.rollout_telemetry.quarantined_rollout_count, 1);
+        assert_eq!(window.rollout_telemetry.quarantined_token_count, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn orchestrator_discards_rollouts_beyond_quarantine_budget(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut orchestrator = orchestrator()?;
+        orchestrator.plan_next_window(
+            2,
+            TrainingWindowAssignmentRule::RoundRobinByPriority {
+                batch_slice_count: 2,
+                eval_slice_count: 1,
+            },
+            19,
+            1_100,
+        )?;
+        orchestrator.activate_current_window(1_110)?;
+        let receipt = orchestrator.submit_rollout(
+            rollout(
+                "worker-b",
+                "artifact-stale",
+                PolicyRevision::new("train.decoder", "policy-rev-1", "policy-digest-1", 900)
+                    .with_revision_number(1),
+                1_000,
+            )?,
+            70_000,
+        )?;
+        assert_eq!(receipt.outcome, RolloutReceiptOutcome::Discarded);
+        assert!(receipt
+            .signals
+            .iter()
+            .any(|signal| signal.kind == RolloutAdmissionSignalKind::RevisionDrift));
+        let window = orchestrator
+            .orchestrator_windows
+            .iter()
+            .find(|window| window.window_id == "run-1-window-1")
+            .expect("window should exist");
+        assert!(window.accepted_rollouts.is_empty());
+        assert!(window.quarantined_rollouts.is_empty());
+        assert_eq!(window.discarded_rollout_receipts.len(), 1);
+        assert_eq!(window.rollout_telemetry.discarded_rollout_count, 1);
+        assert_eq!(window.rollout_telemetry.discarded_token_count, 2);
         Ok(())
     }
 }
