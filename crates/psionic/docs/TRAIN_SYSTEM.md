@@ -1491,11 +1491,29 @@ side settings. Registry install and composition flows remain the next issue.
 
 ### 15. `Environments Registry: add package install, version pinning, composition, and eval parity`
 
-Once environment packages exist, Psionic needs registry and composition flows.
-This issue should add install, resolution, pinning, dependency management,
-mixed-environment groups, and strict reuse across training and eval. The
-acceptance bar is that the orchestrator does not need bespoke code for each
-environment mix.
+Status: implemented on 2026-03-14 via GitHub issue `#3578`.
+
+Added the first Psionic-native registry and composition layer inside
+`psionic-environments`:
+
+- typed install requests and install receipts for versioned environment package
+  materialization
+- digest-bound pin aliases so train and eval code resolve immutable package
+  versions instead of floating refs
+- mixed-surface composition groups and group-member contracts across train,
+  eval, and benchmark surfaces
+- dependency-aware group resolution and benchmark-profile validation
+- explicit train/eval parity receipts for shared group members
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/ENVIRONMENT_REGISTRY_REFERENCE.md`
+- `scripts/release/check-psionic-environment-registry.sh`
+
+This issue removes the need for bespoke environment-mix glue in the
+orchestrator for the first train/eval/benchmark package groups. Persistent
+authority sync, package publication, and richer eval-policy productization
+remain later layers.
 
 ### 16. `Psionic Sandbox: add RL-throughput primitives for pooled, repeated agentic execution`
 

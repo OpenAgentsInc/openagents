@@ -193,9 +193,10 @@ Implemented now:
   packing policies in `psionic-data`, with environment packages now binding
   versioned dataset keys instead of free-form dataset refs.
 - early environment substrate: a Psionic-native package ABI, tool interfaces,
-  rubric hooks, expected artifact contracts, and reference runtime sessions in
-  `psionic-environments`, keyed to the same `environment_ref@version` identity
-  used by kernel authority.
+  rubric hooks, expected artifact contracts, reference runtime sessions,
+  digest-pinned package aliases, mixed-surface composition groups, and
+  train/eval parity receipts in `psionic-environments`, keyed to the same
+  `environment_ref@version` identity used by kernel authority.
 - early eval substrate: held-out eval runs, rubric-scored sample/runtime
   contracts, benchmark packages with repeat-run aggregation, and operator-local
   validator simulation in `psionic-eval`, while kernel/Nexus still own
@@ -207,8 +208,8 @@ Still planned:
 
 - full inference-engine maturity across model families and broader serving
   surfaces.
-- broader environment registry/composition integration and richer eval-policy
-  productization.
+- richer eval-policy productization and persistent environment publication or
+  authority sync.
 - broader distributed training completion, freshness or validator policy, and
   orchestrator layers.
 - deeper benchmark or validator policy for training-class lanes.
@@ -242,6 +243,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical package-shape runbook for workload classes, policy refs,
   difficulty metadata, and validator benchmark profiles in
   `psionic-environments`.
+- **[docs/ENVIRONMENT_REGISTRY_REFERENCE.md](docs/ENVIRONMENT_REGISTRY_REFERENCE.md)** —
+  canonical install, pinning, mixed-group composition, and train/eval parity
+  runbook for `psionic-environments`.
 - **[docs/DATASET_TOKENIZER_PACKING_REFERENCE.md](docs/DATASET_TOKENIZER_PACKING_REFERENCE.md)** —
   canonical versioned-dataset, tokenizer-digest, streamed-iteration, and
   long-context packing runbook for the first Psionic-native data-contract
