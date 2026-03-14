@@ -186,8 +186,8 @@ Implemented now:
   worker heartbeats, claims, upload receipts, and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, explicit policy-lineage
-  digests, and quarantined-versus-discarded stale-rollout pruning inside
-  `psionic-train`.
+  digests, quarantined-versus-discarded stale-rollout pruning, and typed
+  rollout-validation bundles or verdicts inside `psionic-train`.
 - early data substrate: versioned dataset manifests, tokenizer digests, split
   declarations, resumable streamed-iteration contracts, and long-context
   packing policies in `psionic-data`, with environment packages now binding
@@ -266,6 +266,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md](docs/TRAIN_ROLLOUT_WORKER_PROTOCOL_REFERENCE.md)** —
   canonical rollout-worker heartbeat, claim, upload, and worker-outcome
   runbook for the first trust-aware worker protocol in `psionic-train`.
+- **[docs/TRAIN_ROLLOUT_VALIDATION_REFERENCE.md](docs/TRAIN_ROLLOUT_VALIDATION_REFERENCE.md)** —
+  canonical rollout-verification bundle, sampled-adjudication, duplicate-
+  detection, and validator-verdict runbook for the first validator-ready train
+  integrity layer.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
