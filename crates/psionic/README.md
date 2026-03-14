@@ -327,6 +327,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_SECURITY_POSTURE_REFERENCE.md](docs/TRAIN_SECURITY_POSTURE_REFERENCE.md)** —
   canonical environment verification, artifact trust-root, untrusted-worker
   admission, and poisoning-control runbook for `psionic-train`.
+- **[docs/TRAIN_ARTIFACT_STORAGE_REFERENCE.md](docs/TRAIN_ARTIFACT_STORAGE_REFERENCE.md)** —
+  canonical retention-profile, deduplication, archival, garbage-collection,
+  and cold-restore runbook for the train artifact-storage layer in
+  `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
