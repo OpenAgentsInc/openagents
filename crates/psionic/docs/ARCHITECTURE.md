@@ -139,7 +139,7 @@ Psionic is also not:
 | Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
 | Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
-| Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
+| Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
@@ -214,8 +214,9 @@ Applications / Operators / Authority
 11. `psionic-collectives`
    - elastic device-mesh and quantized collective planning
 12. `psionic-train`
-   - training-session truth for checkpointing, live recovery, and
-     elastic-membership posture
+   - training-session truth for checkpointing, live recovery,
+     elastic-membership posture, checkpoint pointers/manifests, and restore
+     receipts
 13. `psionic-adapters`
    - adapter identity, packaging, and hosted binding lineage
 14. backend crates
@@ -309,6 +310,8 @@ training subsystems.
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | `psionic-train` | root identity, participant graph, and lifecycle state for one training program | `implemented_early` |
 | `TrainingWindow` | `psionic-train` | one synchronized contribution or trainer interval with contributor-set and transition state | `implemented_early` |
+| `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
+| `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
 | `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
 | `BenchmarkPackage` | `psionic-eval` | validator-owned packaged benchmark harness or reference evaluation profile with repeat-run aggregation | `implemented_early` |
 | `EvalRun` | `psionic-eval` | one local evaluation execution over a declared environment and artifact set | `implemented_early` |
