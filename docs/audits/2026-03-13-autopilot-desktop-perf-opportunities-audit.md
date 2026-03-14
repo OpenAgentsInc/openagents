@@ -71,6 +71,12 @@ Control / mirror runtimes:
   track last-applied controller fit/play state in runtime state and only mutate
   the Rive controller when desired state actually changes, while cadence/debug
   snapshots now distinguish controller-sync-pending from truly settled surfaces.
+- 2026-03-14: `#3536` is implemented. The desktop perf harness now records
+  persistent per-pane paint timings, per-runtime pump timings, and
+  desktop-control / provider-admin / Codex-remote snapshot timing phases even
+  when the `Frame Debugger` pane is closed. The `Frame Debugger` pane and
+  `autopilotctl perf --json` now surface both recent raw samples and grouped
+  hotspot summaries.
 
 ## Executive Summary
 

@@ -44,6 +44,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     Status,
+    Perf,
     Cluster {
         #[command(subcommand)]
         command: ClusterCommand,
@@ -672,6 +673,19 @@ fn main() -> Result<()> {
                 })?;
             } else {
                 print_status_text(&client.target, &snapshot);
+            }
+        }
+        Command::Perf => {
+            let response = client.action(&DesktopControlActionRequest::GetPaneSnapshot {
+                pane: "frame_debugger".to_string(),
+            })?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            let perf_payload = payload.get("frame_debugger").unwrap_or(payload);
+            if json_output {
+                print_json(perf_payload)?;
+            } else {
+                print_perf_text(perf_payload);
             }
         }
         Command::Cluster { command } => {
@@ -1634,6 +1648,47 @@ fn print_pane_snapshot_text(payload: &Value) {
                 serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
             );
         }
+    }
+}
+
+fn print_perf_text(payload: &Value) {
+    let rolling_fps = payload
+        .get("rolling_fps")
+        .and_then(Value::as_f64)
+        .unwrap_or_default();
+    let rolling_interval_ms = payload
+        .get("rolling_frame_interval_ms")
+        .and_then(Value::as_f64)
+        .unwrap_or_default();
+    let last_frame_ms = payload
+        .get("last_report")
+        .and_then(|report| report.get("total_cpu_ms"))
+        .and_then(Value::as_f64)
+        .unwrap_or_default();
+    println!(
+        "perf: {:.1} fps rolling // {:.2}ms cadence // {:.2}ms last frame cpu",
+        rolling_fps, rolling_interval_ms, last_frame_ms
+    );
+    print_perf_summary_block("top pane paints", payload.get("top_pane_paints"));
+    print_perf_summary_block("top runtime pumps", payload.get("top_runtime_pumps"));
+    print_perf_summary_block("top snapshot timings", payload.get("top_snapshot_timings"));
+}
+
+fn print_perf_summary_block(label: &str, value: Option<&Value>) {
+    println!("{label}:");
+    let Some(entries) = value.and_then(Value::as_array) else {
+        println!("  []");
+        return;
+    };
+    if entries.is_empty() {
+        println!("  []");
+        return;
+    }
+    for entry in entries {
+        println!(
+            "  {}",
+            serde_json::to_string(entry).unwrap_or_else(|_| entry.to_string())
+        );
     }
 }
 

@@ -10,13 +10,13 @@ use crate::app_state::{
     EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
     JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
     LogStreamPaneState, MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs,
-    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker,
-    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderRuntimeState,
-    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
-    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PanePaintTimingSample,
+    PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState,
+    ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
+    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
+    RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
@@ -77,6 +77,11 @@ use crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
+
+pub struct PanePaintReport {
+    pub next_layer: u32,
+    pub pane_paint_samples: Vec<PanePaintTimingSample>,
+}
 
 const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
 const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
@@ -183,7 +188,7 @@ impl PaneRenderer {
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
-    ) -> u32 {
+    ) -> PanePaintReport {
         log_stream.sync_log_stream(
             log_stream_last_action,
             log_stream_last_error,
@@ -202,12 +207,16 @@ impl PaneRenderer {
         let dim_inactive_panes = panes.len() > 1 && active_id.is_some();
 
         let mut next_layer: u32 = 1;
+        let mut pane_paint_samples = Vec::with_capacity(panes.len());
         for idx in indices {
             paint.scene.set_layer(next_layer);
             next_layer = next_layer.saturating_add(1);
 
             let pane = &mut panes[idx];
             let pane_is_active = active_id == Some(pane.id);
+            let pane_kind_label = format!("{:?}", pane.kind);
+            let pane_title = pane.title.clone();
+            let pane_paint_start = std::time::Instant::now();
 
             paint
                 .scene
@@ -263,6 +272,13 @@ impl PaneRenderer {
                     paint,
                 )
             {
+                pane_paint_samples.push(PanePaintTimingSample {
+                    pane_kind: pane_kind_label,
+                    pane_title,
+                    render_mode: "summary".to_string(),
+                    active: false,
+                    elapsed_ms: pane_paint_start.elapsed().as_secs_f32() * 1_000.0,
+                });
                 continue;
             }
 
@@ -588,6 +604,14 @@ impl PaneRenderer {
                     paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
                 }
             }
+
+            pane_paint_samples.push(PanePaintTimingSample {
+                pane_kind: pane_kind_label,
+                pane_title,
+                render_mode: "full".to_string(),
+                active: pane_is_active,
+                elapsed_ms: pane_paint_start.elapsed().as_secs_f32() * 1_000.0,
+            });
         }
 
         if dim_inactive_panes {
@@ -596,7 +620,10 @@ impl PaneRenderer {
                 .find(|pane| Some(pane.id) == active_id)
                 .map(|pane| pane.bounds)
             else {
-                return next_layer;
+                return PanePaintReport {
+                    next_layer,
+                    pane_paint_samples,
+                };
             };
 
             paint.scene.set_layer(next_layer);
@@ -629,7 +656,10 @@ impl PaneRenderer {
                 paint
                     .scene
                     .draw_quad(Quad::new(canvas_bounds).with_background(overlay));
-                return next_layer;
+                return PanePaintReport {
+                    next_layer,
+                    pane_paint_samples,
+                };
             }
 
             if y0 > canvas_bounds.origin.y {
@@ -678,7 +708,10 @@ impl PaneRenderer {
             }
         }
 
-        next_layer
+        PanePaintReport {
+            next_layer,
+            pane_paint_samples,
+        }
     }
 }
 
@@ -1105,6 +1138,34 @@ fn frame_debugger_inactive_preview_state(
         .zip(frame_debugger.last_report.as_ref())
         .map(|(fps, report)| format!("{fps:.1} fps // {:.2} ms cpu", report.total_cpu_ms))
         .unwrap_or_else(|| "Waiting for first frame sample".to_string());
+    let top_pane = frame_debugger
+        .top_pane_paint_summaries(1)
+        .into_iter()
+        .next()
+        .map(|entry| {
+            format!(
+                "pane {} [{}] {:.2}ms",
+                entry.pane_title, entry.render_mode, entry.total_ms
+            )
+        })
+        .unwrap_or_else(|| "pane timings warming".to_string());
+    let top_runtime = frame_debugger
+        .top_runtime_pump_summaries(1)
+        .into_iter()
+        .next()
+        .map(|entry| format!("pump {} {:.2}ms", entry.operation, entry.total_ms))
+        .unwrap_or_else(|| "runtime timings warming".to_string());
+    let top_snapshot = frame_debugger
+        .top_snapshot_timing_summaries(1)
+        .into_iter()
+        .next()
+        .map(|entry| {
+            format!(
+                "snapshot {}:{} {:.2}ms",
+                entry.subsystem, entry.phase, entry.total_ms
+            )
+        })
+        .unwrap_or_else(|| "snapshot timings warming".to_string());
     InactivePanePreviewState {
         source_badge: "inactive perf".to_string(),
         load_state: frame_debugger.load_state,
@@ -1118,10 +1179,9 @@ fn frame_debugger_inactive_preview_state(
                 frame_debugger.samples().len(),
                 frame_debugger.redraw_requests
             ),
-            format!(
-                "slow 60hz {} // slow 30hz {}",
-                frame_debugger.slow_frames_60hz, frame_debugger.slow_frames_30hz
-            ),
+            top_pane,
+            top_runtime,
+            top_snapshot,
         ],
     }
 }

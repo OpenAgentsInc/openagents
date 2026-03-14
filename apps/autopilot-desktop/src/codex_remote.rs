@@ -20,7 +20,7 @@ use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
 use crate::app_state::{
     AutopilotChatCollaborationMode, AutopilotChatPersonality, AutopilotChatServiceTier,
-    AutopilotMessageStatus, AutopilotRole, ProviderMode, RenderState,
+    AutopilotMessageStatus, AutopilotRole, ProviderMode, RenderState, SnapshotTimingSample,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 
@@ -537,27 +537,95 @@ pub fn poll_runtime(state: &mut RenderState) -> bool {
 }
 
 fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
+    let total_started_at = Instant::now();
     let Some(runtime) = state.codex_remote_runtime.as_ref() else {
         return false;
     };
+    let signature_started_at = Instant::now();
     let signature = crate::snapshot_domains::codex_remote_signature(state);
+    let signature_elapsed_ms = signature_started_at.elapsed().as_secs_f32() * 1_000.0;
     let signature_changed =
         state.codex_remote_last_sync_signature.as_deref() != Some(signature.as_str());
     let interval_due = state
         .codex_remote_last_sync_at
         .is_none_or(|last| last.elapsed() >= REMOTE_SYNC_INTERVAL);
     let should_sync = signature_changed || interval_due;
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "codex_remote".to_string(),
+            phase: "signature".to_string(),
+            synced: should_sync,
+            success: true,
+            elapsed_ms: signature_elapsed_ms,
+        });
     if !should_sync {
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "codex_remote".to_string(),
+                phase: "total".to_string(),
+                synced: false,
+                success: true,
+                elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
         return false;
     }
+    let build_started_at = Instant::now();
     let snapshot = snapshot_for_state(state);
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "codex_remote".to_string(),
+            phase: "build".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: build_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
+    let sync_started_at = Instant::now();
     if let Err(error) = runtime.sync_snapshot(snapshot) {
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "codex_remote".to_string(),
+                phase: "sync_snapshot".to_string(),
+                synced: true,
+                success: false,
+                elapsed_ms: sync_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "codex_remote".to_string(),
+                phase: "total".to_string(),
+                synced: true,
+                success: false,
+                elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
         state.codex_remote.last_error = Some(error);
         return false;
     }
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "codex_remote".to_string(),
+            phase: "sync_snapshot".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: sync_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     state.codex_remote_last_sync_signature = Some(signature);
     state.codex_remote_last_sync_at = Some(Instant::now());
     state.codex_remote.last_error = None;
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "codex_remote".to_string(),
+            phase: "total".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     true
 }
 

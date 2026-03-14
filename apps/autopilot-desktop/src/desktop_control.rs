@@ -42,7 +42,8 @@ use crate::app_state::{
     DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
-    mission_control_buy_mode_interval_label, mission_control_local_runtime_view_model,
+    SnapshotTimingSample, mission_control_buy_mode_interval_label,
+    mission_control_local_runtime_view_model,
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
@@ -1199,35 +1200,123 @@ pub fn poll_runtime(state: &mut RenderState) -> bool {
 }
 
 fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
+    let total_started_at = Instant::now();
     let should_attempt_sync = state
         .desktop_control_last_sync_at
         .is_none_or(|last| last.elapsed() >= DESKTOP_CONTROL_SYNC_INTERVAL);
     if !should_attempt_sync {
         return false;
     }
+    let signature_started_at = Instant::now();
     let signature = crate::snapshot_domains::desktop_control_signature(state);
+    let signature_elapsed_ms = signature_started_at.elapsed().as_secs_f32() * 1_000.0;
     let signature_changed =
         state.desktop_control_last_sync_signature.as_deref() != Some(signature.as_str());
     let should_sync = signature_changed || state.desktop_control_last_sync_at.is_none();
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "signature".to_string(),
+            synced: should_sync,
+            success: true,
+            elapsed_ms: signature_elapsed_ms,
+        });
     if !should_sync {
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "desktop_control".to_string(),
+                phase: "total".to_string(),
+                synced: false,
+                success: true,
+                elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
         return false;
     }
+    let build_started_at = Instant::now();
     let snapshot = snapshot_for_state_with_signature(state, signature.clone());
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "build".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: build_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     let snapshot_revision = snapshot.snapshot_revision;
     let Some(runtime) = state.desktop_control_runtime.as_mut() else {
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "desktop_control".to_string(),
+                phase: "total".to_string(),
+                synced: false,
+                success: false,
+                elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
         return false;
     };
+    let sync_started_at = Instant::now();
     if let Err(error) = runtime.sync_snapshot(snapshot.clone()) {
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "desktop_control".to_string(),
+                phase: "sync_snapshot".to_string(),
+                synced: true,
+                success: false,
+                elapsed_ms: sync_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
+        state
+            .frame_debugger
+            .record_snapshot_timing_sample(SnapshotTimingSample {
+                subsystem: "desktop_control".to_string(),
+                phase: "total".to_string(),
+                synced: true,
+                success: false,
+                elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+            });
         state.desktop_control.last_error = Some(error);
         return false;
     }
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "sync_snapshot".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: sync_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     if signature_changed {
         let previous_snapshot = runtime.last_event_snapshot.clone();
+        let append_started_at = Instant::now();
         if let Err(error) = runtime.append_events(snapshot_change_events(
             previous_snapshot.as_ref(),
             &snapshot,
         )) {
+            state
+                .frame_debugger
+                .record_snapshot_timing_sample(SnapshotTimingSample {
+                    subsystem: "desktop_control".to_string(),
+                    phase: "append_events".to_string(),
+                    synced: true,
+                    success: false,
+                    elapsed_ms: append_started_at.elapsed().as_secs_f32() * 1_000.0,
+                });
             state.desktop_control.last_error = Some(error);
+        } else {
+            state
+                .frame_debugger
+                .record_snapshot_timing_sample(SnapshotTimingSample {
+                    subsystem: "desktop_control".to_string(),
+                    phase: "append_events".to_string(),
+                    synced: true,
+                    success: true,
+                    elapsed_ms: append_started_at.elapsed().as_secs_f32() * 1_000.0,
+                });
         }
         runtime.last_event_snapshot = Some(snapshot.clone());
     }
@@ -1235,6 +1324,15 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     state.desktop_control.last_snapshot_signature = Some(signature.clone());
     state.desktop_control_last_sync_signature = Some(signature);
     state.desktop_control_last_sync_at = Some(Instant::now());
+    state
+        .frame_debugger
+        .record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "total".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: total_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     true
 }
 
