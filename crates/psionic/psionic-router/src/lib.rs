@@ -12,10 +12,18 @@
 )]
 
 mod response_state;
+mod tool_loop;
 
 pub use response_state::{
     ResponseConversationRef, ResponseStateBackend, ResponseStateCapability, ResponseStateContext,
     ResponseStateError, ResponseStateRecord, ResponseStateRetentionPolicy, ResponseStateStore,
+};
+pub use tool_loop::{
+    ToolExecutionRequest, ToolGateway, ToolHistoryVisibility, ToolLoopController, ToolLoopError,
+    ToolLoopModelRunner, ToolLoopModelTurn, ToolLoopOutcome, ToolLoopPolicy, ToolLoopRequest,
+    ToolLoopStepReceipt, ToolLoopTerminationReason, ToolLoopToolCall, ToolLoopToolExecutor,
+    ToolLoopToolResult, ToolLoopTurnRequest, ToolProviderDescriptor, ToolProviderInterface,
+    ToolResultVisibility,
 };
 
 use psionic_runtime::{ExecutionCapabilityProfile, GenerationSchedulerPolicy, HealthStatus};

@@ -893,7 +893,14 @@ in-memory and best-effort local JSON persistence, explicit retention and
 durability labels, and generic-server integration so `/v1/responses`
 continuation can survive restart without app-local storage glue. The next
 dependency-ordered issue in that chain is now `PSI-253` /
-[#3558](https://github.com/OpenAgentsInc/openagents/issues/3558).
+[#3558](https://github.com/OpenAgentsInc/openagents/issues/3558), and it is now
+landed too through a router-owned tool-loop controller: explicit route, tool
+call, tool result, and continuation receipts; native plus MCP-style provider
+descriptors with history-visibility and result-visibility boundaries; and a
+serve-side adapter test proving multi-step model -> tool -> continuation flow
+runs through Psionic gateway logic instead of app-local orchestration. The next
+dependency-ordered issue in that chain is now `PSI-254` /
+[#3559](https://github.com/OpenAgentsInc/openagents/issues/3559).
 
 ## Current Reality
 

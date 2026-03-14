@@ -238,6 +238,27 @@ impl ResolvedToolCall {
     }
 }
 
+#[cfg(test)]
+fn tool_loop_tool_call_from_resolved(call: ResolvedToolCall) -> psionic_router::ToolLoopToolCall {
+    psionic_router::ToolLoopToolCall {
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+    }
+}
+
+#[cfg(test)]
+fn assistant_prompt_message_for_tool_loop(content: Option<String>) -> Option<PromptMessage> {
+    content
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| PromptMessage::new(PromptMessageRole::Assistant, value))
+}
+
+#[cfg(test)]
+fn tool_result_prompt_message(tool_name: &str, content: impl Into<String>) -> PromptMessage {
+    PromptMessage::new(PromptMessageRole::Tool, content).with_author_name(tool_name)
+}
+
 fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
     LocalBlobOpenOptions::default().with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel)
 }
@@ -4680,14 +4701,16 @@ mod tests {
         HARMONY_RETURN_STOP, NamedToolChoiceFunction, NamedToolChoiceRequest, OpenAiCompatConfig,
         OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, PsionicReasoningMode,
         PsionicReasoningRequest, PsionicResponseStateRequest, ResolvedReasoningRequest,
-        ResponseContinuationMode, ResponsesInput, ResponsesRequest, ToolChoiceRequest,
-        ToolDefinitionEnvelope, ToolDefinitionRequest, chat_messages_to_prompt_messages,
-        chat_messages_to_prompt_messages_for_family, completion_choice,
-        ensure_harmony_stop_sequences, generation_options_from_chat_request,
+        ResolvedToolCall, ResponseContinuationMode, ResponsesInput, ResponsesRequest,
+        RoutingEndpoint, RoutingRequest, ToolChoiceRequest, ToolDefinitionEnvelope,
+        ToolDefinitionRequest, assistant_prompt_message_for_tool_loop,
+        chat_messages_to_prompt_messages, chat_messages_to_prompt_messages_for_family,
+        completion_choice, ensure_harmony_stop_sequences, generation_options_from_chat_request,
         generation_options_from_chat_request_for_family, generic_embeddings, generic_health,
         generic_list_models, handle_generic_chat_completions, handle_generic_responses,
         prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
         resolve_generic_model, responses_output_items, surfaced_reasoning_response,
+        tool_loop_tool_call_from_resolved, tool_result_prompt_message,
     };
     use crate::{
         GenerationMetrics, GenerationOutput, GenerationRequest, GenerationResponse,
@@ -4706,7 +4729,12 @@ mod tests {
         PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, ReasoningParser, TokenId,
         TokenSequence, parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
     };
-    use psionic_router::{ResponseStateRetentionPolicy, ResponseStateStore};
+    use psionic_router::{
+        ResponseStateRetentionPolicy, ResponseStateStore, ToolExecutionRequest, ToolGateway,
+        ToolHistoryVisibility, ToolLoopController, ToolLoopError, ToolLoopModelRunner,
+        ToolLoopModelTurn, ToolLoopRequest, ToolLoopToolExecutor, ToolLoopToolResult,
+        ToolProviderDescriptor, ToolResultVisibility,
+    };
     use psionic_runtime::{
         BatchExecutionPosture, PrefixCacheControl, PrefixCacheMode, QueueDiscipline,
         StructuredGrammarSyntax, StructuredOutputRequest, StructuredTaggedVariant,
@@ -6618,6 +6646,137 @@ mod tests {
         assert!(body.contains("\"tool_calls\""));
         assert!(body.contains("\"finish_reason\":\"tool_calls\""));
         assert!(body.contains("[DONE]"));
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_router_tool_loop_boundary_executes_multi_step_flow()
+    -> Result<(), Box<dyn std::error::Error>> {
+        struct ScriptedServeToolLoopRunner {
+            turns: Vec<(Option<String>, Vec<ResolvedToolCall>)>,
+            observed_history_lens: Vec<usize>,
+        }
+
+        impl ToolLoopModelRunner for ScriptedServeToolLoopRunner {
+            fn run_turn(
+                &mut self,
+                request: psionic_router::ToolLoopTurnRequest,
+            ) -> Result<ToolLoopModelTurn, ToolLoopError> {
+                self.observed_history_lens
+                    .push(request.prompt_history.len());
+                let (content, tool_calls) =
+                    self.turns.get(request.step_index).cloned().ok_or_else(|| {
+                        ToolLoopError::Execution(String::from("missing scripted turn"))
+                    })?;
+                Ok(ToolLoopModelTurn {
+                    assistant_message: assistant_prompt_message_for_tool_loop(content),
+                    tool_calls: tool_calls
+                        .into_iter()
+                        .map(tool_loop_tool_call_from_resolved)
+                        .collect(),
+                })
+            }
+        }
+
+        struct ScriptedToolExecutor {
+            descriptor: ToolProviderDescriptor,
+            observed_history_lens: std::sync::Mutex<Vec<usize>>,
+        }
+
+        impl ToolLoopToolExecutor for ScriptedToolExecutor {
+            fn descriptor(&self) -> &ToolProviderDescriptor {
+                &self.descriptor
+            }
+
+            fn execute(
+                &self,
+                request: ToolExecutionRequest,
+            ) -> Result<ToolLoopToolResult, ToolLoopError> {
+                self.observed_history_lens
+                    .lock()
+                    .expect("history mutex")
+                    .push(request.prompt_history.len());
+                Ok(ToolLoopToolResult {
+                    tool_call_id: request.tool_call.id,
+                    tool_name: request.tool_call.name.clone(),
+                    provider: self.descriptor.clone(),
+                    visibility: self.descriptor.result_visibility,
+                    message: tool_result_prompt_message(
+                        request.tool_call.name.as_str(),
+                        "72f and sunny",
+                    ),
+                    structured: Some(serde_json::json!({
+                        "forecast": "sunny",
+                        "temperature_f": 72
+                    })),
+                })
+            }
+        }
+
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-tool-loop-llama.gguf");
+        write_test_gguf(
+            &path,
+            tool_call_llama_metadata("tiny tool loop llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let mut gateway = ToolGateway::new();
+        gateway.register(
+            "get_weather",
+            ScriptedToolExecutor {
+                descriptor: ToolProviderDescriptor::mcp("weather-provider", "weather", "sse")
+                    .with_history_visibility(ToolHistoryVisibility::PromptHistory)
+                    .with_result_visibility(ToolResultVisibility::InjectIntoModel),
+                observed_history_lens: std::sync::Mutex::new(Vec::new()),
+            },
+        );
+        let controller = ToolLoopController::new(&server.state.router, &gateway);
+        let mut runner = ScriptedServeToolLoopRunner {
+            turns: vec![
+                (
+                    Some(String::from("Calling weather tool")),
+                    vec![ResolvedToolCall {
+                        id: String::from("tool-0"),
+                        name: String::from("get_weather"),
+                        arguments: serde_json::json!({"city": "Paris"}),
+                    }],
+                ),
+                (Some(String::from("Paris is 72F and sunny.")), Vec::new()),
+            ],
+            observed_history_lens: Vec::new(),
+        };
+        let outcome = controller.run(
+            ToolLoopRequest::new(
+                RoutingRequest::new(RoutingEndpoint::Responses).require_tool_calling(),
+                vec![PromptMessage::new(
+                    PromptMessageRole::User,
+                    "How is the weather?",
+                )],
+            ),
+            &mut runner,
+        )?;
+
+        assert_eq!(outcome.steps.len(), 2);
+        assert_eq!(
+            outcome
+                .final_message
+                .as_ref()
+                .map(|message| message.content.as_str()),
+            Some("Paris is 72F and sunny.")
+        );
+        assert_eq!(runner.observed_history_lens, vec![1, 4]);
+        assert!(matches!(
+            outcome.steps[0].tool_results[0].provider.interface,
+            psionic_router::ToolProviderInterface::Mcp { .. }
+        ));
+        assert_eq!(
+            outcome.steps[0].tool_results[0]
+                .message
+                .author_name
+                .as_deref(),
+            Some("get_weather")
+        );
         Ok(())
     }
 

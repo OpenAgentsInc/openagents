@@ -92,6 +92,10 @@ Implemented now:
   tagged tool envelopes, schema-backed argument validation, and
   machine-readable tool-call surfaces on both normal and streaming chat
   responses.
+- a router-owned tool-loop boundary for those tool calls, with explicit
+  multi-step model/tool receipts, provider descriptors, MCP-aware gateway
+  seams, history-visibility controls, and refusal of hidden tool results
+  instead of burying agent loops inside worker runtimes or app-local glue.
 - Psionic-owned reasoning parser seams for reasoning-bearing families, starting
   with GPT-OSS / Harmony: typed parsed-response envelopes now separate final
   content, reasoning content, and side channels; `psionic_reasoning` request
