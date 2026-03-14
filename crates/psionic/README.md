@@ -75,6 +75,9 @@ Implemented now:
 - CPU baseline plus a first Metal-backed `psionic.embeddings` lane.
 - generic CPU GGUF decoder execution for GPT-OSS plus representative Llama,
   Qwen, and Mistral families through one Psionic-owned runtime surface.
+- generic `psionic-openai-server` boot and model inventory for GPT-OSS plus
+  non-GPT-OSS GGUF families on one `/v1/chat/completions` surface, with
+  unfinished APIs still refused explicitly.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
