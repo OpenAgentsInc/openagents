@@ -1601,8 +1601,8 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_window_selection_and_batch_assembly_are_typed(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_window_selection_and_batch_assembly_are_typed()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         let window = orchestrator.plan_next_window(
             2,
@@ -1672,8 +1672,8 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_refuses_rollout_from_standby_participant(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_refuses_rollout_from_standby_participant()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         orchestrator.plan_next_window(
             2,
@@ -1709,8 +1709,8 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_quarantines_stale_rollouts_outside_accept_budget(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_quarantines_stale_rollouts_outside_accept_budget()
+    -> Result<(), Box<dyn std::error::Error>> {
         let state = cluster_state();
         let environment = EnvironmentPackageKey::new("oa.train", "2026.03");
         let mut run = TrainingRunState::new(
@@ -1755,10 +1755,12 @@ mod tests {
             1_150,
         )?;
         assert_eq!(receipt.outcome, RolloutReceiptOutcome::Quarantined);
-        assert!(receipt
-            .signals
-            .iter()
-            .any(|signal| signal.kind == RolloutAdmissionSignalKind::RolloutAge));
+        assert!(
+            receipt
+                .signals
+                .iter()
+                .any(|signal| signal.kind == RolloutAdmissionSignalKind::RolloutAge)
+        );
         let window = orchestrator
             .orchestrator_windows
             .iter()
@@ -1772,8 +1774,8 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_discards_rollouts_beyond_quarantine_budget(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn orchestrator_discards_rollouts_beyond_quarantine_budget()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         orchestrator.plan_next_window(
             2,
@@ -1796,10 +1798,12 @@ mod tests {
             70_000,
         )?;
         assert_eq!(receipt.outcome, RolloutReceiptOutcome::Discarded);
-        assert!(receipt
-            .signals
-            .iter()
-            .any(|signal| signal.kind == RolloutAdmissionSignalKind::RevisionDrift));
+        assert!(
+            receipt
+                .signals
+                .iter()
+                .any(|signal| signal.kind == RolloutAdmissionSignalKind::RevisionDrift)
+        );
         let window = orchestrator
             .orchestrator_windows
             .iter()

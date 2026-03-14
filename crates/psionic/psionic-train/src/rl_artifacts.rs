@@ -675,8 +675,8 @@ mod tests {
     }
 
     #[test]
-    fn rollout_artifacts_and_trainer_batch_are_machine_legible(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn rollout_artifacts_and_trainer_batch_are_machine_legible()
+    -> Result<(), Box<dyn std::error::Error>> {
         let source_a = checkpoint_backed_policy("policy-r1", "digest-r1", "step-12", 12)?;
         let source_b = checkpoint_backed_policy("policy-r2", "digest-r2", "step-16", 16)?
             .with_parent_revision_id("policy-r1");

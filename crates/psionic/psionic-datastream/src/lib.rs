@@ -487,7 +487,12 @@ impl DatastreamManifest {
             hasher.update(b"|");
             hasher.update(policy_weight_binding.published_at_ms.to_string().as_bytes());
             hasher.update(b"|");
-            hasher.update(policy_weight_binding.freshness_window_ms.to_string().as_bytes());
+            hasher.update(
+                policy_weight_binding
+                    .freshness_window_ms
+                    .to_string()
+                    .as_bytes(),
+            );
         }
         for mirror in &self.mirrors {
             hasher.update(b"|mirror|");
@@ -895,15 +900,20 @@ impl DatastreamPolicyWeightBroadcastManifest {
                 || shard.published_at_ms != first.published_at_ms
                 || shard.freshness_window_ms != first.freshness_window_ms
             {
-                return Err(DatastreamTransferError::PolicyWeightBroadcastBindingMismatch {
-                    expected_policy_id: first.policy_id.clone(),
-                    actual_policy_id: shard.policy_id.clone(),
-                    expected_policy_revision: first.policy_revision,
-                    actual_policy_revision: shard.policy_revision,
-                });
+                return Err(
+                    DatastreamTransferError::PolicyWeightBroadcastBindingMismatch {
+                        expected_policy_id: first.policy_id.clone(),
+                        actual_policy_id: shard.policy_id.clone(),
+                        expected_policy_revision: first.policy_revision,
+                        actual_policy_revision: shard.policy_revision,
+                    },
+                );
             }
         }
-        let observed_indices = shards.iter().map(|shard| shard.shard_index).collect::<Vec<_>>();
+        let observed_indices = shards
+            .iter()
+            .map(|shard| shard.shard_index)
+            .collect::<Vec<_>>();
         if observed_indices.len() != first.shard_count
             || observed_indices
                 .iter()
@@ -911,15 +921,14 @@ impl DatastreamPolicyWeightBroadcastManifest {
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
                 != first.shard_count
-            || !observed_indices
-                .iter()
-                .copied()
-                .eq(0..first.shard_count)
+            || !observed_indices.iter().copied().eq(0..first.shard_count)
         {
-            return Err(DatastreamTransferError::PolicyWeightBroadcastShardCoverageInvalid {
-                expected_shard_count: first.shard_count,
-                observed_indices,
-            });
+            return Err(
+                DatastreamTransferError::PolicyWeightBroadcastShardCoverageInvalid {
+                    expected_shard_count: first.shard_count,
+                    observed_indices,
+                },
+            );
         }
         let broadcast_digest = stable_policy_weight_broadcast_digest(shards.as_slice());
         Ok(Self {
@@ -1507,7 +1516,10 @@ impl InMemoryPolicyWeightBroadcast {
                 .map_or(usize::MAX, |binding| binding.shard_index)
         });
         let broadcast = DatastreamPolicyWeightBroadcastManifest::from_manifest_refs(
-            servers.iter().map(InMemoryDatastreamServer::manifest_ref).collect(),
+            servers
+                .iter()
+                .map(InMemoryDatastreamServer::manifest_ref)
+                .collect(),
             observed_at_ms,
         )?;
         Ok(Self { broadcast, servers })
@@ -1554,16 +1566,21 @@ impl InMemoryPolicyWeightBroadcast {
         }
         let actual_assembled_digest = digest_bytes(&assembled);
         if actual_assembled_digest != self.broadcast.assembled_artifact_digest {
-            return Err(DatastreamTransferError::PolicyWeightAssemblyDigestMismatch {
-                expected: self.broadcast.assembled_artifact_digest.clone(),
-                actual: actual_assembled_digest,
-            });
+            return Err(
+                DatastreamTransferError::PolicyWeightAssemblyDigestMismatch {
+                    expected: self.broadcast.assembled_artifact_digest.clone(),
+                    actual: actual_assembled_digest,
+                },
+            );
         }
-        let bytes_delivered = shard_receipts
-            .iter()
-            .fold(0_u64, |acc, receipt| acc.saturating_add(receipt.delivery.bytes_delivered));
-        let receipt_digest =
-            stable_policy_weight_broadcast_receipt_digest(&self.broadcast, shard_receipts.as_slice(), bytes_delivered);
+        let bytes_delivered = shard_receipts.iter().fold(0_u64, |acc, receipt| {
+            acc.saturating_add(receipt.delivery.bytes_delivered)
+        });
+        let receipt_digest = stable_policy_weight_broadcast_receipt_digest(
+            &self.broadcast,
+            shard_receipts.as_slice(),
+            bytes_delivered,
+        );
         Ok(DatastreamPolicyWeightBroadcastReceipt {
             broadcast: self.broadcast.clone(),
             shards: shard_receipts,
@@ -1702,7 +1719,10 @@ mod tests {
     };
 
     fn assembled_digest(shards: &[&[u8]]) -> String {
-        let bytes = shards.iter().flat_map(|shard| shard.iter().copied()).collect::<Vec<_>>();
+        let bytes = shards
+            .iter()
+            .flat_map(|shard| shard.iter().copied())
+            .collect::<Vec<_>>();
         super::digest_bytes(&bytes)
     }
 
@@ -1986,8 +2006,7 @@ mod tests {
 
         assert_eq!(broadcast.broadcast().shards.len(), 2);
         assert!(
-            broadcast.broadcast().estimated_control_plane_bytes()
-                < (shard_a.len() + shard_b.len())
+            broadcast.broadcast().estimated_control_plane_bytes() < (shard_a.len() + shard_b.len())
         );
         assert_eq!(
             broadcast.broadcast().shards[0].mirrors[0].mirror_id,
@@ -1995,7 +2014,10 @@ mod tests {
         );
 
         let receipt = broadcast.deliver(1_500, 2)?;
-        assert_eq!(receipt.bytes_delivered, (shard_a.len() + shard_b.len()) as u64);
+        assert_eq!(
+            receipt.bytes_delivered,
+            (shard_a.len() + shard_b.len()) as u64
+        );
         assert_eq!(
             receipt.broadcast.assembled_artifact_digest,
             assembled_artifact_digest
@@ -2044,8 +2066,8 @@ mod tests {
     }
 
     #[test]
-    fn policy_weight_broadcast_rejects_binding_mismatch()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn policy_weight_broadcast_rejects_binding_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    {
         let shard_a = b"policy-weight-shard-a".to_vec();
         let shard_b = b"policy-weight-shard-b".to_vec();
         let manifest_a = super::DatastreamManifest::from_bytes(

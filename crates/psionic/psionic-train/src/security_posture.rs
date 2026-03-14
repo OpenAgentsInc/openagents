@@ -411,7 +411,10 @@ impl TrainSecurityController {
             .iter()
             .filter_map(|artifact| artifact.verification_policy_ref.as_deref())
             .collect::<BTreeSet<_>>();
-        for required_ref in &self.policy.environment_verification.required_artifact_verification_refs
+        for required_ref in &self
+            .policy
+            .environment_verification
+            .required_artifact_verification_refs
         {
             if !artifact_verification_refs.contains(required_ref.as_str()) {
                 reason_codes.push(TrainSecurityReasonCode::MissingArtifactVerificationPolicy);
@@ -440,8 +443,8 @@ impl TrainSecurityController {
             artifact.artifact_digest.as_str(),
             attestations,
         );
-        if signature_assessment.valid_signature_count < self.policy.artifact_trust_root.minimum_signatures
-            as u16
+        if signature_assessment.valid_signature_count
+            < self.policy.artifact_trust_root.minimum_signatures as u16
         {
             if attestations.is_empty() {
                 reason_codes.push(TrainSecurityReasonCode::ArtifactSignatureMissing);
@@ -455,7 +458,10 @@ impl TrainSecurityController {
         }
 
         if worker.trust_class == RolloutWorkerTrustClass::UntrustedWorker {
-            if self.policy.untrusted_worker_admission.require_execution_proof
+            if self
+                .policy
+                .untrusted_worker_admission
+                .require_execution_proof
                 && !artifact
                     .proof_references
                     .iter()
@@ -475,7 +481,9 @@ impl TrainSecurityController {
                 .collect::<Vec<_>>();
             if recent_submissions.len()
                 >= usize::try_from(
-                    self.policy.untrusted_worker_admission.max_submissions_per_window,
+                    self.policy
+                        .untrusted_worker_admission
+                        .max_submissions_per_window,
                 )
                 .unwrap_or(usize::MAX)
             {
@@ -483,7 +491,10 @@ impl TrainSecurityController {
             }
             if recent_submissions.iter().any(|record| {
                 observed_at_ms.saturating_sub(record.observed_at_ms)
-                    < self.policy.untrusted_worker_admission.minimum_interarrival_ms
+                    < self
+                        .policy
+                        .untrusted_worker_admission
+                        .minimum_interarrival_ms
             }) {
                 reason_codes.push(TrainSecurityReasonCode::UntrustedWorkerBurstLimited);
             }
@@ -507,8 +518,12 @@ impl TrainSecurityController {
             })
             .count();
         if duplicate_signature_count
-            >= usize::try_from(self.policy.poisoning_controls.max_duplicate_signatures_per_window)
-                .unwrap_or(usize::MAX)
+            >= usize::try_from(
+                self.policy
+                    .poisoning_controls
+                    .max_duplicate_signatures_per_window,
+            )
+            .unwrap_or(usize::MAX)
         {
             reason_codes.push(TrainSecurityReasonCode::DuplicateResponseSignature);
         }
@@ -763,12 +778,8 @@ fn train_security_reason_code_label(reason_code: TrainSecurityReasonCode) -> &'s
         TrainSecurityReasonCode::ExecutionProofMissingForUntrustedWorker => {
             b"execution_proof_missing_for_untrusted_worker"
         }
-        TrainSecurityReasonCode::UntrustedWorkerRateLimited => {
-            b"untrusted_worker_rate_limited"
-        }
-        TrainSecurityReasonCode::UntrustedWorkerBurstLimited => {
-            b"untrusted_worker_burst_limited"
-        }
+        TrainSecurityReasonCode::UntrustedWorkerRateLimited => b"untrusted_worker_rate_limited",
+        TrainSecurityReasonCode::UntrustedWorkerBurstLimited => b"untrusted_worker_burst_limited",
         TrainSecurityReasonCode::DuplicateArtifactDigest => b"duplicate_artifact_digest",
         TrainSecurityReasonCode::DuplicateResponseSignature => b"duplicate_response_signature",
     }
@@ -784,9 +795,7 @@ mod tests {
         EnvironmentToolContract, EnvironmentToolInterface,
     };
 
-    use crate::{
-        PolicyRevision, RolloutProofReference, RolloutSample, RolloutTerminationReason,
-    };
+    use crate::{PolicyRevision, RolloutProofReference, RolloutSample, RolloutTerminationReason};
 
     use super::*;
 
@@ -833,8 +842,11 @@ mod tests {
         let signing_key = SigningKey::from_bytes(&[9_u8; 32]);
         let package = sample_environment_package();
         let trust_root = sample_trust_root(&signing_key);
-        let mut policy =
-            TrainSecurityPolicy::for_environment("validator/security/default", &package, trust_root.clone());
+        let mut policy = TrainSecurityPolicy::for_environment(
+            "validator/security/default",
+            &package,
+            trust_root.clone(),
+        );
         policy.untrusted_worker_admission.minimum_interarrival_ms = 5_000;
         let mut controller = TrainSecurityController::new(policy)?;
         let worker = RolloutWorkerIdentity::new(
@@ -873,9 +885,11 @@ mod tests {
             12_000,
         )?;
         assert_eq!(burst.disposition, TrainSecurityDisposition::Rejected);
-        assert!(burst
-            .reason_codes
-            .contains(&TrainSecurityReasonCode::UntrustedWorkerBurstLimited));
+        assert!(
+            burst
+                .reason_codes
+                .contains(&TrainSecurityReasonCode::UntrustedWorkerBurstLimited)
+        );
 
         let unsigned = controller.assess_rollout_submission(
             &RolloutWorkerIdentity::new(
@@ -889,9 +903,11 @@ mod tests {
             20_000,
         )?;
         assert_eq!(unsigned.disposition, TrainSecurityDisposition::Rejected);
-        assert!(unsigned
-            .reason_codes
-            .contains(&TrainSecurityReasonCode::ArtifactSignatureMissing));
+        assert!(
+            unsigned
+                .reason_codes
+                .contains(&TrainSecurityReasonCode::ArtifactSignatureMissing)
+        );
         Ok(())
     }
 
@@ -924,7 +940,10 @@ mod tests {
             &[first_attestation],
             10_000,
         )?;
-        assert_eq!(first_receipt.disposition, TrainSecurityDisposition::Accepted);
+        assert_eq!(
+            first_receipt.disposition,
+            TrainSecurityDisposition::Accepted
+        );
 
         let second = sample_rollout_artifact(&package.key, "artifact-b", "task-a", "worker-b");
         let second_attestation = SignedArtifactAttestation::sign_rollout_artifact(
@@ -944,10 +963,15 @@ mod tests {
             &[second_attestation],
             20_000,
         )?;
-        assert_eq!(second_receipt.disposition, TrainSecurityDisposition::Quarantined);
-        assert!(second_receipt
-            .reason_codes
-            .contains(&TrainSecurityReasonCode::DuplicateResponseSignature));
+        assert_eq!(
+            second_receipt.disposition,
+            TrainSecurityDisposition::Quarantined
+        );
+        assert!(
+            second_receipt
+                .reason_codes
+                .contains(&TrainSecurityReasonCode::DuplicateResponseSignature)
+        );
         Ok(())
     }
 

@@ -401,10 +401,7 @@ impl TrainingReplayReceipt {
 
     /// Compares another replay receipt against this one and surfaces drift signals.
     #[must_use]
-    pub fn verify_against(
-        &self,
-        observed: &Self,
-    ) -> TrainingReplayVerificationReceipt {
+    pub fn verify_against(&self, observed: &Self) -> TrainingReplayVerificationReceipt {
         let mut signals = Vec::new();
         compare_signal(
             &mut signals,
@@ -418,7 +415,11 @@ impl TrainingReplayReceipt {
             ReplayVerificationSignalKind::AssignmentSeed,
             "seeds",
             self.seed_discipline.assignment_seed.to_string().as_str(),
-            observed.seed_discipline.assignment_seed.to_string().as_str(),
+            observed
+                .seed_discipline
+                .assignment_seed
+                .to_string()
+                .as_str(),
         );
         compare_signal(
             &mut signals,
@@ -694,7 +695,10 @@ fn stable_selection_digest(
     hasher.update(b"|");
     hasher.update(population_digest.as_bytes());
     hasher.update(b"|");
-    hasher.update(stable_string_list_digest(b"psionic_replay_selected_items|", selected_item_ids));
+    hasher.update(stable_string_list_digest(
+        b"psionic_replay_selected_items|",
+        selected_item_ids,
+    ));
     hex::encode(hasher.finalize())
 }
 
@@ -720,20 +724,20 @@ fn stable_json_bytes(value: &impl Serialize) -> Vec<u8> {
 mod tests {
     use serde_json::json;
 
-    use psionic_environments::{
-        EnvironmentExecutionEntrypoint, EnvironmentPackageFamily, EnvironmentStateMode,
-        EnvironmentToolContract,
-    };
     use crate::{
         PolicyRevision, RolloutArtifact, RolloutProofKind, RolloutProofReference, RolloutSample,
         RolloutTerminationReason,
+    };
+    use psionic_environments::{
+        EnvironmentExecutionEntrypoint, EnvironmentPackageFamily, EnvironmentStateMode,
+        EnvironmentToolContract,
     };
 
     use super::*;
 
     #[test]
-    fn replay_truth_receipt_is_machine_legible_and_verifiable() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn replay_truth_receipt_is_machine_legible_and_verifiable()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = sample_environment_package();
         let batch = sample_trainer_batch(&package.key)?;
         let seed_discipline = TrainingReplaySeedDiscipline::new(41, 77, 99);
@@ -772,7 +776,10 @@ mod tests {
             eval_posture.clone(),
         )?;
         assert!(!receipt.replay_digest.is_empty());
-        assert_eq!(receipt.environment_pin.package_digest, package.stable_digest());
+        assert_eq!(
+            receipt.environment_pin.package_digest,
+            package.stable_digest()
+        );
         assert_eq!(receipt.environment_pin.tool_pins[0].version_label, "tool@1");
 
         let verification = receipt.verify_against(&TrainingReplayReceipt::new(
@@ -782,7 +789,10 @@ mod tests {
             environment_pin,
             eval_posture,
         )?);
-        assert_eq!(verification.disposition, ReplayVerificationDisposition::Match);
+        assert_eq!(
+            verification.disposition,
+            ReplayVerificationDisposition::Match
+        );
         assert!(verification.signals.is_empty());
         Ok(())
     }
@@ -835,21 +845,30 @@ mod tests {
         )?;
 
         let verification = baseline_receipt.verify_against(&drifted_receipt);
-        assert_eq!(verification.disposition, ReplayVerificationDisposition::Drifted);
-        assert!(verification
-            .signals
-            .iter()
-            .any(|signal| signal.kind == ReplayVerificationSignalKind::TrainerSeed));
-        assert!(verification
-            .signals
-            .iter()
-            .any(|signal| signal.kind == ReplayVerificationSignalKind::ToolVersion));
+        assert_eq!(
+            verification.disposition,
+            ReplayVerificationDisposition::Drifted
+        );
+        assert!(
+            verification
+                .signals
+                .iter()
+                .any(|signal| signal.kind == ReplayVerificationSignalKind::TrainerSeed)
+        );
+        assert!(
+            verification
+                .signals
+                .iter()
+                .any(|signal| signal.kind == ReplayVerificationSignalKind::ToolVersion)
+        );
         assert!(verification.signals.iter().any(|signal| {
             signal.kind == ReplayVerificationSignalKind::EvalSampleOrderingDigest
         }));
-        assert!(verification.signals.iter().any(|signal| {
-            signal.kind == ReplayVerificationSignalKind::SampleSelectionDigest
-        }));
+        assert!(
+            verification.signals.iter().any(|signal| {
+                signal.kind == ReplayVerificationSignalKind::SampleSelectionDigest
+            })
+        );
         Ok(())
     }
 
@@ -901,8 +920,12 @@ mod tests {
     }
 
     fn sample_eval_contract(environment: &EnvironmentPackageKey) -> EvalRunContract {
-        EvalRunContract::new("eval-weather-1", EvalRunMode::OfflineHeldOut, environment.clone())
-            .with_expected_sample_count(2)
+        EvalRunContract::new(
+            "eval-weather-1",
+            EvalRunMode::OfflineHeldOut,
+            environment.clone(),
+        )
+        .with_expected_sample_count(2)
     }
 
     fn deterministic_eval_strategy() -> EvalExecutionStrategyFacts {
@@ -920,20 +943,12 @@ mod tests {
     fn sample_trainer_batch(
         environment: &EnvironmentPackageKey,
     ) -> Result<TrainerBatch, Box<dyn std::error::Error>> {
-        let target_revision = PolicyRevision::new(
-            "weather.policy",
-            "rev-2",
-            "target-policy-digest",
-            2_000,
-        )
-        .with_revision_number(2);
-        let source_revision = PolicyRevision::new(
-            "weather.policy",
-            "rev-1",
-            "source-policy-digest",
-            1_000,
-        )
-        .with_revision_number(1);
+        let target_revision =
+            PolicyRevision::new("weather.policy", "rev-2", "target-policy-digest", 2_000)
+                .with_revision_number(2);
+        let source_revision =
+            PolicyRevision::new("weather.policy", "rev-1", "source-policy-digest", 1_000)
+                .with_revision_number(1);
         let rollout_a = RolloutArtifact::new(
             "rollout-a",
             "worker-a",

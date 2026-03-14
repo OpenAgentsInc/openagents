@@ -681,8 +681,12 @@ impl ElasticCollectivePlanner {
             });
         }
 
-        let (global_quantization, global_benchmark) =
-            self.sync_quantization_choice(kind, requested_quantization, cadence_policy, &mut triggers);
+        let (global_quantization, global_benchmark) = self.sync_quantization_choice(
+            kind,
+            requested_quantization,
+            cadence_policy,
+            &mut triggers,
+        );
         let next_global_step = next_global_step(step_index, global_interval_steps);
         let cadence_class = match (degraded_transport, has_local_groups, global_due) {
             (true, true, true) => CollectiveSyncCadenceClass::LocalThenGlobal,
@@ -694,7 +698,9 @@ impl ElasticCollectivePlanner {
         let mut stages = Vec::new();
         if degraded_transport {
             if let Some(local_group_size) = local_group_size {
-                for (group_index, group_members) in self.members.chunks(local_group_size).enumerate() {
+                for (group_index, group_members) in
+                    self.members.chunks(local_group_size).enumerate()
+                {
                     stages.push(CollectiveSyncStage {
                         scope: CollectiveSyncScope::LocalGroup,
                         group_index: Some(group_index),
@@ -771,7 +777,11 @@ impl ElasticCollectivePlanner {
         let benchmark = self
             .benchmarks
             .iter()
-            .find(|benchmark| benchmark.kind == kind && benchmark.quantization == quantization && benchmark.accepted)
+            .find(|benchmark| {
+                benchmark.kind == kind
+                    && benchmark.quantization == quantization
+                    && benchmark.accepted
+            })
             .cloned()
             .ok_or(CollectivePlanningError::QuantizationNotApproved { kind, quantization })?;
         Ok(Some(benchmark))
@@ -1078,8 +1088,7 @@ fn cadence_triggers(
                 kind: CollectiveReplanTriggerKind::LatencyAboveCeiling,
                 detail: format!(
                     "observed latency {} ms is above policy ceiling {} ms",
-                    transport_feedback.estimated_latency_ms,
-                    cadence_policy.latency_ceiling_ms
+                    transport_feedback.estimated_latency_ms, cadence_policy.latency_ceiling_ms
                 ),
             });
         }
@@ -1088,8 +1097,7 @@ fn cadence_triggers(
                 kind: CollectiveReplanTriggerKind::ActiveStreamsAboveCeiling,
                 detail: format!(
                     "active streams {} exceed policy ceiling {}",
-                    transport_feedback.active_streams,
-                    cadence_policy.active_stream_ceiling
+                    transport_feedback.active_streams, cadence_policy.active_stream_ceiling
                 ),
             });
         }
@@ -1164,9 +1172,7 @@ fn collective_replan_trigger_label(kind: CollectiveReplanTriggerKind) -> &'stati
         CollectiveReplanTriggerKind::MeshRevisionChanged => b"mesh_revision_changed",
         CollectiveReplanTriggerKind::BandwidthBelowFloor => b"bandwidth_below_floor",
         CollectiveReplanTriggerKind::LatencyAboveCeiling => b"latency_above_ceiling",
-        CollectiveReplanTriggerKind::ActiveStreamsAboveCeiling => {
-            b"active_streams_above_ceiling"
-        }
+        CollectiveReplanTriggerKind::ActiveStreamsAboveCeiling => b"active_streams_above_ceiling",
         CollectiveReplanTriggerKind::GlobalIntervalElapsed => b"global_interval_elapsed",
         CollectiveReplanTriggerKind::QuantizationApprovalMissing => {
             b"quantization_approval_missing"
@@ -1174,9 +1180,7 @@ fn collective_replan_trigger_label(kind: CollectiveReplanTriggerKind) -> &'stati
     }
 }
 
-fn collective_sync_cadence_class_label(
-    cadence_class: CollectiveSyncCadenceClass,
-) -> &'static [u8] {
+fn collective_sync_cadence_class_label(cadence_class: CollectiveSyncCadenceClass) -> &'static [u8] {
     match cadence_class {
         CollectiveSyncCadenceClass::EveryStepGlobal => b"every_step_global",
         CollectiveSyncCadenceClass::LocalOnlyDeferredGlobal => b"local_only_deferred_global",
@@ -1462,13 +1466,16 @@ mod tests {
         assert!(plan.cadence_receipt.degraded_transport);
         assert_eq!(plan.cadence_receipt.next_global_step, 4);
         assert_eq!(plan.stages.len(), 2);
-        assert!(plan
-            .stages
-            .iter()
-            .all(|stage| stage.scope == CollectiveSyncScope::LocalGroup));
-        assert!(plan.cadence_receipt.triggers.iter().any(|trigger| {
-            trigger.kind == CollectiveReplanTriggerKind::BandwidthBelowFloor
-        }));
+        assert!(
+            plan.stages
+                .iter()
+                .all(|stage| stage.scope == CollectiveSyncScope::LocalGroup)
+        );
+        assert!(
+            plan.cadence_receipt.triggers.iter().any(|trigger| {
+                trigger.kind == CollectiveReplanTriggerKind::BandwidthBelowFloor
+            })
+        );
         Ok(())
     }
 
@@ -1510,15 +1517,16 @@ mod tests {
                 .quantization,
             TrainingCollectiveQuantization::Int8Symmetric
         );
-        assert!(plan.cadence_receipt.triggers.iter().any(|trigger| {
-            trigger.kind == CollectiveReplanTriggerKind::GlobalIntervalElapsed
-        }));
+        assert!(
+            plan.cadence_receipt.triggers.iter().any(|trigger| {
+                trigger.kind == CollectiveReplanTriggerKind::GlobalIntervalElapsed
+            })
+        );
         Ok(())
     }
 
     #[test]
-    fn sync_planner_emits_mesh_revision_replan_trigger() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn sync_planner_emits_mesh_revision_replan_trigger() -> Result<(), Box<dyn std::error::Error>> {
         let mut planner = four_way_planner()?;
         let policy = CollectiveSyncCadencePolicy::new();
         let _initial = planner.plan_sync(
@@ -1545,9 +1553,11 @@ mod tests {
             &policy,
         )?;
 
-        assert!(replanned.cadence_receipt.triggers.iter().any(|trigger| {
-            trigger.kind == CollectiveReplanTriggerKind::MeshRevisionChanged
-        }));
+        assert!(
+            replanned.cadence_receipt.triggers.iter().any(|trigger| {
+                trigger.kind == CollectiveReplanTriggerKind::MeshRevisionChanged
+            })
+        );
         Ok(())
     }
 

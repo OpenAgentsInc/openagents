@@ -603,7 +603,7 @@ impl RolloutWorkerProtocolState {
                 return Err(RolloutWorkerProtocolError::ClaimNotActive {
                     claim_id: claim.claim_id,
                     status: rollout_task_claim_status_label(status).to_string(),
-                })
+                });
             }
         }
         if observed_at_ms > claim.claim_expires_at_ms {
@@ -1174,8 +1174,8 @@ mod tests {
     }
 
     #[test]
-    fn worker_protocol_wraps_orchestrator_admission_in_worker_outcomes(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn worker_protocol_wraps_orchestrator_admission_in_worker_outcomes()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         let mut protocol = protocol(&mut orchestrator)?;
         protocol.record_heartbeat(
@@ -1216,8 +1216,8 @@ mod tests {
     }
 
     #[test]
-    fn worker_protocol_emits_local_receipts_for_expired_or_invalid_uploads(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn worker_protocol_emits_local_receipts_for_expired_or_invalid_uploads()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut orchestrator = orchestrator()?;
         let mut protocol = protocol(&mut orchestrator)?;
         protocol.record_heartbeat(

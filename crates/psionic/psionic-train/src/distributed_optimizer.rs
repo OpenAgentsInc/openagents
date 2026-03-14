@@ -9,9 +9,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    FixedBudgetTrainingRun, OptimizerStateResidency, TrainingGradientBatch,
-    TrainingParameterClass, TrainingParameterGroupState, TrainingStepInput,
-    TrainingStepReceipt, core_loop::TrainingCoreError,
+    FixedBudgetTrainingRun, OptimizerStateResidency, TrainingGradientBatch, TrainingParameterClass,
+    TrainingParameterGroupState, TrainingStepInput, TrainingStepReceipt,
+    core_loop::TrainingCoreError,
 };
 
 /// Distributed optimizer family owned by the train runtime.
@@ -658,7 +658,8 @@ impl DistributedOptimizerRun {
         &mut self,
         batch: TrainingGradientBatch,
     ) -> Result<DistributedMicrobatchReceipt, DistributedOptimizerError> {
-        if self.pending_microbatches.len() >= self.contract.accumulation_policy.microbatch_count as usize
+        if self.pending_microbatches.len()
+            >= self.contract.accumulation_policy.microbatch_count as usize
         {
             return Err(DistributedOptimizerError::AccumulationWindowAlreadyFull {
                 microbatch_count: self.contract.accumulation_policy.microbatch_count,
@@ -785,13 +786,17 @@ pub enum DistributedOptimizerError {
     },
     #[error("distributed optimizer contract is missing parameter group `{group_id}`")]
     UnknownParameterGroup { group_id: String },
-    #[error("parameter group `{group_id}` class mismatch: expected `{expected:?}`, found `{actual:?}`")]
+    #[error(
+        "parameter group `{group_id}` class mismatch: expected `{expected:?}`, found `{actual:?}`"
+    )]
     ParameterClassMismatch {
         group_id: String,
         expected: TrainingParameterClass,
         actual: TrainingParameterClass,
     },
-    #[error("parameter group `{group_id}` dtype `{dtype:?}` does not match distributed precision `{precision:?}`")]
+    #[error(
+        "parameter group `{group_id}` dtype `{dtype:?}` does not match distributed precision `{precision:?}`"
+    )]
     ParameterPrecisionMismatch {
         group_id: String,
         dtype: DType,
@@ -801,13 +806,17 @@ pub enum DistributedOptimizerError {
     MissingShardPlacements { group_id: String },
     #[error("parameter group `{group_id}` shard `{shard_id}` was duplicated")]
     DuplicateShardId { group_id: String, shard_id: usize },
-    #[error("parameter group `{group_id}` layout covers {covered_elements} elements but tensor has {tensor_elements}")]
+    #[error(
+        "parameter group `{group_id}` layout covers {covered_elements} elements but tensor has {tensor_elements}"
+    )]
     ShardCoverageMismatch {
         group_id: String,
         covered_elements: usize,
         tensor_elements: usize,
     },
-    #[error("distributed optimizer accumulation window already holds {microbatch_count} microbatches")]
+    #[error(
+        "distributed optimizer accumulation window already holds {microbatch_count} microbatches"
+    )]
     AccumulationWindowAlreadyFull { microbatch_count: u32 },
     #[error(
         "distributed optimizer step requires {expected_microbatches} microbatches but only {actual_microbatches} were buffered"
@@ -816,13 +825,9 @@ pub enum DistributedOptimizerError {
         expected_microbatches: u32,
         actual_microbatches: u32,
     },
-    #[error(
-        "distributed optimizer device memory peak {peak_bytes} exceeds budget {budget_bytes}"
-    )]
+    #[error("distributed optimizer device memory peak {peak_bytes} exceeds budget {budget_bytes}")]
     DeviceMemoryBudgetExceeded { peak_bytes: u64, budget_bytes: u64 },
-    #[error(
-        "distributed optimizer host memory peak {peak_bytes} exceeds budget {budget_bytes}"
-    )]
+    #[error("distributed optimizer host memory peak {peak_bytes} exceeds budget {budget_bytes}")]
     HostMemoryBudgetExceeded { peak_bytes: u64, budget_bytes: u64 },
     #[error("distributed optimizer batch `{batch_id}` is missing gradient for group `{group_id}`")]
     MissingBatchGradient { batch_id: String, group_id: String },
@@ -847,10 +852,12 @@ fn validate_activation_checkpointing(
         } if activation_peak_bytes_with_checkpointing
             > activation_peak_bytes_without_checkpointing =>
         {
-            Err(DistributedOptimizerError::InvalidActivationCheckpointingBytes {
-                without_checkpointing: *activation_peak_bytes_without_checkpointing,
-                with_checkpointing: *activation_peak_bytes_with_checkpointing,
-            })
+            Err(
+                DistributedOptimizerError::InvalidActivationCheckpointingBytes {
+                    without_checkpointing: *activation_peak_bytes_without_checkpointing,
+                    with_checkpointing: *activation_peak_bytes_with_checkpointing,
+                },
+            )
         }
         _ => Ok(()),
     }
@@ -922,15 +929,18 @@ fn validate_layout(
         });
     }
     let mut seen_shards = BTreeMap::new();
-    let covered_elements = layout.placements.iter().try_fold(0_usize, |acc, placement| {
-        if seen_shards.insert(placement.shard_id, ()).is_some() {
-            return Err(DistributedOptimizerError::DuplicateShardId {
-                group_id: String::from(group_id),
-                shard_id: placement.shard_id,
-            });
-        }
-        Ok(acc.saturating_add(placement.range.element_count))
-    })?;
+    let covered_elements = layout
+        .placements
+        .iter()
+        .try_fold(0_usize, |acc, placement| {
+            if seen_shards.insert(placement.shard_id, ()).is_some() {
+                return Err(DistributedOptimizerError::DuplicateShardId {
+                    group_id: String::from(group_id),
+                    shard_id: placement.shard_id,
+                });
+            }
+            Ok(acc.saturating_add(placement.range.element_count))
+        })?;
     match layout.kind {
         TrainingParameterShardKind::Replicated => {
             if layout
@@ -950,7 +960,7 @@ fn validate_layout(
                 group_id: String::from(group_id),
                 covered_elements,
                 tensor_elements,
-            })
+            });
         }
         _ => {}
     }
@@ -968,17 +978,21 @@ fn validate_optimizer_layout(
         });
     }
     let mut seen_shards = BTreeMap::new();
-    let covered_elements = layout.placements.iter().try_fold(0_usize, |acc, placement| {
-        if seen_shards.insert(placement.shard_id, ()).is_some() {
-            return Err(DistributedOptimizerError::DuplicateShardId {
-                group_id: String::from(group_id),
-                shard_id: placement.shard_id,
-            });
-        }
-        Ok(acc.saturating_add(placement.range.element_count))
-    })?;
+    let covered_elements = layout
+        .placements
+        .iter()
+        .try_fold(0_usize, |acc, placement| {
+            if seen_shards.insert(placement.shard_id, ()).is_some() {
+                return Err(DistributedOptimizerError::DuplicateShardId {
+                    group_id: String::from(group_id),
+                    shard_id: placement.shard_id,
+                });
+            }
+            Ok(acc.saturating_add(placement.range.element_count))
+        })?;
     match layout.kind {
-        TrainingOptimizerStateShardKind::Replicated | TrainingOptimizerStateShardKind::ZeroStage1 => {
+        TrainingOptimizerStateShardKind::Replicated
+        | TrainingOptimizerStateShardKind::ZeroStage1 => {
             if layout
                 .placements
                 .iter()
@@ -996,7 +1010,7 @@ fn validate_optimizer_layout(
                 group_id: String::from(group_id),
                 covered_elements,
                 tensor_elements,
-            })
+            });
         }
         _ => {}
     }
@@ -1040,14 +1054,26 @@ fn build_memory_plan(
             .unwrap_or_else(|| unreachable!("contract validated before memory planning"));
         let elements = group.parameter.spec.storage_size() as u64;
         let parameter_bytes = elements.saturating_mul(
-            contract.precision_policy.parameter_precision.element_size_bytes() as u64,
+            contract
+                .precision_policy
+                .parameter_precision
+                .element_size_bytes() as u64,
         );
         let gradient_bytes = elements.saturating_mul(
-            contract.precision_policy.gradient_precision.element_size_bytes() as u64,
+            contract
+                .precision_policy
+                .gradient_precision
+                .element_size_bytes() as u64,
         );
-        let optimizer_factor = optimizer_state_multiplier(group.optimizer.kind, group.optimizer.momentum);
+        let optimizer_factor =
+            optimizer_state_multiplier(group.optimizer.kind, group.optimizer.momentum);
         let optimizer_bytes = elements
-            .saturating_mul(contract.precision_policy.optimizer_state_precision.element_size_bytes() as u64)
+            .saturating_mul(
+                contract
+                    .precision_policy
+                    .optimizer_state_precision
+                    .element_size_bytes() as u64,
+            )
             .saturating_mul(optimizer_factor);
         let master_weight_bytes = if contract.precision_policy.master_weight_precision
             == contract.precision_policy.parameter_precision
@@ -1055,36 +1081,52 @@ fn build_memory_plan(
             0
         } else {
             elements.saturating_mul(
-                contract.precision_policy.master_weight_precision.element_size_bytes() as u64,
+                contract
+                    .precision_policy
+                    .master_weight_precision
+                    .element_size_bytes() as u64,
             )
         };
         parameter_logical_bytes = parameter_logical_bytes.saturating_add(parameter_bytes);
         gradient_logical_bytes = gradient_logical_bytes.saturating_add(gradient_bytes);
         optimizer_state_logical_bytes =
             optimizer_state_logical_bytes.saturating_add(optimizer_bytes);
-        master_weight_logical_bytes = master_weight_logical_bytes.saturating_add(master_weight_bytes);
+        master_weight_logical_bytes =
+            master_weight_logical_bytes.saturating_add(master_weight_bytes);
 
         distribute_layout_bytes(
             &mut device_bytes_by_worker,
             group_contract.parameter_layout.placements.as_slice(),
-            contract.precision_policy.parameter_precision.element_size_bytes() as u64,
+            contract
+                .precision_policy
+                .parameter_precision
+                .element_size_bytes() as u64,
         );
         distribute_layout_bytes(
             &mut device_bytes_by_worker,
             group_contract.gradient_layout.placements.as_slice(),
-            contract.precision_policy.gradient_precision.element_size_bytes() as u64,
+            contract
+                .precision_policy
+                .gradient_precision
+                .element_size_bytes() as u64,
         );
         match group_contract.optimizer_state_layout.residency {
             TrainingOptimizerShardResidency::DeviceResident => distribute_layout_bytes(
                 &mut device_bytes_by_worker,
                 group_contract.optimizer_state_layout.placements.as_slice(),
-                contract.precision_policy.optimizer_state_precision.element_size_bytes() as u64
+                contract
+                    .precision_policy
+                    .optimizer_state_precision
+                    .element_size_bytes() as u64
                     * optimizer_factor,
             ),
             TrainingOptimizerShardResidency::HostOffloaded => distribute_layout_bytes(
                 &mut host_bytes_by_worker,
                 group_contract.optimizer_state_layout.placements.as_slice(),
-                contract.precision_policy.optimizer_state_precision.element_size_bytes() as u64
+                contract
+                    .precision_policy
+                    .optimizer_state_precision
+                    .element_size_bytes() as u64
                     * optimizer_factor,
             ),
             TrainingOptimizerShardResidency::RemoteOffloaded => {
@@ -1096,8 +1138,10 @@ fn build_memory_plan(
                         .map(|placement| placement.range.element_count as u64)
                         .sum::<u64>()
                         .saturating_mul(
-                            contract.precision_policy.optimizer_state_precision.element_size_bytes()
-                                as u64,
+                            contract
+                                .precision_policy
+                                .optimizer_state_precision
+                                .element_size_bytes() as u64,
                         )
                         .saturating_mul(optimizer_factor),
                 );
@@ -1118,7 +1162,11 @@ fn build_memory_plan(
         .unwrap_or_default()
         .saturating_add(contract.activation_checkpointing.activation_peak_bytes())
         .saturating_add(contract.memory_budget.scratch_reserve_bytes);
-    let peak_host_bytes = host_bytes_by_worker.values().copied().max().unwrap_or_default();
+    let peak_host_bytes = host_bytes_by_worker
+        .values()
+        .copied()
+        .max()
+        .unwrap_or_default();
     let receipt_digest = stable_memory_plan_digest(
         contract.contract_digest.as_str(),
         parameter_logical_bytes,
@@ -1157,7 +1205,9 @@ fn distribute_layout_bytes(
 ) {
     for placement in placements {
         let bytes = (placement.range.element_count as u64).saturating_mul(element_size_bytes);
-        let entry = bytes_by_worker.entry(placement.node_id.clone()).or_default();
+        let entry = bytes_by_worker
+            .entry(placement.node_id.clone())
+            .or_default();
         *entry = entry.saturating_add(bytes);
     }
 }
@@ -1188,7 +1238,11 @@ fn distribute_master_weight_bytes(
 fn optimizer_state_multiplier(kind: TrainingOptimizerConfigKind, momentum: Option<f32>) -> u64 {
     match kind {
         TrainingOptimizerConfigKind::Sgd => {
-            if momentum.is_some() { 1 } else { 0 }
+            if momentum.is_some() {
+                1
+            } else {
+                0
+            }
         }
         TrainingOptimizerConfigKind::AdamW => 2,
     }
@@ -1223,14 +1277,16 @@ fn aggregate_microbatches(
     for (group_id, first_gradient) in &first.gradients {
         let mut values = tensor_values(first_gradient, group_id.as_str())?;
         for batch in batches.iter().skip(1) {
-            let gradient = batch
-                .gradients
-                .get(group_id.as_str())
-                .ok_or_else(|| DistributedOptimizerError::MissingBatchGradient {
+            let gradient = batch.gradients.get(group_id.as_str()).ok_or_else(|| {
+                DistributedOptimizerError::MissingBatchGradient {
                     batch_id: batch.batch_id.clone(),
                     group_id: group_id.clone(),
-                })?;
-            for (slot, value) in values.iter_mut().zip(tensor_values(gradient, group_id.as_str())?) {
+                }
+            })?;
+            for (slot, value) in values
+                .iter_mut()
+                .zip(tensor_values(gradient, group_id.as_str())?)
+            {
                 *slot += value;
             }
         }
@@ -1405,18 +1461,18 @@ mod tests {
 
     use psionic_collectives::{
         CollectiveMeshMember, CollectiveSyncCadencePolicy, CollectiveTransportFeedback,
-        ElasticCollectivePlanner, QuantizedCollectiveBenchmark,
-        QuantizedCollectiveBenchmarkSample,
+        ElasticCollectivePlanner, QuantizedCollectiveBenchmark, QuantizedCollectiveBenchmarkSample,
     };
 
     use super::{
         DistributedOptimizerContract, DistributedOptimizerError, DistributedOptimizerGroupContract,
-        DistributedOptimizerRun, DistributedTrainingMemoryBudget, TrainingActivationCheckpointPolicy,
-        TrainingDistributedOptimizerKind, TrainingGradientAccumulationPolicy,
-        TrainingGradientAccumulationReduction, TrainingOptimizerShardResidency,
-        TrainingOptimizerStateShardKind, TrainingOptimizerStateShardLayout,
-        TrainingParameterShardKind, TrainingParameterShardLayout, TrainingPrecisionPolicy,
-        TrainingShardPlacement, TrainingShardRange,
+        DistributedOptimizerRun, DistributedTrainingMemoryBudget,
+        TrainingActivationCheckpointPolicy, TrainingDistributedOptimizerKind,
+        TrainingGradientAccumulationPolicy, TrainingGradientAccumulationReduction,
+        TrainingOptimizerShardResidency, TrainingOptimizerStateShardKind,
+        TrainingOptimizerStateShardLayout, TrainingParameterShardKind,
+        TrainingParameterShardLayout, TrainingPrecisionPolicy, TrainingShardPlacement,
+        TrainingShardRange,
     };
     use crate::{
         OptimizerStateResidency, TrainingGradientBatch, TrainingLoopBudget,
@@ -1469,8 +1525,7 @@ mod tests {
             1_000,
         ));
         planner.observe_transport_feedback(
-            CollectiveTransportFeedback::new(6_000, 150, 2, 1)
-                .with_detail("healthy nvlink mesh"),
+            CollectiveTransportFeedback::new(6_000, 150, 2, 1).with_detail("healthy nvlink mesh"),
         );
         Ok(planner)
     }
@@ -1710,8 +1765,8 @@ mod tests {
     }
 
     #[test]
-    fn distributed_optimizer_contract_surfaces_precision_and_memory_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn distributed_optimizer_contract_surfaces_precision_and_memory_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let contract = contract()?;
         let memory_plan = super::build_memory_plan(parameter_groups()?.as_slice(), &contract);
 
@@ -1733,8 +1788,8 @@ mod tests {
     }
 
     #[test]
-    fn distributed_optimizer_run_accumulates_microbatches_and_flushes_step(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn distributed_optimizer_run_accumulates_microbatches_and_flushes_step()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut run = DistributedOptimizerRun::new(
             "distributed-run",
             "train.weather.agent",
@@ -1759,13 +1814,16 @@ mod tests {
         let receipt = run.apply_accumulated_step(1_000, 1_030)?;
         assert_eq!(receipt.microbatches.len(), 2);
         assert_eq!(receipt.groups.len(), 2);
-        assert_eq!(receipt.trainer_step.schedule, TrainingStepSchedule {
-            global_step: 1,
-            window_index: 1,
-            step_in_window: 1,
-            cadence_index: 1,
-            window_in_cadence: 1,
-        });
+        assert_eq!(
+            receipt.trainer_step.schedule,
+            TrainingStepSchedule {
+                global_step: 1,
+                window_index: 1,
+                step_in_window: 1,
+                cadence_index: 1,
+                window_in_cadence: 1,
+            }
+        );
         assert_eq!(run.pending_microbatch_count(), 0);
         assert_eq!(run.summary().completed_steps, 1);
         assert!(!receipt.collective_sync_plan.stages.is_empty());

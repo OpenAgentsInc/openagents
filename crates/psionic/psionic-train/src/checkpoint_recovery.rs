@@ -43,7 +43,11 @@ impl CheckpointScopeBinding {
     /// Returns a stable storage key for the scope.
     #[must_use]
     pub fn storage_key(&self) -> String {
-        format!("{}:{}", checkpoint_scope_kind_label(self.kind), self.scope_id)
+        format!(
+            "{}:{}",
+            checkpoint_scope_kind_label(self.kind),
+            self.scope_id
+        )
     }
 }
 
@@ -264,8 +268,10 @@ pub struct InMemoryCheckpointStore {
 impl InMemoryCheckpointStore {
     /// Stores one checkpoint pointer.
     pub fn store_pointer(&mut self, pointer: CheckpointPointer) {
-        self.pointers
-            .insert(pointer_key(&pointer.scope, pointer.checkpoint_family.as_str()), pointer);
+        self.pointers.insert(
+            pointer_key(&pointer.scope, pointer.checkpoint_family.as_str()),
+            pointer,
+        );
     }
 
     /// Removes one checkpoint pointer.
@@ -276,7 +282,10 @@ impl InMemoryCheckpointStore {
     /// Stores one checkpoint manifest.
     pub fn store_manifest(&mut self, manifest: CheckpointManifest) {
         self.manifests
-            .entry(pointer_key(&manifest.scope, manifest.checkpoint_family.as_str()))
+            .entry(pointer_key(
+                &manifest.scope,
+                manifest.checkpoint_family.as_str(),
+            ))
             .or_default()
             .push(manifest);
     }
@@ -366,9 +375,7 @@ impl InMemoryCheckpointStore {
             source_kind: CheckpointReadSourceKind::ManifestListingFallback,
             manifest_digest: Some(manifest.manifest_digest.clone()),
             accepted: true,
-            detail: String::from(
-                "manifest listing fallback selected the latest durable manifest",
-            ),
+            detail: String::from("manifest listing fallback selected the latest durable manifest"),
         });
         Ok(build_restore_receipt(
             recovery_mode,
@@ -496,10 +503,8 @@ fn build_restore_receipt(
     attempts: Vec<CheckpointRestoreAttempt>,
     uploader_candidates: &[NodeId],
 ) -> CheckpointRestoreReceipt {
-    let uploader_assignments = deterministic_shard_uploaders(
-        selected_manifest.shards.as_slice(),
-        uploader_candidates,
-    );
+    let uploader_assignments =
+        deterministic_shard_uploaders(selected_manifest.shards.as_slice(), uploader_candidates);
     let receipt_digest = stable_restore_receipt_digest(
         recovery_mode,
         source_kind,
@@ -629,7 +634,11 @@ fn stable_restore_receipt_digest(
     for attempt in attempts {
         hasher.update(b"|attempt|");
         hasher.update(checkpoint_read_source_label(attempt.source_kind));
-        hasher.update(if attempt.accepted { b"|accepted|" } else { b"|rejected|" });
+        hasher.update(if attempt.accepted {
+            b"|accepted|"
+        } else {
+            b"|rejected|"
+        });
         hasher.update(attempt.detail.as_bytes());
     }
     for assignment in uploader_assignments {
@@ -759,10 +768,12 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let (session, manifest_ref) = durable_session()?;
         let scope = CheckpointScopeBinding::new(CheckpointScopeKind::Run, "train-run-1");
-        let manifest =
-            session.checkpoint_manifest_for_latest_durable(scope.clone(), &NodeId::new("worker-a"), 1_250)?;
-        let pointer =
-            session.checkpoint_pointer_for_latest_durable(scope, &manifest, 1_260)?;
+        let manifest = session.checkpoint_manifest_for_latest_durable(
+            scope.clone(),
+            &NodeId::new("worker-a"),
+            1_250,
+        )?;
+        let pointer = session.checkpoint_pointer_for_latest_durable(scope, &manifest, 1_260)?;
         assert_eq!(manifest.shards.len(), 1);
         assert_eq!(manifest.shards[0].manifest, manifest_ref);
         assert_eq!(manifest.durability, CheckpointDurabilityPosture::Durable);
@@ -771,12 +782,14 @@ mod tests {
     }
 
     #[test]
-    fn restore_prefers_pointer_before_listing_fallback()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn restore_prefers_pointer_before_listing_fallback() -> Result<(), Box<dyn std::error::Error>> {
         let (session, _) = durable_session()?;
         let scope = CheckpointScopeBinding::new(CheckpointScopeKind::Run, "train-run-2");
-        let manifest =
-            session.checkpoint_manifest_for_latest_durable(scope.clone(), &NodeId::new("worker-a"), 1_250)?;
+        let manifest = session.checkpoint_manifest_for_latest_durable(
+            scope.clone(),
+            &NodeId::new("worker-a"),
+            1_250,
+        )?;
         let pointer =
             session.checkpoint_pointer_for_latest_durable(scope.clone(), &manifest, 1_260)?;
         let mut store = InMemoryCheckpointStore::default();
@@ -791,7 +804,10 @@ mod tests {
             CheckpointStoreReadOptions::default(),
         )?;
         assert_eq!(receipt.source_kind, CheckpointReadSourceKind::PointerLookup);
-        assert_eq!(receipt.selected_manifest.manifest_digest, manifest.manifest_digest);
+        assert_eq!(
+            receipt.selected_manifest.manifest_digest,
+            manifest.manifest_digest
+        );
         assert_eq!(receipt.selected_pointer, Some(pointer));
         assert_eq!(receipt.uploader_assignments.len(), 1);
         Ok(())
@@ -802,8 +818,11 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let (session, _) = durable_session()?;
         let scope = CheckpointScopeBinding::new(CheckpointScopeKind::Run, "train-run-3");
-        let manifest =
-            session.checkpoint_manifest_for_latest_durable(scope.clone(), &NodeId::new("worker-a"), 1_250)?;
+        let manifest = session.checkpoint_manifest_for_latest_durable(
+            scope.clone(),
+            &NodeId::new("worker-a"),
+            1_250,
+        )?;
         let stale_pointer = super::CheckpointPointer::new(
             scope.clone(),
             "train.decoder",
@@ -826,7 +845,10 @@ mod tests {
             receipt.source_kind,
             CheckpointReadSourceKind::ManifestListingFallback
         );
-        assert_eq!(receipt.selected_manifest.manifest_digest, manifest.manifest_digest);
+        assert_eq!(
+            receipt.selected_manifest.manifest_digest,
+            manifest.manifest_digest
+        );
         assert_eq!(receipt.attempts.len(), 2);
         Ok(())
     }
@@ -836,8 +858,11 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let (session, _) = durable_session()?;
         let scope = CheckpointScopeBinding::new(CheckpointScopeKind::Run, "train-run-4");
-        let durable_manifest =
-            session.checkpoint_manifest_for_latest_durable(scope.clone(), &NodeId::new("worker-a"), 1_200)?;
+        let durable_manifest = session.checkpoint_manifest_for_latest_durable(
+            scope.clone(),
+            &NodeId::new("worker-a"),
+            1_200,
+        )?;
         let partial_manifest = super::CheckpointManifest::new(
             scope.clone(),
             "train.decoder",
@@ -857,7 +882,10 @@ mod tests {
             &[NodeId::new("worker-a")],
             CheckpointStoreReadOptions::default(),
         )?;
-        assert_eq!(receipt.selected_manifest.manifest_digest, durable_manifest.manifest_digest);
+        assert_eq!(
+            receipt.selected_manifest.manifest_digest,
+            durable_manifest.manifest_digest
+        );
 
         let err = store
             .plan_restore(

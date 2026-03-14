@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use psionic_core::{Device, DType, QuantizedTensorData, TensorData, TensorSpec};
+use psionic_core::{DType, Device, QuantizedTensorData, TensorData, TensorSpec};
 use psionic_data::{TokenizerDigest, TokenizerFamily};
 use psionic_models::{
     GgufContent, GgufMetadataValue, GgufTensorType, GgufTokenizerMetadata, GgufTokenizerModel,
@@ -156,9 +156,7 @@ pub enum ModelIoError {
         state_key: String,
     },
     /// The requested adapter was derived against a different base state dict.
-    #[error(
-        "adapter `{adapter_id}` expects base state dict `{expected}`, found `{actual}`"
-    )]
+    #[error("adapter `{adapter_id}` expects base state dict `{expected}`, found `{actual}`")]
     AdapterBaseDigestMismatch {
         /// Stable adapter identifier.
         adapter_id: String,
@@ -168,9 +166,7 @@ pub enum ModelIoError {
         actual: String,
     },
     /// The requested adapter removal was attempted against the wrong target state dict.
-    #[error(
-        "adapter `{adapter_id}` expects target state dict `{expected}`, found `{actual}`"
-    )]
+    #[error("adapter `{adapter_id}` expects target state dict `{expected}`, found `{actual}`")]
     AdapterTargetDigestMismatch {
         /// Stable adapter identifier.
         adapter_id: String,
@@ -319,12 +315,11 @@ impl PortableTokenizerBinding {
         template_digest: Option<String>,
     ) -> Result<Self, ModelIoError> {
         let family = tokenizer_family_from_gguf(tokenizer.model);
-        let vocab_size =
-            u32::try_from(tokenizer.vocabulary.tokens().len()).map_err(|_| {
-                ModelIoError::TokenValueOverflow {
-                    field: "tokenizer.vocab_size",
-                }
-            })?;
+        let vocab_size = u32::try_from(tokenizer.vocabulary.tokens().len()).map_err(|_| {
+            ModelIoError::TokenValueOverflow {
+                field: "tokenizer.vocab_size",
+            }
+        })?;
         let mut digest = TokenizerDigest::new(family, tokenizer.digest().to_string(), vocab_size)
             .with_special_tokens_digest(digest_tokenizer_specials(tokenizer));
         if let Some(template_digest) = template_digest.clone() {
@@ -336,14 +331,20 @@ impl PortableTokenizerBinding {
             asset_version: asset_version.into(),
             add_bos: tokenizer.add_bos,
             add_eos: tokenizer.add_eos,
-            bos_token_id: tokenizer.vocabulary.bos_token_id().map(|value| value.as_u32()),
+            bos_token_id: tokenizer
+                .vocabulary
+                .bos_token_id()
+                .map(|value| value.as_u32()),
             eos_token_ids: tokenizer
                 .vocabulary
                 .eos_token_ids()
                 .iter()
                 .map(|value| value.as_u32())
                 .collect(),
-            pad_token_id: tokenizer.vocabulary.pad_token_id().map(|value| value.as_u32()),
+            pad_token_id: tokenizer
+                .vocabulary
+                .pad_token_id()
+                .map(|value| value.as_u32()),
             unknown_token_id: tokenizer
                 .vocabulary
                 .unknown_token_id()
@@ -601,7 +602,10 @@ impl PortableModelStateDict {
                         ModelStateTensorEntry {
                             manifest: ModelStateTensorManifest::new(
                                 first_moment_key.clone(),
-                                extend_tree_path(assignment.model_tree_path.clone(), "first_moment"),
+                                extend_tree_path(
+                                    assignment.model_tree_path.clone(),
+                                    "first_moment",
+                                ),
                                 ModelStateTensorRole::AdamFirstMoment,
                                 group.parameter.spec.clone(),
                             ),
@@ -695,11 +699,11 @@ impl PortableModelStateDict {
                         .map(|state_key| {
                             dense_f32_values(
                                 state_key.as_str(),
-                                self.tensors
-                                    .get(state_key.as_str())
-                                    .ok_or_else(|| ModelIoError::MissingTensor {
+                                self.tensors.get(state_key.as_str()).ok_or_else(|| {
+                                    ModelIoError::MissingTensor {
                                         state_key: state_key.clone(),
-                                    })?,
+                                    }
+                                })?,
                             )
                             .map(ToOwned::to_owned)
                         })
@@ -707,12 +711,13 @@ impl PortableModelStateDict {
                     TrainingOptimizerState::Sgd { momentum_buffer }
                 }
                 TrainingOptimizerKind::AdamW => {
-                    let first_moment_key = assignment.first_moment_key.as_ref().ok_or_else(|| {
-                        ModelIoError::InvalidGroupAssignment {
-                            group_id: assignment.group_id.clone(),
-                            message: String::from("AdamW group is missing `first_moment_key`"),
-                        }
-                    })?;
+                    let first_moment_key =
+                        assignment.first_moment_key.as_ref().ok_or_else(|| {
+                            ModelIoError::InvalidGroupAssignment {
+                                group_id: assignment.group_id.clone(),
+                                message: String::from("AdamW group is missing `first_moment_key`"),
+                            }
+                        })?;
                     let second_moment_key =
                         assignment.second_moment_key.as_ref().ok_or_else(|| {
                             ModelIoError::InvalidGroupAssignment {
@@ -723,11 +728,11 @@ impl PortableModelStateDict {
                     TrainingOptimizerState::AdamW {
                         first_moment: dense_f32_values(
                             first_moment_key.as_str(),
-                            self.tensors
-                                .get(first_moment_key.as_str())
-                                .ok_or_else(|| ModelIoError::MissingTensor {
+                            self.tensors.get(first_moment_key.as_str()).ok_or_else(|| {
+                                ModelIoError::MissingTensor {
                                     state_key: first_moment_key.clone(),
-                                })?,
+                                }
+                            })?,
                         )?
                         .to_vec(),
                         second_moment: dense_f32_values(
@@ -771,22 +776,25 @@ impl PortableModelStateDict {
 
         let mut tensors = BTreeMap::new();
         for key in base_keys {
-            let base_entry = base
-                .tensors
-                .get(key.as_str())
-                .ok_or_else(|| ModelIoError::MissingTensor {
-                    state_key: key.clone(),
-                })?;
-            let tuned_entry = tuned
-                .tensors
-                .get(key.as_str())
-                .ok_or_else(|| ModelIoError::MissingTensor {
-                    state_key: key.clone(),
-                })?;
+            let base_entry =
+                base.tensors
+                    .get(key.as_str())
+                    .ok_or_else(|| ModelIoError::MissingTensor {
+                        state_key: key.clone(),
+                    })?;
+            let tuned_entry =
+                tuned
+                    .tensors
+                    .get(key.as_str())
+                    .ok_or_else(|| ModelIoError::MissingTensor {
+                        state_key: key.clone(),
+                    })?;
             if base_entry.manifest.spec != tuned_entry.manifest.spec {
                 return Err(ModelIoError::InvalidGroupAssignment {
                     group_id: key.clone(),
-                    message: String::from("parameter tensor specs changed during adapter derivation"),
+                    message: String::from(
+                        "parameter tensor specs changed during adapter derivation",
+                    ),
                 });
             }
             let base_values = dense_f32_values(key.as_str(), base_entry)?;
@@ -827,11 +835,12 @@ impl PortableModelStateDict {
 
         let mut tensors = self.tensors.clone();
         for (state_key, adapter_tensor) in &delta.tensors {
-            let entry = tensors
-                .get_mut(state_key.as_str())
-                .ok_or_else(|| ModelIoError::MissingTensor {
-                    state_key: state_key.clone(),
-                })?;
+            let entry =
+                tensors
+                    .get_mut(state_key.as_str())
+                    .ok_or_else(|| ModelIoError::MissingTensor {
+                        state_key: state_key.clone(),
+                    })?;
             let values = dense_f32_values_mut(state_key.as_str(), entry)?;
             if values.len() != adapter_tensor.delta_values.len() {
                 return Err(ModelIoError::TensorPayloadLengthMismatch {
@@ -876,11 +885,12 @@ impl PortableModelStateDict {
 
         let mut tensors = self.tensors.clone();
         for (state_key, adapter_tensor) in &delta.tensors {
-            let entry = tensors
-                .get_mut(state_key.as_str())
-                .ok_or_else(|| ModelIoError::MissingTensor {
-                    state_key: state_key.clone(),
-                })?;
+            let entry =
+                tensors
+                    .get_mut(state_key.as_str())
+                    .ok_or_else(|| ModelIoError::MissingTensor {
+                        state_key: state_key.clone(),
+                    })?;
             let values = dense_f32_values_mut(state_key.as_str(), entry)?;
             if values.len() != adapter_tensor.delta_values.len() {
                 return Err(ModelIoError::TensorPayloadLengthMismatch {
@@ -1040,8 +1050,9 @@ impl PortableModelBundle {
 
     /// Exports the bundle as dense safetensors with embedded Psionic metadata.
     pub fn export_safetensors(&self) -> Result<(Vec<u8>, ModelIoArtifactReceipt), ModelIoError> {
-        let manifest_json = serde_json::to_string(&self.manifest())
-            .map_err(|error| serialization_error("safetensors manifest export", error.to_string()))?;
+        let manifest_json = serde_json::to_string(&self.manifest()).map_err(|error| {
+            serialization_error("safetensors manifest export", error.to_string())
+        })?;
         let mut metadata = HashMap::new();
         metadata.insert(String::from(SAFETENSORS_MANIFEST_KEY), manifest_json);
 
@@ -1076,7 +1087,9 @@ impl PortableModelBundle {
         }
 
         let bytes = serialize(
-            views.iter().map(|(state_key, view)| (state_key.as_str(), view.clone())),
+            views
+                .iter()
+                .map(|(state_key, view)| (state_key.as_str(), view.clone())),
             Some(metadata),
         )
         .map_err(safetensors_error)?;
@@ -1103,9 +1116,10 @@ impl PortableModelBundle {
         let manifest_json = metadata
             .get(SAFETENSORS_MANIFEST_KEY)
             .ok_or(ModelIoError::MissingSafetensorsManifest)?;
-        let manifest: PortableModelBundleManifest = serde_json::from_str(manifest_json).map_err(
-            |error| serialization_error("safetensors manifest import", error.to_string()),
-        )?;
+        let manifest: PortableModelBundleManifest =
+            serde_json::from_str(manifest_json).map_err(|error| {
+                serialization_error("safetensors manifest import", error.to_string())
+            })?;
 
         let safetensors = SafeTensors::deserialize(bytes).map_err(safetensors_error)?;
         let mut tensors = BTreeMap::new();
@@ -1171,8 +1185,11 @@ impl PortableModelBundle {
         let chat_templates = content.load_chat_templates()?;
         let chat_template_digest =
             (!chat_templates.is_empty()).then(|| chat_templates.digest().to_string());
-        let tokenizer =
-            PortableTokenizerBinding::from_gguf(&tokenizer_metadata, asset_version, chat_template_digest.clone())?;
+        let tokenizer = PortableTokenizerBinding::from_gguf(
+            &tokenizer_metadata,
+            asset_version,
+            chat_template_digest.clone(),
+        )?;
 
         let mut tensors = BTreeMap::new();
         for tensor_metadata in &weights.metadata().tensors {
@@ -1669,7 +1686,11 @@ mod tests {
             .expect("missing first-moment traversal record");
         assert_eq!(
             first_moment.model_tree_path,
-            vec![String::from("decoder"), String::from("head"), String::from("first_moment")]
+            vec![
+                String::from("decoder"),
+                String::from("head"),
+                String::from("first_moment")
+            ]
         );
 
         let (bytes, receipt) = bundle.export_torch_state_dict_json()?;
@@ -1677,7 +1698,10 @@ mod tests {
         assert_eq!(receipt.tensor_count, 5);
 
         let imported = PortableModelBundle::import_torch_state_dict_json(bytes.as_slice())?;
-        assert_eq!(imported.state_dict.source_format, ModelArtifactFormat::TorchStateDictJson);
+        assert_eq!(
+            imported.state_dict.source_format,
+            ModelArtifactFormat::TorchStateDictJson
+        );
         assert_eq!(imported.to_training_groups()?, groups);
         assert_eq!(imported.tokenizer, bundle.tokenizer);
         Ok(())
@@ -1701,7 +1725,10 @@ mod tests {
         assert_eq!(receipt.format, ModelArtifactFormat::Safetensors);
 
         let imported = PortableModelBundle::import_safetensors(bytes.as_slice())?;
-        assert_eq!(imported.state_dict.source_format, ModelArtifactFormat::Safetensors);
+        assert_eq!(
+            imported.state_dict.source_format,
+            ModelArtifactFormat::Safetensors
+        );
         assert_eq!(imported.to_training_groups()?, groups);
         assert_eq!(imported.tokenizer, bundle.tokenizer);
         assert_eq!(imported.chat_template_digest, bundle.chat_template_digest);
@@ -1769,7 +1796,10 @@ mod tests {
     fn gguf_import_surfaces_tokenizer_binding_and_tensor_inventory() -> Result<(), Box<dyn Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("weather.gguf");
-        fs::write(&path, build_test_gguf(&sample_gguf_metadata(), &sample_gguf_tensors())?)?;
+        fs::write(
+            &path,
+            build_test_gguf(&sample_gguf_metadata(), &sample_gguf_tensors())?,
+        )?;
 
         let (bundle, receipt) = PortableModelBundle::import_gguf_path(
             &path,
@@ -1781,7 +1811,10 @@ mod tests {
 
         assert_eq!(receipt.format, ModelArtifactFormat::Gguf);
         assert_eq!(bundle.state_dict.source_format, ModelArtifactFormat::Gguf);
-        assert_eq!(bundle.tokenizer.asset_format, PortableTokenizerAssetFormat::GgufMetadata);
+        assert_eq!(
+            bundle.tokenizer.asset_format,
+            PortableTokenizerAssetFormat::GgufMetadata
+        );
         assert_eq!(
             bundle.tokenizer.digest.family,
             TokenizerFamily::BytePairEncoding

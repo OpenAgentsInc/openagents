@@ -5519,35 +5519,42 @@ mod tests {
             model.psionic_supported_endpoints,
             vec!["/v1/chat/completions", "/v1/responses"]
         );
-        assert_eq!(model.psionic_residency_mode, Some(CPU_SERVER_RESIDENCY_MODE));
         assert_eq!(
-            model.psionic_execution_profile.as_ref().map(|profile| profile.batch_posture),
+            model.psionic_residency_mode,
+            Some(CPU_SERVER_RESIDENCY_MODE)
+        );
+        assert_eq!(
+            model
+                .psionic_execution_profile
+                .as_ref()
+                .map(|profile| profile.batch_posture),
             Some(BatchExecutionPosture::ContinuousBatch)
         );
         assert!(model.psionic_scheduler_policy.is_some());
 
-        let response = tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
-            std::sync::Arc::clone(&server.state),
-            ChatCompletionRequest {
-                model: Some(pilot_model_id.clone()),
-                messages: vec![ChatCompletionMessage {
-                    role: String::from("user"),
-                    content: String::from("hello"),
-                    name: None,
-                }],
-                temperature: Some(0.0),
-                max_tokens: Some(1),
-                stop: None,
-                stream: false,
-                tools: Vec::new(),
-                tool_choice: None,
-                response_format: None,
-                psionic_grammar: None,
-                psionic_structured_output: None,
-                psionic_reasoning: None,
-                psionic_prefix_cache: None,
-            },
-        ))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(pilot_model_id.clone()),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_reasoning: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
         assert_eq!(
             header_value(response.headers(), "x-psionic-batch-posture"),
             Some(String::from("continuous_batch"))
@@ -5563,11 +5570,11 @@ mod tests {
 
         let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
         assert_eq!(payload["model"], serde_json::json!(pilot_model_id));
-        assert_eq!(payload["choices"][0]["message"]["content"], serde_json::json!("world"));
         assert_eq!(
-            payload["usage"]["completion_tokens"],
-            serde_json::json!(1)
+            payload["choices"][0]["message"]["content"],
+            serde_json::json!("world")
         );
+        assert_eq!(payload["usage"]["completion_tokens"], serde_json::json!(1));
         Ok(())
     }
 
@@ -7144,54 +7151,50 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new()?;
         let tenant = String::from("agent-pilot");
 
-        let build_structured_request =
-            |prompt: &str, tenant_id: &str| ChatCompletionRequest {
-                model: Some(String::from("tiny-agent-structured-llama")),
-                messages: vec![ChatCompletionMessage {
-                    role: String::from("user"),
-                    content: String::from(prompt),
-                    name: None,
-                }],
-                temperature: Some(0.0),
-                max_tokens: Some(1),
-                stop: None,
-                stream: false,
-                tools: Vec::new(),
-                tool_choice: None,
-                response_format: Some(ChatCompletionResponseFormatRequest {
-                    kind: String::from("json_schema"),
-                    json_schema: Some(ChatCompletionJsonSchemaRequest {
-                        name: Some(String::from("weather_summary")),
-                        schema: serde_json::json!({
-                            "type": "object",
-                            "properties": {
-                                "ok": { "type": "boolean" }
-                            },
-                            "required": ["ok"],
-                            "additionalProperties": false
-                        }),
-                        strict: Some(true),
+        let build_structured_request = |prompt: &str, tenant_id: &str| ChatCompletionRequest {
+            model: Some(String::from("tiny-agent-structured-llama")),
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from(prompt),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+            tools: Vec::new(),
+            tool_choice: None,
+            response_format: Some(ChatCompletionResponseFormatRequest {
+                kind: String::from("json_schema"),
+                json_schema: Some(ChatCompletionJsonSchemaRequest {
+                    name: Some(String::from("weather_summary")),
+                    schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "ok": { "type": "boolean" }
+                        },
+                        "required": ["ok"],
+                        "additionalProperties": false
                     }),
-                    schema: None,
+                    strict: Some(true),
                 }),
-                psionic_grammar: None,
-                psionic_structured_output: None,
-                psionic_reasoning: None,
-                psionic_prefix_cache: Some(PrefixCacheControl {
-                    mode: PrefixCacheMode::Auto,
-                    tenant_id: Some(String::from(tenant_id)),
-                }),
-            };
+                schema: None,
+            }),
+            psionic_grammar: None,
+            psionic_structured_output: None,
+            psionic_reasoning: None,
+            psionic_prefix_cache: Some(PrefixCacheControl {
+                mode: PrefixCacheMode::Auto,
+                tenant_id: Some(String::from(tenant_id)),
+            }),
+        };
 
         let seeded_summary = runtime.block_on(handle_generic_chat_completions(
             std::sync::Arc::clone(&server.state),
             build_structured_request("Paris weather tomorrow", tenant.as_str()),
         ))?;
         assert_eq!(
-            header_value(
-                seeded_summary.headers(),
-                "x-psionic-structured-output-mode"
-            ),
+            header_value(seeded_summary.headers(), "x-psionic-structured-output-mode"),
             Some(String::from("fallback_json_schema"))
         );
         assert_eq!(

@@ -864,8 +864,8 @@ mod tests {
     }
 
     #[test]
-    fn stage_program_advances_from_general_sft_to_agentic_sft_to_rl(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn stage_program_advances_from_general_sft_to_agentic_sft_to_rl()
+    -> Result<(), Box<dyn std::error::Error>> {
         let environment = EnvironmentPackageKey::new("env.weather", "2026.03.14");
         let mut program = TrainingStageProgramState::new("run-weather", "train.weather")?;
         let initial = program.start_initial_stage(environment.clone())?;
@@ -939,8 +939,8 @@ mod tests {
     }
 
     #[test]
-    fn stage_program_refuses_agentic_trace_before_agentic_stage(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn stage_program_refuses_agentic_trace_before_agentic_stage()
+    -> Result<(), Box<dyn std::error::Error>> {
         let environment = EnvironmentPackageKey::new("env.weather", "2026.03.14");
         let mut program = TrainingStageProgramState::new("run-weather", "train.weather")?;
         program.start_initial_stage(environment.clone())?;

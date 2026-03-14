@@ -651,8 +651,8 @@ mod tests {
     }
 
     #[test]
-    fn curriculum_accepts_tool_call_trace_and_non_zero_advantage_rollout(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn curriculum_accepts_tool_call_trace_and_non_zero_advantage_rollout()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = environment_package();
         let trace = TrainingSftTraceArtifact::new(
             "trace-tool",
@@ -737,8 +737,8 @@ mod tests {
     }
 
     #[test]
-    fn curriculum_enforces_source_budget_for_offline_traces(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn curriculum_enforces_source_budget_for_offline_traces()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = environment_package();
         let first_trace = TrainingSftTraceArtifact::new(
             "trace-1",

@@ -894,18 +894,16 @@ impl TrainingSessionState {
         parameter_groups: Vec<TrainingParameterGroupState>,
     ) -> Result<FixedBudgetTrainingRun, TrainingCoreError> {
         let checkpoint_family = self.checkpoint_family.clone();
-        let checkpoint = self
-            .latest_durable_checkpoint
-            .clone()
-            .ok_or_else(|| TrainingCoreError::CheckpointRestoreUnavailable {
+        let checkpoint = self.latest_durable_checkpoint.clone().ok_or_else(|| {
+            TrainingCoreError::CheckpointRestoreUnavailable {
                 checkpoint_family: checkpoint_family.clone(),
-            })?;
-        let manifest =
-            self.latest_durable_manifest
-                .clone()
-                .ok_or_else(|| TrainingCoreError::CheckpointManifestMissing {
-                    checkpoint_family: checkpoint_family.clone(),
-                })?;
+            }
+        })?;
+        let manifest = self.latest_durable_manifest.clone().ok_or_else(|| {
+            TrainingCoreError::CheckpointManifestMissing {
+                checkpoint_family: checkpoint_family.clone(),
+            }
+        })?;
         FixedBudgetTrainingRun::new_with_restore(
             run_id.into(),
             checkpoint_family,
@@ -1257,8 +1255,7 @@ mod tests {
             "token_embed",
             TrainingParameterClass::Embedding,
             vec![1.0, -1.0],
-            TrainingOptimizerConfig::adamw(0.1, 0.9, 0.99, 1e-8)
-                .with_gradient_clip_norm(1.0),
+            TrainingOptimizerConfig::adamw(0.1, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0),
             TrainingOptimizerResidencyPolicy::device_step_offload_idle(),
         )?;
         let head_group = group(
@@ -1409,7 +1406,10 @@ mod tests {
         ))?;
 
         let restore_source = run.restore_source().expect("restore source");
-        assert_eq!(restore_source.checkpoint.checkpoint_ref.as_deref(), Some("step-12"));
+        assert_eq!(
+            restore_source.checkpoint.checkpoint_ref.as_deref(),
+            Some("step-12")
+        );
         assert_eq!(restore_source.manifest.stream_id, "checkpoint-stream");
         assert_eq!(
             receipt
@@ -1418,14 +1418,9 @@ mod tests {
                 .and_then(|source| source.checkpoint.step),
             Some(12)
         );
-        assert!(
-            receipt
-                .residency_transitions
-                .iter()
-                .any(|transition| {
-                    transition.reason == OptimizerResidencyTransitionReason::RecoveryRestore
-                })
-        );
+        assert!(receipt.residency_transitions.iter().any(|transition| {
+            transition.reason == OptimizerResidencyTransitionReason::RecoveryRestore
+        }));
         Ok(())
     }
 

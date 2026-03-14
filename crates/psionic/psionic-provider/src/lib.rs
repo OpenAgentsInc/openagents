@@ -2928,7 +2928,7 @@ mod tests {
                 },
                 "backend_toolchain": {
                     "effective_backend": "cpu",
-                    "toolchain_version": "cpu@0.1.0",
+                    "toolchain_version": format!("cpu@{}", env!("CARGO_PKG_VERSION")),
                     "probe_state": "compiled_and_probed",
                     "probed_backend_features": ["host_memory"]
                 },
@@ -2970,13 +2970,13 @@ mod tests {
                     "model_id": "smoke-byte-embed-v0",
                     "model_revision": "v0",
                     "weight_bundle_digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
-                    "served_artifact_digest": "1865a72814dad3a851a669f0bfad1fd8afaa120b8afdf89f8b39db0b559b3e3e",
+                    "served_artifact_digest": envelope.served_artifact.served_artifact_digest.clone(),
                     "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
                     "weight_format": "programmatic_fixture",
                     "quantization_family": "none",
                     "backend": {
                         "effective_backend": "cpu",
-                        "toolchain_version": "cpu@0.1.0",
+                        "toolchain_version": format!("cpu@{}", env!("CARGO_PKG_VERSION")),
                         "probe_state": "compiled_only"
                     }
                 },
@@ -2993,7 +2993,7 @@ mod tests {
                     "serve_allowed": true
                 },
                 "cache_invalidation_policy": {
-                    "runtime_binary_version": "0.1.0",
+                    "runtime_binary_version": env!("CARGO_PKG_VERSION"),
                     "execution_plan": {
                         "scope": "process_local",
                         "format_version": 1,
@@ -3224,7 +3224,7 @@ mod tests {
                 },
                 "backend_toolchain": {
                     "effective_backend": "cpu",
-                    "toolchain_version": "cpu@0.1.0",
+                    "toolchain_version": format!("cpu@{}", env!("CARGO_PKG_VERSION")),
                     "probe_state": "compiled_and_probed",
                     "probed_backend_features": ["host_memory"]
                 },
@@ -3592,7 +3592,7 @@ mod tests {
                 },
                 "backend_toolchain": {
                     "effective_backend": "cpu",
-                    "toolchain_version": "cpu@0.1.0",
+                    "toolchain_version": format!("cpu@{}", env!("CARGO_PKG_VERSION")),
                     "probe_state": "compiled_and_probed",
                     "probed_backend_features": ["host_memory"]
                 },
@@ -3634,14 +3634,14 @@ mod tests {
                     "model_id": "fixture-word-decoder-v0",
                     "model_revision": "v0",
                     "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
-                    "served_artifact_digest": "c0f838e0eb224f32558fbf1f5c2b90439a3714135b5b0838f319eafeba905473",
+                    "served_artifact_digest": envelope.served_artifact.served_artifact_digest.clone(),
                     "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
                     "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
                     "weight_format": "programmatic_fixture",
                     "quantization_family": "none",
                     "backend": {
                         "effective_backend": "cpu",
-                        "toolchain_version": "cpu@0.1.0",
+                        "toolchain_version": format!("cpu@{}", env!("CARGO_PKG_VERSION")),
                         "probe_state": "compiled_only"
                     }
                 },
@@ -3658,7 +3658,7 @@ mod tests {
                     "serve_allowed": true
                 },
                 "cache_invalidation_policy": {
-                    "runtime_binary_version": "0.1.0",
+                    "runtime_binary_version": env!("CARGO_PKG_VERSION"),
                     "execution_plan": {
                         "scope": "process_local",
                         "format_version": 1,
@@ -3768,7 +3768,8 @@ mod tests {
                     "shared_across_sessions": true,
                     "shared_across_users": false,
                     "shared_across_models": false,
-                    "shared_across_backends": false
+                    "shared_across_backends": false,
+                    "shared_across_sampler_settings": false
                 },
                 "execution_profile": {
                     "batch_posture": "single_request_only",
@@ -3778,7 +3779,13 @@ mod tests {
                         "max_queued_requests": 0,
                         "per_model_serialization": true
                     },
-                    "throughput_class": "latency_optimized"
+                    "throughput_class": "latency_optimized",
+                    "prefill_decode_capability": {
+                        "supported_modes": ["disaggregated_colocated"],
+                        "supported_transports": ["in_process_kv_state"],
+                        "exposes_split_metrics": true,
+                        "detail": "local text generation separates prompt-prefill and decode inside one runtime-owned KV seam"
+                    }
                 },
                 "readiness": {
                     "status": "Ready",
@@ -4439,7 +4446,7 @@ mod tests {
             envelope.backend_toolchain,
             BackendToolchainIdentity {
                 effective_backend: String::from("cuda"),
-                toolchain_version: String::from("cuda@0.1.0"),
+                toolchain_version: format!("cuda@{}", env!("CARGO_PKG_VERSION")),
                 compiled_backend_features: vec![String::from(
                     "quantized_matmul:backend_specialized"
                 )],
@@ -4535,7 +4542,7 @@ mod tests {
                         ]
                     },
                     "cache_invalidation_policy": {
-                        "runtime_binary_version": "0.1.0",
+                        "runtime_binary_version": env!("CARGO_PKG_VERSION"),
                         "execution_plan": {
                             "scope": "process_local",
                             "format_version": 1,
@@ -4616,7 +4623,13 @@ mod tests {
                             "max_queued_requests": 0,
                             "per_model_serialization": true
                         },
-                        "throughput_class": "latency_optimized"
+                        "throughput_class": "latency_optimized",
+                        "prefill_decode_capability": {
+                            "supported_modes": ["disaggregated_colocated"],
+                            "supported_transports": ["in_process_kv_state"],
+                            "exposes_split_metrics": true,
+                            "detail": "local text generation separates prompt-prefill and decode inside one runtime-owned KV seam"
+                        }
                     },
                     "queue_depth": 0,
                     "active_sessions": 2,
