@@ -102,16 +102,27 @@ pub struct ProviderSandboxBackgroundJobSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProviderSandboxJobServiceError {
-    DuplicateJob { job_id: String },
-    JobNotFound { job_id: String },
+    DuplicateJob {
+        job_id: String,
+    },
+    JobNotFound {
+        job_id: String,
+    },
     InvalidState {
         job_id: String,
         action: String,
         state: ProviderSandboxBackgroundJobState,
     },
-    InvalidRelativePath { path: String },
-    ArtifactUnavailable { job_id: String, relative_path: String },
-    IoFailure { detail: String },
+    InvalidRelativePath {
+        path: String,
+    },
+    ArtifactUnavailable {
+        job_id: String,
+        relative_path: String,
+    },
+    IoFailure {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for ProviderSandboxJobServiceError {
@@ -231,11 +242,11 @@ impl InMemorySandboxJobService {
             .jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let job = jobs
-            .get_mut(job_id)
-            .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
-                job_id: job_id.to_string(),
-            })?;
+        let job =
+            jobs.get_mut(job_id)
+                .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
+                    job_id: job_id.to_string(),
+                })?;
         if !matches!(
             job.state,
             ProviderSandboxBackgroundJobState::Created | ProviderSandboxBackgroundJobState::Staged
@@ -249,15 +260,22 @@ impl InMemorySandboxJobService {
 
         let path = job.request.workspace_root.join(validated.as_path());
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| ProviderSandboxJobServiceError::IoFailure {
-                detail: format!(
-                    "failed to create parent directories for sandbox upload `{}`: {error}",
-                    path.display()
-                ),
+            fs::create_dir_all(parent).map_err(|error| {
+                ProviderSandboxJobServiceError::IoFailure {
+                    detail: format!(
+                        "failed to create parent directories for sandbox upload `{}`: {error}",
+                        path.display()
+                    ),
+                }
             })?;
         }
-        fs::write(path.as_path(), bytes).map_err(|error| ProviderSandboxJobServiceError::IoFailure {
-            detail: format!("failed to write sandbox upload `{}`: {error}", path.display()),
+        fs::write(path.as_path(), bytes).map_err(|error| {
+            ProviderSandboxJobServiceError::IoFailure {
+                detail: format!(
+                    "failed to write sandbox upload `{}`: {error}",
+                    path.display()
+                ),
+            }
         })?;
         let receipt = transfer_receipt(
             job.request.job_id.as_str(),
@@ -287,14 +305,15 @@ impl InMemorySandboxJobService {
                 .jobs
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let job = jobs
-                .get_mut(job_id)
-                .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
+            let job = jobs.get_mut(job_id).ok_or_else(|| {
+                ProviderSandboxJobServiceError::JobNotFound {
                     job_id: job_id.to_string(),
-                })?;
+                }
+            })?;
             if !matches!(
                 job.state,
-                ProviderSandboxBackgroundJobState::Created | ProviderSandboxBackgroundJobState::Staged
+                ProviderSandboxBackgroundJobState::Created
+                    | ProviderSandboxBackgroundJobState::Staged
             ) {
                 return Err(ProviderSandboxJobServiceError::InvalidState {
                     job_id: job_id.to_string(),
@@ -324,8 +343,9 @@ impl InMemorySandboxJobService {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(job) = jobs.get_mut(background_job_id.as_str()) {
-                let final_state =
-                    ProviderSandboxBackgroundJobState::from_execution_state(result.receipt.final_state);
+                let final_state = ProviderSandboxBackgroundJobState::from_execution_state(
+                    result.receipt.final_state,
+                );
                 let detail = result.receipt.evidence.policy_detail.clone();
                 job.state = final_state;
                 job.updated_at_ms = now_epoch_ms();
@@ -377,11 +397,11 @@ impl InMemorySandboxJobService {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
-            let job = jobs
-                .get(job_id)
-                .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
-                    job_id: job_id.to_string(),
-                })?;
+            let job =
+                jobs.get(job_id)
+                    .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
+                        job_id: job_id.to_string(),
+                    })?;
             if job.state.is_terminal() {
                 return Ok(job.snapshot());
             }
@@ -404,7 +424,11 @@ impl InMemorySandboxJobService {
         job_id: &str,
         relative_path: &str,
     ) -> Result<ProviderSandboxDownloadedFile, ProviderSandboxJobServiceError> {
-        self.download_file(job_id, relative_path, ProviderSandboxFileTransferKind::WorkspaceDownload)
+        self.download_file(
+            job_id,
+            relative_path,
+            ProviderSandboxFileTransferKind::WorkspaceDownload,
+        )
     }
 
     pub fn download_artifact(
@@ -417,11 +441,11 @@ impl InMemorySandboxJobService {
             .jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let job = jobs
-            .get_mut(job_id)
-            .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
-                job_id: job_id.to_string(),
-            })?;
+        let job =
+            jobs.get_mut(job_id)
+                .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
+                    job_id: job_id.to_string(),
+                })?;
         let Some(result) = job.terminal_result.as_ref() else {
             return Err(ProviderSandboxJobServiceError::InvalidState {
                 job_id: job_id.to_string(),
@@ -459,11 +483,11 @@ impl InMemorySandboxJobService {
             .jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let job = jobs
-            .get_mut(job_id)
-            .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
-                job_id: job_id.to_string(),
-            })?;
+        let job =
+            jobs.get_mut(job_id)
+                .ok_or_else(|| ProviderSandboxJobServiceError::JobNotFound {
+                    job_id: job_id.to_string(),
+                })?;
         download_file_from_job(job, relative_path, transfer_kind)
     }
 }
@@ -483,7 +507,10 @@ impl ManagedSandboxJob {
             uploads: self.uploads.clone(),
             downloads: self.downloads.clone(),
             lifecycle_events: self.lifecycle_events.clone(),
-            terminal_receipt: self.terminal_result.as_ref().map(|result| result.receipt.clone()),
+            terminal_receipt: self
+                .terminal_result
+                .as_ref()
+                .map(|result| result.receipt.clone()),
         }
     }
 }
@@ -495,9 +522,10 @@ fn download_file_from_job(
 ) -> Result<ProviderSandboxDownloadedFile, ProviderSandboxJobServiceError> {
     let validated = validate_relative_path(relative_path)?;
     let path = job.request.workspace_root.join(validated.as_path());
-    let bytes = fs::read(path.as_path()).map_err(|error| ProviderSandboxJobServiceError::IoFailure {
-        detail: format!("failed to read sandbox file `{}`: {error}", path.display()),
-    })?;
+    let bytes =
+        fs::read(path.as_path()).map_err(|error| ProviderSandboxJobServiceError::IoFailure {
+            detail: format!("failed to read sandbox file `{}`: {error}", path.display()),
+        })?;
     let receipt = transfer_receipt(
         job.request.job_id.as_str(),
         job.profile.profile_digest.as_str(),
@@ -674,7 +702,9 @@ mod tests {
         ProviderSandboxJobRequest {
             job_id: "job-1".to_string(),
             provider_id: "npub1provider".to_string(),
-            compute_product_id: ProviderSandboxExecutionClass::PythonExec.product_id().to_string(),
+            compute_product_id: ProviderSandboxExecutionClass::PythonExec
+                .product_id()
+                .to_string(),
             execution_class: ProviderSandboxExecutionClass::PythonExec,
             entrypoint_type: ProviderSandboxEntrypointType::WorkspaceFile,
             entrypoint: "scripts/job.py".to_string(),
@@ -707,8 +737,11 @@ mod tests {
             subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
         let request = workspace_request(&workspace);
 
-        let created =
-            service.create_job(profile, request, ProviderSandboxExecutionControls::default())?;
+        let created = service.create_job(
+            profile,
+            request,
+            ProviderSandboxExecutionControls::default(),
+        )?;
         ensure(
             created.state == ProviderSandboxBackgroundJobState::Created,
             "sandbox background job should start in created state",
@@ -780,7 +813,11 @@ mod tests {
             subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
         let request = workspace_request(&workspace);
 
-        service.create_job(profile, request, ProviderSandboxExecutionControls::default())?;
+        service.create_job(
+            profile,
+            request,
+            ProviderSandboxExecutionControls::default(),
+        )?;
         service.upload_file(
             "job-1",
             "scripts/job.py",

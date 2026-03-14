@@ -50,6 +50,7 @@ use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+use openagents_validator_service::ValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
@@ -59,7 +60,10 @@ use crate::economy::{
     AuthorityReceiptContext, PublicRuntimeSnapshot, PublicStatsSnapshot, ReceiptLedger,
 };
 use crate::kernel::{
-    KernelMutationContext, KernelState, ReceiptProjectionEvent, SnapshotProjectionEvent,
+    FinalizeValidatorChallengeRequest, FinalizeValidatorChallengeResponse, KernelMutationContext,
+    KernelState, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
+    ReceiptProjectionEvent, ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
+    SnapshotProjectionEvent,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
@@ -746,6 +750,22 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/delivery_proofs/{delivery_proof_id}",
             get(get_kernel_delivery_proof),
+        )
+        .route(
+            "/v1/kernel/compute/validator_challenges",
+            get(list_kernel_validator_challenges).post(schedule_kernel_validator_challenge),
+        )
+        .route(
+            "/v1/kernel/compute/validator_challenges/{challenge_id}",
+            get(get_kernel_validator_challenge),
+        )
+        .route(
+            "/v1/kernel/compute/validator_challenges/{challenge_id}/lease",
+            post(lease_kernel_validator_challenge),
+        )
+        .route(
+            "/v1/kernel/compute/validator_challenges/{challenge_id}/finalize",
+            post(finalize_kernel_validator_challenge),
         )
         .route(
             "/v1/kernel/compute/indices",
@@ -1793,6 +1813,11 @@ struct DeliveryProofsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct ValidatorChallengesQuery {
+    status: Option<ValidatorChallengeStatus>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ComputeIndicesQuery {
     product_id: Option<String>,
 }
@@ -2032,6 +2057,161 @@ async fn get_kernel_delivery_proof(
     let response = compute_contracts::get_delivery_proof_response_to_proto(&delivery_proof)
         .map_err(kernel_contract_error)?;
     Ok(Json(response))
+}
+
+async fn list_kernel_validator_challenges(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ValidatorChallengesQuery>,
+) -> Result<Json<Vec<openagents_validator_service::ValidatorChallengeSnapshot>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_validator_challenges(query.status)))
+}
+
+async fn get_kernel_validator_challenge(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(challenge_id): Path<String>,
+) -> Result<Json<openagents_validator_service::ValidatorChallengeSnapshot>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let challenge_id =
+        normalize_required_field(challenge_id.as_str(), "validator_challenge_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(challenge) = store.kernel.get_validator_challenge(challenge_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_validator_challenge_not_found".to_string(),
+        });
+    };
+    Ok(Json(challenge))
+}
+
+async fn schedule_kernel_validator_challenge(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ScheduleValidatorChallengeRequest>,
+) -> Result<Json<ScheduleValidatorChallengeResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .schedule_validator_challenge(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.validator_challenge.scheduled",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn lease_kernel_validator_challenge(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(challenge_id): Path<String>,
+    Json(mut request): Json<LeaseValidatorChallengeRequest>,
+) -> Result<Json<LeaseValidatorChallengeResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let challenge_id =
+        normalize_required_field(challenge_id.as_str(), "validator_challenge_id_missing")?;
+    if !request.challenge_id.trim().is_empty() && request.challenge_id != challenge_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_validator_challenge_id_mismatch".to_string(),
+        });
+    }
+    request.challenge_id = challenge_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .lease_validator_challenge(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.validator_challenge.leased",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn finalize_kernel_validator_challenge(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(challenge_id): Path<String>,
+    Json(mut request): Json<FinalizeValidatorChallengeRequest>,
+) -> Result<Json<FinalizeValidatorChallengeResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let challenge_id =
+        normalize_required_field(challenge_id.as_str(), "validator_challenge_id_missing")?;
+    if !request.lease.challenge_id.trim().is_empty() && request.lease.challenge_id != challenge_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_validator_challenge_id_mismatch".to_string(),
+        });
+    }
+    if !request.result.challenge_id.trim().is_empty() && request.result.challenge_id != challenge_id
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_validator_challenge_result_id_mismatch".to_string(),
+        });
+    }
+    request.lease.challenge_id = challenge_id.clone();
+    request.result.challenge_id = challenge_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .finalize_validator_challenge(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.validator_challenge.finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
 }
 
 async fn list_kernel_compute_indices(
@@ -3787,6 +3967,14 @@ fn runtime_snapshot(
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_delivery_rejections_24h: compute_metrics.compute_delivery_rejections_24h,
         compute_delivery_variances_24h: compute_metrics.compute_delivery_variances_24h,
+        compute_validator_challenges_open: compute_metrics.compute_validator_challenges_open,
+        compute_validator_challenges_queued: compute_metrics.compute_validator_challenges_queued,
+        compute_validator_challenges_verified_24h: compute_metrics
+            .compute_validator_challenges_verified_24h,
+        compute_validator_challenges_rejected_24h: compute_metrics
+            .compute_validator_challenges_rejected_24h,
+        compute_validator_challenges_timed_out_24h: compute_metrics
+            .compute_validator_challenges_timed_out_24h,
         compute_delivery_accept_rate_24h: compute_metrics.compute_delivery_accept_rate_24h,
         compute_fill_ratio_24h: compute_metrics.compute_fill_ratio_24h,
         compute_priced_instruments_24h: compute_metrics.compute_priced_instruments_24h,

@@ -57,6 +57,11 @@ use openagents_kernel_core::snapshots::{
     ComputeBreakerStatusRow, ComputeRolloutGateRow, ComputeTruthLabelRow, EconomySnapshot,
 };
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
+use openagents_validator_service::{
+    ValidatorChallengeLease, ValidatorChallengeRequest, ValidatorChallengeResult,
+    ValidatorChallengeService, ValidatorChallengeSnapshot, ValidatorChallengeStatus,
+    ValidatorServiceError,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -328,6 +333,7 @@ pub struct KernelState {
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
     structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
     delivery_proofs: HashMap<String, DeliveryProofRecord>,
+    validator_challenges: ValidatorChallengeService,
     compute_indices: HashMap<String, ComputeIndexRecord>,
     data_assets: HashMap<String, DataAssetRecord>,
     access_grants: HashMap<String, AccessGrantRecord>,
@@ -444,6 +450,8 @@ struct PersistedComputeAuthorityState {
     #[serde(default)]
     structured_capacity_instruments: BTreeMap<String, StructuredCapacityInstrumentRecord>,
     delivery_proofs: BTreeMap<String, DeliveryProofRecord>,
+    #[serde(default)]
+    validator_challenges: ValidatorChallengeService,
     compute_indices: BTreeMap<String, ComputeIndexRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
@@ -538,6 +546,11 @@ pub struct ComputeMarketMetrics {
     pub compute_delivery_quantity_24h: u64,
     pub compute_delivery_rejections_24h: u64,
     pub compute_delivery_variances_24h: u64,
+    pub compute_validator_challenges_open: u64,
+    pub compute_validator_challenges_queued: u64,
+    pub compute_validator_challenges_verified_24h: u64,
+    pub compute_validator_challenges_rejected_24h: u64,
+    pub compute_validator_challenges_timed_out_24h: u64,
     pub compute_delivery_accept_rate_24h: f64,
     pub compute_fill_ratio_24h: f64,
     pub compute_priced_instruments_24h: u64,
@@ -580,6 +593,64 @@ pub struct LiquidityMarketMetrics {
     pub liquidity_settlements_24h: u64,
     pub liquidity_reserve_partitions_active: u64,
     pub liquidity_value_moved_24h: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduleValidatorChallengeRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub challenge: ValidatorChallengeRequest,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduleValidatorChallengeResponse {
+    pub challenge: ValidatorChallengeSnapshot,
+    pub receipt: Receipt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaseValidatorChallengeRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub challenge_id: String,
+    pub validator_id: String,
+    pub requested_at_ms: u64,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaseValidatorChallengeResponse {
+    pub challenge: ValidatorChallengeSnapshot,
+    pub lease: ValidatorChallengeLease,
+    pub receipt: Receipt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinalizeValidatorChallengeRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub lease: ValidatorChallengeLease,
+    pub result: ValidatorChallengeResult,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinalizeValidatorChallengeResponse {
+    pub challenge: ValidatorChallengeSnapshot,
+    pub receipt: Receipt,
 }
 
 #[derive(Debug, Clone)]
@@ -955,6 +1026,49 @@ fn infer_non_delivery_reason_from_rejection(
     }
 }
 
+fn validator_run_ref_for(challenge_id: &str) -> String {
+    format!("validator_run:{challenge_id}")
+}
+
+fn apply_delivery_proof_outcome_to_instrument(
+    instrument: &mut CapacityInstrument,
+    proof: &DeliveryProof,
+) {
+    instrument.status = if proof.status == DeliveryProofStatus::Rejected {
+        instrument.closure_reason = Some(CapacityInstrumentClosureReason::Defaulted);
+        instrument.non_delivery_reason = Some(infer_non_delivery_reason_from_rejection(
+            proof.rejection_reason,
+            proof.variance_reason_detail.as_deref(),
+        ));
+        instrument.settlement_failure_reason = Some(ComputeSettlementFailureReason::NonDelivery);
+        instrument
+            .lifecycle_reason_detail
+            .clone_from(&proof.variance_reason_detail);
+        CapacityInstrumentStatus::Defaulted
+    } else if proof.accepted_quantity >= instrument.quantity {
+        instrument.closure_reason = Some(CapacityInstrumentClosureReason::Filled);
+        instrument.non_delivery_reason = None;
+        instrument.settlement_failure_reason = None;
+        instrument.lifecycle_reason_detail = None;
+        CapacityInstrumentStatus::Settled
+    } else {
+        instrument.closure_reason = None;
+        instrument.non_delivery_reason = None;
+        instrument.settlement_failure_reason = None;
+        instrument.lifecycle_reason_detail = None;
+        CapacityInstrumentStatus::Delivering
+    };
+}
+
+fn validator_service_reason(error: &ValidatorServiceError) -> &'static str {
+    match error {
+        ValidatorServiceError::DuplicateChallenge(_) => "validator_challenge_duplicate",
+        ValidatorServiceError::UnknownChallenge(_) => "validator_challenge_not_found",
+        ValidatorServiceError::InvalidLease(_) => "validator_challenge_lease_invalid",
+        ValidatorServiceError::InvalidMatrix(_) => "validator_challenge_witness_invalid",
+    }
+}
+
 fn forward_remedy_profile(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
         "psionic.local.embeddings.gpt_oss.single_node" => "forward_physical.embeddings.v1",
@@ -1157,6 +1271,24 @@ impl KernelState {
             .map(|record| record.delivery_proof.clone())
     }
 
+    pub fn list_validator_challenges(
+        &self,
+        status: Option<ValidatorChallengeStatus>,
+    ) -> Vec<ValidatorChallengeSnapshot> {
+        self.validator_challenges
+            .list()
+            .into_iter()
+            .filter(|snapshot| status.is_none_or(|expected| snapshot.status == expected))
+            .collect()
+    }
+
+    pub fn get_validator_challenge(
+        &self,
+        challenge_id: &str,
+    ) -> Option<ValidatorChallengeSnapshot> {
+        self.validator_challenges.snapshot(challenge_id)
+    }
+
     pub fn list_compute_indices(&self, product_id: Option<&str>) -> Vec<ComputeIndex> {
         let mut items = self
             .compute_indices
@@ -1224,6 +1356,7 @@ impl KernelState {
             .into_iter()
             .collect();
         self.delivery_proofs = persisted.delivery_proofs.into_iter().collect();
+        self.validator_challenges = persisted.validator_challenges;
         self.compute_indices = persisted.compute_indices.into_iter().collect();
         self.snapshots = persisted.snapshots;
         self.next_projection_seq = persisted.next_projection_seq.max(1);
@@ -1246,6 +1379,7 @@ impl KernelState {
                 .into_iter()
                 .collect(),
             delivery_proofs: self.delivery_proofs.clone().into_iter().collect(),
+            validator_challenges: self.validator_challenges.clone(),
             compute_indices: self.compute_indices.clone().into_iter().collect(),
             snapshots: self.snapshots.clone(),
             next_projection_seq: self.next_projection_seq.max(1),
@@ -3945,38 +4079,10 @@ impl KernelState {
             && let Some(instrument_record) =
                 self.capacity_instruments.get_mut(instrument_id.as_str())
         {
-            instrument_record.instrument.status = if req.delivery_proof.status
-                == DeliveryProofStatus::Rejected
-            {
-                instrument_record.instrument.closure_reason =
-                    Some(CapacityInstrumentClosureReason::Defaulted);
-                instrument_record.instrument.non_delivery_reason =
-                    Some(infer_non_delivery_reason_from_rejection(
-                        req.delivery_proof.rejection_reason,
-                        req.delivery_proof.variance_reason_detail.as_deref(),
-                    ));
-                instrument_record.instrument.settlement_failure_reason =
-                    Some(ComputeSettlementFailureReason::NonDelivery);
-                instrument_record
-                    .instrument
-                    .lifecycle_reason_detail
-                    .clone_from(&req.delivery_proof.variance_reason_detail);
-                CapacityInstrumentStatus::Defaulted
-            } else if req.delivery_proof.accepted_quantity >= instrument_record.instrument.quantity
-            {
-                instrument_record.instrument.closure_reason =
-                    Some(CapacityInstrumentClosureReason::Filled);
-                instrument_record.instrument.non_delivery_reason = None;
-                instrument_record.instrument.settlement_failure_reason = None;
-                instrument_record.instrument.lifecycle_reason_detail = None;
-                CapacityInstrumentStatus::Settled
-            } else {
-                instrument_record.instrument.closure_reason = None;
-                instrument_record.instrument.non_delivery_reason = None;
-                instrument_record.instrument.settlement_failure_reason = None;
-                instrument_record.instrument.lifecycle_reason_detail = None;
-                CapacityInstrumentStatus::Delivering
-            };
+            apply_delivery_proof_outcome_to_instrument(
+                &mut instrument_record.instrument,
+                &req.delivery_proof,
+            );
         }
         self.delivery_proofs.insert(
             delivery_proof_id,
@@ -3994,6 +4100,630 @@ impl KernelState {
         }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.delivery_proof.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn schedule_validator_challenge(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: ScheduleValidatorChallengeRequest,
+    ) -> Result<MutationResult<ScheduleValidatorChallengeResponse>, String> {
+        let challenge_id = normalize_required(
+            req.challenge.context.challenge_id.as_str(),
+            "validator_challenge_id_missing",
+        )?;
+        let proof_bundle_digest = normalize_required(
+            req.challenge.context.proof_bundle_digest.as_str(),
+            "validator_challenge_proof_bundle_digest_missing",
+        )?;
+        let request_digest = normalize_required(
+            req.challenge.context.request_digest.as_str(),
+            "validator_challenge_request_digest_missing",
+        )?;
+        let product_id = normalize_required(
+            req.challenge.context.product_id.as_str(),
+            "compute_product_id_missing",
+        )?;
+        let runtime_backend = normalize_required(
+            req.challenge.context.runtime_backend.as_str(),
+            "validator_challenge_runtime_backend_missing",
+        )?;
+        if req.challenge.context.max_attempts == 0 {
+            return Err("validator_challenge_attempt_budget_invalid".to_string());
+        }
+        if req.challenge.context.lease_timeout_ms == 0 {
+            return Err("validator_challenge_lease_timeout_invalid".to_string());
+        }
+
+        req.challenge.context.challenge_id.clone_from(&challenge_id);
+        req.challenge
+            .context
+            .proof_bundle_digest
+            .clone_from(&proof_bundle_digest);
+        req.challenge
+            .context
+            .request_digest
+            .clone_from(&request_digest);
+        req.challenge.context.product_id.clone_from(&product_id);
+        req.challenge
+            .context
+            .runtime_backend
+            .clone_from(&runtime_backend);
+        req.challenge.context.created_at_ms = if req.challenge.context.created_at_ms == 0 {
+            context.now_unix_ms
+        } else {
+            req.challenge.context.created_at_ms
+        };
+        req.challenge.context.model_id = req
+            .challenge
+            .context
+            .model_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.challenge.context.validator_pool_ref = req
+            .challenge
+            .context
+            .validator_pool_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let delivery_proof_id = req
+            .challenge
+            .context
+            .delivery_proof_id
+            .as_deref()
+            .map(|value| normalize_required(value, "delivery_proof_id_missing"))
+            .transpose()?;
+        req.challenge.context.delivery_proof_id = delivery_proof_id.clone();
+
+        let validator_run_ref = validator_run_ref_for(challenge_id.as_str());
+        let linked_delivery_record = if let Some(delivery_proof_id) = delivery_proof_id.as_ref() {
+            let Some(record) = self
+                .delivery_proofs
+                .get(delivery_proof_id.as_str())
+                .cloned()
+            else {
+                return Err("delivery_proof_not_found".to_string());
+            };
+            if record.delivery_proof.product_id != product_id {
+                return Err("validator_challenge_product_mismatch".to_string());
+            }
+            let Some(verification_evidence) = record.delivery_proof.verification_evidence.as_ref()
+            else {
+                return Err("delivery_proof_verification_evidence_missing".to_string());
+            };
+            if verification_evidence
+                .proof_bundle_ref
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err("delivery_proof_challenge_requires_proof_bundle".to_string());
+            }
+            match (
+                req.challenge.context.validator_pool_ref.as_deref(),
+                verification_evidence.validator_pool_ref.as_deref(),
+            ) {
+                (Some(requested), Some(existing)) if requested != existing => {
+                    return Err("validator_challenge_validator_pool_mismatch".to_string());
+                }
+                (None, Some(existing)) => {
+                    req.challenge.context.validator_pool_ref = Some(existing.to_string());
+                }
+                _ => {}
+            }
+            if verification_evidence
+                .validator_run_ref
+                .as_deref()
+                .is_some_and(|existing| existing != validator_run_ref)
+            {
+                return Err("delivery_proof_validator_run_conflict".to_string());
+            }
+            Some(record)
+        } else {
+            None
+        };
+
+        let existing_snapshot = self.validator_challenges.snapshot(challenge_id.as_str());
+        let challenge_exists = if let Some(snapshot) = existing_snapshot.as_ref() {
+            if snapshot.request != req.challenge {
+                return Err("validator_challenge_duplicate".to_string());
+            }
+            true
+        } else {
+            false
+        };
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(record) = linked_delivery_record.as_ref() {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+            if let Some(proof_bundle_ref) = record
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.proof_bundle_ref.as_deref())
+            {
+                evidence.push(EvidenceRef::new(
+                    "compute_delivery_proof_bundle",
+                    proof_bundle_ref.to_string(),
+                    sha256_prefixed_text(proof_bundle_ref),
+                ));
+            }
+        }
+        evidence.push(EvidenceRef::new(
+            "validator_run_ref",
+            validator_run_ref.clone(),
+            sha256_prefixed_text(validator_run_ref.as_str()),
+        ));
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.validator_challenge.schedule".to_string(),
+                created_at_ms: req.challenge.context.created_at_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: serde_json::to_value(&req.challenge).map_err(|error| {
+                    format!("kernel_validator_challenge_encode_failed: {error}")
+                })?,
+                outputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "delivery_proof_id": delivery_proof_id.clone(),
+                    "product_id": product_id.clone(),
+                    "protocol_id": req.challenge.protocol.label(),
+                    "validator_pool_ref": req.challenge.context.validator_pool_ref.clone(),
+                    "validator_run_ref": validator_run_ref.clone(),
+                    "status": ValidatorChallengeStatus::Queued,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.validator_challenge.schedule",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let receipt = match put_result {
+            Ok(ref result) => result.receipt.clone(),
+            Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            let challenge = self
+                .validator_challenges
+                .snapshot(challenge_id.as_str())
+                .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+            return Ok(MutationResult {
+                response: ScheduleValidatorChallengeResponse { challenge, receipt },
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if !challenge_exists {
+            self.validator_challenges
+                .enqueue(req.challenge.clone())
+                .map_err(|error| validator_service_reason(&error).to_string())?;
+            if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+                && let Some(record) = self.delivery_proofs.get_mut(delivery_proof_id.as_str())
+            {
+                let verification_evidence = record
+                    .delivery_proof
+                    .verification_evidence
+                    .get_or_insert_with(Default::default);
+                if verification_evidence.validator_pool_ref.is_none() {
+                    verification_evidence.validator_pool_ref =
+                        req.challenge.context.validator_pool_ref.clone();
+                }
+                verification_evidence.validator_run_ref = Some(validator_run_ref);
+            }
+        }
+
+        let challenge = self
+            .validator_challenges
+            .snapshot(challenge_id.as_str())
+            .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+        let response = ScheduleValidatorChallengeResponse {
+            challenge,
+            receipt: put_result.receipt.clone(),
+        };
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event =
+            self.refresh_snapshot_for(req.challenge.context.created_at_ms as i64)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn lease_validator_challenge(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: LeaseValidatorChallengeRequest,
+    ) -> Result<MutationResult<LeaseValidatorChallengeResponse>, String> {
+        let challenge_id =
+            normalize_required(req.challenge_id.as_str(), "validator_challenge_id_missing")?;
+        let validator_id = normalize_required(req.validator_id.as_str(), "validator_id_missing")?;
+        req.challenge_id.clone_from(&challenge_id);
+        req.validator_id.clone_from(&validator_id);
+        if req.requested_at_ms == 0 {
+            req.requested_at_ms = context.now_unix_ms;
+        }
+
+        let Some(existing_snapshot) = self.validator_challenges.snapshot(challenge_id.as_str())
+        else {
+            return Err("validator_challenge_not_found".to_string());
+        };
+        let predicted_lease = if let Some(active_lease) = existing_snapshot.active_lease.clone() {
+            if active_lease.validator_id != validator_id {
+                return Err("validator_challenge_already_leased".to_string());
+            }
+            active_lease
+        } else if existing_snapshot.final_result.is_some() {
+            return Err("validator_challenge_terminal".to_string());
+        } else {
+            ValidatorChallengeLease {
+                challenge_id: challenge_id.clone(),
+                attempt: existing_snapshot.attempts_used.saturating_add(1),
+                validator_id: validator_id.clone(),
+                leased_at_ms: req.requested_at_ms,
+                expires_at_ms: req
+                    .requested_at_ms
+                    .saturating_add(existing_snapshot.request.context.lease_timeout_ms),
+            }
+        };
+        let already_leased = existing_snapshot.active_lease.as_ref() == Some(&predicted_lease);
+        let validator_run_ref = validator_run_ref_for(challenge_id.as_str());
+        let delivery_proof_id = existing_snapshot.request.context.delivery_proof_id.clone();
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+            && let Some(record) = self.delivery_proofs.get(delivery_proof_id.as_str())
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        evidence.push(EvidenceRef::new(
+            "validator_run_ref",
+            validator_run_ref.clone(),
+            sha256_prefixed_text(validator_run_ref.as_str()),
+        ));
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.validator_challenge.lease".to_string(),
+                created_at_ms: predicted_lease.leased_at_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "validator_id": validator_id.clone(),
+                    "requested_at_ms": req.requested_at_ms,
+                }),
+                outputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "delivery_proof_id": delivery_proof_id.clone(),
+                    "validator_run_ref": validator_run_ref.clone(),
+                    "lease": predicted_lease.clone(),
+                    "status": ValidatorChallengeStatus::Leased,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.validator_challenge.lease",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let receipt = match put_result {
+            Ok(ref result) => result.receipt.clone(),
+            Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            let challenge = self
+                .validator_challenges
+                .snapshot(challenge_id.as_str())
+                .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+            return Ok(MutationResult {
+                response: LeaseValidatorChallengeResponse {
+                    challenge,
+                    lease: predicted_lease,
+                    receipt,
+                },
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        let lease = if already_leased {
+            predicted_lease
+        } else {
+            self.validator_challenges
+                .lease(challenge_id.as_str(), validator_id, req.requested_at_ms)
+                .map_err(|error| validator_service_reason(&error).to_string())?
+        };
+        if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+            && let Some(record) = self.delivery_proofs.get_mut(delivery_proof_id.as_str())
+        {
+            let verification_evidence = record
+                .delivery_proof
+                .verification_evidence
+                .get_or_insert_with(Default::default);
+            verification_evidence.validator_run_ref = Some(validator_run_ref);
+            if verification_evidence.validator_pool_ref.is_none() {
+                verification_evidence.validator_pool_ref =
+                    existing_snapshot.request.context.validator_pool_ref.clone();
+            }
+        }
+        let challenge = self
+            .validator_challenges
+            .snapshot(challenge_id.as_str())
+            .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+        let response = LeaseValidatorChallengeResponse {
+            challenge,
+            lease,
+            receipt: put_result.receipt.clone(),
+        };
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.requested_at_ms as i64)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn finalize_validator_challenge(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: FinalizeValidatorChallengeRequest,
+    ) -> Result<MutationResult<FinalizeValidatorChallengeResponse>, String> {
+        let challenge_id = normalize_required(
+            req.lease.challenge_id.as_str(),
+            "validator_challenge_id_missing",
+        )?;
+        req.lease.challenge_id.clone_from(&challenge_id);
+        req.lease.validator_id =
+            normalize_required(req.lease.validator_id.as_str(), "validator_id_missing")?;
+        req.result.challenge_id = normalize_required(
+            req.result.challenge_id.as_str(),
+            "validator_challenge_id_missing",
+        )?;
+        if req.result.challenge_id != challenge_id {
+            return Err("validator_challenge_result_mismatch".to_string());
+        }
+        req.result.proof_bundle_digest = normalize_required(
+            req.result.proof_bundle_digest.as_str(),
+            "validator_challenge_proof_bundle_digest_missing",
+        )?;
+        req.result.protocol_id = normalize_required(
+            req.result.protocol_id.as_str(),
+            "validator_challenge_protocol_id_missing",
+        )?;
+        req.result.detail = normalize_required(
+            req.result.detail.as_str(),
+            "validator_challenge_detail_missing",
+        )?;
+        req.result.challenge_seed_digest = req
+            .result
+            .challenge_seed_digest
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if req.result.challenge_result_ref.trim().is_empty() {
+            return Err("validator_challenge_result_ref_missing".to_string());
+        }
+        if req.result.result_digest.trim().is_empty() {
+            return Err("validator_challenge_result_digest_missing".to_string());
+        }
+        if !matches!(
+            req.result.status,
+            ValidatorChallengeStatus::Verified
+                | ValidatorChallengeStatus::Rejected
+                | ValidatorChallengeStatus::TimedOut
+        ) {
+            return Err("validator_challenge_result_not_terminal".to_string());
+        }
+        if req.result.finalized_at_ms == 0 {
+            req.result.finalized_at_ms = context.now_unix_ms;
+        }
+
+        let Some(existing_snapshot) = self.validator_challenges.snapshot(challenge_id.as_str())
+        else {
+            return Err("validator_challenge_not_found".to_string());
+        };
+        if req.result.proof_bundle_digest != existing_snapshot.request.context.proof_bundle_digest {
+            return Err("validator_challenge_proof_bundle_mismatch".to_string());
+        }
+        if req.result.protocol_id != existing_snapshot.request.protocol.label() {
+            return Err("validator_challenge_protocol_mismatch".to_string());
+        }
+        let result_already_recorded = existing_snapshot.final_result.as_ref() == Some(&req.result);
+        if !result_already_recorded && existing_snapshot.active_lease.as_ref() != Some(&req.lease) {
+            return Err("validator_challenge_lease_invalid".to_string());
+        }
+
+        let delivery_proof_id = existing_snapshot.request.context.delivery_proof_id.clone();
+        if let Some(delivery_proof_id) = delivery_proof_id.as_ref() {
+            let Some(record) = self.delivery_proofs.get(delivery_proof_id.as_str()) else {
+                return Err("delivery_proof_not_found".to_string());
+            };
+            let Some(verification_evidence) = record.delivery_proof.verification_evidence.as_ref()
+            else {
+                return Err("delivery_proof_verification_evidence_missing".to_string());
+            };
+            if verification_evidence
+                .proof_bundle_ref
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err("delivery_proof_challenge_requires_proof_bundle".to_string());
+            }
+        }
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+            && let Some(record) = self.delivery_proofs.get(delivery_proof_id.as_str())
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        evidence.push(EvidenceRef::new(
+            "validator_challenge_result",
+            req.result.challenge_result_ref.clone(),
+            sha256_prefixed_text(req.result.challenge_result_ref.as_str()),
+        ));
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.validator_challenge.finalize".to_string(),
+                created_at_ms: req.result.finalized_at_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: serde_json::to_value(&req.result).map_err(|error| {
+                    format!("kernel_validator_challenge_result_encode_failed: {error}")
+                })?,
+                outputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "delivery_proof_id": delivery_proof_id.clone(),
+                    "status": req.result.status,
+                    "verdict": req.result.verdict,
+                    "reason_code": req.result.reason_code,
+                    "challenge_result_ref": req.result.challenge_result_ref.clone(),
+                    "result_digest": req.result.result_digest.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.validator_challenge.finalize",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let receipt = match put_result {
+            Ok(ref result) => result.receipt.clone(),
+            Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            let challenge = self
+                .validator_challenges
+                .snapshot(challenge_id.as_str())
+                .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+            return Ok(MutationResult {
+                response: FinalizeValidatorChallengeResponse { challenge, receipt },
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if !result_already_recorded {
+            self.validator_challenges
+                .finalize_lease(&req.lease, req.result.clone())
+                .map_err(|error| validator_service_reason(&error).to_string())?;
+            let mut recompute_lot_id = None::<String>;
+            if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+                && let Some(record) = self.delivery_proofs.get_mut(delivery_proof_id.as_str())
+            {
+                let lot_id = record.delivery_proof.capacity_lot_id.clone();
+                let instrument_id = record.delivery_proof.instrument_id.clone();
+                let verification_evidence = record
+                    .delivery_proof
+                    .verification_evidence
+                    .get_or_insert_with(Default::default);
+                verification_evidence.validator_run_ref =
+                    Some(validator_run_ref_for(challenge_id.as_str()));
+                if verification_evidence.validator_pool_ref.is_none() {
+                    verification_evidence.validator_pool_ref =
+                        existing_snapshot.request.context.validator_pool_ref.clone();
+                }
+                if !verification_evidence
+                    .challenge_result_refs
+                    .contains(&req.result.challenge_result_ref)
+                {
+                    verification_evidence
+                        .challenge_result_refs
+                        .push(req.result.challenge_result_ref.clone());
+                }
+                if matches!(
+                    req.result.status,
+                    ValidatorChallengeStatus::Rejected | ValidatorChallengeStatus::TimedOut
+                ) {
+                    reject_delivery_proof(
+                        &mut record.delivery_proof,
+                        DeliveryRejectionReason::NonConformingDelivery,
+                        req.result.detail.as_str(),
+                    );
+                }
+                validate_delivery_proof(&record.delivery_proof)?;
+                if let Some(instrument_id) = instrument_id.as_deref()
+                    && let Some(instrument_record) =
+                        self.capacity_instruments.get_mut(instrument_id)
+                {
+                    apply_delivery_proof_outcome_to_instrument(
+                        &mut instrument_record.instrument,
+                        &record.delivery_proof,
+                    );
+                }
+                recompute_lot_id = Some(lot_id);
+            }
+            if let Some(lot_id) = recompute_lot_id
+                && let Some((reserve_state, status)) =
+                    self.recompute_capacity_lot_state(lot_id.as_str())
+                && let Some(lot_record) = self.capacity_lots.get_mut(lot_id.as_str())
+            {
+                lot_record.lot.reserve_state = reserve_state;
+                lot_record.lot.status = status;
+            }
+        }
+
+        let challenge = self
+            .validator_challenges
+            .snapshot(challenge_id.as_str())
+            .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+        let response = FinalizeValidatorChallengeResponse {
+            challenge,
+            receipt: put_result.receipt.clone(),
+        };
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.result.finalized_at_ms as i64)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -4547,6 +5277,7 @@ impl KernelState {
 
     pub fn compute_market_metrics(&self, as_of_ms: i64) -> ComputeMarketMetrics {
         let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        let validator_challenges = self.validator_challenges.list();
         let delivery_window = self
             .delivery_proofs
             .values()
@@ -4708,6 +5439,53 @@ impl KernelState {
                 .count() as u64,
             delivery_window.len() as u64,
         );
+        let compute_validator_challenges_open = validator_challenges
+            .iter()
+            .filter(|snapshot| {
+                matches!(
+                    snapshot.status,
+                    ValidatorChallengeStatus::Queued
+                        | ValidatorChallengeStatus::Leased
+                        | ValidatorChallengeStatus::Retrying
+                )
+            })
+            .count() as u64;
+        let compute_validator_challenges_queued = validator_challenges
+            .iter()
+            .filter(|snapshot| {
+                matches!(
+                    snapshot.status,
+                    ValidatorChallengeStatus::Queued | ValidatorChallengeStatus::Retrying
+                )
+            })
+            .count() as u64;
+        let compute_validator_challenges_verified_24h = validator_challenges
+            .iter()
+            .filter_map(|snapshot| snapshot.final_result.as_ref())
+            .filter(|result| {
+                result.status == ValidatorChallengeStatus::Verified
+                    && (result.finalized_at_ms as i64) >= window_start_ms
+                    && (result.finalized_at_ms as i64) <= as_of_ms
+            })
+            .count() as u64;
+        let compute_validator_challenges_rejected_24h = validator_challenges
+            .iter()
+            .filter_map(|snapshot| snapshot.final_result.as_ref())
+            .filter(|result| {
+                result.status == ValidatorChallengeStatus::Rejected
+                    && (result.finalized_at_ms as i64) >= window_start_ms
+                    && (result.finalized_at_ms as i64) <= as_of_ms
+            })
+            .count() as u64;
+        let compute_validator_challenges_timed_out_24h = validator_challenges
+            .iter()
+            .filter_map(|snapshot| snapshot.final_result.as_ref())
+            .filter(|result| {
+                result.status == ValidatorChallengeStatus::TimedOut
+                    && (result.finalized_at_ms as i64) >= window_start_ms
+                    && (result.finalized_at_ms as i64) <= as_of_ms
+            })
+            .count() as u64;
         let fill_ratio_24h = ratio(delivery_quantity_24h, metered_quantity_24h.max(1));
         let priced_instruments_24h = self
             .capacity_instruments
@@ -4992,6 +5770,11 @@ impl KernelState {
             compute_delivery_quantity_24h: delivery_quantity_24h,
             compute_delivery_rejections_24h: delivery_rejections_24h,
             compute_delivery_variances_24h: delivery_variances_24h,
+            compute_validator_challenges_open,
+            compute_validator_challenges_queued,
+            compute_validator_challenges_verified_24h,
+            compute_validator_challenges_rejected_24h,
+            compute_validator_challenges_timed_out_24h,
             compute_delivery_accept_rate_24h: delivery_accept_rate_24h,
             compute_fill_ratio_24h: fill_ratio_24h,
             compute_priced_instruments_24h: priced_instruments_24h,
@@ -8070,6 +8853,14 @@ fn build_snapshot(
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_delivery_rejections_24h: compute_metrics.compute_delivery_rejections_24h,
         compute_delivery_variances_24h: compute_metrics.compute_delivery_variances_24h,
+        compute_validator_challenges_open: compute_metrics.compute_validator_challenges_open,
+        compute_validator_challenges_queued: compute_metrics.compute_validator_challenges_queued,
+        compute_validator_challenges_verified_24h: compute_metrics
+            .compute_validator_challenges_verified_24h,
+        compute_validator_challenges_rejected_24h: compute_metrics
+            .compute_validator_challenges_rejected_24h,
+        compute_validator_challenges_timed_out_24h: compute_metrics
+            .compute_validator_challenges_timed_out_24h,
         compute_delivery_accept_rate_24h: compute_metrics.compute_delivery_accept_rate_24h,
         compute_fill_ratio_24h: compute_metrics.compute_fill_ratio_24h,
         compute_priced_instruments_24h: compute_metrics.compute_priced_instruments_24h,
@@ -8153,7 +8944,11 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{KernelMutationContext, KernelState, floor_to_minute_utc, money_amount_value};
+    use super::{
+        FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
+        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, floor_to_minute_utc,
+        money_amount_value,
+    };
     use openagents_kernel_core::authority::{
         CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
@@ -8175,6 +8970,11 @@ mod tests {
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
+    };
+    use openagents_validator_service::{
+        GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeProtocolKind,
+        ValidatorChallengeRequest, ValidatorChallengeResult, ValidatorChallengeStatus,
+        ValidatorChallengeVerdict,
     };
     use serde_json::{Value, json};
     use std::path::PathBuf;
@@ -8404,6 +9204,92 @@ mod tests {
             },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_challenge_request(
+        challenge_id: &str,
+        delivery_proof_id: Option<&str>,
+        created_at_ms: u64,
+    ) -> ScheduleValidatorChallengeRequest {
+        let mut context = ValidatorChallengeContext::new(
+            challenge_id,
+            "proof-bundle-digest.alpha",
+            "request-digest.alpha",
+            "ollama.text_generation",
+            "cuda",
+            created_at_ms,
+        )
+        .with_model_id("llama3.2:latest")
+        .with_validator_pool_ref("validators.alpha")
+        .with_max_attempts(2)
+        .with_lease_timeout_ms(250);
+        if let Some(delivery_proof_id) = delivery_proof_id {
+            context = context.with_delivery_proof_id(delivery_proof_id);
+        }
+        ScheduleValidatorChallengeRequest {
+            idempotency_key: format!("idemp.compute.validator.schedule.{challenge_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            challenge: ValidatorChallengeRequest::new(
+                context,
+                GpuFreivaldsMerkleWitness::from_matrices(
+                    &[vec![1, 2], vec![3, 4]],
+                    &[vec![5, 6], vec![7, 8]],
+                    &[vec![19, 22], vec![43, 50]],
+                )
+                .expect("witness"),
+            ),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_lease_request(
+        challenge_id: &str,
+        validator_id: &str,
+        requested_at_ms: u64,
+        idempotency_key: &str,
+    ) -> LeaseValidatorChallengeRequest {
+        LeaseValidatorChallengeRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            challenge_id: challenge_id.to_string(),
+            validator_id: validator_id.to_string(),
+            requested_at_ms,
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_result(
+        challenge_id: &str,
+        finalized_at_ms: u64,
+        attempt: u32,
+        status: ValidatorChallengeStatus,
+        verdict: ValidatorChallengeVerdict,
+        detail: &str,
+    ) -> ValidatorChallengeResult {
+        ValidatorChallengeResult {
+            challenge_id: challenge_id.to_string(),
+            proof_bundle_digest: "proof-bundle-digest.alpha".to_string(),
+            protocol_id: ValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1
+                .label()
+                .to_string(),
+            attempt,
+            status,
+            verdict,
+            reason_code: None,
+            detail: detail.to_string(),
+            created_at_ms: 0,
+            finalized_at_ms,
+            challenge_seed_digest: None,
+            verified_row_count: None,
+            result_digest: format!("sha256:result:{challenge_id}:{attempt}:{finalized_at_ms}"),
+            challenge_result_ref: format!(
+                "validator_challenge_result:{challenge_id}:{attempt}:{finalized_at_ms}"
+            ),
         }
     }
 
@@ -9551,6 +10437,490 @@ mod tests {
         assert!(evidence_kinds.contains(&"compute_delivery_topology".to_string()));
         assert!(evidence_kinds.contains(&"compute_delivery_proof_bundle".to_string()));
         assert!(evidence_kinds.contains(&"compute_delivery_challenge_result".to_string()));
+    }
+
+    #[test]
+    fn validator_challenge_verified_result_projects_into_delivery_proof() {
+        let created_at_ms = 1_762_000_335_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut delivery_request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            });
+        kernel
+            .record_delivery_proof(&context, delivery_request)
+            .expect("delivery");
+
+        let schedule = kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 4_000),
+                validator_challenge_request(
+                    "challenge.compute.alpha",
+                    Some("delivery.compute.alpha"),
+                    created_at_ms + 4_000,
+                ),
+            )
+            .expect("schedule");
+        assert_eq!(
+            schedule.response.challenge.status,
+            ValidatorChallengeStatus::Queued
+        );
+        assert_eq!(
+            kernel
+                .get_delivery_proof("delivery.compute.alpha")
+                .and_then(|proof| proof.verification_evidence)
+                .and_then(|evidence| evidence.validator_run_ref),
+            Some("validator_run:challenge.compute.alpha".to_string())
+        );
+
+        let lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 5_000),
+                validator_lease_request(
+                    "challenge.compute.alpha",
+                    "validator.alpha",
+                    created_at_ms + 5_000,
+                    "idemp.compute.validator.lease.alpha",
+                ),
+            )
+            .expect("lease");
+        assert_eq!(
+            lease.response.challenge.status,
+            ValidatorChallengeStatus::Leased
+        );
+        assert_eq!(lease.response.lease.validator_id, "validator.alpha");
+
+        let result = validator_result(
+            "challenge.compute.alpha",
+            created_at_ms + 6_000,
+            lease.response.lease.attempt,
+            ValidatorChallengeStatus::Verified,
+            ValidatorChallengeVerdict::Verified,
+            "validator verified the claimed matrix product",
+        );
+        let finalize = kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 6_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.alpha".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: lease.response.lease.clone(),
+                    result: result.clone(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize");
+        assert_eq!(
+            finalize.response.challenge.status,
+            ValidatorChallengeStatus::Verified
+        );
+        let delivery = kernel
+            .get_delivery_proof("delivery.compute.alpha")
+            .expect("delivery proof");
+        assert_eq!(delivery.status, DeliveryProofStatus::Accepted);
+        let verification = delivery
+            .verification_evidence
+            .expect("verification evidence");
+        assert_eq!(
+            verification.validator_run_ref.as_deref(),
+            Some("validator_run:challenge.compute.alpha")
+        );
+        assert_eq!(
+            verification.challenge_result_refs,
+            vec![result.challenge_result_ref]
+        );
+    }
+
+    #[test]
+    fn validator_challenge_rejected_result_rejects_delivery_proof_deterministically() {
+        let created_at_ms = 1_762_000_340_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut delivery_request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            });
+        kernel
+            .record_delivery_proof(&context, delivery_request)
+            .expect("delivery");
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 4_000),
+                validator_challenge_request(
+                    "challenge.compute.reject",
+                    Some("delivery.compute.alpha"),
+                    created_at_ms + 4_000,
+                ),
+            )
+            .expect("schedule");
+        let lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 5_000),
+                validator_lease_request(
+                    "challenge.compute.reject",
+                    "validator.beta",
+                    created_at_ms + 5_000,
+                    "idemp.compute.validator.lease.reject",
+                ),
+            )
+            .expect("lease");
+        let result = validator_result(
+            "challenge.compute.reject",
+            created_at_ms + 6_000,
+            lease.response.lease.attempt,
+            ValidatorChallengeStatus::Rejected,
+            ValidatorChallengeVerdict::Rejected,
+            "validator rejected the claimed matrix product",
+        );
+        kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 6_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.reject".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: lease.response.lease,
+                    result: result.clone(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize");
+
+        let delivery = kernel
+            .get_delivery_proof("delivery.compute.alpha")
+            .expect("delivery proof");
+        assert_eq!(delivery.status, DeliveryProofStatus::Rejected);
+        assert_eq!(
+            delivery.rejection_reason,
+            Some(DeliveryRejectionReason::NonConformingDelivery)
+        );
+        assert_eq!(
+            delivery.variance_reason_detail.as_deref(),
+            Some("validator rejected the claimed matrix product")
+        );
+        let instrument = kernel
+            .get_capacity_instrument("instrument.compute.alpha")
+            .expect("instrument");
+        assert_eq!(instrument.status, CapacityInstrumentStatus::Defaulted);
+        assert_eq!(
+            instrument.non_delivery_reason,
+            Some(CapacityNonDeliveryReason::CapabilityMismatch)
+        );
+    }
+
+    #[test]
+    fn validator_challenge_schedule_and_finalize_are_idempotent() {
+        let created_at_ms = 1_762_000_345_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut delivery_request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            });
+        kernel
+            .record_delivery_proof(&context, delivery_request)
+            .expect("delivery");
+
+        let schedule_request = validator_challenge_request(
+            "challenge.compute.replay",
+            Some("delivery.compute.alpha"),
+            created_at_ms + 4_000,
+        );
+        let scheduled = kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 4_000),
+                schedule_request.clone(),
+            )
+            .expect("schedule");
+        assert!(scheduled.receipt_event.is_some());
+        let replayed_schedule = kernel
+            .schedule_validator_challenge(&fixture_context(created_at_ms + 4_100), schedule_request)
+            .expect("schedule replay");
+        assert!(replayed_schedule.receipt_event.is_none());
+        assert!(replayed_schedule.snapshot_event.is_none());
+
+        let lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 5_000),
+                validator_lease_request(
+                    "challenge.compute.replay",
+                    "validator.replay",
+                    created_at_ms + 5_000,
+                    "idemp.compute.validator.lease.replay",
+                ),
+            )
+            .expect("lease");
+        let finalize_request = FinalizeValidatorChallengeRequest {
+            idempotency_key: "idemp.compute.validator.finalize.replay".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            lease: lease.response.lease.clone(),
+            result: validator_result(
+                "challenge.compute.replay",
+                created_at_ms + 6_000,
+                lease.response.lease.attempt,
+                ValidatorChallengeStatus::Verified,
+                ValidatorChallengeVerdict::Verified,
+                "validator verified the claimed matrix product",
+            ),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let finalized = kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 6_000),
+                finalize_request.clone(),
+            )
+            .expect("finalize");
+        assert!(finalized.receipt_event.is_some());
+        let replayed_finalize = kernel
+            .finalize_validator_challenge(&fixture_context(created_at_ms + 6_100), finalize_request)
+            .expect("finalize replay");
+        assert!(replayed_finalize.receipt_event.is_none());
+        assert!(replayed_finalize.snapshot_event.is_none());
+        assert_eq!(
+            replayed_finalize.response.challenge.status,
+            ValidatorChallengeStatus::Verified
+        );
+    }
+
+    #[test]
+    fn validator_challenge_metrics_count_open_and_terminal_states() {
+        let created_at_ms = 1_762_000_350_000u64;
+        let mut kernel = KernelState::default();
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms),
+                validator_challenge_request("challenge.metrics.queued", None, created_at_ms),
+            )
+            .expect("queued");
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 1_000),
+                validator_challenge_request(
+                    "challenge.metrics.leased",
+                    None,
+                    created_at_ms + 1_000,
+                ),
+            )
+            .expect("schedule leased");
+        kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 2_000),
+                validator_lease_request(
+                    "challenge.metrics.leased",
+                    "validator.metrics",
+                    created_at_ms + 2_000,
+                    "idemp.compute.validator.lease.metrics.leased",
+                ),
+            )
+            .expect("lease");
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 3_000),
+                validator_challenge_request(
+                    "challenge.metrics.verified",
+                    None,
+                    created_at_ms + 3_000,
+                ),
+            )
+            .expect("schedule verified");
+        let verified_lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 4_000),
+                validator_lease_request(
+                    "challenge.metrics.verified",
+                    "validator.metrics",
+                    created_at_ms + 4_000,
+                    "idemp.compute.validator.lease.metrics.verified",
+                ),
+            )
+            .expect("lease verified");
+        kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 5_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.metrics.verified"
+                        .to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: verified_lease.response.lease,
+                    result: validator_result(
+                        "challenge.metrics.verified",
+                        created_at_ms + 5_000,
+                        1,
+                        ValidatorChallengeStatus::Verified,
+                        ValidatorChallengeVerdict::Verified,
+                        "validator verified the claimed matrix product",
+                    ),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize verified");
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 6_000),
+                validator_challenge_request(
+                    "challenge.metrics.rejected",
+                    None,
+                    created_at_ms + 6_000,
+                ),
+            )
+            .expect("schedule rejected");
+        let rejected_lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 7_000),
+                validator_lease_request(
+                    "challenge.metrics.rejected",
+                    "validator.metrics",
+                    created_at_ms + 7_000,
+                    "idemp.compute.validator.lease.metrics.rejected",
+                ),
+            )
+            .expect("lease rejected");
+        kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 8_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.metrics.rejected"
+                        .to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: rejected_lease.response.lease,
+                    result: validator_result(
+                        "challenge.metrics.rejected",
+                        created_at_ms + 8_000,
+                        1,
+                        ValidatorChallengeStatus::Rejected,
+                        ValidatorChallengeVerdict::Rejected,
+                        "validator rejected the claimed matrix product",
+                    ),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize rejected");
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 9_000),
+                validator_challenge_request(
+                    "challenge.metrics.timedout",
+                    None,
+                    created_at_ms + 9_000,
+                ),
+            )
+            .expect("schedule timedout");
+        let timedout_lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 10_000),
+                validator_lease_request(
+                    "challenge.metrics.timedout",
+                    "validator.metrics",
+                    created_at_ms + 10_000,
+                    "idemp.compute.validator.lease.metrics.timedout",
+                ),
+            )
+            .expect("lease timedout");
+        kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 11_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.metrics.timedout"
+                        .to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: timedout_lease.response.lease,
+                    result: validator_result(
+                        "challenge.metrics.timedout",
+                        created_at_ms + 11_000,
+                        1,
+                        ValidatorChallengeStatus::TimedOut,
+                        ValidatorChallengeVerdict::TimedOut,
+                        "validator lease expired before challenge completed",
+                    ),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize timedout");
+
+        let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 12_000);
+        assert_eq!(metrics.compute_validator_challenges_open, 2);
+        assert_eq!(metrics.compute_validator_challenges_queued, 1);
+        assert_eq!(metrics.compute_validator_challenges_verified_24h, 1);
+        assert_eq!(metrics.compute_validator_challenges_rejected_24h, 1);
+        assert_eq!(metrics.compute_validator_challenges_timed_out_24h, 1);
     }
 
     #[test]

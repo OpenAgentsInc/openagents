@@ -16,9 +16,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_provider_substrate::ProviderDesiredMode;
 use psionic_sandbox::{
-    InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot,
-    ProviderSandboxEntrypointType, ProviderSandboxExecutionControls,
-    ProviderSandboxFileTransferReceipt, ProviderSandboxJobRequest, ProviderSandboxProfile,
+    InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot, ProviderSandboxEntrypointType,
+    ProviderSandboxExecutionControls, ProviderSandboxFileTransferReceipt,
+    ProviderSandboxJobRequest, ProviderSandboxProfile,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1931,7 +1931,11 @@ fn apply_action_request(
             job_id,
             relative_path,
             content_base64,
-        } => upload_sandbox_file_action(job_id.as_str(), relative_path.as_str(), content_base64.as_str()),
+        } => upload_sandbox_file_action(
+            job_id.as_str(),
+            relative_path.as_str(),
+            content_base64.as_str(),
+        ),
         DesktopControlActionRequest::StartSandboxJob { job_id } => {
             start_sandbox_job_action(job_id.as_str())
         }
@@ -2637,10 +2641,9 @@ fn active_job_payload_response(state: &RenderState) -> DesktopControlActionRespo
 
 fn cluster_payload_response(state: &RenderState) -> DesktopControlActionResponse {
     match serde_json::to_value(snapshot_for_state(state).cluster) {
-        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
-            "Captured cluster control state",
-            payload,
-        ),
+        Ok(payload) => {
+            DesktopControlActionResponse::ok_with_payload("Captured cluster control state", payload)
+        }
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode cluster control state: {error}"
         )),
@@ -2649,10 +2652,9 @@ fn cluster_payload_response(state: &RenderState) -> DesktopControlActionResponse
 
 fn sandbox_status_payload_response(state: &RenderState) -> DesktopControlActionResponse {
     match serde_json::to_value(snapshot_for_state(state).sandbox) {
-        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
-            "Captured sandbox control state",
-            payload,
-        ),
+        Ok(payload) => {
+            DesktopControlActionResponse::ok_with_payload("Captured sandbox control state", payload)
+        }
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode sandbox control state: {error}"
         )),
@@ -2810,10 +2812,7 @@ fn wait_sandbox_job_action(job_id: &str, timeout_ms: u64) -> DesktopControlActio
     }
 }
 
-fn sandbox_download_payload(
-    receipt: ProviderSandboxFileTransferReceipt,
-    bytes: Vec<u8>,
-) -> Value {
+fn sandbox_download_payload(receipt: ProviderSandboxFileTransferReceipt, bytes: Vec<u8>) -> Value {
     json!({
         "receipt": receipt,
         "content_base64": URL_SAFE_NO_PAD.encode(bytes.as_slice()),
@@ -2881,7 +2880,9 @@ fn desktop_control_cluster_status() -> DesktopControlClusterStatus {
         topology_label: "not_integrated".to_string(),
         member_count: 0,
         members: Vec::new(),
-        last_error: Some("cluster transport is not integrated into the desktop control plane yet".to_string()),
+        last_error: Some(
+            "cluster transport is not integrated into the desktop control plane yet".to_string(),
+        ),
     }
 }
 
@@ -2941,7 +2942,10 @@ fn desktop_control_sandbox_status(state: &RenderState) -> DesktopControlSandboxS
     DesktopControlSandboxStatus {
         available: !profiles.is_empty(),
         declared_profile_count: profiles.len(),
-        ready_profile_count: profiles.iter().filter(|profile| profile.runtime_ready).count(),
+        ready_profile_count: profiles
+            .iter()
+            .filter(|profile| profile.runtime_ready)
+            .count(),
         job_count: jobs.len(),
         active_job_count,
         profiles,
@@ -2950,7 +2954,10 @@ fn desktop_control_sandbox_status(state: &RenderState) -> DesktopControlSandboxS
             .map(desktop_control_sandbox_job_status)
             .collect::<Vec<_>>(),
         last_error: if state.provider_runtime.sandbox.profiles.is_empty() {
-            Some("no declared sandbox profiles are available in the current desktop runtime".to_string())
+            Some(
+                "no declared sandbox profiles are available in the current desktop runtime"
+                    .to_string(),
+            )
         } else {
             None
         },
@@ -2961,7 +2968,9 @@ fn desktop_control_proof_status() -> DesktopControlProofStatus {
     DesktopControlProofStatus {
         available: false,
         pending_count: 0,
-        last_error: Some("proof inspection is not integrated into the desktop control plane yet".to_string()),
+        last_error: Some(
+            "proof inspection is not integrated into the desktop control plane yet".to_string(),
+        ),
     }
 }
 
@@ -2969,7 +2978,9 @@ fn desktop_control_challenge_status() -> DesktopControlChallengeStatus {
     DesktopControlChallengeStatus {
         available: false,
         open_count: 0,
-        last_error: Some("challenge inspection is not integrated into the desktop control plane yet".to_string()),
+        last_error: Some(
+            "challenge inspection is not integrated into the desktop control plane yet".to_string(),
+        ),
     }
 }
 
@@ -3763,10 +3774,10 @@ mod tests {
         DesktopControlMissionControlStatus, DesktopControlProofStatus,
         DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
         DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus,
-        apply_response_snapshot_metadata, command_outcome_event, command_received_event,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
+        DesktopControlWalletStatus, apply_response_snapshot_metadata, command_outcome_event,
+        command_received_event, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,

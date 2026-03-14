@@ -1249,11 +1249,7 @@ pub enum AppleFmBridgeStreamError {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::panic_in_result_fn
-    )]
+    #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
 
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};

@@ -2872,12 +2872,10 @@ fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBindi
             LocalInferenceBackend::GptOss,
             "text_generation",
         ),
-        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => {
-            compute_binding_for_backend_and_capability(
-                LocalInferenceBackend::AppleFoundationModels,
-                "text_generation",
-            )
-        }
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::AppleFoundationModels,
+            "text_generation",
+        ),
         _ => None,
     }
 }
@@ -3816,7 +3814,10 @@ mod tests {
             "text_generation",
         )
         .expect("inference binding");
-        assert_eq!(inference.product_id, "psionic.local.inference.gpt_oss.single_node");
+        assert_eq!(
+            inference.product_id,
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(inference.compute_family, ComputeFamily::Inference);
 
         assert!(
