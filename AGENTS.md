@@ -26,6 +26,19 @@
 - Keep changes small, verifiable, and directly tied to current MVP goals.
 - Do not add `.github/workflows/` automation in this repo.
 
+## Psionic Specs
+
+- When working in `crates/psionic/*`, use
+  `crates/psionic/docs/ARCHITECTURE.md` as the canonical Psionic-wide system
+  spec for runtime, cluster, datastream, sandbox, serving, artifact, receipt,
+  failure, and security boundaries.
+- When working on training-class Psionic work, use
+  `crates/psionic/docs/TRAIN_SYSTEM.md` as the canonical train-system spec for
+  current substrate, planned train architecture, object model, receipts,
+  policy surfaces, failure semantics, and issue-program direction.
+- If behavior or architecture changes in those areas, update the relevant
+  Psionic spec doc alongside the code change.
+
 ## Programmatic Control And Test Docs
 
 - The running desktop app now has an app-owned control plane plus a thin CLI:
