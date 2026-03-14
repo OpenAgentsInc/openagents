@@ -59,6 +59,7 @@ mod runtime_lanes;
 mod runtime_log;
 mod skill_autoload;
 mod skills_registry;
+mod snapshot_domains;
 mod spacetime_presence;
 mod spark_pane;
 mod spark_wallet;

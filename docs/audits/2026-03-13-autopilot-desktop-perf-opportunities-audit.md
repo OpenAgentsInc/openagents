@@ -51,6 +51,14 @@ Control / mirror runtimes:
 - `apps/autopilot-desktop/src/provider_admin.rs`
 - `apps/autopilot-desktop/src/codex_remote.rs`
 
+## Status Notes
+
+- 2026-03-14: `#3532` is implemented. `desktop_control`, `provider_admin`, and
+  `codex_remote` now share an app-owned snapshot-domain invalidation layer in
+  `apps/autopilot-desktop/src/snapshot_domains.rs`, and desktop-control action
+  responses reuse an already-built snapshot when the payload path needs both the
+  payload and response metadata.
+
 ## Executive Summary
 
 The next big responsiveness wins are no longer in obvious startup bugs. They

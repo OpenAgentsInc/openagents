@@ -82,22 +82,17 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     let Some(runtime) = state.provider_admin_runtime.as_ref() else {
         return false;
     };
-    let snapshot = snapshot_for_state(state);
-    let signature = match snapshot_signature(&snapshot) {
-        Ok(signature) => signature,
-        Err(error) => {
-            state.provider_admin_last_error = Some(error);
-            return false;
-        }
-    };
-    let should_sync = state.provider_admin_last_sync_signature.as_deref()
-        != Some(signature.as_str())
-        || state
-            .provider_admin_last_sync_at
-            .is_none_or(|last_sync_at| last_sync_at.elapsed() >= PROVIDER_ADMIN_SYNC_INTERVAL);
+    let signature = crate::snapshot_domains::provider_admin_signature(state);
+    let signature_changed =
+        state.provider_admin_last_sync_signature.as_deref() != Some(signature.as_str());
+    let interval_due = state
+        .provider_admin_last_sync_at
+        .is_none_or(|last_sync_at| last_sync_at.elapsed() >= PROVIDER_ADMIN_SYNC_INTERVAL);
+    let should_sync = signature_changed || interval_due;
     if !should_sync {
         return false;
     }
+    let snapshot = snapshot_for_state(state);
     if let Err(error) = runtime.sync_snapshot(snapshot) {
         state.provider_admin_last_error = Some(error);
         return false;
@@ -459,16 +454,6 @@ fn money_sats(money: &Money) -> Option<u64> {
     }
 }
 
-fn snapshot_signature(snapshot: &ProviderPersistedSnapshot) -> Result<String, String> {
-    let mut stable_snapshot = snapshot.clone();
-    stable_snapshot.captured_at_ms = 0;
-    for event in &mut stable_snapshot.health_events {
-        event.occurred_at_ms = 0;
-    }
-    serde_json::to_string(&stable_snapshot)
-        .map_err(|error| format!("Failed to encode provider admin sync signature: {error}"))
-}
-
 fn provider_admin_db_path() -> PathBuf {
     if let Ok(path) = std::env::var("OPENAGENTS_PROVIDER_ADMIN_DB_PATH") {
         return PathBuf::from(path);
@@ -514,14 +499,9 @@ fn infer_request_id_from_job_id(job_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{infer_product_id_for_history_row, snapshot_signature};
+    use super::infer_product_id_for_history_row;
     use crate::app_state::{JobDemandSource, JobHistoryReceiptRow, JobHistoryStatus};
     use crate::local_inference_runtime::LocalInferenceExecutionProvenance;
-    use openagents_provider_substrate::{
-        ProviderAvailability, ProviderPersistedSnapshot, ProviderRuntimeStatusSnapshot,
-        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
-        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
-    };
 
     #[test]
     fn product_id_inference_prefers_embedding_metering_rule() {
@@ -570,103 +550,6 @@ mod tests {
         assert_eq!(
             infer_product_id_for_history_row(&row).as_deref(),
             Some("psionic.local.embeddings.gpt_oss.single_node")
-        );
-    }
-
-    #[test]
-    fn snapshot_signature_ignores_capture_timestamps() {
-        let first = ProviderPersistedSnapshot {
-            captured_at_ms: 100,
-            config_metadata: Vec::new(),
-            identity: None,
-            runtime: ProviderRuntimeStatusSnapshot::default(),
-            availability: ProviderAvailability::default(),
-            inventory_rows: Vec::new(),
-            recent_jobs: Vec::new(),
-            receipts: Vec::new(),
-            payouts: Vec::new(),
-            health_events: Vec::new(),
-            earnings: None,
-        };
-        let second = ProviderPersistedSnapshot {
-            captured_at_ms: 200,
-            ..first.clone()
-        };
-
-        assert_eq!(
-            snapshot_signature(&first).ok(),
-            snapshot_signature(&second).ok()
-        );
-    }
-
-    #[test]
-    fn snapshot_signature_changes_when_sandbox_truth_changes() {
-        let mut first = ProviderPersistedSnapshot {
-            captured_at_ms: 100,
-            config_metadata: Vec::new(),
-            identity: None,
-            runtime: ProviderRuntimeStatusSnapshot::default(),
-            availability: ProviderAvailability {
-                sandbox: ProviderSandboxAvailability {
-                    runtimes: vec![ProviderSandboxRuntimeHealth {
-                        runtime_kind: ProviderSandboxRuntimeKind::Python,
-                        detected: true,
-                        ready: true,
-                        binary_name: Some("python3".to_string()),
-                        binary_path: Some("/usr/bin/python3".to_string()),
-                        runtime_version: Some("Python 3.11.8".to_string()),
-                        supported_execution_classes: vec![
-                            ProviderSandboxExecutionClass::PythonExec,
-                        ],
-                        last_error: None,
-                    }],
-                    profiles: vec![ProviderSandboxProfile {
-                        profile_id: "python-batch".to_string(),
-                        profile_digest: "sha256:profile-a".to_string(),
-                        execution_class: ProviderSandboxExecutionClass::PythonExec,
-                        runtime_family: "python3".to_string(),
-                        runtime_version: "Python 3.11.8".to_string(),
-                        sandbox_engine: "local_subprocess".to_string(),
-                        os_family: "linux".to_string(),
-                        arch: "x86_64".to_string(),
-                        cpu_limit: 2,
-                        memory_limit_mb: 2048,
-                        disk_limit_mb: 4096,
-                        timeout_limit_s: 120,
-                        network_mode: "none".to_string(),
-                        filesystem_mode: "workspace_only".to_string(),
-                        workspace_mode: "ephemeral".to_string(),
-                        artifact_output_mode: "declared_paths_only".to_string(),
-                        secrets_mode: "none".to_string(),
-                        allowed_binaries: vec!["python3".to_string()],
-                        toolchain_inventory: vec!["python3".to_string()],
-                        container_image: None,
-                        runtime_image_digest: None,
-                        accelerator_policy: None,
-                        runtime_kind: ProviderSandboxRuntimeKind::Python,
-                        runtime_ready: true,
-                        runtime_binary_path: Some("/usr/bin/python3".to_string()),
-                        capability_summary: "backend=sandbox execution=sandbox.python.exec family=sandbox_execution profile_id=python-batch".to_string(),
-                    }],
-                    last_scan_error: None,
-                },
-                ..ProviderAvailability::default()
-            },
-            inventory_rows: Vec::new(),
-            recent_jobs: Vec::new(),
-            receipts: Vec::new(),
-            payouts: Vec::new(),
-            health_events: Vec::new(),
-            earnings: None,
-        };
-        let mut second = first.clone();
-        second.availability.sandbox.profiles[0].profile_digest = "sha256:profile-b".to_string();
-        first.captured_at_ms = 100;
-        second.captured_at_ms = 200;
-
-        assert_ne!(
-            snapshot_signature(&first).ok(),
-            snapshot_signature(&second).ok()
         );
     }
 }

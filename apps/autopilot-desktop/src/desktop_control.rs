@@ -1205,15 +1205,15 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     if !should_attempt_sync {
         return false;
     }
-    let snapshot = snapshot_for_state(state);
-    let snapshot_revision = snapshot.snapshot_revision;
-    let signature = snapshot.state_signature.clone();
+    let signature = crate::snapshot_domains::desktop_control_signature(state);
     let signature_changed =
         state.desktop_control_last_sync_signature.as_deref() != Some(signature.as_str());
     let should_sync = signature_changed || state.desktop_control_last_sync_at.is_none();
     if !should_sync {
         return false;
     }
+    let snapshot = snapshot_for_state_with_signature(state, signature.clone());
+    let snapshot_revision = snapshot.snapshot_revision;
     let Some(runtime) = state.desktop_control_runtime.as_mut() else {
         return false;
     };
@@ -1238,6 +1238,7 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     true
 }
 
+#[cfg(test)]
 fn snapshot_sync_signature(snapshot: &DesktopControlSnapshot) -> String {
     let mut stable_snapshot = snapshot.clone();
     stable_snapshot.generated_at_epoch_ms = 0;
@@ -2107,13 +2108,19 @@ fn apply_action_request(
 ) -> DesktopControlActionResponse {
     if let Some(online) = action.provider_mode_online_target() {
         let response = apply_provider_mode_action(state, online);
-        record_command_outcome(state, action.label(), &response);
-        return attach_snapshot_metadata(state, response);
+        return finalize_action_response(
+            state,
+            action.label(),
+            DesktopControlActionOutcome::response(response),
+        );
     }
     if let DesktopControlActionRequest::Withdraw { bolt11 } = action {
         let response = withdraw_action(state, bolt11.as_str());
-        record_command_outcome(state, action.label(), &response);
-        return attach_snapshot_metadata(state, response);
+        return finalize_action_response(
+            state,
+            action.label(),
+            DesktopControlActionOutcome::response(response),
+        );
     }
     if matches!(
         action,
@@ -2124,10 +2131,13 @@ fn apply_action_request(
             DesktopControlActionRequest::StopBuyMode => stop_buy_mode_action(state),
             _ => unreachable!("guarded by matches!"),
         };
-        record_command_outcome(state, action.label(), &response);
-        return attach_snapshot_metadata(state, response);
+        return finalize_action_response(
+            state,
+            action.label(),
+            DesktopControlActionOutcome::response(response),
+        );
     }
-    let response = match action {
+    let outcome = match action {
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
@@ -2163,9 +2173,10 @@ fn apply_action_request(
             filesystem_request.as_str(),
             payout_reference.as_deref(),
             verification_posture.as_deref(),
-        ),
+        )
+        .into(),
         DesktopControlActionRequest::GetSandboxJob { job_id } => {
-            sandbox_job_payload_response(job_id.as_str())
+            sandbox_job_payload_response(job_id.as_str()).into()
         }
         DesktopControlActionRequest::UploadSandboxFile {
             job_id,
@@ -2175,72 +2186,88 @@ fn apply_action_request(
             job_id.as_str(),
             relative_path.as_str(),
             content_base64.as_str(),
-        ),
+        )
+        .into(),
         DesktopControlActionRequest::StartSandboxJob { job_id } => {
-            start_sandbox_job_action(job_id.as_str())
+            start_sandbox_job_action(job_id.as_str()).into()
         }
         DesktopControlActionRequest::WaitSandboxJob { job_id, timeout_ms } => {
-            wait_sandbox_job_action(job_id.as_str(), *timeout_ms)
+            wait_sandbox_job_action(job_id.as_str(), *timeout_ms).into()
         }
         DesktopControlActionRequest::DownloadSandboxArtifact {
             job_id,
             relative_path,
-        } => download_sandbox_artifact_action(job_id.as_str(), relative_path.as_str()),
+        } => download_sandbox_artifact_action(job_id.as_str(), relative_path.as_str()).into(),
         DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
             job_id,
             relative_path,
-        } => download_sandbox_workspace_action(job_id.as_str(), relative_path.as_str()),
-        DesktopControlActionRequest::GetProofStatus => proof_payload_response(state),
-        DesktopControlActionRequest::GetChallengeStatus => challenge_payload_response(state),
+        } => download_sandbox_workspace_action(job_id.as_str(), relative_path.as_str()).into(),
+        DesktopControlActionRequest::GetProofStatus => proof_payload_response(state).into(),
+        DesktopControlActionRequest::GetChallengeStatus => challenge_payload_response(state).into(),
         DesktopControlActionRequest::ListPanes => {
-            pane_list_payload_response(state, "Captured desktop pane catalog")
+            pane_list_payload_response(state, "Captured desktop pane catalog").into()
         }
-        DesktopControlActionRequest::OpenPane { pane } => pane_open_action(state, pane.as_str()),
-        DesktopControlActionRequest::FocusPane { pane } => pane_focus_action(state, pane.as_str()),
-        DesktopControlActionRequest::ClosePane { pane } => pane_close_action(state, pane.as_str()),
+        DesktopControlActionRequest::OpenPane { pane } => {
+            pane_open_action(state, pane.as_str()).into()
+        }
+        DesktopControlActionRequest::FocusPane { pane } => {
+            pane_focus_action(state, pane.as_str()).into()
+        }
+        DesktopControlActionRequest::ClosePane { pane } => {
+            pane_close_action(state, pane.as_str()).into()
+        }
         DesktopControlActionRequest::GetPaneSnapshot { pane } => {
-            pane_snapshot_payload_response(state, pane.as_str())
+            pane_snapshot_payload_response(state, pane.as_str()).into()
         }
-        DesktopControlActionRequest::RefreshLocalRuntime => refresh_local_runtime_action(state),
-        DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state),
-        DesktopControlActionRequest::RunAppleFmSmokeTest => run_apple_fm_smoke_test_action(state),
+        DesktopControlActionRequest::RefreshLocalRuntime => {
+            refresh_local_runtime_action(state).into()
+        }
+        DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state).into(),
+        DesktopControlActionRequest::RunAppleFmSmokeTest => {
+            run_apple_fm_smoke_test_action(state).into()
+        }
         DesktopControlActionRequest::RefreshGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::Refresh,
             "Queued GPT-OSS runtime refresh",
-        ),
+        )
+        .into(),
         DesktopControlActionRequest::RefreshWallet => {
-            wallet_action_response(state, SparkPaneAction::Refresh, "Queued wallet refresh")
+            wallet_action_response(state, SparkPaneAction::Refresh, "Queued wallet refresh").into()
         }
         DesktopControlActionRequest::WarmGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::WarmConfiguredModel,
             "Queued GPT-OSS model warm",
-        ),
+        )
+        .into(),
         DesktopControlActionRequest::UnloadGptOss => queue_gpt_oss_runtime_action(
             state,
             LocalInferenceRuntimeCommand::UnloadConfiguredModel,
             "Queued GPT-OSS model unload",
-        ),
+        )
+        .into(),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
         DesktopControlActionRequest::SelectNip28MainChannel => {
-            select_nip28_main_channel_action(state)
+            select_nip28_main_channel_action(state).into()
         }
         DesktopControlActionRequest::SelectNip28Group { group_id } => {
-            select_nip28_group_action(state, group_id.as_str())
+            select_nip28_group_action(state, group_id.as_str()).into()
         }
         DesktopControlActionRequest::SelectNip28Channel { channel_id } => {
-            select_nip28_channel_action(state, channel_id.as_str())
+            select_nip28_channel_action(state, channel_id.as_str()).into()
         }
         DesktopControlActionRequest::SendNip28Message {
             content,
             reply_to_event_id,
-        } => send_nip28_message_action(state, content.as_str(), reply_to_event_id.as_deref()),
+        } => {
+            send_nip28_message_action(state, content.as_str(), reply_to_event_id.as_deref()).into()
+        }
         DesktopControlActionRequest::RetryNip28Message { event_id } => {
-            retry_nip28_message_action(state, event_id.as_str())
+            retry_nip28_message_action(state, event_id.as_str()).into()
         }
         DesktopControlActionRequest::GetMissionControlLogTail { limit } => {
-            log_tail_response(state, *limit)
+            log_tail_response(state, *limit).into()
         }
         DesktopControlActionRequest::SetProviderMode { .. }
         | DesktopControlActionRequest::StartBuyMode
@@ -2249,8 +2276,46 @@ fn apply_action_request(
             unreachable!("action-specific routes should be handled above")
         }
     };
-    record_command_outcome(state, action.label(), &response);
-    attach_snapshot_metadata(state, response)
+    finalize_action_response(state, action.label(), outcome)
+}
+
+struct DesktopControlActionOutcome {
+    response: DesktopControlActionResponse,
+    snapshot: Option<DesktopControlSnapshot>,
+}
+
+impl DesktopControlActionOutcome {
+    fn response(response: DesktopControlActionResponse) -> Self {
+        Self {
+            response,
+            snapshot: None,
+        }
+    }
+
+    fn with_snapshot(
+        response: DesktopControlActionResponse,
+        snapshot: DesktopControlSnapshot,
+    ) -> Self {
+        Self {
+            response,
+            snapshot: Some(snapshot),
+        }
+    }
+}
+
+impl From<DesktopControlActionResponse> for DesktopControlActionOutcome {
+    fn from(response: DesktopControlActionResponse) -> Self {
+        Self::response(response)
+    }
+}
+
+fn finalize_action_response(
+    state: &mut RenderState,
+    action_label: &str,
+    outcome: DesktopControlActionOutcome,
+) -> DesktopControlActionResponse {
+    record_command_outcome(state, action_label, &outcome.response);
+    attach_snapshot_metadata(state, outcome.response, outcome.snapshot)
 }
 
 fn record_command_outcome(
@@ -2275,12 +2340,15 @@ fn record_command_outcome(
 fn snapshot_payload_response(
     state: &RenderState,
     message: impl Into<String>,
-) -> DesktopControlActionResponse {
+) -> DesktopControlActionOutcome {
     let snapshot = snapshot_for_state(state);
-    match serde_json::to_value(snapshot) {
-        Ok(payload) => DesktopControlActionResponse::ok_with_payload(message, payload),
-        Err(error) => DesktopControlActionResponse::error(format!(
-            "Failed to encode desktop control snapshot: {error}"
+    match serde_json::to_value(&snapshot) {
+        Ok(payload) => DesktopControlActionOutcome::with_snapshot(
+            DesktopControlActionResponse::ok_with_payload(message, payload),
+            snapshot,
+        ),
+        Err(error) => DesktopControlActionOutcome::response(DesktopControlActionResponse::error(
+            format!("Failed to encode desktop control snapshot: {error}"),
         )),
     }
 }
@@ -2288,8 +2356,9 @@ fn snapshot_payload_response(
 fn attach_snapshot_metadata(
     state: &RenderState,
     response: DesktopControlActionResponse,
+    snapshot: Option<DesktopControlSnapshot>,
 ) -> DesktopControlActionResponse {
-    let snapshot = snapshot_for_state(state);
+    let snapshot = snapshot.unwrap_or_else(|| snapshot_for_state(state));
     apply_response_snapshot_metadata(response, &snapshot)
 }
 
@@ -2867,36 +2936,54 @@ fn stop_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse
     buy_mode_action_response(state, BuyModePaymentsPaneAction::ToggleLoop)
 }
 
-fn active_job_payload_response(state: &RenderState) -> DesktopControlActionResponse {
-    let payload = snapshot_for_state(state)
+fn active_job_payload_response(state: &RenderState) -> DesktopControlActionOutcome {
+    let snapshot = snapshot_for_state(state);
+    let payload = snapshot
         .active_job
+        .clone()
         .and_then(|active_job| serde_json::to_value(active_job).ok())
         .unwrap_or(Value::Null);
     if payload.is_null() {
-        DesktopControlActionResponse::ok_with_payload("No active job", payload)
+        DesktopControlActionOutcome::with_snapshot(
+            DesktopControlActionResponse::ok_with_payload("No active job", payload),
+            snapshot,
+        )
     } else {
-        DesktopControlActionResponse::ok_with_payload("Captured active job state", payload)
+        DesktopControlActionOutcome::with_snapshot(
+            DesktopControlActionResponse::ok_with_payload("Captured active job state", payload),
+            snapshot,
+        )
     }
 }
 
-fn cluster_payload_response(state: &RenderState) -> DesktopControlActionResponse {
-    match serde_json::to_value(snapshot_for_state(state).cluster) {
-        Ok(payload) => {
-            DesktopControlActionResponse::ok_with_payload("Captured cluster control state", payload)
-        }
-        Err(error) => DesktopControlActionResponse::error(format!(
-            "Failed to encode cluster control state: {error}"
+fn cluster_payload_response(state: &RenderState) -> DesktopControlActionOutcome {
+    let snapshot = snapshot_for_state(state);
+    match serde_json::to_value(snapshot.cluster.clone()) {
+        Ok(payload) => DesktopControlActionOutcome::with_snapshot(
+            DesktopControlActionResponse::ok_with_payload(
+                "Captured cluster control state",
+                payload,
+            ),
+            snapshot,
+        ),
+        Err(error) => DesktopControlActionOutcome::response(DesktopControlActionResponse::error(
+            format!("Failed to encode cluster control state: {error}"),
         )),
     }
 }
 
-fn sandbox_status_payload_response(state: &RenderState) -> DesktopControlActionResponse {
-    match serde_json::to_value(snapshot_for_state(state).sandbox) {
-        Ok(payload) => {
-            DesktopControlActionResponse::ok_with_payload("Captured sandbox control state", payload)
-        }
-        Err(error) => DesktopControlActionResponse::error(format!(
-            "Failed to encode sandbox control state: {error}"
+fn sandbox_status_payload_response(state: &RenderState) -> DesktopControlActionOutcome {
+    let snapshot = snapshot_for_state(state);
+    match serde_json::to_value(snapshot.sandbox.clone()) {
+        Ok(payload) => DesktopControlActionOutcome::with_snapshot(
+            DesktopControlActionResponse::ok_with_payload(
+                "Captured sandbox control state",
+                payload,
+            ),
+            snapshot,
+        ),
+        Err(error) => DesktopControlActionOutcome::response(DesktopControlActionResponse::error(
+            format!("Failed to encode sandbox control state: {error}"),
         )),
     }
 }
@@ -4432,6 +4519,14 @@ fn desktop_control_buyer_procurement_status(
 }
 
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
+    let signature = crate::snapshot_domains::desktop_control_signature(state);
+    snapshot_for_state_with_signature(state, signature)
+}
+
+fn snapshot_for_state_with_signature(
+    state: &RenderState,
+    signature: String,
+) -> DesktopControlSnapshot {
     let now = Instant::now();
     let now_epoch_seconds = current_epoch_seconds();
     let buy_mode_requests = crate::nip90_compute_flow::buy_mode_request_flow_snapshots(
@@ -4638,7 +4733,6 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             ),
     };
 
-    let signature = snapshot_sync_signature(&snapshot);
     let next_revision =
         if state.desktop_control.last_snapshot_signature.as_deref() == Some(signature.as_str()) {
             state.desktop_control.last_snapshot_revision
