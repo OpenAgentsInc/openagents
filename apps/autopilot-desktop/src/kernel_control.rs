@@ -18,11 +18,12 @@ use openagents_kernel_core::compute::{
     ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-    ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
-    ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
+    ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
+    ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+    ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
-    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
-    canonical_compute_product_id, launch_compute_product_spec,
+    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
+    PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -36,7 +37,7 @@ use openagents_kernel_core::receipts::{
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::floor_to_minute_utc;
-use openagents_provider_substrate::ProviderAdvertisedProduct;
+use openagents_provider_substrate::{ProviderAdvertisedProduct, ProviderComputeProduct};
 use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -3113,15 +3114,28 @@ fn provider_inventory_delivery_state(
     }
 }
 
+#[derive(Clone, Debug)]
+struct QuoteableComputeProduct {
+    compute_family: ComputeFamily,
+    backend_family: Option<ComputeBackendFamily>,
+    execution_kind: ComputeExecutionKind,
+    topology_kind: ComputeTopologyKind,
+    provisioning_kind: ComputeProvisioningKind,
+    proof_posture: ComputeProofPosture,
+    capability_summary: String,
+}
+
 fn spot_rfq_matches_envelope(
     rfq: &SpotComputeRfqDraft,
     envelope: &ComputeCapabilityEnvelope,
+    compute_family: ComputeFamily,
+    backend_family: Option<ComputeBackendFamily>,
 ) -> bool {
-    if envelope.compute_family != Some(rfq.compute_family) {
+    if compute_family != rfq.compute_family {
         return false;
     }
     if let Some(preferred_backend) = rfq.preferred_backend
-        && envelope.backend_family != Some(preferred_backend)
+        && backend_family != Some(preferred_backend)
     {
         return false;
     }
@@ -3145,6 +3159,205 @@ fn spot_rfq_matches_envelope(
                     .throughput_per_minute
                     .is_some_and(|throughput| throughput >= min_throughput)
             })
+}
+
+fn quoteable_compute_product(product: &ComputeProduct) -> Option<QuoteableComputeProduct> {
+    let envelope = product.capability_envelope.as_ref()?;
+    let compute_family = inferred_compute_family(product, envelope)?;
+    let backend_family = inferred_backend_family(product, envelope);
+    let execution_kind = inferred_execution_kind(product, envelope, compute_family);
+    let topology_kind = inferred_topology_kind(envelope, execution_kind);
+    let provisioning_kind = inferred_provisioning_kind(envelope, execution_kind);
+    let proof_posture = inferred_proof_posture(envelope, execution_kind);
+    Some(QuoteableComputeProduct {
+        compute_family,
+        backend_family,
+        execution_kind,
+        topology_kind,
+        provisioning_kind,
+        proof_posture,
+        capability_summary: capability_summary_for_product(
+            product,
+            envelope,
+            backend_family,
+            compute_family,
+            execution_kind,
+            topology_kind,
+            provisioning_kind,
+            proof_posture,
+        ),
+    })
+}
+
+fn inferred_compute_family(
+    product: &ComputeProduct,
+    envelope: &ComputeCapabilityEnvelope,
+) -> Option<ComputeFamily> {
+    envelope.compute_family.or_else(|| {
+        ProviderComputeProduct::for_product_id(product.product_id.as_str()).map(|product| match product {
+            ProviderComputeProduct::GptOssInference
+            | ProviderComputeProduct::AppleFoundationModelsInference => ComputeFamily::Inference,
+            ProviderComputeProduct::GptOssEmbeddings => ComputeFamily::Embeddings,
+            ProviderComputeProduct::SandboxContainerExec
+            | ProviderComputeProduct::SandboxPythonExec
+            | ProviderComputeProduct::SandboxNodeExec
+            | ProviderComputeProduct::SandboxPosixExec => ComputeFamily::SandboxExecution,
+        })
+    })
+}
+
+fn inferred_backend_family(
+    product: &ComputeProduct,
+    envelope: &ComputeCapabilityEnvelope,
+) -> Option<ComputeBackendFamily> {
+    envelope.backend_family.or_else(|| {
+        ProviderComputeProduct::for_product_id(product.product_id.as_str()).and_then(|product| {
+            match product {
+                ProviderComputeProduct::GptOssInference
+                | ProviderComputeProduct::GptOssEmbeddings => Some(ComputeBackendFamily::GptOss),
+                ProviderComputeProduct::AppleFoundationModelsInference => {
+                    Some(ComputeBackendFamily::AppleFoundationModels)
+                }
+                ProviderComputeProduct::SandboxContainerExec
+                | ProviderComputeProduct::SandboxPythonExec
+                | ProviderComputeProduct::SandboxNodeExec
+                | ProviderComputeProduct::SandboxPosixExec => None,
+            }
+        })
+    })
+}
+
+fn inferred_execution_kind(
+    product: &ComputeProduct,
+    envelope: &ComputeCapabilityEnvelope,
+    compute_family: ComputeFamily,
+) -> ComputeExecutionKind {
+    envelope.execution_kind.unwrap_or_else(|| {
+        ProviderComputeProduct::for_product_id(product.product_id.as_str())
+            .map(|product| match product {
+                ProviderComputeProduct::GptOssInference
+                | ProviderComputeProduct::GptOssEmbeddings
+                | ProviderComputeProduct::AppleFoundationModelsInference => {
+                    ComputeExecutionKind::LocalInference
+                }
+                ProviderComputeProduct::SandboxContainerExec
+                | ProviderComputeProduct::SandboxPythonExec
+                | ProviderComputeProduct::SandboxNodeExec
+                | ProviderComputeProduct::SandboxPosixExec => {
+                    ComputeExecutionKind::SandboxExecution
+                }
+            })
+            .unwrap_or(match compute_family {
+                ComputeFamily::SandboxExecution => ComputeExecutionKind::SandboxExecution,
+                ComputeFamily::Evaluation => ComputeExecutionKind::EvaluationRun,
+                ComputeFamily::Training => ComputeExecutionKind::TrainingJob,
+                ComputeFamily::Inference
+                | ComputeFamily::Embeddings
+                | ComputeFamily::AdapterHosting => ComputeExecutionKind::LocalInference,
+            })
+    })
+}
+
+fn inferred_topology_kind(
+    envelope: &ComputeCapabilityEnvelope,
+    execution_kind: ComputeExecutionKind,
+) -> ComputeTopologyKind {
+    envelope.topology_kind.unwrap_or(match execution_kind {
+        ComputeExecutionKind::LocalInference | ComputeExecutionKind::EvaluationRun => {
+            ComputeTopologyKind::SingleNode
+        }
+        ComputeExecutionKind::ClusteredInference => ComputeTopologyKind::RemoteWholeRequest,
+        ComputeExecutionKind::SandboxExecution => ComputeTopologyKind::SandboxIsolated,
+        ComputeExecutionKind::TrainingJob => ComputeTopologyKind::TrainingElastic,
+    })
+}
+
+fn inferred_provisioning_kind(
+    envelope: &ComputeCapabilityEnvelope,
+    execution_kind: ComputeExecutionKind,
+) -> ComputeProvisioningKind {
+    envelope.provisioning_kind.unwrap_or(match execution_kind {
+        ComputeExecutionKind::LocalInference | ComputeExecutionKind::EvaluationRun => {
+            ComputeProvisioningKind::DesktopLocal
+        }
+        ComputeExecutionKind::ClusteredInference => ComputeProvisioningKind::ClusterAttached,
+        ComputeExecutionKind::SandboxExecution => ComputeProvisioningKind::RemoteSandbox,
+        ComputeExecutionKind::TrainingJob => ComputeProvisioningKind::ReservedClusterWindow,
+    })
+}
+
+fn inferred_proof_posture(
+    envelope: &ComputeCapabilityEnvelope,
+    execution_kind: ComputeExecutionKind,
+) -> ComputeProofPosture {
+    envelope.proof_posture.unwrap_or(match execution_kind {
+        ComputeExecutionKind::SandboxExecution => ComputeProofPosture::TopologyAndDelivery,
+        ComputeExecutionKind::ClusteredInference | ComputeExecutionKind::TrainingJob => {
+            ComputeProofPosture::ChallengeEligible
+        }
+        ComputeExecutionKind::LocalInference | ComputeExecutionKind::EvaluationRun => {
+            ComputeProofPosture::DeliveryProofOnly
+        }
+    })
+}
+
+fn effective_environment_binding(
+    lot: &CapacityLot,
+    envelope: &ComputeCapabilityEnvelope,
+) -> Option<ComputeEnvironmentBinding> {
+    lot.environment_binding
+        .clone()
+        .or_else(|| envelope.environment_binding.clone())
+}
+
+fn sandbox_profile_ref_for_quote(product: &ComputeProduct, lot: &CapacityLot) -> Option<String> {
+    lot.metadata
+        .get("sandbox_profile_ref")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            product
+                .metadata
+                .get("sandbox_profile_ref")
+                .and_then(serde_json::Value::as_str)
+        })
+        .map(ToString::to_string)
+}
+
+fn normalized_constraint_label(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['.', '-', ' '], "_")
+}
+
+fn spot_rfq_matches_quote_posture(
+    constraints: &SpotComputeCapabilityConstraints,
+    quoteable: &QuoteableComputeProduct,
+    environment_binding: Option<&ComputeEnvironmentBinding>,
+    sandbox_profile_ref: Option<&str>,
+) -> bool {
+    if let Some(expected_topology) = constraints.topology_kind.as_deref()
+        && normalized_constraint_label(expected_topology) != quoteable.topology_kind.label()
+    {
+        return false;
+    }
+    if let Some(expected_proof_posture) = constraints.proof_posture.as_deref()
+        && normalized_constraint_label(expected_proof_posture) != quoteable.proof_posture.label()
+    {
+        return false;
+    }
+    if let Some(expected_environment_ref) = constraints.environment_ref.as_deref()
+        && environment_binding.map(|binding| binding.environment_ref.as_str())
+            != Some(expected_environment_ref)
+    {
+        return false;
+    }
+    if let Some(expected_profile_ref) = constraints.sandbox_profile_ref.as_deref()
+        && sandbox_profile_ref != Some(expected_profile_ref)
+    {
+        return false;
+    }
+    true
 }
 
 fn spot_rfq_matches_host_capability(
@@ -3268,23 +3481,40 @@ fn quote_terms_label(product: &ComputeProduct, lot: &CapacityLot) -> String {
         .to_string()
 }
 
-fn capability_summary_for_product(product: &ComputeProduct) -> String {
-    let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
-        return "unsupported_launch_product".to_string();
-    };
-    let envelope = product.capability_envelope.as_ref();
-    let model_policy = envelope
-        .and_then(|envelope| envelope.model_policy.as_deref())
-        .unwrap_or("none");
-    let model_family = envelope
-        .and_then(|envelope| envelope.model_family.as_deref())
-        .unwrap_or("none");
+fn capability_summary_for_product(
+    product: &ComputeProduct,
+    envelope: &ComputeCapabilityEnvelope,
+    backend_family: Option<ComputeBackendFamily>,
+    compute_family: ComputeFamily,
+    execution_kind: ComputeExecutionKind,
+    topology_kind: ComputeTopologyKind,
+    provisioning_kind: ComputeProvisioningKind,
+    proof_posture: ComputeProofPosture,
+) -> String {
+    let model_policy = envelope.model_policy.as_deref().unwrap_or("none");
+    let model_family = envelope.model_family.as_deref().unwrap_or("none");
     let latency_ms = envelope
-        .and_then(|envelope| envelope.latency_ms_p50)
+        .latency_ms_p50
         .map(|latency| latency.to_string())
         .unwrap_or_else(|| "n/a".to_string());
+    let throughput = envelope
+        .throughput_per_minute
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "n/a".to_string());
+    let environment_ref = envelope
+        .environment_binding
+        .as_ref()
+        .map(|binding| binding.environment_ref.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("none");
+    let sandbox_profile_ref = product
+        .metadata
+        .get("sandbox_profile_ref")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("none");
     let host_summary = envelope
-        .and_then(|envelope| envelope.host_capability.as_ref())
+        .host_capability
+        .as_ref()
         .map(|host_capability| {
             format!(
                 " accelerator_vendor={} accelerator_family={} memory_gb={}",
@@ -3304,14 +3534,39 @@ fn capability_summary_for_product(product: &ComputeProduct) -> String {
         })
         .unwrap_or_default();
     format!(
-        "backend={:?} family={} model_policy={} model_family={} latency_ms_p50={}{}",
-        spec.backend_family,
-        compute_family_label(spec.compute_family),
+        "backend={} execution={} family={} topology={} provisioning={} proof={} model_policy={} model_family={} latency_ms_p50={} throughput_per_minute={} environment_ref={} sandbox_profile_ref={}{}",
+        backend_family_label(backend_family, compute_family, execution_kind),
+        execution_kind.label(),
+        compute_family_label(compute_family),
+        topology_kind.label(),
+        provisioning_kind.label(),
+        proof_posture.label(),
         model_policy,
         model_family,
         latency_ms,
+        throughput,
+        environment_ref,
+        sandbox_profile_ref,
         host_summary
     )
+}
+
+fn backend_family_label(
+    backend_family: Option<ComputeBackendFamily>,
+    compute_family: ComputeFamily,
+    execution_kind: ComputeExecutionKind,
+) -> &'static str {
+    match backend_family {
+        Some(ComputeBackendFamily::GptOss) => "gpt_oss",
+        Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+        None
+            if matches!(compute_family, ComputeFamily::SandboxExecution)
+                || matches!(execution_kind, ComputeExecutionKind::SandboxExecution) =>
+        {
+            "sandbox"
+        }
+        None => "unknown",
+    }
 }
 
 fn compute_family_label(compute_family: ComputeFamily) -> &'static str {

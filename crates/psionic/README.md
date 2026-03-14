@@ -5,6 +5,14 @@ Psionic is the Rust-native compute engine program for OpenAgents.
 It is intentionally scoped as a workspace subtree under `crates/psionic/` so the
 engine can evolve without bleeding product-specific behavior into shared crates.
 
+## Doc Authority
+
+- `README.md` is the Psionic entrypoint and map.
+- `docs/ARCHITECTURE.md` is the canonical Psionic-wide system spec.
+- `docs/TRAIN_SYSTEM.md` is the canonical training subsystem spec.
+- research audits explain direction and rationale, but they are not the
+  authoritative current-state spec.
+
 ## What Psionic is
 
 - A tensor, IR, compiler, and runtime stack built in Rust.
@@ -44,6 +52,10 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-backend-amd-userspace`: AMD userspace discovery/readiness backend.
 - `psionic-apple-fm`: Apple Foundation Models bridge contracts, HTTP client, and types for the Swift sidecar.
 
+The crate list and layering are canonical for current ownership and dependency
+direction, but they are not a guarantee that every planned subsystem will land
+under exactly these final crate names.
+
 ## Design Principles
 
 - Keep the compiler and runtime visible and inspectable.
@@ -56,41 +68,41 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 
 ## Current Phase
 
-This subtree now has a tested CPU product baseline, a first Metal-backed
-`psionic.embeddings` path, wider-network `psionic-net` session establishment
-for direct/NAT/relay connectivity, durable ordered-state persistence, policy-
-driven wider-network candidate admission, truthful remote whole-request
-scheduling, replica-routed clustered serving with explicit replica evidence,
-public-network pipeline-parallel clustered serving with explicit stage timing
-and transport evidence, layer-sharded clustered serving with explicit handoff
-evidence, and restart-safe catch-up in `psionic-cluster`, tensor-sharded
-clustered serving with explicit collective evidence, and artifact
-residency/staging truth for clustered placement, plus sharded-model manifest
-and pre-shard artifact support across runtime, serve, and clustered execution
-evidence, plus truthful clustered prefix/KV cache compatibility and invalidation
-posture surfaced through capability envelopes and execution receipts, plus a
-new Psionic datastream substrate for resumable dataset and checkpoint delivery
-that cluster artifact staging can consume directly, plus benchmark-backed
-runtime quantization-dispatch and low-level worker batching/parking hooks now
-consumed by the datastream and serve layers, plus Psionic-owned sandbox runtime
-detection and bounded execution extracted from provider-substrate behind
-compatibility re-exports with explicit container/python/node/posix runner
-coverage and a reusable background-job/file-transfer lifecycle, plus canonical
-execution-proof bundles and proof-bundle digests now emitted through provider
-receipts and clustered evidence exports, plus embeddings-first activation-
-fingerprint proof artifacts with explicit `unavailable` vs `supported`
-posture in canonical proof bundles, plus an initial `psionic-train` substrate
-for async checkpointing, checkpoint-backed live recovery, and elastic
-membership truth on top of clustered execution evidence, plus a new
-`psionic-collectives` substrate for elastic device meshes and benchmark-backed
-quantized collectives that clustered training evidence can surface explicitly.
-`psionic-adapters` now adds explicit LoRA and adapter packaging plus hosted
-binding digests so adapter-backed serving stays attributable instead of hiding
-behind the base model artifact. Recent broader-stack issue closures also mean
-that environment-package, evaluation-run, and synthetic-data authority flows
-now exist outside the Psionic subtree in kernel/Nexus surfaces, even though
-Psionic-native environment and eval runtime crates are still future work. AMD
-execution support is still future work.
+Psionic is in an implemented-substrate, not-yet-complete-engine phase.
+
+Implemented now:
+
+- CPU baseline plus a first Metal-backed `psionic.embeddings` lane.
+- `psionic-net` direct, NAT, and relay session establishment.
+- `psionic-cluster` ordered state, admission, catch-up, and clustered serving
+  topology truth across replica, pipeline, layer-sharded, and tensor-sharded
+  variants.
+- sharded-model manifests, staged artifact residency, and clustered prefix or
+  KV-cache compatibility truth.
+- `psionic-datastream` resumable dataset and checkpoint delivery.
+- benchmark-backed quantization dispatch plus low-level batching and parking
+  hooks used by serve and datastream layers.
+- `psionic-sandbox` runtime detection, bounded execution, background jobs, and
+  file-transfer lifecycle.
+- canonical execution-proof bundles and embeddings-first activation-fingerprint
+  proof posture.
+- early train substrate: checkpoint-backed recovery, elastic membership,
+  collective planning, and adapter lineage.
+- broader-stack authority flows for environment packages, eval runs, and
+  synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
+
+Still planned:
+
+- full inference-engine maturity across model families, shared scheduling, and
+  serving semantics.
+- Psionic-native environment and eval runtime crates.
+- full Rust-native training core, rollout artifacts, and orchestrator layers.
+- policy-meaningful runtime and environment manifests plus proof-bearing
+  session-claims discipline for clustered and sandboxed execution.
+- AMD execution support.
+
+For canonical current-state detail, use `docs/ARCHITECTURE.md` and
+`docs/TRAIN_SYSTEM.md` rather than treating this README as the full system spec.
 
 ## Docs
 

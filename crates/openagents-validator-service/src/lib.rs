@@ -692,7 +692,9 @@ impl ValidatorChallengeService {
             .get_mut(challenge_id)
             .ok_or_else(|| ValidatorServiceError::UnknownChallenge(challenge_id.to_string()))?;
         if record.final_result.is_some() || record.active_lease.is_some() {
-            return Err(ValidatorServiceError::InvalidLease(challenge_id.to_string()));
+            return Err(ValidatorServiceError::InvalidLease(
+                challenge_id.to_string(),
+            ));
         }
         self.queue.retain(|queued_id| queued_id != challenge_id);
         let attempt = record.attempts_used.saturating_add(1);
