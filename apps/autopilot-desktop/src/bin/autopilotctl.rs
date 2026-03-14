@@ -11,10 +11,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
     DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
-    DesktopControlManifest, DesktopControlSnapshot, control_manifest_path,
+    DesktopControlManifest, DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+    control_manifest_path,
 };
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{DateTime, Datelike, Local, LocalResult, NaiveDate, TimeZone};
 use clap::{Parser, Subcommand, ValueEnum};
 use psionic_sandbox::ProviderSandboxEntrypointType;
 use reqwest::blocking::Client;
@@ -34,7 +36,7 @@ struct Cli {
     auth_token: Option<String>,
     #[arg(long)]
     manifest: Option<PathBuf>,
-    #[arg(long)]
+    #[arg(long, global = true)]
     json: bool,
     #[command(subcommand)]
     command: Command,
@@ -92,6 +94,10 @@ enum Command {
     BuyMode {
         #[command(subcommand)]
         command: BuyModeCommand,
+    },
+    Nip90Payments {
+        #[command(subcommand)]
+        command: Nip90PaymentsCommand,
     },
     Tunnels {
         #[command(subcommand)]
@@ -310,6 +316,20 @@ enum BuyModeCommand {
     Roster {
         #[arg(long, default_value_t = 12)]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum Nip90PaymentsCommand {
+    Daily {
+        #[arg(long)]
+        date: String,
+    },
+    Window {
+        #[arg(long)]
+        start: String,
+        #[arg(long)]
+        end: String,
     },
 }
 
@@ -541,6 +561,34 @@ impl BuyModeCommand {
             Self::Start { .. } => Some(DesktopControlActionRequest::StartBuyMode),
             Self::Stop { .. } => Some(DesktopControlActionRequest::StopBuyMode),
             Self::Status | Self::Target | Self::Roster { .. } => None,
+        }
+    }
+}
+
+impl Nip90PaymentsCommand {
+    fn action_request(&self) -> Result<DesktopControlActionRequest> {
+        match self {
+            Self::Daily { date } => {
+                let (start_epoch_seconds, end_epoch_seconds) =
+                    parse_local_daily_window(date.as_str())?;
+                Ok(DesktopControlActionRequest::GetNip90SentPaymentsReport {
+                    start_epoch_seconds,
+                    end_epoch_seconds,
+                    report_date: Some(date.clone()),
+                })
+            }
+            Self::Window { start, end } => {
+                let start_epoch_seconds = parse_report_boundary(start.as_str())?;
+                let end_epoch_seconds = parse_report_boundary(end.as_str())?;
+                if end_epoch_seconds <= start_epoch_seconds {
+                    bail!("window end must be greater than start");
+                }
+                Ok(DesktopControlActionRequest::GetNip90SentPaymentsReport {
+                    start_epoch_seconds,
+                    end_epoch_seconds,
+                    report_date: None,
+                })
+            }
         }
     }
 }
@@ -1041,6 +1089,17 @@ fn main() -> Result<()> {
                 }
             }
         },
+        Command::Nip90Payments { command } => {
+            let action = command.action_request()?;
+            let response = client.action(&action)?;
+            ensure_action_success(&response)?;
+            let report = parse_nip90_sent_payments_report(response.payload.as_ref())?;
+            if json_output {
+                print_json(&report)?;
+            } else {
+                print_nip90_sent_payments_report_text(&report);
+            }
+        }
         Command::Tunnels { command } => match command {
             TunnelCommand::Status => {
                 let snapshot = client.snapshot()?;
@@ -1590,6 +1649,54 @@ fn ensure_buy_mode_budget_ack(
     Ok(())
 }
 
+fn parse_nip90_sent_payments_report(
+    payload: Option<&Value>,
+) -> Result<DesktopControlNip90SentPaymentsReport> {
+    let payload = payload.ok_or_else(|| anyhow!("missing NIP-90 sent-payments report payload"))?;
+    serde_json::from_value::<DesktopControlNip90SentPaymentsReport>(payload.clone())
+        .context("decode NIP-90 sent-payments report payload")
+}
+
+fn parse_local_daily_window(date: &str) -> Result<(u64, u64)> {
+    let date = NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d")
+        .with_context(|| format!("parse daily report date '{}'", date.trim()))?;
+    let next_day = date
+        .succ_opt()
+        .ok_or_else(|| anyhow!("cannot compute next day for {}", date.format("%Y-%m-%d")))?;
+    Ok((
+        local_midnight_epoch_seconds(date)?,
+        local_midnight_epoch_seconds(next_day)?,
+    ))
+}
+
+fn local_midnight_epoch_seconds(date: NaiveDate) -> Result<u64> {
+    match Local.with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0) {
+        LocalResult::Single(timestamp) => u64::try_from(timestamp.timestamp())
+            .context("local midnight timestamp should be non-negative"),
+        LocalResult::Ambiguous(earliest, _) => u64::try_from(earliest.timestamp())
+            .context("local midnight timestamp should be non-negative"),
+        LocalResult::None => bail!(
+            "local midnight does not exist for {}",
+            date.format("%Y-%m-%d")
+        ),
+    }
+}
+
+fn parse_report_boundary(value: &str) -> Result<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("report boundary cannot be empty");
+    }
+    if trimmed.chars().all(|value| value.is_ascii_digit()) {
+        return trimmed
+            .parse::<u64>()
+            .with_context(|| format!("parse epoch-seconds boundary '{trimmed}'"));
+    }
+    let timestamp = DateTime::parse_from_rfc3339(trimmed)
+        .with_context(|| format!("parse RFC3339 boundary '{trimmed}'"))?;
+    u64::try_from(timestamp.timestamp()).context("report boundary timestamp should be non-negative")
+}
+
 fn tail_file_lines(path: &Path, tail: usize) -> Result<Vec<String>> {
     let raw =
         fs::read_to_string(path).with_context(|| format!("read session log {}", path.display()))?;
@@ -1606,6 +1713,49 @@ fn print_json<T: Serialize>(value: &T) -> Result<()> {
         serde_json::to_string_pretty(value).context("serialize autopilotctl JSON output")?
     );
     Ok(())
+}
+
+fn print_nip90_sent_payments_report_text(report: &DesktopControlNip90SentPaymentsReport) {
+    for line in nip90_sent_payments_report_lines(report) {
+        println!("{line}");
+    }
+}
+
+fn nip90_sent_payments_report_lines(report: &DesktopControlNip90SentPaymentsReport) -> Vec<String> {
+    let title = report
+        .report_date
+        .as_deref()
+        .map(|date| format!("NIP-90 sent payments report: {date}"))
+        .unwrap_or_else(|| "NIP-90 sent payments report".to_string());
+    vec![
+        title,
+        format!(
+            "window: {} -> {}",
+            report.window_start_rfc3339, report.window_end_rfc3339
+        ),
+        format!(
+            "totals: payment_count={} total_sats_sent={} total_fee_sats={} total_wallet_debit_sats={}",
+            report.payment_count,
+            report.total_sats_sent,
+            report.total_fee_sats,
+            report.total_wallet_debit_sats
+        ),
+        format!(
+            "dedupe: connected_relay_count={} deduped_request_count={} degraded_binding_count={}",
+            report.connected_relay_count,
+            report.deduped_request_count,
+            report.degraded_binding_count
+        ),
+        format!(
+            "relay_urls_considered: {}",
+            if report.relay_urls_considered.is_empty() {
+                "none".to_string()
+            } else {
+                report.relay_urls_considered.join(", ")
+            }
+        ),
+        format!("generated_at: {}", report.generated_at_rfc3339),
+    ]
 }
 
 fn print_pane_list_text(payload: &Value) {
@@ -3327,13 +3477,16 @@ mod tests {
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
         SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
-        ensure_buy_mode_budget_ack, inventory_status_lines, request_has_failed, request_has_paid,
-        request_has_payment_required, training_status_lines,
+        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
+        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
+        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
-        DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus, DesktopControlSnapshot,
+        DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
+        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
     };
+    use clap::Parser;
     use psionic_sandbox::ProviderSandboxEntrypointType;
     use std::path::PathBuf;
 
@@ -3344,6 +3497,29 @@ mod tests {
                 ..DesktopControlBuyModeStatus::default()
             },
             ..DesktopControlSnapshot::default()
+        }
+    }
+
+    fn sample_nip90_sent_payments_report() -> DesktopControlNip90SentPaymentsReport {
+        DesktopControlNip90SentPaymentsReport {
+            report_date: Some("2026-03-14".to_string()),
+            window_start_epoch_seconds: 1_773_464_400,
+            window_end_epoch_seconds: 1_773_550_800,
+            window_start_rfc3339: "2026-03-14T05:00:00+00:00".to_string(),
+            window_end_rfc3339: "2026-03-15T05:00:00+00:00".to_string(),
+            payment_count: 2,
+            total_sats_sent: 42,
+            total_fee_sats: 3,
+            total_wallet_debit_sats: 45,
+            connected_relay_count: 2,
+            relay_urls_considered: vec![
+                "wss://relay.one".to_string(),
+                "wss://relay.two".to_string(),
+            ],
+            deduped_request_count: 1,
+            degraded_binding_count: 0,
+            generated_at_epoch_seconds: 1_773_550_801,
+            generated_at_rfc3339: "2026-03-15T05:00:01+00:00".to_string(),
         }
     }
 
@@ -3744,6 +3920,105 @@ mod tests {
         assert_eq!(ChatCommand::Groups.action_request(), None);
         assert_eq!(ChatCommand::Channels.action_request(), None);
         assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+    }
+
+    #[test]
+    fn nip90_payment_commands_map_to_control_requests() {
+        let daily = super::Nip90PaymentsCommand::Daily {
+            date: "2026-03-14".to_string(),
+        }
+        .action_request()
+        .expect("daily report action should build");
+        assert!(matches!(
+            daily,
+            DesktopControlActionRequest::GetNip90SentPaymentsReport {
+                report_date: Some(ref report_date),
+                ..
+            } if report_date == "2026-03-14"
+        ));
+
+        let window = super::Nip90PaymentsCommand::Window {
+            start: "1773464400".to_string(),
+            end: "1773550800".to_string(),
+        }
+        .action_request()
+        .expect("window report action should build");
+        assert_eq!(
+            window,
+            DesktopControlActionRequest::GetNip90SentPaymentsReport {
+                start_epoch_seconds: 1_773_464_400,
+                end_epoch_seconds: 1_773_550_800,
+                report_date: None,
+            }
+        );
+    }
+
+    #[test]
+    fn nip90_payment_report_parsers_accept_daily_and_rfc3339_windows() {
+        let (start_epoch_seconds, end_epoch_seconds) =
+            parse_local_daily_window("2026-03-14").expect("daily window should parse");
+        assert!(end_epoch_seconds > start_epoch_seconds);
+        assert_eq!(
+            end_epoch_seconds.saturating_sub(start_epoch_seconds),
+            24 * 60 * 60
+        );
+
+        assert_eq!(
+            parse_report_boundary("1773464400").expect("epoch boundary"),
+            1_773_464_400
+        );
+        assert_eq!(
+            parse_report_boundary("2026-03-14T05:00:00+00:00").expect("rfc3339 boundary"),
+            1_773_464_400
+        );
+    }
+
+    #[test]
+    fn nip90_payment_report_payload_decodes_and_serializes_for_json() {
+        let report = sample_nip90_sent_payments_report();
+        let payload = serde_json::to_value(&report).expect("serialize report");
+        let decoded =
+            parse_nip90_sent_payments_report(Some(&payload)).expect("report payload should decode");
+        assert_eq!(decoded, report);
+        assert_eq!(
+            payload
+                .get("payment_count")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            payload
+                .get("total_sats_sent")
+                .and_then(|value| value.as_u64()),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn nip90_payment_report_lines_surface_required_totals() {
+        let lines = nip90_sent_payments_report_lines(&sample_nip90_sent_payments_report());
+        assert!(lines.iter().any(|line| line.contains("payment_count=2")));
+        assert!(lines.iter().any(|line| line.contains("total_sats_sent=42")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("total_wallet_debit_sats=45"))
+        );
+        assert!(lines.iter().any(|line| line.contains("wss://relay.one")));
+    }
+
+    #[test]
+    fn cli_accepts_global_json_after_nip90_payment_subcommand() {
+        let cli = super::Cli::try_parse_from([
+            "autopilotctl",
+            "nip90-payments",
+            "daily",
+            "--date",
+            "2026-03-14",
+            "--json",
+        ])
+        .expect("cli should accept trailing global json flag");
+        assert!(cli.json);
     }
 
     #[test]
