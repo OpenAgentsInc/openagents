@@ -278,7 +278,7 @@ for phase, spec in phase_specs.items():
     buyer_log = (run_dir / f"{phase}-buyer.log").read_text()
     provider_log = (run_dir / f"{phase}-provider.log").read_text()
     buyer_settled = extract_all(
-        r"buyer settled request_id=(?P<request_id>[0-9a-f]+) provider=(?P<provider>[0-9a-f]+) result=(?P<result>.+)",
+        r"buyer settled request_id=(?P<request_id>[0-9a-f]+)[^\n]*provider(?:_nostr)?=(?P<provider>[0-9a-f]+)[^\n]*result=(?P<result>.+)",
         buyer_log,
     )
     buyer_payments = extract_all(
@@ -286,7 +286,7 @@ for phase, spec in phase_specs.items():
         buyer_log,
     )
     provider_settlements = extract_all(
-        r"provider settlement confirmed request_id=(?P<request_id>[0-9a-f]+) success_feedback_id=(?P<success_feedback_id>[0-9a-f]+) balance_before=(?P<balance_before>\d+) balance_after=(?P<balance_after>\d+)",
+        r"provider settlement confirmed request_id=(?P<request_id>[0-9a-f]+) success_feedback_id=(?P<success_feedback_id>[0-9a-f]+)[^\n]*balance_before=(?P<balance_before>\d+) balance_after=(?P<balance_after>\d+)",
         provider_log,
     )
     provider_invoices = extract_all(

@@ -385,8 +385,8 @@ What it does:
   - targeted NIP-90 request dispatch
   - buyer payment settlement
   - provider settlement confirmation
-  - `shell_mode=hotbar`
-  - `dev_mode_enabled=false`
+  - `snapshot.session.shell_mode=hotbar`
+  - `snapshot.session.dev_mode_enabled=false`
 
 Useful env overrides:
 

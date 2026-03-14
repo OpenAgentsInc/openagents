@@ -777,8 +777,9 @@ def load_balance(path: pathlib.Path):
     return payload.get("snapshot", {}).get("wallet", {}).get("balance_sats")
 
 def assert_split_shell_status(label: str, snapshot: dict):
-    shell_mode = snapshot.get("shell_mode")
-    dev_mode_enabled = snapshot.get("dev_mode_enabled")
+    session = snapshot.get("session", {})
+    shell_mode = session.get("shell_mode")
+    dev_mode_enabled = session.get("dev_mode_enabled")
     if shell_mode != "hotbar":
         raise SystemExit(f"{label} shell_mode changed unexpectedly: {shell_mode!r}")
     if dev_mode_enabled is not False:
