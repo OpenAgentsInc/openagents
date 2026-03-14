@@ -875,6 +875,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This must integrate with `psionic-cluster` topology and proof surfaces rather than bypassing them.
 
 18. **Psionic Serve: add clustered prefix/KV compatibility and cache truth**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3502`.
    - Model whether replicated or sharded lanes can honestly share cache or prefix state.
    - Expose that in capability envelopes so the market is not pretending all clustered inference has the same performance profile.
 

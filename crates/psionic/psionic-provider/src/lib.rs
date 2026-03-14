@@ -2319,26 +2319,26 @@ mod tests {
         AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata, AmdDriverBinding,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport, BackendProbeState,
-        BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        ClusterAdmissionFactKind, ClusterArtifactResidencyDisposition,
-        ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
-        ClusterCommitAuthorityEvidence, ClusterComputeMarketTrustAssessment,
-        ClusterComputeMarketTrustDisposition, ClusterComputeMarketTrustRefusalReason,
-        ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage,
-        ClusterPipelineStageRole, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
-        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
-        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
-        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
-        ServedProductBackendPolicy, ValidationCoverage,
+        BackendRuntimeResources, BackendSelection, BackendToolchainIdentity, CacheAction,
+        ClusterAdmissionFactKind, ClusterArtifactResidencyDisposition, ClusterCacheCapability,
+        ClusterCacheScope, ClusterCacheUsage, ClusterCommandAuthorityScopeEvidence,
+        ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence,
+        ClusterComputeMarketTrustAssessment, ClusterComputeMarketTrustDisposition,
+        ClusterComputeMarketTrustRefusalReason, ClusterExecutionCapabilityProfile,
+        ClusterExecutionContext, ClusterExecutionDisposition, ClusterExecutionLane,
+        ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage, ClusterPipelineStageRole,
+        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
+        DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
+        ExecutionDeliveryProof, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
+        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
+        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
+        RuntimeTransitionKind, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
+        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
+        SandboxExecutionResourceSummary, ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -3778,6 +3778,11 @@ mod tests {
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch", "replica_routing"])
         );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
+                [0]["prefix_scope"],
+            json!("replica_local")
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -3813,6 +3818,11 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch", "layer_shard_handoff"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
+                [0]["kv_scope"],
+            json!("stage_local")
         );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
@@ -3854,6 +3864,11 @@ mod tests {
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch", "pipeline_stage_handoff"])
         );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
+                [0]["invalidates_on_topology_change"],
+            json!(true)
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -3888,6 +3903,11 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch", "tensor_collective_mesh"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
+                [0]["prefix_scope"],
+            json!("stage_local")
         );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
@@ -4894,6 +4914,10 @@ mod tests {
             json!("replication")
         );
         assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["prefix_action"],
+            json!("reuse")
+        );
+        assert_eq!(
             encoded["selected_devices"][1]["stable_device_id"],
             json!(second.stable_device_id)
         );
@@ -4992,6 +5016,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["sharded_model_manifest_digest"],
             json!("layer-manifest-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["kv_scope"],
+            json!("stage_local")
         );
         assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
@@ -5103,6 +5131,10 @@ mod tests {
             json!("pipeline-manifest-digest")
         );
         assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["prefix_action"],
+            json!("bypass")
+        );
+        assert_eq!(
             encoded["selected_devices"][0]["stable_device_id"],
             json!(first.stable_device_id)
         );
@@ -5198,6 +5230,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["sharded_model_manifest_digest"],
             json!("tensor-manifest-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["clustered_cache_usage"]["prefix_scope"],
+            json!("stage_local")
         );
         assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
@@ -5981,6 +6017,17 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::ReplicaRouted,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .invalidates_on_route_change()
+                .with_detail(
+                    "replica-routed prefix and KV reuse are only truthful on one warm replica identity",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request dispatch plus replica routing across warm lanes",
             )
@@ -5992,6 +6039,17 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::LayerSharded,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::LayerSharded,
+                    ClusterCacheScope::StageLocal,
+                    ClusterCacheScope::StageLocal,
+                )
+                .invalidates_on_topology_change()
+                .with_detail(
+                    "layer-sharded prefix and KV reuse are only truthful while shard ownership remains pinned",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request dispatch plus layer-sharded cluster handoff support under explicit transport policy",
             )
@@ -6003,6 +6061,17 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::PipelineSharded,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::PipelineSharded,
+                    ClusterCacheScope::StageLocal,
+                    ClusterCacheScope::StageLocal,
+                )
+                .invalidates_on_topology_change()
+                .with_detail(
+                    "pipeline-parallel prefix and KV reuse are only truthful while ordered stage ownership remains pinned",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request dispatch plus public-network pipeline-parallel stage handoff support under explicit timing policy",
             )
@@ -6014,6 +6083,17 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::TensorSharded,
             ])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::TensorSharded,
+                    ClusterCacheScope::StageLocal,
+                    ClusterCacheScope::StageLocal,
+                )
+                .invalidates_on_topology_change()
+                .with_detail(
+                    "tensor-sharded prefix and KV reuse are only truthful while collective shard ownership remains pinned",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request dispatch plus tensor-collective mesh support under explicit low-latency transport policy",
             )
@@ -6135,6 +6215,18 @@ mod tests {
             .with_load(0, 0)
             .with_detail("warm standby retained for failover"),
         ])
+        .with_clustered_cache_usage(
+            ClusterCacheUsage::new(
+                ClusterExecutionLane::ReplicaRouted,
+                ClusterCacheScope::ReplicaLocal,
+                ClusterCacheScope::ReplicaLocal,
+                CacheAction::Reuse,
+                CacheAction::Reuse,
+            )
+            .with_detail(
+                "replica-routed prefix and KV reuse remained pinned to the selected warm replica",
+            ),
+        )
         .with_degraded_reason("replicated lane admitted with one standby replica")
     }
 
@@ -6200,6 +6292,18 @@ mod tests {
             )
             .with_detail("forward kv cache across the shard boundary"),
         ])
+        .with_clustered_cache_usage(
+            ClusterCacheUsage::new(
+                ClusterExecutionLane::LayerSharded,
+                ClusterCacheScope::StageLocal,
+                ClusterCacheScope::StageLocal,
+                CacheAction::Bypass,
+                CacheAction::Bypass,
+            )
+            .with_detail(
+                "layer-sharded execution does not promise cluster-wide prefix or KV reuse outside one fixed shard topology",
+            ),
+        )
         .with_degraded_reason("layer-sharded lane uses mixed scheduler and handoff transport")
     }
 
@@ -6295,6 +6399,18 @@ mod tests {
             )
             .with_detail("pipeline exit stage owns layers [20..40)"),
         ])
+        .with_clustered_cache_usage(
+            ClusterCacheUsage::new(
+                ClusterExecutionLane::PipelineSharded,
+                ClusterCacheScope::StageLocal,
+                ClusterCacheScope::StageLocal,
+                CacheAction::Bypass,
+                CacheAction::Bypass,
+            )
+            .with_detail(
+                "pipeline-parallel execution does not promise cluster-wide prefix or KV reuse outside one fixed stage topology",
+            ),
+        )
         .with_degraded_reason("pipeline handoff adds 32 ms public-network latency to decode")
     }
 
@@ -6351,6 +6467,18 @@ mod tests {
             .with_tensor_partition(1, 0, 32)
             .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
         ])
+        .with_clustered_cache_usage(
+            ClusterCacheUsage::new(
+                ClusterExecutionLane::TensorSharded,
+                ClusterCacheScope::StageLocal,
+                ClusterCacheScope::StageLocal,
+                CacheAction::Bypass,
+                CacheAction::Bypass,
+            )
+            .with_detail(
+                "tensor-sharded execution does not promise cluster-wide prefix or KV reuse outside one fixed collective topology",
+            ),
+        )
     }
 
     fn sample_cluster_command_provenance(

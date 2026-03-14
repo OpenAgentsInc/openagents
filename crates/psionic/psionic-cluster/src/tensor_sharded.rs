@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
+    CacheAction, ClusterCacheCapability, ClusterCacheScope, ClusterCacheUsage,
     ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
@@ -140,6 +141,17 @@ fn default_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProf
             ClusterExecutionLane::RemoteWholeRequest,
             ClusterExecutionLane::TensorSharded,
         ])
+        .with_clustered_cache_capability(
+            ClusterCacheCapability::new(
+                ClusterExecutionLane::TensorSharded,
+                ClusterCacheScope::StageLocal,
+                ClusterCacheScope::StageLocal,
+            )
+            .invalidates_on_topology_change()
+            .with_detail(
+                "tensor-sharded prefix and KV reuse are only truthful while the same collective topology and tensor ranges remain pinned",
+            ),
+        )
         .with_detail(
             "backend `cuda` declares whole-request dispatch plus tensor-collective mesh support under explicit low-latency transport policy",
         )
@@ -640,6 +652,18 @@ pub fn schedule_tensor_sharded_execution(
             .iter()
             .map(|schedule| &schedule.cluster_execution),
     ));
+    cluster_execution = cluster_execution.with_clustered_cache_usage(
+        ClusterCacheUsage::new(
+            ClusterExecutionLane::TensorSharded,
+            ClusterCacheScope::StageLocal,
+            ClusterCacheScope::StageLocal,
+            CacheAction::Bypass,
+            CacheAction::Bypass,
+        )
+        .with_detail(
+            "tensor-sharded execution cannot promise cluster-wide prefix or KV reuse outside one fixed collective topology",
+        ),
+    );
     if let Some(commit_authority) = state.commit_authority() {
         cluster_execution = cluster_execution
             .with_commit_authority(ClusterCommitAuthorityEvidence::new(
@@ -1268,6 +1292,17 @@ mod tests {
         assert_eq!(schedule.shard_handoffs[0].tensor_axis, Some(1));
         assert_eq!(schedule.shard_handoffs[0].tensor_range_start, Some(0));
         assert_eq!(schedule.shard_handoffs[0].tensor_range_end, Some(32));
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .clustered_cache_usage
+                .as_ref()
+                .map(|usage| (usage.kv_scope, usage.kv_action)),
+            Some((
+                psionic_runtime::ClusterCacheScope::StageLocal,
+                psionic_runtime::CacheAction::Bypass,
+            ))
+        );
         assert!(
             schedule
                 .cluster_execution
