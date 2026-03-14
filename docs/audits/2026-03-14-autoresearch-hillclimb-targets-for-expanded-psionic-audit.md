@@ -593,6 +593,183 @@ Why:
 
 - by then the score contracts, receipts, and promotion path are already stable
 
+## GitHub Issues For The First Inference-Policy Hillclimb Loop
+
+The smallest honest first loop is:
+
+- local-first
+- bounded
+- typed-spec driven
+- aimed at one real Psionic serving-policy surface, not full model training
+
+The clearest first target remains:
+
+- local serving scheduler policy on the current real inference path
+
+That first working loop is now covered by this issue set.
+
+### Existing prerequisite substrate issues
+
+- `#3542` `PSI-237: add continuous batching and mixed prefill/decode scheduling`
+  - this creates the first high-value serving-policy surface worth optimizing
+- `#3593` `Benchmarking: define performance acceptance thresholds for trainer, sandbox, datastream, and validation`
+  - this supplies the acceptance discipline needed so hillclimb scores are not
+    vague benchmark anecdotes
+- `#3594` `Psionic Net and Proof: add runtime manifests and session-claims bundles for policy-meaningful networked execution`
+  - this is not required for the smallest purely local loop, but it is part of
+    the truth boundary the loop must not bypass as soon as hillclimbs touch
+    proof-bearing clustered or sandboxed lanes
+
+### Newly created hillclimb-loop issues
+
+- `#3595` `Psionic Research: define typed experiment specs, result manifests, and promotion records for hillclimb runs`
+  - this is the missing reusable experiment vocabulary for one candidate, one
+    run, one score, and one promotion decision
+- `#3596` `Psionic Research Runner: add a compiled fixed-budget runner for local-first hillclimb experiments`
+  - this creates the bounded compiled execution unit for hillclimb candidates
+- `#3597` `Autopilot Research: add frontier state, keep-discard policy, and the first local hillclimb controller`
+  - this creates the app-owned controller loop and persistent frontier state
+- `#3598` `Reference Program: run the first local-first Psionic hillclimb loop against serving scheduler policy`
+  - this is the actual end-to-end pilot that proves the loop works on a real
+    Psionic surface
+
+### Minimum dependency order
+
+1. `#3595`
+   - without typed experiment and result contracts, there is no stable loop
+2. `#3596`
+   - without a compiled runner, the loop remains a doc rather than execution
+3. `#3597`
+   - without the app-owned frontier controller, there is no keep/discard logic
+4. `#3542`
+   - without a real tunable serving scheduler, the first target surface is too
+     thin
+5. `#3593`
+   - without score and acceptance thresholds, the loop is not trustworthy
+6. `#3598`
+   - this validates the first full local-first loop end to end
+
+### Important non-prerequisites for the first loop
+
+The first working hillclimb loop does not need all later train and distributed
+research work first.
+
+It does not require:
+
+- full Rust-native training core
+- decentralized rollout workers
+- validator-mediated RL adjudication
+- full environment runtime
+- public market execution
+
+Those are later hillclimb expansions, not day-one requirements for proving the
+loop shape.
+
+## GitHub Issues For The First Training-Policy Hillclimb Loop
+
+The first honest training-policy hillclimb loop is different.
+
+It is not:
+
+- "let the controller rewrite the trainer"
+- "let the system mutate arbitrary Rust code and benchmark it"
+- "count one end-to-end train pilot as hillclimbing"
+
+It is:
+
+- bounded train-policy mutation
+- bounded eval-scored comparison
+- typed train, eval, and promotion records
+- app-owned keep, discard, and branch logic over train outcomes
+
+The clearest first training target is:
+
+- local-first or tightly bounded post-training policy search over one small
+  train or eval lane once the Rust-native train and eval surfaces are real
+
+### Existing prerequisite train-substrate issues
+
+- `#3564` `Psionic Train: complete the Rust-native training core beyond recovery substrate`
+  - without a real trainer-step substrate there is nothing honest to optimize
+- `#3565` `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
+  - without rollout and policy-lineage truth, candidate comparison becomes
+    stringly typed and non-replayable
+- `#3568` `Psionic Eval: create the Rust-native eval and rubric runtime`
+  - without eval runtime, train-policy scores are not comparable
+- `#3573` `Psionic Train: build the orchestrator state machine and trainer-batch assembly contracts`
+  - the hillclimb loop needs a real train control plane, not ad hoc batch
+    assembly
+- `#3576` `Validator Service: add rollout-verification bundles and sampled adjudication protocols`
+  - once train-policy search touches untrusted rollout generation, verdicts and
+    duplicate detection become part of score honesty
+- `#3580` `Psionic Train: add SFT trace ingestion, stage transitions, and agentic pre-RL flows`
+  - this creates the first practical policy-search lane richer than a toy loop
+- `#3582` `Psionic Train: add instability telemetry, halt policies, and risky-optimization gating`
+  - train hillclimbs need safety gates, not only "best metric wins"
+- `#3583` `Kernel and Nexus: add training and eval receipt families, policy registries, and read models`
+  - accepted train and eval outcomes need canonical receipts before promotion
+    is trustworthy
+
+### Shared hillclimb-substrate issues that also apply on the train side
+
+- `#3595` `Psionic Research: define typed experiment specs, result manifests, and promotion records for hillclimb runs`
+  - this is now the shared experiment vocabulary for both inference-policy and
+    training-policy hillclimbs
+- `#3596` `Psionic Research Runner: add a compiled fixed-budget runner for local-first hillclimb experiments`
+  - the same runner boundary should support bounded train and eval experiments
+    without collapsing them into app-local scripts
+
+### Newly created training-hillclimb issues
+
+- `#3599` `Autopilot Research: add a training-policy hillclimb controller over train and eval receipts`
+  - this creates the app-owned frontier and keep or discard logic for train
+    candidates rather than only serving-policy candidates
+- `#3600` `Reference Program: run the first bounded Psionic training-policy hillclimb loop against eval-scored candidates`
+  - this is the end-to-end proof that the train side can do more than one
+    static reference run
+
+### Minimum dependency order
+
+1. `#3564`
+   - the train core has to exist before train policy search means anything
+2. `#3565`
+   - policy-lineage and rollout artifacts must be typed before candidates can
+     be compared honestly
+3. `#3568`
+   - without bounded eval scoring there is no stable objective
+4. `#3573`
+   - without a real orchestrator there is no train-state machine to search over
+5. `#3582`
+   - without safety and instability gates the loop is not promotable
+6. `#3583`
+   - accepted train and eval outcomes need canonical receipt and policy truth
+7. `#3595`
+   - the train hillclimb still needs the same typed experiment contracts as the
+     inference loop
+8. `#3596`
+   - train and eval candidates still need the bounded compiled runner boundary
+9. `#3599`
+   - the controller loop must be explicit and app-owned
+10. `#3600`
+   - this is the first end-to-end proof that training-policy hillclimbing is
+      real rather than aspirational
+
+### Important non-prerequisites for the first train-policy loop
+
+The first honest train-policy hillclimb loop does not require the full final
+post-training system first.
+
+It does not require:
+
+- decentralized or public-market training execution
+- every future environment family
+- broader human-feedback ingestion pipelines
+- arbitrary source-code mutation of the trainer
+- the full decentralized-economy settlement path
+
+It does require enough train, eval, receipt, and policy truth that "candidate A
+beat candidate B" means something durable.
+
 ## Proposed Experiment Families
 
 If OpenAgents wants a practical typed experiment vocabulary, the expanded
