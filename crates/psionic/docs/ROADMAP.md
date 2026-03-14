@@ -829,14 +829,14 @@ explicit refusal for unsupported remote PD modes. `PSI-241` /
 too through hierarchical KV residency accounting across host, device, and
 explicit datastream-backed distributed tiers, with spill/prefetch/write-back
 movement truth, external-locator validation, and cluster cache-capability
-reporting that only claims supported residency tiers. The next
-dependency-ordered issue in that chain is now `PSI-243` /
-[#3548](https://github.com/OpenAgentsInc/openagents/issues/3548), because
-`PSI-242` / [#3547](https://github.com/OpenAgentsInc/openagents/issues/3547)
-is landed too through one canonical serving-semantics model shared across
-local and clustered lanes, explicit warm-route posture reporting, and aligned
-cluster capability and evidence truth for whole-request, replica-routed,
-pipeline-sharded, layer-sharded, and tensor-sharded serving.
+reporting that only claims supported residency tiers. `PSI-243` /
+[#3548](https://github.com/OpenAgentsInc/openagents/issues/3548) is now landed
+too through a widened generic serving surface: real `/v1/embeddings` on the
+existing embeddings substrate, a first Psionic-owned `/v1/responses` contract,
+heterogeneous model inventory across decoder and embeddings artifacts, and
+truthful per-model endpoint support in `/v1/models` and `/health`. The next
+dependency-ordered issue in that chain is now `PSI-244` /
+[#3549](https://github.com/OpenAgentsInc/openagents/issues/3549).
 
 ## Current Reality
 
@@ -853,8 +853,9 @@ baseline on `main` is:
   those families as metadata-only adapters
 - Psionic now also has a generic OpenAI-compatible CPU server path,
   `psionic-openai-server`, that can boot multiple loaded GGUF families on one
-  `/v1/chat/completions` surface while still explicitly refusing unfinished
-  APIs such as `/v1/embeddings`
+  `/v1/chat/completions` surface, can front safetensors-backed embeddings on
+  `/v1/embeddings`, and now exposes a first Psionic-owned `/v1/responses`
+  contract while keeping per-model endpoint support explicit
 - that generic server now also reports CPU-only residency, unsupported hybrid
   offload, refuse-on-fallback behavior, and explicit non-implemented
   warm/unload or memory-pressure controls instead of implying a stronger local

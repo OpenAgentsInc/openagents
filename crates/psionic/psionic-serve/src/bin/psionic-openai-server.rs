@@ -125,7 +125,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model.gguf> [-m <model.gguf> ...] [--backend cpu] [--host <ip>] [--port <port>] [--reasoning-budget <n>]",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu] [--host <ip>] [--port <port>] [--reasoning-budget <n>]",
     )
 }
 
