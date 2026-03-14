@@ -1610,9 +1610,7 @@ pub enum ComputeValidatorChallengeProtocolKind {
 impl ComputeValidatorChallengeProtocolKind {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::GpuFreivaldsMerkleV1 => {
-                "openagents.validator.gpu_freivalds_merkle.v1"
-            }
+            Self::GpuFreivaldsMerkleV1 => "openagents.validator.gpu_freivalds_merkle.v1",
         }
     }
 }
