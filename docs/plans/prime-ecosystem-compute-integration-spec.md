@@ -118,12 +118,15 @@ Relevant files:
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `crates/openagents-provider-substrate/src/sandbox.rs`
 - `crates/openagents-provider-substrate/src/sandbox_execution.rs`
+- `crates/psionic/psionic-sandbox/src/lib.rs`
 
 Important current truths:
 
 - provider backend health is already normalized across GPT-OSS and Apple FM
 - provider compute products already exist as a reusable abstraction
-- bounded sandbox runtime detection and execution already exist
+- provider-substrate still owns the provider-facing descriptor layer
+- bounded sandbox runtime detection and execution now live in Psionic behind a
+  compatibility shim
 - sandbox profiles, runtime kinds, capability summaries, and evidence are
   already modeled
 
@@ -487,9 +490,10 @@ family names.
 Prime's sandbox stack is valuable because it makes remote execution feel like a
 product, not a shell script.
 
-OpenAgents already has a strong local start in
-`openagents-provider-substrate/src/sandbox*.rs`. The right next step is to make
-it a first-class compute family.
+OpenAgents already has a strong local start, now extracted into
+`crates/psionic/psionic-sandbox` with `openagents-provider-substrate` kept as
+the provider-facing descriptor layer. The right next step is to make it a
+first-class compute family.
 
 ### Why it matters
 
@@ -892,6 +896,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 4: Sandbox And Operator Surface
 
 21. **Psionic Sandbox: extract the runtime engine from provider-substrate**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3505`.
    - Move long-term ownership of sandbox execution into a dedicated Psionic crate while preserving compatibility with existing provider-substrate APIs.
    - The old crate should remain the descriptor layer; the new crate should own execution.
 

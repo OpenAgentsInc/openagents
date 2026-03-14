@@ -6,8 +6,8 @@
 > `docs/pylon/PYLON_SANDBOX_CONTRACT.md`,
 > `crates/psionic/psionic-runtime/src/lib.rs`,
 > `crates/psionic/psionic-provider/src/lib.rs`,
-> `crates/openagents-provider-substrate/src/sandbox.rs`,
-> `crates/openagents-provider-substrate/src/sandbox_execution.rs`, and the local
+> `crates/psionic/psionic-sandbox/src/lib.rs`,
+> `crates/openagents-provider-substrate/src/sandbox.rs`, and the local
 > `~/code/autoresearch` tree as inspiration only.
 
 ## Why This Doc Exists
@@ -212,8 +212,8 @@ The runner should accept a typed spec and emit typed outputs.
 
 This fits the existing substrate in:
 
+- [psionic-sandbox/src/lib.rs](/Users/christopherdavid/code/openagents/crates/psionic/psionic-sandbox/src/lib.rs)
 - [sandbox.rs](/Users/christopherdavid/code/openagents/crates/openagents-provider-substrate/src/sandbox.rs)
-- [sandbox_execution.rs](/Users/christopherdavid/code/openagents/crates/openagents-provider-substrate/src/sandbox_execution.rs)
 - [psionic-runtime/src/lib.rs](/Users/christopherdavid/code/openagents/crates/psionic/psionic-runtime/src/lib.rs)
 - [psionic-provider/src/lib.rs](/Users/christopherdavid/code/openagents/crates/psionic/psionic-provider/src/lib.rs)
 

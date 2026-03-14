@@ -21,6 +21,7 @@ members = [
     "crates/psionic/psionic-ir",
     "crates/psionic/psionic-compiler",
     "crates/psionic/psionic-runtime",
+    "crates/psionic/psionic-sandbox",
     "crates/psionic/psionic-net",
     "crates/psionic/psionic-datastream",
     "crates/psionic/psionic-cluster",

@@ -123,8 +123,8 @@ Own:
 - Backend-specific runtime implementations and execution planning internals.
 - Cluster topology, ordered execution-state, and machine-checkable execution
   provenance.
-- Long-term sandbox runtime ownership once executable sandbox code is extracted
-  from provider-substrate.
+- Sandbox runtime ownership, including bounded execution profiles, runtime
+  detection, and execution evidence.
 - Later training-class execution substrate.
 
 Must not own:
