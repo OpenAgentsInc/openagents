@@ -131,6 +131,147 @@ The gap is that training-class execution still needs explicit contracts for:
 
 That is exactly what the Intellect papers make concrete.
 
+## Rust-Only Clarification: What Psionic Still Lacks As Prerequisites
+
+If the requirement is:
+
+> do all of this in Rust, with no Python trainer, no Python environment
+> plugins, and no Python orchestration core
+
+then yes, there are still prerequisite gaps beyond the architectural issue set
+above.
+
+The most important one is simple:
+
+- there is no `psionic-train` crate in the workspace today
+
+The current workspace members include runtime, serve, sandbox, datastream,
+cluster, provider, and backend crates, but not a Rust-native training crate.
+
+The repo also already states this directly in
+`crates/psionic/docs/AUTORESEARCH_INTEGRATION_PLAN.md`:
+
+- Psionic is still inference-first today
+- the backward and optimizer substrate are not in Psionic yet
+- the Rust-native loop needs new crates such as `psionic-train`,
+  `psionic-eval`, `psionic-research`, and `psionic-data` or
+  `psionic-datasets`
+
+So the prerequisite answer is not "just add orchestration."
+
+It is:
+
+### 1. We still need the actual Rust-native training core
+
+At minimum Psionic still needs:
+
+- backward/autodiff or an equivalent explicit training graph
+- optimizer updates and optimizer-state ownership
+- training checkpoint serialization and restore
+- trainer-step scheduling and fixed-budget trainer loops
+
+Without that, there is no honest Rust-only RL stack. There is only a plan for
+one.
+
+### 2. We still need a Rust-native RL rollout artifact model
+
+The papers assume a real rollout substrate:
+
+- prompts or tasks
+- completions or trajectories
+- token ids
+- logprobs
+- rewards
+- advantages
+- validator-facing proof or commitment refs
+
+In the current Psionic tree, I can find conformance-side `top_logprobs`
+request fields, but not a real reusable rollout artifact crate or training
+batch contract.
+
+So a Rust-only RL path still needs:
+
+- rollout record types
+- trainer-batch assembly types
+- policy-revision lineage on rollouts
+- reward and advantage attachment contracts
+- serialization formats for replay and validator inspection
+
+### 3. We still need a Rust-native environment ABI, not just environment ideas
+
+If we are not using Python at all, then the environment layer itself cannot be
+a Python-style plugin system.
+
+That means we still need:
+
+- a Rust-native environment package ABI
+- Rust entrypoints for rollout execution
+- Rust rubric or reward-function contracts
+- Rust-native tool-calling and multi-turn environment interfaces
+- package loading, version pinning, and composition without a Python runtime
+
+This is a real prerequisite, not a polish item.
+
+### 4. We still need a Rust-native data and corpus layer
+
+The training loop cannot stay honest if datasets, tokenizer state, split
+definitions, and curriculum metadata are all implicit side files.
+
+So Psionic still needs:
+
+- dataset manifests
+- tokenizer and corpus digests
+- split declarations
+- streamed training-corpus iteration
+- sequence-packing or batch-packing contracts for long-context work
+
+This is why the older Psionic autoresearch plan called out
+`psionic-data` or `psionic-datasets`.
+
+### 5. We still need a Rust-native eval and rubric runtime
+
+For a Rust-only stack, evaluation cannot remain an afterthought.
+
+We still need:
+
+- a `psionic-eval`-style crate for fixed scoring contracts
+- reusable benchmark and held-out evaluation runners
+- online and offline eval over the same environment contract
+- durable eval summaries and artifact refs
+
+Without that, "train in Rust" still leaves the truth layer for reward and
+quality underspecified.
+
+### 6. We still need a compiled runner and crash boundary
+
+The existing Psionic docs are also right that long-running training should not
+just run inside the serving process.
+
+So a prerequisite for a real Rust-only RL system is:
+
+- a compiled training runner binary
+- sandboxed execution outside the in-process serving boundary
+- explicit crash, restart, and resume contracts
+
+That is a prerequisite for serious runs, not a deployment nicety.
+
+### 7. We probably need adapter or promotion policy later, but not as day-zero prerequisite
+
+Adapter packaging and promotion matter, but they are not the first blocker.
+
+The first blockers are:
+
+- training graph
+- optimizer state
+- rollout artifacts
+- environment ABI
+- eval runtime
+- dataset layer
+- runner isolation
+
+Adapter-hosting or LoRA productization can come after the base Rust-native loop
+is real.
+
 ## What INTELLECT-1 Says Psionic Train Should Learn
 
 ### 1. Elastic topology should be explicit and two-layered
@@ -576,87 +717,345 @@ that split explicit.
 Checkpoints, policy weights, environment versions, and sandbox images should be
 digest-bound and queryable, not just "whatever the trainer used."
 
-## Recommended Changes To The Prime/Psionic Backlog
+## Proposed GitHub Issue Set For The Full Intellect-Style Training Paradigm
 
-The existing `Wave 6` direction is right, but it should be sharpened with the
-lessons above.
+This list assumes the currently open Prime/Psionic issues are already complete
+before any of the work below starts.
 
-### 1. Widen the `Psionic Train` scope in issue 37
+So this is not a set of edits to today's open issues.
 
-Current framing:
+It is the follow-on GitHub issue program required to fully implement the
+training paradigm implied by `INTELLECT-1`, `INTELLECT-2`, and `INTELLECT-3`.
 
-- async checkpointing
-- live recovery
-- elastic membership
+Where relevant, each issue can reference the completed `Wave 6` work
+(`Environments`, `Evals`, `Psionic Train`, `Psionic Adapters`) plus the
+completed proof and validator foundations as prerequisites.
 
-Recommended expansion:
+The first five issues below are hard Rust-only prerequisites. They are required
+before the later trainer/orchestrator/validator architecture can be honestly
+called "all-Rust."
 
-- topology revision contracts
-- explicit join/recovery modes
-- heartbeat and voluntary-leave semantics
-- trainer-batch receipts that record checkpoint and topology lineage
+### 1. `Psionic Train: create the Rust-native training core crate`
 
-### 2. Add a distinct `Psionic Train: orchestrator and off-policy control` item
+Description:
 
-This should make explicit:
+- Create the actual `psionic-train` crate in the workspace.
+- Add backward/autodiff or an equivalent explicit training graph, optimizer
+  state ownership, checkpoint I/O, and fixed-budget trainer-loop contracts.
+- Make this the reusable training substrate rather than hiding training logic
+  inside apps, notebooks, or external runtimes.
 
-- trainer/orchestrator/inference split
-- off-policy budget rules
-- stale-rollout discard rules
-- multi-client inference balancing
-- online eval interleaving
+References:
 
-That work is too important to hide as an implementation detail of issue 37.
+- Explicit prerequisite called out in
+  `crates/psionic/docs/AUTORESEARCH_INTEGRATION_PLAN.md`.
 
-### 3. Expand `Psionic Datastream` beyond generic dataset streaming
+### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
-It should explicitly cover:
+Description:
 
-- checkpoint shard manifests
-- policy-weight broadcast manifests
-- final assembled-artifact integrity digests
-- freshness windows and stale-artifact rejection
-- relay or mirror selection metadata when direct peer exchange is unsafe
+- Add reusable rollout record types covering task input, completion or
+  trajectory, token ids, logprobs, rewards, advantages, and proof refs.
+- Define trainer-batch assembly contracts and replay-safe serialization.
+- Record policy revision lineage so off-policy accounting and validator review
+  are possible.
 
-### 4. Strengthen the environment package issue
+References:
 
-The environment package and registry work should explicitly support:
+- Required because current Psionic has no reusable rollout artifact crate.
 
-- rollout entrypoints
-- rubric composition
-- multi-turn and tool-calling descriptors
-- sandbox/runtime requirements
-- offline and online eval parity
-- environment-group composition for mixed training runs
+### 3. `Environments: define a Rust-native environment ABI and runtime contract`
 
-### 5. Add validator work for rollout verification
+Description:
 
-The current validator plan should widen beyond matrix challenges to include:
+- Define the Rust-native ABI for environment packages, rollout execution,
+  rubric evaluation, tool-calling, and multi-turn task control.
+- Ensure environment packages can be loaded, versioned, and composed without a
+  Python runtime.
+- Make this the only accepted environment contract for Rust-only training work.
 
-- rollout commitment validation
-- sampling and termination checks
-- schema and sanity checks
-- sampled expensive verification over only a subset of rollouts
+References:
 
-### 6. Add RL-oriented sandbox throughput work
+- Required if "no Python anywhere" is real rather than aspirational.
 
-The sandbox backlog should add explicit support for:
+### 4. `Psionic Data: add Rust-native dataset, tokenizer, split, and packing contracts`
 
-- warm pools
-- push-based readiness
-- streamed image or artifact staging
-- repeated code-exec loops for agentic environments
+Description:
 
-### 7. Add training instability telemetry and halt policy
+- Add dataset manifests, tokenizer and corpus digests, split declarations, and
+  streamed iteration over training corpora.
+- Define sequence-packing or batch-packing contracts for long-context SFT and
+  RL workloads.
+- Bind these objects into training and environment packages.
 
-Future training control planes should surface:
+References:
 
-- gradient norm alerts
-- off-policy drift
-- stale-rollout drop rate
-- checkpoint catch-up latency
-- topology churn
-- environment or sandbox failure rates
+- Follow-on to the `psionic-data` or `psionic-datasets` recommendation in the
+  existing Psionic autoresearch plan.
+
+### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
+
+Description:
+
+- Create the actual `psionic-eval` crate in the workspace.
+- Add fixed scoring contracts, held-out eval runners, benchmark harness hooks,
+  and durable eval summaries.
+- Keep online and offline eval on the same environment contract used by the
+  trainer.
+
+References:
+
+- Explicit prerequisite for a Python-free reward and quality loop.
+
+### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
+
+Description:
+
+- Define the canonical object model for one training run, including stable run
+  ids, stage ids, participant roles, topology revisions, and replay-safe
+  lifecycle events.
+- Model join, graceful leave, crash, timeout, eviction, and rejoin as explicit
+  reason-coded events.
+- Record heartbeat and voluntary-departure semantics as part of training truth,
+  not as log-only runtime behavior.
+
+References:
+
+- Follow-on to the completed `Psionic Train` and `psionic-cluster` groundwork.
+
+### 7. `Psionic Train: implement checkpoint lineage, recovery modes, and catch-up receipts`
+
+Description:
+
+- Add explicit recovery postures such as blocking catch-up, overlapped catch-up,
+  next-step admission, and resume-from-last-stable-checkpoint.
+- Record checkpoint family, source, digest, assembled artifact digest, and
+  recovery mode in run receipts.
+- Make checkpoint catch-up a machine-legible part of training lineage.
+
+References:
+
+- Follow-on to completed checkpoint/datastream work and the current
+  `ComputeCheckpointBinding` schema.
+
+### 8. `Psionic Collectives: add bandwidth-aware elastic sync planning and quantized policy surfaces`
+
+Description:
+
+- Separate local high-bandwidth collective groups from global low-bandwidth
+  synchronization groups.
+- Feed transport observations into topology scoring and collective replanning.
+- Make sync cadence, quantization posture, and collective policy explicit and
+  receipt-bearing.
+
+References:
+
+- Follow-on to completed elastic-membership and quantized-collective issues.
+
+### 9. `Psionic Datastream: add sharded policy-weight broadcast and freshness control`
+
+Description:
+
+- Extend datastream contracts to cover checkpoint and policy-weight broadcast,
+  not only generic dataset streaming.
+- Add shard manifests, pipelined delivery, assembled-artifact digest checks,
+  freshness windows, and stale-artifact rejection.
+- Support relay or mirror metadata for cases where direct peer transfer is not
+  the right trust or network posture.
+
+References:
+
+- Follow-on to completed `Psionic Datastream` and artifact-residency work.
+
+### 10. `Psionic Train: build the orchestrator state machine and trainer-batch assembly contracts`
+
+Description:
+
+- Define the orchestrator as a first-class subsystem with inspectable state.
+- Own rollout scheduling, batch assembly, policy revision tracking, and online
+  eval interleaving.
+- Produce stable receipts for which policy revisions, environments, and worker
+  contributions fed a trainer batch.
+
+References:
+
+- Follow-on to completed environment/eval foundations and the base `Psionic
+  Train` substrate.
+
+### 11. `Psionic Train: implement off-policy budget rules and stale-rollout pruning`
+
+Description:
+
+- Add explicit maximum policy age or revision drift budgets for asynchronous
+  training.
+- Reject or quarantine stale rollouts with reason-coded outcomes.
+- Surface telemetry for accepted, discarded, and quarantined rollout batches.
+
+References:
+
+- Built on top of the orchestrator issue above.
+
+### 12. `Psionic Train: define the inference-worker protocol for trustless rollout generation`
+
+Description:
+
+- Define worker heartbeats, task claims, sample-selection seeds, rollout upload
+  schema, and stale-weight handling.
+- Make rollout payloads and upload outcomes deterministic and validator-ready.
+- Distinguish trusted trainer nodes from untrusted or semi-trusted rollout
+  workers in the protocol itself.
+
+References:
+
+- Follow-on to completed provider, datastream, and cluster protocol work.
+
+### 13. `Validator Service: add rollout-verification bundles and sampled adjudication protocols`
+
+Description:
+
+- Widen validator work beyond matrix challenges to include rollout integrity.
+- Support activation-commitment or equivalent proof refs, termination checks,
+  sampling-shape checks, schema/sanity checks, and sampled expensive
+  verification over only a subset of rollouts.
+- Emit validator verdict artifacts that can be attached to training or eval
+  outcomes.
+
+References:
+
+- Follow-on to completed proof and validator-service foundations.
+
+### 14. `Environments: define a package contract for SFT, RL, and eval`
+
+Description:
+
+- Standardize one environment package shape that can represent datasets,
+  rollout entrypoints, rubrics, tool schemas, sandbox requirements, and
+  environment metadata.
+- Include difficulty metadata and environment policy refs so curriculum and
+  filtering can become first-class infrastructure.
+- Treat environment packages as independently versioned products, not folders in
+  a trainer repo.
+
+References:
+
+- Follow-on to completed environment package and binding issues.
+
+### 15. `Environments Registry: add package install, version pinning, composition, and eval parity`
+
+Description:
+
+- Build registry flows for package resolution, pinned versions, artifact
+  dependencies, and mixed-environment composition.
+- Support `EnvGroup`-style mixed training runs without requiring special-case
+  orchestrator code for every environment set.
+- Ensure the same package contract works for offline eval, online eval, SFT
+  trace generation, and RL rollouts.
+
+References:
+
+- Follow-on to completed registry and evaluation-run groundwork.
+
+### 16. `Psionic Sandbox: add RL-throughput primitives for pooled, repeated agentic execution`
+
+Description:
+
+- Add warm pools, push-based readiness, repeated command loops, and streamed
+  image or artifact staging.
+- Optimize for thousands of short-lived or multi-turn environment interactions,
+  not only one-shot remote execution.
+- Make sandbox pooling, acquisition latency, and reuse visible in receipts and
+  operator state.
+
+References:
+
+- Follow-on to completed `Psionic Sandbox` extraction and background-job/file
+  transfer work.
+
+### 17. `Psionic Train: add SFT trace ingestion, stage transitions, and agentic pre-RL flows`
+
+Description:
+
+- Support multi-stage training programs that can move from general SFT to
+  agentic SFT to RL with explicit checkpoint promotion between stages.
+- Normalize tool-call traces, long-context stage metadata, and trace lineage so
+  SFT assets can be reused by later RL environments.
+- Treat stage transitions as explicit run events rather than ad hoc operator
+  scripts.
+
+References:
+
+- Follow-on to completed environment and checkpoint lineage work.
+
+### 18. `Psionic Train: implement curriculum, filtering, and non-zero-advantage gates`
+
+Description:
+
+- Add offline and online difficulty filters, trivial-rollout suppression, and
+  gates for samples that carry no learning signal.
+- Bind filtering policy to environment metadata and record it in run receipts.
+- Make training-time sample selection observable and reproducible.
+
+References:
+
+- Follow-on to completed environment package and orchestrator issues.
+
+### 19. `Psionic Train: add instability telemetry, halt policies, and risky-optimization gating`
+
+Description:
+
+- Surface gradient norm alerts, clipping-ratio trends, entropy drift,
+  stale-rollout drop rate, checkpoint catch-up latency, topology churn, and
+  environment or sandbox failure rates.
+- Add machine-legible halt or quarantine policies when instability thresholds
+  are crossed.
+- Make risky runtime optimizations policy-gated rather than silently enabled.
+
+References:
+
+- Follow-on to the completed training control-plane and proof telemetry work.
+
+### 20. `Kernel/Nexus: add training/eval receipt families, policy registries, and read models`
+
+Description:
+
+- Add canonical receipt and read-model support for training/eval runs once they
+  become market-relevant products.
+- Carry environment refs, checkpoint lineage, validator posture, rollout
+  verification refs, and final accepted outcomes into economic truth.
+- Add durable policy registries for allowed environment packages, validator
+  policies, and checkpoint families.
+
+References:
+
+- Follow-on to completed kernel/proto widening and authority read-model work.
+
+### 21. `Desktop and autopilotctl: expose training operator surfaces and diagnostics`
+
+Description:
+
+- Add operator-visible inspection for training runs, topology revisions,
+  checkpoint lineage, stale-rollout drops, validator verdicts, environment
+  versions, and sandbox-pool health.
+- Keep training control and inspection inside the app-owned control plane rather
+  than creating a disconnected operator stack.
+
+References:
+
+- Follow-on to completed compute-control and operator-surface work.
+
+### 22. `Reference Program: run one end-to-end agentic SFT plus RL pilot on the full stack`
+
+Description:
+
+- Run one concrete reference program that exercises environment packaging,
+  checkpoint lineage, sandbox pooling, validator-aware rollouts, online eval,
+  and operator inspection together.
+- Treat this as the acceptance gate for the full training paradigm rather than
+  declaring success from isolated subsystem benchmarks.
+
+References:
+
+- Final integration issue after all items above are complete.
 
 ## Ownership Map For The Adaptation
 
