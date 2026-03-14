@@ -31,7 +31,7 @@ use psionic_runtime::{
     validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
-    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
+    AdapterServingBinding, DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
     EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
     GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
     GenerationStreamTerminal, GenerationStreamingPolicy, ModelArtifactGovernance,
@@ -196,11 +196,19 @@ fn generation_cluster_execution(response: &GenerationResponse) -> Option<Cluster
         .and_then(|value| value.cluster_execution.clone())
 }
 
+fn generation_adapter_serving(response: &GenerationResponse) -> Option<AdapterServingBinding> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.adapter_serving.clone())
+}
+
 struct SettlementLinkageContext<'a> {
     request_digest: String,
     product_id: &'a str,
     model_id: &'a str,
     served_artifact: &'a ServedArtifactIdentity,
+    adapter_serving: Option<&'a AdapterServingBinding>,
     runtime_backend: &'a str,
     cluster_execution: Option<&'a ClusterExecutionContext>,
     output_tokens: Option<usize>,
@@ -214,7 +222,10 @@ fn settlement_linkage(
         request_digest: context.request_digest,
         product_id: String::from(context.product_id),
         model_id: String::from(context.model_id),
-        served_artifact_digest: context.served_artifact.served_artifact_digest.clone(),
+        served_artifact_digest: context
+            .adapter_serving
+            .map(|binding| binding.served_adapter_digest.clone())
+            .unwrap_or_else(|| context.served_artifact.served_artifact_digest.clone()),
         execution_plan_digest: delivery_proof.execution_plan_digest.clone(),
         runtime_backend: String::from(context.runtime_backend),
         kernel_count: delivery_proof.kernel_count,
@@ -1444,6 +1455,7 @@ impl ExecutionReceipt {
                     product_id: request.product_id.as_str(),
                     model_id: response.metadata.model_id.as_str(),
                     served_artifact: &served_artifact,
+                    adapter_serving: None,
                     runtime_backend: backend_selection.effective_backend.as_str(),
                     cluster_execution: cluster_execution.as_ref(),
                     output_tokens: None,
@@ -1921,6 +1933,9 @@ pub struct TextGenerationReceipt {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the realized model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit adapter-serving binding when the request targeted a hosted adapter product.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter_serving: Option<AdapterServingBinding>,
     /// Explicit cache actions surfaced for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
@@ -2030,6 +2045,7 @@ impl TextGenerationReceipt {
             });
         let delivery_proof = generation_delivery_proof(response);
         let cluster_execution = generation_cluster_execution(response);
+        let adapter_serving = generation_adapter_serving(response);
         let mut selected_device_inventory =
             selected_device_inventory_for_selection(&backend_selection);
         let mut selected_devices = selected_devices_inventory_for_selection(&backend_selection);
@@ -2054,6 +2070,7 @@ impl TextGenerationReceipt {
                     product_id: request.product_id.as_str(),
                     model_id: response.model_id.as_str(),
                     served_artifact: &served_artifact,
+                    adapter_serving: adapter_serving.as_ref(),
                     runtime_backend: backend_selection.effective_backend.as_str(),
                     cluster_execution: cluster_execution.as_ref(),
                     output_tokens: Some(response.usage.output_tokens),
@@ -2108,6 +2125,7 @@ impl TextGenerationReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            adapter_serving,
             cache_observations: response
                 .provenance
                 .as_ref()
@@ -2260,6 +2278,7 @@ impl TextGenerationReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            adapter_serving: request.adapter_serving.clone(),
             cache_observations: failed_generation_cache_observations(request),
             compile_path: None,
             delivery_proof: None,
@@ -2736,13 +2755,14 @@ mod tests {
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
-        ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
-        EmbeddingResponse, EmbeddingVector, GenerationLoadState, GenerationMetrics,
-        GenerationOptions, GenerationProvenance, GenerationRequest, GenerationResponse,
-        GenerationStreamStatus, GenerationStreamTerminal, ModelArtifactGovernance,
-        ModelArtifactLicenseEntry, ModelArtifactLicenseFacts, ModelArtifactProvenance,
-        ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
-        TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
+        AdapterArtifactFormat, AdapterArtifactIdentity, AdapterArtifactKind, AdapterResidencyMode,
+        AdapterServingBinding, AdapterTargetFamily, ByteProjectionEmbedder, EmbeddingMetrics,
+        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+        GenerationLoadState, GenerationMetrics, GenerationOptions, GenerationProvenance,
+        GenerationRequest, GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal,
+        ModelArtifactGovernance, ModelArtifactLicenseEntry, ModelArtifactLicenseFacts,
+        ModelArtifactProvenance, ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId,
+        SmokeByteEmbedder, TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
         default_decoder_kv_cache_policy, default_decoder_memory_plan,
         default_generation_streaming_policy, default_prefix_cache_policy,
         default_text_generation_execution_profile,
@@ -5143,6 +5163,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Cold,
@@ -5272,6 +5293,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan-export"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Cold,
@@ -5330,6 +5352,100 @@ mod tests {
     }
 
     #[test]
+    fn text_generation_receipt_uses_adapter_binding_for_settlement_linkage()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let adapter_serving = sample_adapter_serving_binding();
+        let request = GenerationRequest::new_text(
+            "gen-adapter-receipt-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-adapter-receipt-1")),
+            "hello",
+            GenerationOptions::greedy(2),
+        )
+        .with_adapter_serving(adapter_serving.clone());
+        let served_artifact =
+            served_artifact_identity_for_decoder_model(&request.model, &cpu_backend_selection());
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            psionic_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(75),
+                load_duration_ns: Some(25),
+                prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(15),
+                context_window: None,
+                eval_count: Some(1),
+                eval_duration_ns: Some(60),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
+            },
+            GenerationProvenance {
+                served_artifact,
+                adapter_serving: Some(adapter_serving.clone()),
+                execution_plan_digest: String::from("adapter-plan"),
+                cluster_execution: None,
+                load_state: GenerationLoadState::Cold,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+                streaming_policy: None,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: None,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+                compile_path: None,
+                delivery_proof: Some(ExecutionDeliveryProof {
+                    execution_plan_digest: String::from("adapter-plan"),
+                    kernel_count: 2,
+                    bytes_moved: 768,
+                    plan_cache_hits: 1,
+                    plan_cache_misses: 0,
+                    kv_growth: None,
+                }),
+                cache_observations: Vec::new(),
+            },
+        );
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            "adapter-plan",
+            100,
+            120,
+        );
+
+        assert_eq!(receipt.product_id, "psionic.adapter_text_generation");
+        assert_eq!(receipt.adapter_serving, Some(adapter_serving.clone()));
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .map(|value| value.served_artifact_digest.as_str()),
+            Some(adapter_serving.served_adapter_digest.as_str())
+        );
+
+        let encoded = serde_json::to_value(&receipt)?;
+        assert_eq!(
+            encoded["adapter_serving"]["served_adapter_digest"],
+            json!(adapter_serving.served_adapter_digest)
+        );
+        assert_eq!(
+            encoded["settlement_linkage"]["served_artifact_digest"],
+            json!(adapter_serving.served_adapter_digest)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn text_generation_receipt_surfaces_replicated_cluster_execution_truth()
     -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
@@ -5369,6 +5485,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan-replicated"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Warm,
@@ -5474,6 +5591,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan-layer-sharded"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Warm,
@@ -5586,6 +5704,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan-pipeline-sharded"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Warm,
@@ -5695,6 +5814,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("cluster-plan-tensor-sharded"),
                 cluster_execution: Some(cluster_execution.clone()),
                 load_state: GenerationLoadState::Warm,
@@ -5822,6 +5942,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 cluster_execution: None,
                 load_state: GenerationLoadState::Cold,
@@ -6124,6 +6245,7 @@ mod tests {
                     &request.model,
                     &cpu_backend_selection(),
                 ),
+                adapter_serving: None,
                 execution_plan_digest: String::from("stream-plan"),
                 cluster_execution: None,
                 load_state: GenerationLoadState::Cold,
@@ -6471,6 +6593,33 @@ mod tests {
         let mut descriptor = sample_decoder_descriptor();
         descriptor.model.family = String::from("gpt-oss");
         descriptor
+    }
+
+    fn sample_adapter_serving_binding() -> AdapterServingBinding {
+        let model = sample_decoder_descriptor();
+        let base_served_artifact =
+            served_artifact_identity_for_decoder_model(&model, &cpu_backend_selection());
+        let base_served_artifact_digest = base_served_artifact.served_artifact_digest;
+        AdapterServingBinding::new(
+            "fixture-word-decoder-qna",
+            model.model.model_id.clone(),
+            model.model.revision.clone(),
+            base_served_artifact_digest.clone(),
+            AdapterResidencyMode::HotSwapOverlay,
+            vec![AdapterArtifactIdentity::new(
+                "adapter-qna",
+                "r1",
+                AdapterArtifactKind::Lora,
+                AdapterArtifactFormat::Safetensors,
+                model.model.model_id,
+                model.model.revision,
+                base_served_artifact_digest,
+                "adapter-digest-qna",
+                RuntimeQuantizationMode::GgmlQ8_0,
+                AdapterTargetFamily::DecoderAttention,
+                1_024_000,
+            )],
+        )
     }
 
     fn sample_embedding_descriptor() -> psionic_serve::EmbeddingModelDescriptor {

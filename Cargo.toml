@@ -28,6 +28,7 @@ members = [
     "crates/psionic/psionic-cluster",
     "crates/psionic/psionic-collectives",
     "crates/psionic/psionic-train",
+    "crates/psionic/psionic-adapters",
     "crates/psionic/psionic-models",
     "crates/psionic/psionic-apple-fm",
     "crates/psionic/psionic-catalog",

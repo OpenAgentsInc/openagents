@@ -34,13 +34,16 @@ Psionic is structured as a layered engine subtree.
    Training-session truth for async checkpointing, live recovery, and
    elastic-membership posture built on clustered state and datastream
    manifests.
-10. Backend crates
+10. `psionic-adapters`
+   Adapter and LoRA package identity plus adapter-serving bindings for hosted
+   serving products.
+11. Backend crates
    Backend-specific runtime implementations only.
-11. `psionic-models`
+12. `psionic-models`
    Model abstractions and metadata over core/runtime primitives.
-12. `psionic-serve`
+13. `psionic-serve`
    Served compute product contracts and execution interfaces.
-13. `psionic-provider`
+14. `psionic-provider`
    Capability envelopes, readiness, receipts, and provider adapter types.
 
 ## Dependency Direction
@@ -60,6 +63,8 @@ Psionic is structured as a layered engine subtree.
   no market authority or app behavior.
 - `psionic-train` depends on `psionic-cluster`, `psionic-datastream`, and
   `psionic-runtime` for checkpoint, recovery, and elastic-membership truth, and
+  owns no market authority or app behavior.
+- `psionic-adapters` depends on reusable artifact/data-plane crates only and
   owns no market authority or app behavior.
 - `psionic-cluster` depends on `psionic-net` and `psionic-datastream` for
   transport/session truth plus staged artifact/data delivery contracts, and

@@ -34,6 +34,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, and elastic membership on top of ordered cluster state and datastream manifests.
+- `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
 - `psionic-provider`: capability, readiness, and receipt-facing types.
@@ -83,7 +84,9 @@ for async checkpointing, checkpoint-backed live recovery, and elastic
 membership truth on top of clustered execution evidence, plus a new
 `psionic-collectives` substrate for elastic device meshes and benchmark-backed
 quantized collectives that clustered training evidence can surface explicitly.
-AMD execution support is still future work.
+`psionic-adapters` now adds explicit LoRA and adapter packaging plus hosted
+binding digests so adapter-backed serving stays attributable instead of hiding
+behind the base model artifact. AMD execution support is still future work.
 
 ## Docs
 
