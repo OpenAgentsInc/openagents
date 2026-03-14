@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     convert::Infallible,
     env,
     net::{IpAddr, SocketAddr},
@@ -26,10 +26,10 @@ use axum::{
 };
 use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_models::{
-    GgufBlobArtifact, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
-    GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig, PromptMessage,
-    PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_text,
-    render_gpt_oss_harmony_prompt,
+    GgufBlobArtifact, GgufDecoderFamily, GgufPromptTemplateRenderer, GptOssHarmonyParseOptions,
+    GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig,
+    PromptMessage, PromptMessageRole, PromptReasoningEffort, PromptRenderOptions,
+    parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -40,11 +40,11 @@ use tokio::{
 use tokio_stream::iter;
 
 use crate::{
-    CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
-    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest,
-    GgufDecoderAdapterLoader, GptOssPerformanceMetrics, MetalGgufGptOssTextGenerationService,
-    MetalGptOssTextGenerationError, PromptRenderError, ReferenceTextGenerationError,
-    TerminationReason, TextGenerationExecutor, TokenSequence,
+    CpuGgufTextGenerationService, CudaGgufGptOssTextGenerationService,
+    CudaGptOssTextGenerationError, DecodeStrategy, DecoderModelDescriptor, GenerationMetrics,
+    GenerationOptions, GenerationRequest, GgufDecoderAdapterLoader, GptOssPerformanceMetrics,
+    MetalGgufGptOssTextGenerationService, MetalGptOssTextGenerationError, PromptRenderError,
+    ReferenceTextGenerationError, TerminationReason, TextGenerationExecutor, TokenSequence,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -420,6 +420,286 @@ impl GptOssCudaOpenAiCompatServer {
 
     pub async fn serve(&self, listener: TcpListener) -> Result<(), OpenAiCompatServerError> {
         self.inner.serve(listener).await
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenAiCompatBackend {
+    Cpu,
+}
+
+impl OpenAiCompatBackend {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "cpu",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenAiCompatConfig {
+    pub model_paths: Vec<PathBuf>,
+    pub host: String,
+    pub port: u16,
+    pub backend: OpenAiCompatBackend,
+    pub reasoning_budget: u8,
+}
+
+impl OpenAiCompatConfig {
+    #[must_use]
+    pub fn new(model_path: impl Into<PathBuf>) -> Self {
+        Self {
+            model_paths: vec![model_path.into()],
+            host: String::from("127.0.0.1"),
+            port: 8080,
+            backend: OpenAiCompatBackend::Cpu,
+            reasoning_budget: 0,
+        }
+    }
+
+    pub fn add_model_path(&mut self, model_path: impl Into<PathBuf>) {
+        self.model_paths.push(model_path.into());
+    }
+
+    pub fn socket_addr(&self) -> Result<SocketAddr, OpenAiCompatServerError> {
+        let host = self.host.parse::<IpAddr>().map_err(|error| {
+            OpenAiCompatServerError::Config(format!("invalid host `{}`: {error}", self.host))
+        })?;
+        Ok(SocketAddr::new(host, self.port))
+    }
+}
+
+#[derive(Clone)]
+pub struct OpenAiCompatServer {
+    state: Arc<OpenAiCompatState>,
+}
+
+struct OpenAiCompatState {
+    worker: OpenAiCompatWorker,
+    backend_label: &'static str,
+    execution_mode_label: &'static str,
+    execution_engine_label: &'static str,
+    default_model_key: String,
+    default_model_name: String,
+    models_by_key: BTreeMap<String, OpenAiCompatLoadedModel>,
+    model_aliases: BTreeMap<String, String>,
+    include_psionic_fields: bool,
+    request_counter: AtomicU64,
+}
+
+#[derive(Clone)]
+struct OpenAiCompatLoadedModel {
+    model_key: String,
+    canonical_name: String,
+    descriptor: DecoderModelDescriptor,
+    family: GgufDecoderFamily,
+    prompt_renderer: Option<GgufPromptTemplateRenderer>,
+    prompt_options: PromptRenderOptions,
+}
+
+#[derive(Clone)]
+struct OpenAiCompatWorker {
+    sender: mpsc::UnboundedSender<OpenAiCompatWorkerCommand>,
+}
+
+enum OpenAiCompatWorkerCommand {
+    Generate {
+        model_key: String,
+        request: GenerationRequest,
+        reply: oneshot::Sender<Result<crate::GenerationResponse, ReferenceTextGenerationError>>,
+    },
+}
+
+impl OpenAiCompatServer {
+    pub fn from_config(config: &OpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
+        if config.model_paths.is_empty() {
+            return Err(OpenAiCompatServerError::Config(String::from(
+                "generic OpenAI server requires at least one `--model` path",
+            )));
+        }
+        if !matches!(config.backend, OpenAiCompatBackend::Cpu) {
+            return Err(OpenAiCompatServerError::Config(String::from(
+                "generic OpenAI server currently supports only the cpu backend",
+            )));
+        }
+
+        let include_psionic_fields = env::var("PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS")
+            .ok()
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        let mut models_by_key = BTreeMap::new();
+        let mut model_aliases = BTreeMap::new();
+        let mut default_model_key = None;
+        let mut default_canonical_model_name = None;
+
+        for model_path in &config.model_paths {
+            let artifact =
+                GgufBlobArtifact::open_path(model_path, gpt_oss_local_blob_open_options())
+                    .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
+            let adapter = GgufDecoderAdapterLoader
+                .load_blob_artifact(&artifact)
+                .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
+            let descriptor = adapter.descriptor().clone();
+            let family = adapter.family_metadata().family;
+            let canonical_name = default_model_name(model_path, &descriptor);
+            let accepted_names = accepted_model_names(model_path, &descriptor);
+            let prompt_options = prompt_options_for_family(family, config.reasoning_budget);
+            let loaded_model = OpenAiCompatLoadedModel {
+                model_key: descriptor.model.model_id.clone(),
+                canonical_name: canonical_name.clone(),
+                descriptor: descriptor.clone(),
+                family,
+                prompt_renderer: (!matches!(family, GgufDecoderFamily::GptOss))
+                    .then(|| adapter.prompt_renderer()),
+                prompt_options,
+            };
+            if models_by_key
+                .insert(loaded_model.model_key.clone(), loaded_model.clone())
+                .is_some()
+            {
+                return Err(OpenAiCompatServerError::Config(format!(
+                    "duplicate loaded model id `{}`",
+                    descriptor.model.model_id
+                )));
+            }
+            for accepted_name in accepted_names {
+                if let Some(existing) =
+                    model_aliases.insert(accepted_name.clone(), descriptor.model.model_id.clone())
+                {
+                    return Err(OpenAiCompatServerError::Config(format!(
+                        "model alias `{accepted_name}` collides between `{existing}` and `{}`",
+                        descriptor.model.model_id
+                    )));
+                }
+            }
+            if default_model_key.is_none() {
+                default_model_key = Some(descriptor.model.model_id.clone());
+                default_canonical_model_name = Some(canonical_name);
+            }
+        }
+
+        let worker = OpenAiCompatWorker::spawn(config.model_paths.clone())?;
+        Ok(Self {
+            state: Arc::new(OpenAiCompatState {
+                worker,
+                backend_label: config.backend.label(),
+                execution_mode_label: "native",
+                execution_engine_label: "psionic",
+                default_model_key: default_model_key.expect("validated non-empty model list"),
+                default_model_name: default_canonical_model_name
+                    .expect("validated non-empty model list"),
+                models_by_key,
+                model_aliases,
+                include_psionic_fields,
+                request_counter: AtomicU64::new(1),
+            }),
+        })
+    }
+
+    #[must_use]
+    pub fn backend_label(&self) -> &'static str {
+        self.state.backend_label
+    }
+
+    #[must_use]
+    pub fn execution_mode_label(&self) -> &'static str {
+        self.state.execution_mode_label
+    }
+
+    #[must_use]
+    pub fn execution_engine_label(&self) -> &'static str {
+        self.state.execution_engine_label
+    }
+
+    pub fn router(&self) -> Router {
+        Router::new()
+            .route("/health", get(generic_health))
+            .route("/v1/models", get(generic_list_models))
+            .route("/v1/chat/completions", post(generic_chat_completions))
+            .route("/v1/embeddings", post(generic_embeddings_unsupported))
+            .with_state(Arc::clone(&self.state))
+    }
+
+    pub async fn serve(&self, listener: TcpListener) -> Result<(), OpenAiCompatServerError> {
+        axum::serve(listener, self.router())
+            .await
+            .map_err(OpenAiCompatServerError::Io)
+    }
+}
+
+impl OpenAiCompatWorker {
+    fn spawn(model_paths: Vec<PathBuf>) -> Result<Self, OpenAiCompatServerError> {
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name(String::from("psionic-openai-cpu-worker"))
+            .spawn(move || {
+                let mut services = BTreeMap::new();
+                for model_path in &model_paths {
+                    match CpuGgufTextGenerationService::from_gguf_path(model_path) {
+                        Ok(service) => {
+                            let model_key = service.model_descriptor().model.model_id.clone();
+                            services.insert(model_key, service);
+                        }
+                        Err(error) => {
+                            let _ = ready_tx.send(Err::<(), String>(error.to_string()));
+                            return;
+                        }
+                    }
+                }
+                let _ = ready_tx.send(Ok::<(), String>(()));
+                while let Some(command) = receiver.blocking_recv() {
+                    match command {
+                        OpenAiCompatWorkerCommand::Generate {
+                            model_key,
+                            request,
+                            reply,
+                        } => {
+                            let result = services
+                                .get_mut(model_key.as_str())
+                                .ok_or_else(|| {
+                                    ReferenceTextGenerationError::UnsupportedModel(
+                                        model_key.clone(),
+                                    )
+                                })
+                                .and_then(|service| service.generate(&request));
+                            let _ = reply.send(result);
+                        }
+                    }
+                }
+            })?;
+        match ready_rx.recv().map_err(|error| {
+            OpenAiCompatServerError::Config(format!(
+                "failed to receive generic OpenAI worker readiness: {error}"
+            ))
+        })? {
+            Ok(()) => Ok(Self { sender }),
+            Err(message) => Err(OpenAiCompatServerError::Config(message)),
+        }
+    }
+
+    async fn generate(
+        &self,
+        model_key: String,
+        request: GenerationRequest,
+    ) -> Result<crate::GenerationResponse, ReferenceTextGenerationError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(OpenAiCompatWorkerCommand::Generate {
+                model_key,
+                request,
+                reply: reply_tx,
+            })
+            .map_err(|_| {
+                ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
+                    String::from("generic OpenAI worker is no longer available"),
+                ))
+            })?;
+        reply_rx.await.map_err(|_| {
+            ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
+                String::from("generic OpenAI worker dropped the response channel"),
+            ))
+        })?
     }
 }
 
@@ -835,6 +1115,43 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
     })
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct GenericHealthResponse {
+    status: &'static str,
+    backend: &'static str,
+    execution_mode: &'static str,
+    execution_engine: &'static str,
+    default_model: String,
+    model_count: usize,
+}
+
+async fn generic_health(
+    State(state): State<Arc<OpenAiCompatState>>,
+) -> Json<GenericHealthResponse> {
+    Json(GenericHealthResponse {
+        status: "ok",
+        backend: state.backend_label,
+        execution_mode: state.execution_mode_label,
+        execution_engine: state.execution_engine_label,
+        default_model: state.default_model_name.clone(),
+        model_count: state.models_by_key.len(),
+    })
+}
+
+async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Json<ModelsResponse> {
+    Json(ModelsResponse {
+        data: state
+            .models_by_key
+            .values()
+            .map(|model| ModelCard {
+                id: model.canonical_name.clone(),
+                object: "model",
+                owned_by: "psionic",
+            })
+            .collect(),
+    })
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ChatCompletionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1021,6 +1338,136 @@ async fn handle_chat_completions(
     .into_response();
     insert_execution_headers(response.headers_mut(), state.as_ref());
     Ok(response)
+}
+
+async fn generic_chat_completions(
+    State(state): State<Arc<OpenAiCompatState>>,
+    Json(request): Json<ChatCompletionRequest>,
+) -> Response {
+    match handle_generic_chat_completions(state, request).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn handle_generic_chat_completions(
+    state: Arc<OpenAiCompatState>,
+    request: ChatCompletionRequest,
+) -> Result<Response, OpenAiCompatHttpError> {
+    let model = resolve_generic_model(state.as_ref(), request.model.as_deref())?;
+    let prompt_messages =
+        chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
+    let rendered = render_prompt_for_model(model, prompt_messages.as_slice())?;
+    let request_id = next_generic_request_id(&state);
+    let response_model_name = request
+        .model
+        .clone()
+        .unwrap_or_else(|| model.canonical_name.clone());
+    let options = generation_options_from_chat_request_for_family(
+        &request,
+        model.family,
+        rendered.stop_sequences.as_slice(),
+    );
+    let generation_request = GenerationRequest::new_text(
+        request_id.clone(),
+        model.descriptor.clone(),
+        None,
+        rendered.text,
+        options,
+    );
+
+    let response = state
+        .worker
+        .generate(model.model_key.clone(), generation_request)
+        .await
+        .map_err(|error| {
+            OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
+        })?;
+    let parsed =
+        if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
+            parse_gpt_oss_harmony_text(
+                response.output.text.as_str(),
+                GptOssHarmonyParseOptions {
+                    role_hint: Some(PromptMessageRole::Assistant),
+                    strict: false,
+                },
+            )
+            .ok()
+        } else {
+            None
+        };
+    let choice = completion_choice_for_family(model.family, &response, parsed.clone());
+    if request.stream {
+        let terminal_chunk = completion_terminal_chunk(
+            request_id.as_str(),
+            &response_model_name,
+            response.termination,
+            unix_timestamp_secs(),
+        );
+        let delta_chunk = serialize_event_data(&completion_delta_chunk(
+            request_id.as_str(),
+            response_model_name.as_str(),
+            choice.content.as_str(),
+            unix_timestamp_secs(),
+        ))?;
+        let terminal_chunk = serialize_event_data(&terminal_chunk)?;
+        let events = vec![
+            Ok::<_, Infallible>(Event::default().data(delta_chunk)),
+            Ok::<_, Infallible>(Event::default().data(terminal_chunk)),
+            Ok::<_, Infallible>(Event::default().data("[DONE]")),
+        ];
+        let mut response = Sse::new(iter(events)).into_response();
+        insert_generic_execution_headers(response.headers_mut(), state.as_ref());
+        return Ok(response);
+    }
+
+    let psionic_harmony = if state.include_psionic_fields {
+        parsed
+    } else {
+        None
+    };
+    let body = ChatCompletionResponse {
+        id: request_id,
+        object: "chat.completion",
+        created: unix_timestamp_secs(),
+        model: response_model_name,
+        choices: vec![choice.into_full_choice()],
+        usage: ChatCompletionUsage {
+            prompt_tokens: response.usage.input_tokens,
+            completion_tokens: response.usage.output_tokens,
+            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        },
+        psionic_metrics: state
+            .include_psionic_fields
+            .then(|| response.metrics.clone()),
+        psionic_harmony,
+        psionic_perf: state
+            .include_psionic_fields
+            .then(|| response.metrics.gpt_oss_perf.clone())
+            .flatten(),
+        psionic_output_text: state
+            .include_psionic_fields
+            .then(|| response.output.text.clone()),
+        psionic_output_tokens: state.include_psionic_fields.then(|| {
+            response
+                .output
+                .tokens
+                .as_slice()
+                .iter()
+                .map(|token| token.as_u32())
+                .collect()
+        }),
+    };
+    let mut response = Json(body).into_response();
+    insert_generic_execution_headers(response.headers_mut(), state.as_ref());
+    Ok(response)
+}
+
+async fn generic_embeddings_unsupported() -> Response {
+    OpenAiCompatHttpError::BadRequest(String::from(
+        "/v1/embeddings is not implemented on the generic Psionic server yet",
+    ))
+    .into_response()
 }
 
 async fn proxy_chat_completions(
@@ -1238,6 +1685,123 @@ fn next_request_id(state: &GptOssOpenAiCompatState) -> String {
     format!("psionic-chatcmpl-{next}")
 }
 
+fn next_generic_request_id(state: &OpenAiCompatState) -> String {
+    let next = state.request_counter.fetch_add(1, Ordering::Relaxed);
+    format!("psionic-chatcmpl-{next}")
+}
+
+fn insert_generic_execution_headers(headers: &mut HeaderMap, state: &OpenAiCompatState) {
+    headers.insert(
+        HeaderName::from_static("x-psionic-backend"),
+        HeaderValue::from_static(state.backend_label),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-execution-mode"),
+        HeaderValue::from_static(state.execution_mode_label),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-execution-engine"),
+        HeaderValue::from_static(state.execution_engine_label),
+    );
+}
+
+#[derive(Clone, Debug)]
+struct GenericRenderedPrompt {
+    text: String,
+    stop_sequences: Vec<String>,
+}
+
+fn resolve_generic_model<'a>(
+    state: &'a OpenAiCompatState,
+    requested: Option<&str>,
+) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
+    let model_key = match requested {
+        Some(requested) => state.model_aliases.get(requested).ok_or_else(|| {
+            OpenAiCompatHttpError::BadRequest(format!(
+                "requested model `{requested}` is not loaded"
+            ))
+        })?,
+        None => &state.default_model_key,
+    };
+    state.models_by_key.get(model_key).ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!("loaded model `{model_key}` is missing"))
+    })
+}
+
+fn prompt_options_for_family(
+    family: GgufDecoderFamily,
+    reasoning_budget: u8,
+) -> PromptRenderOptions {
+    if matches!(family, GgufDecoderFamily::GptOss) {
+        PromptRenderOptions {
+            gpt_oss_harmony: Some(GptOssHarmonyRenderContext {
+                reasoning_effort: Some(reasoning_effort(reasoning_budget)),
+                channel_config: Some(PromptChannelConfig::default()),
+                ..Default::default()
+            }),
+        }
+    } else {
+        PromptRenderOptions::default()
+    }
+}
+
+fn render_prompt_for_model(
+    model: &OpenAiCompatLoadedModel,
+    messages: &[PromptMessage],
+) -> Result<GenericRenderedPrompt, OpenAiCompatHttpError> {
+    if matches!(model.family, GgufDecoderFamily::GptOss) {
+        let text = render_gpt_oss_harmony_prompt(messages, true, Some(&model.prompt_options))
+            .map_err(|error| {
+                OpenAiCompatHttpError::from(PromptRenderError::HarmonyRendering {
+                    message: error.to_string(),
+                })
+            })?;
+        return Ok(GenericRenderedPrompt {
+            text,
+            stop_sequences: vec![
+                String::from(HARMONY_RETURN_STOP),
+                String::from(HARMONY_CALL_STOP),
+            ],
+        });
+    }
+    let renderer = model.prompt_renderer.as_ref().ok_or_else(|| {
+        OpenAiCompatHttpError::Internal(format!(
+            "model `{}` is missing a generic prompt renderer",
+            model.model_key
+        ))
+    })?;
+    let rendered = match renderer.render_with_options(None, messages, true, &model.prompt_options) {
+        Ok(rendered) => rendered,
+        Err(PromptRenderError::MissingDefaultTemplate)
+            if messages.len() == 1 && messages[0].role == PromptMessageRole::User =>
+        {
+            return Ok(GenericRenderedPrompt {
+                text: messages[0].content.clone(),
+                stop_sequences: Vec::new(),
+            });
+        }
+        Err(error) => return Err(error.into()),
+    };
+    Ok(GenericRenderedPrompt {
+        text: rendered.text,
+        stop_sequences: rendered.stop_sequences,
+    })
+}
+
+fn completion_choice_for_family(
+    family: GgufDecoderFamily,
+    response: &crate::GenerationResponse,
+    parsed: Option<GptOssHarmonyParsedOutput>,
+) -> ParsedCompletionChoice {
+    if matches!(family, GgufDecoderFamily::GptOss) {
+        return completion_choice(response, parsed);
+    }
+    ParsedCompletionChoice {
+        content: response.output.text.clone(),
+        finish_reason: finish_reason(response.termination),
+    }
+}
+
 fn prompt_request_cache_key(messages: &[PromptMessage]) -> String {
     let mut hasher = Sha256::new();
     for message in messages {
@@ -1261,6 +1825,14 @@ fn unix_timestamp_secs() -> u64 {
 }
 
 fn generation_options_from_chat_request(request: &ChatCompletionRequest) -> GenerationOptions {
+    generation_options_from_chat_request_for_family(request, GgufDecoderFamily::GptOss, &[])
+}
+
+fn generation_options_from_chat_request_for_family(
+    request: &ChatCompletionRequest,
+    family: GgufDecoderFamily,
+    default_stop_sequences: &[String],
+) -> GenerationOptions {
     let max_output_tokens = request.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
     let temperature = request.temperature.unwrap_or(0.0);
     let mut options = if temperature <= f32::EPSILON {
@@ -1278,7 +1850,14 @@ fn generation_options_from_chat_request(request: &ChatCompletionRequest) -> Gene
     if let Some(stop) = &request.stop {
         options.stop_sequences.extend(stop.clone().into_vec());
     }
-    ensure_harmony_stop_sequences(&mut options.stop_sequences);
+    for stop in default_stop_sequences {
+        if !options.stop_sequences.iter().any(|value| value == stop) {
+            options.stop_sequences.push(stop.clone());
+        }
+    }
+    if matches!(family, GgufDecoderFamily::GptOss) {
+        ensure_harmony_stop_sequences(&mut options.stop_sequences);
+    }
     options
 }
 
@@ -1291,6 +1870,22 @@ fn ensure_harmony_stop_sequences(stop_sequences: &mut Vec<String>) {
 }
 
 fn chat_messages_to_prompt_messages(
+    messages: &[ChatCompletionMessage],
+) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
+    chat_messages_to_prompt_messages_for_family(messages, GgufDecoderFamily::GptOss)
+}
+
+fn chat_messages_to_prompt_messages_for_family(
+    messages: &[ChatCompletionMessage],
+    family: GgufDecoderFamily,
+) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
+    if matches!(family, GgufDecoderFamily::GptOss) {
+        return chat_messages_to_prompt_messages_gpt_oss(messages);
+    }
+    chat_messages_to_prompt_messages_generic(messages)
+}
+
+fn chat_messages_to_prompt_messages_gpt_oss(
     messages: &[ChatCompletionMessage],
 ) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
     if messages.is_empty() {
@@ -1323,6 +1918,42 @@ fn chat_messages_to_prompt_messages(
         };
         let mut prompt = PromptMessage::new(normalized_role, message.content.clone());
         if normalized_role == PromptMessageRole::Tool {
+            let Some(name) = message.name.as_ref() else {
+                return Err(OpenAiCompatHttpError::BadRequest(String::from(
+                    "tool messages require a `name` field",
+                )));
+            };
+            prompt = prompt.with_author_name(name.clone());
+        }
+        prompt_messages.push(prompt);
+    }
+    Ok(prompt_messages)
+}
+
+fn chat_messages_to_prompt_messages_generic(
+    messages: &[ChatCompletionMessage],
+) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
+    if messages.is_empty() {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "chat completions require at least one message",
+        )));
+    }
+    let mut prompt_messages = Vec::new();
+    for message in messages {
+        let role = match message.role.as_str() {
+            "system" => PromptMessageRole::System,
+            "developer" => PromptMessageRole::Developer,
+            "user" => PromptMessageRole::User,
+            "assistant" => PromptMessageRole::Assistant,
+            "tool" => PromptMessageRole::Tool,
+            other => {
+                return Err(OpenAiCompatHttpError::BadRequest(format!(
+                    "unsupported chat message role `{other}`"
+                )));
+            }
+        };
+        let mut prompt = PromptMessage::new(role, message.content.clone());
+        if role == PromptMessageRole::Tool {
             let Some(name) = message.name.as_ref() else {
                 return Err(OpenAiCompatHttpError::BadRequest(String::from(
                     "tool messages require a `name` field",
@@ -1440,15 +2071,20 @@ struct OpenAiErrorBody {
 mod tests {
     use super::{
         ChatCompletionMessage, ChatCompletionRequest, GptOssMetalExecutionMode,
-        GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, PromptTokenCache,
-        chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
+        GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, OpenAiCompatConfig,
+        OpenAiCompatServer, PromptTokenCache, chat_messages_to_prompt_messages,
+        chat_messages_to_prompt_messages_for_family, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
-        generation_options_from_chat_request, prompt_request_cache_key, resolve_execution_summary,
+        generation_options_from_chat_request, generation_options_from_chat_request_for_family,
+        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
+        resolve_generic_model,
     };
+    use crate::GenerationRequest;
     use psionic_models::{
-        GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext,
-        PromptChannelConfig, PromptMessage, PromptMessageRole, PromptReasoningEffort,
-        PromptRenderOptions, TokenId, TokenSequence, render_gpt_oss_harmony_prompt,
+        GgufDecoderFamily, GgufMetadataValue, GgufTensorType, GptOssHarmonyParseSource,
+        GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext, PromptChannelConfig, PromptMessage,
+        PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, TokenId, TokenSequence,
+        render_gpt_oss_harmony_prompt,
     };
 
     #[test]
@@ -1759,5 +2395,718 @@ mod tests {
             prompt_request_cache_key(first.as_slice()),
             prompt_request_cache_key(second.as_slice())
         );
+    }
+
+    #[test]
+    fn generic_server_routes_multiple_dense_model_families()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let llama_path = temp.path().join("tiny-llama.gguf");
+        let qwen_path = temp.path().join("tiny-qwen.gguf");
+        write_test_gguf(
+            &llama_path,
+            dense_llama_metadata("tiny server llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+        write_test_gguf(
+            &qwen_path,
+            dense_qwen_metadata("tiny server qwen").as_slice(),
+            dense_decoder_tensors(true, 2, 3).as_slice(),
+        )?;
+
+        let mut config = OpenAiCompatConfig::new(&llama_path);
+        config.add_model_path(&qwen_path);
+        let server = OpenAiCompatServer::from_config(&config)?;
+
+        let llama_model = resolve_generic_model(server.state.as_ref(), Some("tiny-llama"))
+            .expect("llama model should resolve");
+        let qwen_model = resolve_generic_model(server.state.as_ref(), Some("tiny-qwen"))
+            .expect("qwen model should resolve");
+
+        assert_eq!(llama_model.family, GgufDecoderFamily::Llama);
+        assert_eq!(qwen_model.family, GgufDecoderFamily::Qwen);
+        assert_eq!(server.state.models_by_key.len(), 2);
+
+        let request = ChatCompletionRequest {
+            model: Some(String::from("tiny-qwen")),
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+        };
+        let prompt_messages =
+            chat_messages_to_prompt_messages_for_family(&request.messages, qwen_model.family)?;
+        let rendered = render_prompt_for_model(qwen_model, prompt_messages.as_slice())?;
+        let generation_request = GenerationRequest::new_text(
+            String::from("generic-server-qwen"),
+            qwen_model.descriptor.clone(),
+            None,
+            rendered.text,
+            generation_options_from_chat_request_for_family(
+                &request,
+                qwen_model.family,
+                rendered.stop_sequences.as_slice(),
+            ),
+        );
+        let response = tokio::runtime::Runtime::new()?.block_on(
+            server
+                .state
+                .worker
+                .generate(qwen_model.model_key.clone(), generation_request),
+        )?;
+        assert_eq!(response.output.text, "world");
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_boots_and_generates_for_gpt_oss() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-gpt-oss.gguf");
+        write_test_gguf(
+            &path,
+            gpt_oss_metadata().as_slice(),
+            gpt_oss_tensors().as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let model = resolve_generic_model(server.state.as_ref(), None)
+            .expect("default model should resolve");
+        assert_eq!(model.family, GgufDecoderFamily::GptOss);
+
+        let request = ChatCompletionRequest {
+            model: None,
+            messages: vec![ChatCompletionMessage {
+                role: String::from("user"),
+                content: String::from("hello"),
+                name: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            stop: None,
+            stream: false,
+        };
+        let prompt_messages =
+            chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
+        let rendered = render_prompt_for_model(model, prompt_messages.as_slice())?;
+        let generation_request = GenerationRequest::new_text(
+            String::from("generic-server-gpt-oss"),
+            model.descriptor.clone(),
+            None,
+            rendered.text,
+            generation_options_from_chat_request_for_family(
+                &request,
+                model.family,
+                rendered.stop_sequences.as_slice(),
+            ),
+        );
+        let response = tokio::runtime::Runtime::new()?.block_on(
+            server
+                .state
+                .worker
+                .generate(model.model_key.clone(), generation_request),
+        )?;
+        assert_eq!(response.usage.output_tokens, 1);
+        Ok(())
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestGgufTensor {
+        name: String,
+        shape: Vec<usize>,
+        tensor_type: GgufTensorType,
+        bytes: Vec<u8>,
+    }
+
+    impl TestGgufTensor {
+        fn new(
+            name: impl Into<String>,
+            shape: Vec<usize>,
+            tensor_type: GgufTensorType,
+            bytes: Vec<u8>,
+        ) -> Self {
+            Self {
+                name: name.into(),
+                shape,
+                tensor_type,
+                bytes,
+            }
+        }
+    }
+
+    fn dense_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("llama", name);
+        metadata.extend(sentencepiece_tokenizer_metadata_entries());
+        metadata
+    }
+
+    fn dense_qwen_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = dense_family_header("qwen2", name);
+        metadata.extend(qwen_tokenizer_metadata_entries());
+        metadata
+    }
+
+    fn dense_family_header(architecture: &str, name: &str) -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(architecture.to_string()),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                format!("{architecture}.context_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                format!("{architecture}.embedding_length"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                format!("{architecture}.feed_forward_length"),
+                GgufMetadataValue::U32(8),
+            ),
+            (
+                format!("{architecture}.block_count"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                format!("{architecture}.attention.head_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                format!("{architecture}.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                format!("{architecture}.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                format!("{architecture}.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+        ]
+    }
+
+    fn sentencepiece_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("llama")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<unk>")),
+                    GgufMetadataValue::String(String::from("<s>")),
+                    GgufMetadataValue::String(String::from("</s>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("psionic")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn qwen_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<|bos|>")),
+                    GgufMetadataValue::String(String::from("<|eos|>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("psionic")),
+                    GgufMetadataValue::String(String::from("agent")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.merges"),
+                GgufMetadataValue::Array(vec![GgufMetadataValue::String(String::from(
+                    "hello world",
+                ))]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn dense_decoder_tensors(
+        include_qkv_bias: bool,
+        hello_token_index: usize,
+        world_token_index: usize,
+    ) -> Vec<TestGgufTensor> {
+        let mut tensors = vec![
+            dense_tensor(
+                "token_embd.weight",
+                vec![6, 4],
+                token_embedding_values(hello_token_index),
+            ),
+            dense_tensor("output_norm.weight", vec![4], vec![1.0, 1.0, 1.0, 1.0]),
+            dense_tensor(
+                "output.weight",
+                vec![6, 4],
+                output_values(world_token_index),
+            ),
+            dense_tensor("blk.0.attn_norm.weight", vec![4], vec![1.0, 1.0, 1.0, 1.0]),
+            dense_tensor("blk.0.attn_q.weight", vec![4, 4], vec![0.0; 16]),
+            dense_tensor("blk.0.attn_k.weight", vec![2, 4], vec![0.0; 8]),
+            dense_tensor("blk.0.attn_v.weight", vec![2, 4], vec![0.0; 8]),
+            dense_tensor("blk.0.attn_output.weight", vec![4, 4], vec![0.0; 16]),
+            dense_tensor("blk.0.ffn_gate.weight", vec![8, 4], vec![0.0; 32]),
+            dense_tensor("blk.0.ffn_down.weight", vec![4, 8], vec![0.0; 32]),
+            dense_tensor("blk.0.ffn_up.weight", vec![8, 4], vec![0.0; 32]),
+            dense_tensor("blk.0.ffn_norm.weight", vec![4], vec![1.0, 1.0, 1.0, 1.0]),
+        ];
+        if include_qkv_bias {
+            tensors.push(dense_tensor("blk.0.attn_q.bias", vec![4], vec![0.0; 4]));
+            tensors.push(dense_tensor("blk.0.attn_k.bias", vec![2], vec![0.0; 2]));
+            tensors.push(dense_tensor("blk.0.attn_v.bias", vec![2], vec![0.0; 2]));
+        }
+        tensors
+    }
+
+    fn token_embedding_values(hello_token_index: usize) -> Vec<f32> {
+        let mut values = vec![0.0; 6 * 4];
+        values[hello_token_index.saturating_mul(4)] = 2.0;
+        values
+    }
+
+    fn output_values(world_token_index: usize) -> Vec<f32> {
+        let mut values = vec![0.0; 6 * 4];
+        values[world_token_index.saturating_mul(4)] = 1.0;
+        values
+    }
+
+    fn gpt_oss_metadata() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("gpt-oss")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(String::from("tiny psionic gpt-oss")),
+            ),
+            (
+                String::from("general.alignment"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.context_length"),
+                GgufMetadataValue::U32(128),
+            ),
+            (
+                String::from("gpt-oss.embedding_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.expert_feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.block_count"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.key_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.value_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                String::from("gpt-oss.rope.dimension_count"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.factor"),
+                GgufMetadataValue::F32(32.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.original_context_length"),
+                GgufMetadataValue::U32(4096),
+            ),
+            (
+                String::from("gpt-oss.expert_count"),
+                GgufMetadataValue::U32(3),
+            ),
+            (
+                String::from("gpt-oss.expert_used_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("gpt-4o")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<|start|>")),
+                    GgufMetadataValue::String(String::from("<|end|>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("psionic")),
+                    GgufMetadataValue::String(String::from("gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.merges"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("hello world")),
+                    GgufMetadataValue::String(String::from("psionic gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.padding_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn gpt_oss_tensors() -> Vec<TestGgufTensor> {
+        let expert_blocks = 3 * 32;
+        vec![
+            quantized_q8_0_tensor("token_embd.weight", vec![6, 32]),
+            dense_f32_tensor("output_norm.weight", vec![32]),
+            quantized_q8_0_tensor("output.weight", vec![6, 32]),
+            dense_f32_tensor("blk.0.attn_norm.weight", vec![32]),
+            quantized_q8_0_tensor("blk.0.attn_q.weight", vec![64, 32]),
+            dense_f32_tensor("blk.0.attn_q.bias", vec![64]),
+            quantized_q8_0_tensor("blk.0.attn_k.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_k.bias", vec![16]),
+            quantized_q8_0_tensor("blk.0.attn_v.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_v.bias", vec![16]),
+            quantized_q8_0_tensor("blk.0.attn_output.weight", vec![32, 64]),
+            dense_f32_tensor("blk.0.attn_output.bias", vec![32]),
+            dense_f32_tensor("blk.0.post_attention_norm.weight", vec![32]),
+            dense_f32_tensor("blk.0.attn_sinks.weight", vec![16]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.weight", vec![3, 32]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.bias", vec![3]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_gate_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_gate_exps.bias", vec![3, 32]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_up_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_up_exps.bias", vec![3, 32]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_down_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_down_exps.bias", vec![3, 32]),
+        ]
+    }
+
+    fn dense_tensor(name: &str, shape: Vec<usize>, values: Vec<f32>) -> TestGgufTensor {
+        TestGgufTensor::new(
+            name,
+            shape,
+            GgufTensorType::F32,
+            encode_f32_bytes(values.as_slice()),
+        )
+    }
+
+    fn dense_f32_tensor(name: &str, shape: Vec<usize>) -> TestGgufTensor {
+        let elements = shape.iter().product::<usize>();
+        TestGgufTensor::new(
+            name,
+            shape,
+            GgufTensorType::F32,
+            encode_f32_bytes(&vec![0.0; elements]),
+        )
+    }
+
+    fn quantized_q8_0_tensor(name: &str, shape: Vec<usize>) -> TestGgufTensor {
+        let rows = shape
+            .iter()
+            .take(shape.len().saturating_sub(1))
+            .product::<usize>();
+        TestGgufTensor::new(name, shape, GgufTensorType::Q8_0, repeated_q8_0_bytes(rows))
+    }
+
+    fn quantized_mxfp4_tensor(name: &str, shape: Vec<usize>, bytes: Vec<u8>) -> TestGgufTensor {
+        TestGgufTensor::new(name, shape, GgufTensorType::MXFP4, bytes)
+    }
+
+    fn repeated_q8_0_bytes(row_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(row_count * 34);
+        for _ in 0..row_count {
+            bytes.extend([0x00, 0x3c]);
+            bytes.extend([0_u8; 32]);
+        }
+        bytes
+    }
+
+    fn repeated_mxfp4_bytes(block_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(block_count * 17);
+        for _ in 0..block_count {
+            bytes.push(128_u8);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+        }
+        bytes
+    }
+
+    fn write_test_gguf(
+        path: &std::path::Path,
+        metadata: &[(String, GgufMetadataValue)],
+        tensors: &[TestGgufTensor],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::write(path, build_test_gguf(metadata, tensors)?)?;
+        Ok(())
+    }
+
+    fn build_test_gguf(
+        metadata: &[(String, GgufMetadataValue)],
+        tensors: &[TestGgufTensor],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let alignment = metadata
+            .iter()
+            .find(|(key, _)| key == "general.alignment")
+            .and_then(|(_, value)| match value {
+                GgufMetadataValue::U64(value) => Some(*value as usize),
+                GgufMetadataValue::U32(value) => Some(*value as usize),
+                _ => None,
+            })
+            .unwrap_or(32)
+            .max(1);
+
+        let mut bytes = Vec::new();
+        bytes.extend(b"GGUF");
+        push_u32(&mut bytes, 3);
+        push_u64(&mut bytes, u64::try_from(tensors.len())?);
+        push_u64(&mut bytes, u64::try_from(metadata.len())?);
+
+        for (key, value) in metadata {
+            push_gguf_string(&mut bytes, key)?;
+            push_u32(&mut bytes, gguf_metadata_value_type(value));
+            push_gguf_value(&mut bytes, value)?;
+        }
+
+        let mut next_offset = 0usize;
+        let mut tensor_offsets = Vec::with_capacity(tensors.len());
+        for tensor in tensors {
+            tensor_offsets.push(next_offset);
+            next_offset = align_usize(next_offset + tensor.bytes.len(), alignment);
+        }
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            push_gguf_string(&mut bytes, tensor.name.as_str())?;
+            push_u32(&mut bytes, u32::try_from(tensor.shape.len())?);
+            for dimension in tensor.shape.iter().rev() {
+                push_u64(&mut bytes, u64::try_from(*dimension)?);
+            }
+            push_u32(&mut bytes, gguf_tensor_type_code(tensor.tensor_type));
+            push_u64(&mut bytes, u64::try_from(*offset)?);
+        }
+
+        let tensor_data_offset = align_usize(bytes.len(), alignment);
+        bytes.resize(tensor_data_offset, 0);
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            let start = tensor_data_offset + offset;
+            if bytes.len() < start {
+                bytes.resize(start, 0);
+            }
+            bytes.extend_from_slice(tensor.bytes.as_slice());
+            bytes.resize(align_usize(bytes.len(), alignment), 0);
+        }
+
+        Ok(bytes)
+    }
+
+    fn align_usize(value: usize, alignment: usize) -> usize {
+        let remainder = value % alignment;
+        if remainder == 0 {
+            value
+        } else {
+            value + alignment - remainder
+        }
+    }
+
+    fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect::<Vec<_>>()
+    }
+
+    fn gguf_metadata_value_type(value: &GgufMetadataValue) -> u32 {
+        match value {
+            GgufMetadataValue::U8(_) => 0,
+            GgufMetadataValue::I8(_) => 1,
+            GgufMetadataValue::U16(_) => 2,
+            GgufMetadataValue::I16(_) => 3,
+            GgufMetadataValue::U32(_) => 4,
+            GgufMetadataValue::I32(_) => 5,
+            GgufMetadataValue::F32(_) => 6,
+            GgufMetadataValue::Bool(_) => 7,
+            GgufMetadataValue::String(_) => 8,
+            GgufMetadataValue::Array(_) => 9,
+            GgufMetadataValue::U64(_) => 10,
+            GgufMetadataValue::I64(_) => 11,
+            GgufMetadataValue::F64(_) => 12,
+        }
+    }
+
+    fn gguf_tensor_type_code(tensor_type: GgufTensorType) -> u32 {
+        match tensor_type {
+            GgufTensorType::F32 => 0,
+            GgufTensorType::Q8_0 => 8,
+            GgufTensorType::MXFP4 => 39,
+            other => panic!("unsupported synthetic gguf tensor type: {other:?}"),
+        }
+    }
+
+    fn push_gguf_string(
+        bytes: &mut Vec<u8>,
+        value: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        push_u64(bytes, u64::try_from(value.len())?);
+        bytes.extend_from_slice(value.as_bytes());
+        Ok(())
+    }
+
+    fn push_gguf_value(
+        bytes: &mut Vec<u8>,
+        value: &GgufMetadataValue,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match value {
+            GgufMetadataValue::U8(value) => bytes.push(*value),
+            GgufMetadataValue::I8(value) => bytes.push(value.to_le_bytes()[0]),
+            GgufMetadataValue::U16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::Bool(value) => bytes.push(u8::from(*value)),
+            GgufMetadataValue::String(value) => push_gguf_string(bytes, value)?,
+            GgufMetadataValue::Array(values) => {
+                let value_type = values.first().map_or(4, gguf_metadata_value_type);
+                push_u32(bytes, value_type);
+                push_u64(bytes, u64::try_from(values.len())?);
+                for value in values {
+                    push_gguf_value(bytes, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+        bytes.extend(value.to_le_bytes());
     }
 }

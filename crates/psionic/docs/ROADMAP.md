@@ -799,9 +799,11 @@ The inference-generalization queue from
 `docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md` is now active too: `PSI-233` /
 [#3538](https://github.com/OpenAgentsInc/openagents/issues/3538) is now landed
 in-tree through a generic GGUF CPU runtime that executes Llama, Qwen, and
-Mistral families through Psionic-owned paths, and the next dependency-ordered
-issue in that chain is `PSI-234` /
-[#3539](https://github.com/OpenAgentsInc/openagents/issues/3539).
+Mistral families through Psionic-owned paths. `PSI-234` /
+[#3539](https://github.com/OpenAgentsInc/openagents/issues/3539) is now landed
+too through the generic `psionic-openai-server` path, so the next
+dependency-ordered issue in that chain is `PSI-235` /
+[#3540](https://github.com/OpenAgentsInc/openagents/issues/3540).
 
 ## Current Reality
 
@@ -816,6 +818,10 @@ baseline on `main` is:
   decoder families beyond GPT-OSS, with real runtime tokenization plus
   representative executed Llama, Qwen, and Mistral paths instead of treating
   those families as metadata-only adapters
+- Psionic now also has a generic OpenAI-compatible CPU server path,
+  `psionic-openai-server`, that can boot multiple loaded GGUF families on one
+  `/v1/chat/completions` surface while still explicitly refusing unfinished
+  APIs such as `/v1/embeddings`
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through

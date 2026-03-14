@@ -593,6 +593,13 @@ decoder families. That work keeps GPT-OSS support intact while removing the
 old assumption that Psionic's non-GPT-OSS decoder-family adapters are only
 metadata.
 
+Implemented now: `PSI-234` is materially landed in-tree through the generic
+`OpenAiCompatServer` plus the shipped `psionic-openai-server` binary. That path
+can front GPT-OSS and representative non-GPT-OSS GGUF families through one
+Psionic-owned `/v1/chat/completions` surface, exposes explicit model inventory,
+and still refuses unfinished APIs such as `/v1/embeddings` instead of
+pretending the broader serving plane is already complete.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
