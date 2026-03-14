@@ -423,8 +423,8 @@ impl SandboxCommand {
                 relative_path,
                 file,
             } => {
-                let bytes =
-                    fs::read(file).with_context(|| format!("read sandbox upload {}", file.display()))?;
+                let bytes = fs::read(file)
+                    .with_context(|| format!("read sandbox upload {}", file.display()))?;
                 Ok(Some(DesktopControlActionRequest::UploadSandboxFile {
                     job_id: job_id.clone(),
                     relative_path: relative_path.clone(),
@@ -434,10 +434,12 @@ impl SandboxCommand {
             Self::Start { job_id } => Ok(Some(DesktopControlActionRequest::StartSandboxJob {
                 job_id: job_id.clone(),
             })),
-            Self::Wait { job_id, timeout_ms } => Ok(Some(DesktopControlActionRequest::WaitSandboxJob {
-                job_id: job_id.clone(),
-                timeout_ms: *timeout_ms,
-            })),
+            Self::Wait { job_id, timeout_ms } => {
+                Ok(Some(DesktopControlActionRequest::WaitSandboxJob {
+                    job_id: job_id.clone(),
+                    timeout_ms: *timeout_ms,
+                }))
+            }
             Self::DownloadArtifact {
                 job_id,
                 relative_path,
@@ -450,10 +452,12 @@ impl SandboxCommand {
                 job_id,
                 relative_path,
                 ..
-            } => Ok(Some(DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
-                job_id: job_id.clone(),
-                relative_path: relative_path.clone(),
-            })),
+            } => Ok(Some(
+                DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
+                    job_id: job_id.clone(),
+                    relative_path: relative_path.clone(),
+                },
+            )),
         }
     }
 }
@@ -688,7 +692,9 @@ fn main() -> Result<()> {
                 }
             }
             SandboxCommand::Job { .. } => {
-                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox job inspection did not produce a control action"))?;
+                let action = command.action_request()?.ok_or_else(|| {
+                    anyhow!("sandbox job inspection did not produce a control action")
+                })?;
                 let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let payload = response.payload.as_ref().unwrap_or(&Value::Null);
@@ -701,7 +707,9 @@ fn main() -> Result<()> {
             SandboxCommand::Create { .. }
             | SandboxCommand::Upload { .. }
             | SandboxCommand::Start { .. } => {
-                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox command did not produce a control action"))?;
+                let action = command
+                    .action_request()?
+                    .ok_or_else(|| anyhow!("sandbox command did not produce a control action"))?;
                 let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let payload = response.payload.as_ref().unwrap_or(&Value::Null);
@@ -713,7 +721,9 @@ fn main() -> Result<()> {
                 }
             }
             SandboxCommand::Wait { .. } => {
-                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox wait did not produce a control action"))?;
+                let action = command
+                    .action_request()?
+                    .ok_or_else(|| anyhow!("sandbox wait did not produce a control action"))?;
                 let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let payload = response.payload.as_ref().unwrap_or(&Value::Null);
@@ -726,7 +736,9 @@ fn main() -> Result<()> {
             }
             SandboxCommand::DownloadArtifact { ref output, .. }
             | SandboxCommand::DownloadWorkspace { ref output, .. } => {
-                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox download did not produce a control action"))?;
+                let action = command
+                    .action_request()?
+                    .ok_or_else(|| anyhow!("sandbox download did not produce a control action"))?;
                 let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let payload = response.payload.as_ref().unwrap_or(&Value::Null);
@@ -1720,9 +1732,7 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
     );
     println!(
         "cluster: available={} topology={} members={}",
-        snapshot.cluster.available,
-        snapshot.cluster.topology_label,
-        snapshot.cluster.member_count
+        snapshot.cluster.available, snapshot.cluster.topology_label, snapshot.cluster.member_count
     );
     println!(
         "sandbox: available={} profiles={}/{} jobs={} active_jobs={}",
@@ -1962,7 +1972,10 @@ fn print_sandbox_job_text(payload: &Value) {
         "sandbox job: job={} state={} profile={} compute_product={} uploads={} downloads={} receipt_type={}",
         payload.get("job_id").and_then(Value::as_str).unwrap_or("-"),
         payload.get("state").and_then(Value::as_str).unwrap_or("-"),
-        payload.get("profile_id").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("profile_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
         payload
             .get("compute_product_id")
             .and_then(Value::as_str)
@@ -1986,7 +1999,10 @@ fn print_sandbox_job_text(payload: &Value) {
             println!(
                 "event: state={} at={} detail={}",
                 event.get("state").and_then(Value::as_str).unwrap_or("-"),
-                event.get("observed_at_ms").and_then(Value::as_i64).unwrap_or(0),
+                event
+                    .get("observed_at_ms")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
                 event.get("detail").and_then(Value::as_str).unwrap_or("-")
             );
         }

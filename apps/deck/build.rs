@@ -34,8 +34,12 @@ fn main() -> Result<(), String> {
         selected_source.display()
     );
 
-    let deck_source = fs::read_to_string(&selected_source)
-        .map_err(|error| format!("failed to read deck source '{}': {error}", selected_source.display()))?;
+    let deck_source = fs::read_to_string(&selected_source).map_err(|error| {
+        format!(
+            "failed to read deck source '{}': {error}",
+            selected_source.display()
+        )
+    })?;
 
     let out_dir = PathBuf::from(
         env::var("OUT_DIR")

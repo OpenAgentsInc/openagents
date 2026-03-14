@@ -367,7 +367,9 @@ mod backend {
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
                     let (sources, last_play, fetch_headers) = {
-                        let inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let inner = inner
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
                         (
                             inner.props.sources.clone(),
                             inner.last_play_request,
@@ -376,7 +378,9 @@ mod backend {
                     };
 
                     let data = Self::load_data(&sources, fetch_headers.as_ref());
-                    let mut inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut inner = inner
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     match data {
                         Ok(data) => {
                             inner.data = Some(data);
@@ -429,14 +433,18 @@ mod backend {
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
                     let (sources, fetch_headers) = {
-                        let inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let inner = inner
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
                         (
                             inner.props.sources.clone(),
                             inner.props.settings.fetch_headers.clone(),
                         )
                     };
                     let data = Self::load_data(&sources, fetch_headers.as_ref());
-                    let mut inner = inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut inner = inner
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     match data {
                         Ok(data) => {
                             inner.data = Some(data);

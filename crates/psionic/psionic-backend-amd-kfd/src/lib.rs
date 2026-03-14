@@ -3,11 +3,7 @@
 #![allow(dead_code)]
 #![cfg_attr(
     test,
-    allow(
-        unused_imports,
-        clippy::expect_used,
-        clippy::panic_in_result_fn
-    )
+    allow(unused_imports, clippy::expect_used, clippy::panic_in_result_fn)
 )]
 
 use std::{

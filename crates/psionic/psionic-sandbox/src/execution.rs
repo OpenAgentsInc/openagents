@@ -1094,7 +1094,8 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::NodeExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::NodeExec);
         let request = request(&workspace, ProviderSandboxExecutionClass::NodeExec);
 
         let result = execute_sandbox_job(

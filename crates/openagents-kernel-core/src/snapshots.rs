@@ -211,6 +211,16 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_delivery_variances_24h: u64,
     #[serde(default)]
+    pub compute_validator_challenges_open: u64,
+    #[serde(default)]
+    pub compute_validator_challenges_queued: u64,
+    #[serde(default)]
+    pub compute_validator_challenges_verified_24h: u64,
+    #[serde(default)]
+    pub compute_validator_challenges_rejected_24h: u64,
+    #[serde(default)]
+    pub compute_validator_challenges_timed_out_24h: u64,
+    #[serde(default)]
     pub compute_delivery_accept_rate_24h: f64,
     #[serde(default)]
     pub compute_fill_ratio_24h: f64,

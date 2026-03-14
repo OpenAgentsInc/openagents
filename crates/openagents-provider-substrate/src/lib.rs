@@ -753,11 +753,9 @@ mod tests {
                 "psionic.local.inference.apple_foundation_models.single_node"
             )
         );
-        assert!(
-            !controls.is_product_advertised(
-                "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
-            )
-        );
+        assert!(!controls.is_product_advertised(
+            "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+        ));
 
         let enabled = controls.toggle(ProviderComputeProduct::GptOssEmbeddings);
         assert!(!enabled);
@@ -769,10 +767,16 @@ mod tests {
         let inference = ProviderComputeProduct::GptOssInference;
         let descriptor = inference.descriptor();
 
-        assert_eq!(inference.product_id(), "psionic.local.inference.gpt_oss.single_node");
+        assert_eq!(
+            inference.product_id(),
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(inference.backend_kind(), Some(ProviderBackendKind::GptOss));
         assert_eq!(inference.backend_label(), "gpt_oss");
-        assert_eq!(descriptor.product_id, "psionic.local.inference.gpt_oss.single_node");
+        assert_eq!(
+            descriptor.product_id,
+            "psionic.local.inference.gpt_oss.single_node"
+        );
         assert_eq!(descriptor.compute_family, "inference");
         assert_eq!(descriptor.backend_family, "gpt_oss");
 
@@ -855,7 +859,9 @@ mod tests {
             None
         );
         assert_eq!(
-            embeddings.as_ref().map(|descriptor| descriptor.product_id.as_str()),
+            embeddings
+                .as_ref()
+                .map(|descriptor| descriptor.product_id.as_str()),
             Some("psionic.local.embeddings.gpt_oss.single_node")
         );
 
@@ -879,7 +885,9 @@ mod tests {
             Some("sandbox.python.exec")
         );
         assert_eq!(
-            sandbox.as_ref().map(|descriptor| descriptor.product_id.as_str()),
+            sandbox
+                .as_ref()
+                .map(|descriptor| descriptor.product_id.as_str()),
             Some("psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated")
         );
     }

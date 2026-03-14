@@ -109,6 +109,9 @@ pub struct ValidatorChallengeContext {
     pub proof_bundle_digest: String,
     /// Stable request digest the challenged execution belongs to.
     pub request_digest: String,
+    /// Stable delivery-proof identifier when the challenge belongs to one delivery object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof_id: Option<String>,
     /// Stable compute product identifier.
     pub product_id: String,
     /// Runtime backend that produced the challenged work.
@@ -142,6 +145,7 @@ impl ValidatorChallengeContext {
             challenge_id: challenge_id.into(),
             proof_bundle_digest: proof_bundle_digest.into(),
             request_digest: request_digest.into(),
+            delivery_proof_id: None,
             product_id: product_id.into(),
             runtime_backend: runtime_backend.into(),
             model_id: None,
@@ -156,6 +160,13 @@ impl ValidatorChallengeContext {
     #[must_use]
     pub fn with_model_id(mut self, model_id: impl Into<String>) -> Self {
         self.model_id = Some(model_id.into());
+        self
+    }
+
+    /// Attaches the delivery-proof identifier.
+    #[must_use]
+    pub fn with_delivery_proof_id(mut self, delivery_proof_id: impl Into<String>) -> Self {
+        self.delivery_proof_id = Some(delivery_proof_id.into());
         self
     }
 
@@ -572,7 +583,7 @@ impl ValidatorChallengeProtocol for GpuFreivaldsMerkleProtocol {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ValidatorChallengeRecord {
     request: ValidatorChallengeRequest,
     attempts_used: u32,
@@ -581,10 +592,27 @@ struct ValidatorChallengeRecord {
 }
 
 /// In-memory validator challenge queue and execution service.
-#[derive(Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ValidatorChallengeService {
     records: BTreeMap<String, ValidatorChallengeRecord>,
     queue: VecDeque<String>,
+}
+
+/// Public projection for one validator challenge in the service.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValidatorChallengeSnapshot {
+    /// Original scheduled request.
+    pub request: ValidatorChallengeRequest,
+    /// Current lifecycle state.
+    pub status: ValidatorChallengeStatus,
+    /// Number of attempts already used.
+    pub attempts_used: u32,
+    /// Active lease when the challenge is currently assigned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_lease: Option<ValidatorChallengeLease>,
+    /// Final or latest terminal result when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_result: Option<ValidatorChallengeResult>,
 }
 
 impl ValidatorChallengeService {
@@ -628,6 +656,55 @@ impl ValidatorChallengeService {
             return Some(ValidatorChallengeStatus::Retrying);
         }
         Some(ValidatorChallengeStatus::Queued)
+    }
+
+    /// Returns one public snapshot of the current challenge state.
+    #[must_use]
+    pub fn snapshot(&self, challenge_id: &str) -> Option<ValidatorChallengeSnapshot> {
+        let record = self.records.get(challenge_id)?;
+        Some(ValidatorChallengeSnapshot {
+            request: record.request.clone(),
+            status: self.status(challenge_id)?,
+            attempts_used: record.attempts_used,
+            active_lease: record.active_lease.clone(),
+            final_result: record.final_result.clone(),
+        })
+    }
+
+    /// Returns all public challenge snapshots in stable challenge-ID order.
+    #[must_use]
+    pub fn list(&self) -> Vec<ValidatorChallengeSnapshot> {
+        self.records
+            .keys()
+            .filter_map(|challenge_id| self.snapshot(challenge_id))
+            .collect()
+    }
+
+    /// Leases one specific challenge to the requested validator worker.
+    pub fn lease(
+        &mut self,
+        challenge_id: &str,
+        validator_id: impl Into<String>,
+        now_ms: u64,
+    ) -> Result<ValidatorChallengeLease, ValidatorServiceError> {
+        let record = self
+            .records
+            .get_mut(challenge_id)
+            .ok_or_else(|| ValidatorServiceError::UnknownChallenge(challenge_id.to_string()))?;
+        if record.final_result.is_some() || record.active_lease.is_some() {
+            return Err(ValidatorServiceError::InvalidLease(challenge_id.to_string()));
+        }
+        self.queue.retain(|queued_id| queued_id != challenge_id);
+        let attempt = record.attempts_used.saturating_add(1);
+        let lease = ValidatorChallengeLease {
+            challenge_id: challenge_id.to_string(),
+            attempt,
+            validator_id: validator_id.into(),
+            leased_at_ms: now_ms,
+            expires_at_ms: now_ms.saturating_add(record.request.context.lease_timeout_ms),
+        };
+        record.active_lease = Some(lease.clone());
+        Ok(lease)
     }
 
     /// Leases the next available challenge to one validator worker.
@@ -679,6 +756,30 @@ impl ValidatorChallengeService {
             ValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1 => GpuFreivaldsMerkleProtocol
                 .adjudicate(&record.request, lease.attempt, finalized_at_ms),
         };
+        record.attempts_used = lease.attempt;
+        record.active_lease = None;
+        record.final_result = Some(result.clone());
+        Ok(result)
+    }
+
+    /// Finalizes one active lease with a result produced outside the service.
+    pub fn finalize_lease(
+        &mut self,
+        lease: &ValidatorChallengeLease,
+        result: ValidatorChallengeResult,
+    ) -> Result<ValidatorChallengeResult, ValidatorServiceError> {
+        let record = self
+            .records
+            .get_mut(lease.challenge_id.as_str())
+            .ok_or_else(|| ValidatorServiceError::UnknownChallenge(lease.challenge_id.clone()))?;
+        if record.active_lease.as_ref() != Some(lease)
+            || result.challenge_id != lease.challenge_id
+            || result.attempt != lease.attempt
+        {
+            return Err(ValidatorServiceError::InvalidLease(
+                lease.challenge_id.clone(),
+            ));
+        }
         record.attempts_used = lease.attempt;
         record.active_lease = None;
         record.final_result = Some(result.clone());
