@@ -2,6 +2,21 @@
 
 OpenAgents is building the economic infrastructure for machine work.
 
+We are focused on two linked problems in AI:
+
+- agent misuse can create massive economic damage when output outruns
+  verification
+- compute supply is constrained, so capacity has to be allocated more
+  intelligently
+
+Our direct answers are the `Risk Market` and the `Compute Market`.
+
+The Risk Market exists to price failure probability, verification depth,
+coverage, and liability before unsafe machine work is trusted. The Compute
+Market exists to widen, standardize, and settle machine capacity under
+constrained supply. Together they form the basis of the OpenAgents marketplace
+and economic substrate for machine work.
+
 ## Autopilot
 
 Autopilot is your personal agent.

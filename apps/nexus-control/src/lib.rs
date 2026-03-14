@@ -45,13 +45,18 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeEnvironmentPackageStatus,
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeSyntheticDataJobStatus,
-    DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
+    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
+    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+    ComputeValidatorChallengeVerdict, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
-use openagents_validator_service::ValidatorChallengeStatus;
+use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
@@ -1888,12 +1893,143 @@ struct DeliveryProofsQuery {
 
 #[derive(Debug, Deserialize)]
 struct ValidatorChallengesQuery {
-    status: Option<ValidatorChallengeStatus>,
+    status: Option<ComputeValidatorChallengeStatus>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ComputeIndicesQuery {
     product_id: Option<String>,
+}
+
+fn canonical_challenge_status(
+    status: ServiceValidatorChallengeStatus,
+) -> ComputeValidatorChallengeStatus {
+    match status {
+        ServiceValidatorChallengeStatus::Queued => ComputeValidatorChallengeStatus::Queued,
+        ServiceValidatorChallengeStatus::Leased => ComputeValidatorChallengeStatus::Leased,
+        ServiceValidatorChallengeStatus::Retrying => ComputeValidatorChallengeStatus::Retrying,
+        ServiceValidatorChallengeStatus::Verified => ComputeValidatorChallengeStatus::Verified,
+        ServiceValidatorChallengeStatus::Rejected => ComputeValidatorChallengeStatus::Rejected,
+        ServiceValidatorChallengeStatus::TimedOut => ComputeValidatorChallengeStatus::TimedOut,
+    }
+}
+
+fn service_challenge_status(
+    status: ComputeValidatorChallengeStatus,
+) -> ServiceValidatorChallengeStatus {
+    match status {
+        ComputeValidatorChallengeStatus::Queued => ServiceValidatorChallengeStatus::Queued,
+        ComputeValidatorChallengeStatus::Leased => ServiceValidatorChallengeStatus::Leased,
+        ComputeValidatorChallengeStatus::Retrying => ServiceValidatorChallengeStatus::Retrying,
+        ComputeValidatorChallengeStatus::Verified => ServiceValidatorChallengeStatus::Verified,
+        ComputeValidatorChallengeStatus::Rejected => ServiceValidatorChallengeStatus::Rejected,
+        ComputeValidatorChallengeStatus::TimedOut => ServiceValidatorChallengeStatus::TimedOut,
+    }
+}
+
+fn canonical_challenge_protocol(
+    protocol: openagents_validator_service::ValidatorChallengeProtocolKind,
+) -> ComputeValidatorChallengeProtocolKind {
+    match protocol {
+        openagents_validator_service::ValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1 => {
+            ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1
+        }
+    }
+}
+
+fn canonical_challenge_verdict(
+    verdict: openagents_validator_service::ValidatorChallengeVerdict,
+) -> ComputeValidatorChallengeVerdict {
+    match verdict {
+        openagents_validator_service::ValidatorChallengeVerdict::Verified => {
+            ComputeValidatorChallengeVerdict::Verified
+        }
+        openagents_validator_service::ValidatorChallengeVerdict::Rejected => {
+            ComputeValidatorChallengeVerdict::Rejected
+        }
+        openagents_validator_service::ValidatorChallengeVerdict::RetryScheduled => {
+            ComputeValidatorChallengeVerdict::RetryScheduled
+        }
+        openagents_validator_service::ValidatorChallengeVerdict::TimedOut => {
+            ComputeValidatorChallengeVerdict::TimedOut
+        }
+    }
+}
+
+fn canonical_challenge_failure_code(
+    code: openagents_validator_service::ValidatorChallengeFailureCode,
+) -> ComputeValidatorChallengeFailureCode {
+    match code {
+        openagents_validator_service::ValidatorChallengeFailureCode::DimensionMismatch => {
+            ComputeValidatorChallengeFailureCode::DimensionMismatch
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::FieldMismatch => {
+            ComputeValidatorChallengeFailureCode::FieldMismatch
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::RowOpeningMissing => {
+            ComputeValidatorChallengeFailureCode::RowOpeningMissing
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::MerkleProofInvalid => {
+            ComputeValidatorChallengeFailureCode::MerkleProofInvalid
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::FreivaldsMismatch => {
+            ComputeValidatorChallengeFailureCode::FreivaldsMismatch
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::LeaseExpired => {
+            ComputeValidatorChallengeFailureCode::LeaseExpired
+        }
+        openagents_validator_service::ValidatorChallengeFailureCode::RetryBudgetExhausted => {
+            ComputeValidatorChallengeFailureCode::RetryBudgetExhausted
+        }
+    }
+}
+
+fn canonical_challenge_snapshot(
+    snapshot: openagents_validator_service::ValidatorChallengeSnapshot,
+) -> ComputeValidatorChallengeSnapshot {
+    ComputeValidatorChallengeSnapshot {
+        request: ComputeValidatorChallengeRequest {
+            context: ComputeValidatorChallengeContext {
+                challenge_id: snapshot.request.context.challenge_id,
+                proof_bundle_digest: snapshot.request.context.proof_bundle_digest,
+                request_digest: snapshot.request.context.request_digest,
+                delivery_proof_id: snapshot.request.context.delivery_proof_id,
+                product_id: snapshot.request.context.product_id,
+                runtime_backend: snapshot.request.context.runtime_backend,
+                model_id: snapshot.request.context.model_id,
+                validator_pool_ref: snapshot.request.context.validator_pool_ref,
+                created_at_ms: snapshot.request.context.created_at_ms,
+                max_attempts: snapshot.request.context.max_attempts,
+                lease_timeout_ms: snapshot.request.context.lease_timeout_ms,
+            },
+            protocol: canonical_challenge_protocol(snapshot.request.protocol),
+        },
+        status: canonical_challenge_status(snapshot.status),
+        attempts_used: snapshot.attempts_used,
+        active_lease: snapshot.active_lease.map(|lease| ComputeValidatorChallengeLease {
+            challenge_id: lease.challenge_id,
+            attempt: lease.attempt,
+            validator_id: lease.validator_id,
+            leased_at_ms: lease.leased_at_ms,
+            expires_at_ms: lease.expires_at_ms,
+        }),
+        final_result: snapshot.final_result.map(|result| ComputeValidatorChallengeResult {
+            challenge_id: result.challenge_id,
+            proof_bundle_digest: result.proof_bundle_digest,
+            protocol_id: result.protocol_id,
+            attempt: result.attempt,
+            status: canonical_challenge_status(result.status),
+            verdict: canonical_challenge_verdict(result.verdict),
+            reason_code: result.reason_code.map(canonical_challenge_failure_code),
+            detail: result.detail,
+            created_at_ms: result.created_at_ms,
+            finalized_at_ms: result.finalized_at_ms,
+            challenge_seed_digest: result.challenge_seed_digest,
+            verified_row_count: result.verified_row_count,
+            result_digest: result.result_digest,
+            challenge_result_ref: result.challenge_result_ref,
+        }),
+    }
 }
 
 async fn list_kernel_compute_products(
@@ -2366,21 +2502,28 @@ async fn list_kernel_validator_challenges(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<ValidatorChallengesQuery>,
-) -> Result<Json<Vec<openagents_validator_service::ValidatorChallengeSnapshot>>, ApiError> {
+) -> Result<Json<Vec<ComputeValidatorChallengeSnapshot>>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_validator_challenges(query.status)))
+    Ok(Json(
+        store
+            .kernel
+            .list_validator_challenges(query.status.map(service_challenge_status))
+            .into_iter()
+            .map(canonical_challenge_snapshot)
+            .collect(),
+    ))
 }
 
 async fn get_kernel_validator_challenge(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(challenge_id): Path<String>,
-) -> Result<Json<openagents_validator_service::ValidatorChallengeSnapshot>, ApiError> {
+) -> Result<Json<ComputeValidatorChallengeSnapshot>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let challenge_id =
         normalize_required_field(challenge_id.as_str(), "validator_challenge_id_missing")?;
@@ -2396,7 +2539,7 @@ async fn get_kernel_validator_challenge(
             reason: "kernel_validator_challenge_not_found".to_string(),
         });
     };
-    Ok(Json(challenge))
+    Ok(Json(canonical_challenge_snapshot(challenge)))
 }
 
 async fn schedule_kernel_validator_challenge(

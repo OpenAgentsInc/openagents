@@ -1515,6 +1515,177 @@ pub struct DeliveryVerificationEvidence {
     pub eval_run_ref: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeValidatorChallengeStatus {
+    #[default]
+    Queued,
+    Leased,
+    Retrying,
+    Verified,
+    Rejected,
+    TimedOut,
+}
+
+impl ComputeValidatorChallengeStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Leased => "leased",
+            Self::Retrying => "retrying",
+            Self::Verified => "verified",
+            Self::Rejected => "rejected",
+            Self::TimedOut => "timed_out",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "queued" => Some(Self::Queued),
+            "leased" => Some(Self::Leased),
+            "retrying" => Some(Self::Retrying),
+            "verified" => Some(Self::Verified),
+            "rejected" => Some(Self::Rejected),
+            "timed_out" => Some(Self::TimedOut),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeValidatorChallengeVerdict {
+    #[default]
+    Verified,
+    Rejected,
+    RetryScheduled,
+    TimedOut,
+}
+
+impl ComputeValidatorChallengeVerdict {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Verified => "verified",
+            Self::Rejected => "rejected",
+            Self::RetryScheduled => "retry_scheduled",
+            Self::TimedOut => "timed_out",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeValidatorChallengeFailureCode {
+    #[default]
+    DimensionMismatch,
+    FieldMismatch,
+    RowOpeningMissing,
+    MerkleProofInvalid,
+    FreivaldsMismatch,
+    LeaseExpired,
+    RetryBudgetExhausted,
+}
+
+impl ComputeValidatorChallengeFailureCode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::DimensionMismatch => "dimension_mismatch",
+            Self::FieldMismatch => "field_mismatch",
+            Self::RowOpeningMissing => "row_opening_missing",
+            Self::MerkleProofInvalid => "merkle_proof_invalid",
+            Self::FreivaldsMismatch => "freivalds_mismatch",
+            Self::LeaseExpired => "lease_expired",
+            Self::RetryBudgetExhausted => "retry_budget_exhausted",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeValidatorChallengeProtocolKind {
+    #[default]
+    GpuFreivaldsMerkleV1,
+}
+
+impl ComputeValidatorChallengeProtocolKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::GpuFreivaldsMerkleV1 => {
+                "openagents.validator.gpu_freivalds_merkle.v1"
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorChallengeContext {
+    pub challenge_id: String,
+    pub proof_bundle_digest: String,
+    pub request_digest: String,
+    #[serde(default)]
+    pub delivery_proof_id: Option<String>,
+    pub product_id: String,
+    pub runtime_backend: String,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub validator_pool_ref: Option<String>,
+    pub created_at_ms: u64,
+    pub max_attempts: u32,
+    pub lease_timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorChallengeLease {
+    pub challenge_id: String,
+    pub attempt: u32,
+    pub validator_id: String,
+    pub leased_at_ms: u64,
+    pub expires_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorChallengeResult {
+    pub challenge_id: String,
+    pub proof_bundle_digest: String,
+    pub protocol_id: String,
+    pub attempt: u32,
+    #[serde(default)]
+    pub status: ComputeValidatorChallengeStatus,
+    #[serde(default)]
+    pub verdict: ComputeValidatorChallengeVerdict,
+    #[serde(default)]
+    pub reason_code: Option<ComputeValidatorChallengeFailureCode>,
+    pub detail: String,
+    pub created_at_ms: u64,
+    pub finalized_at_ms: u64,
+    #[serde(default)]
+    pub challenge_seed_digest: Option<String>,
+    #[serde(default)]
+    pub verified_row_count: Option<u32>,
+    pub result_digest: String,
+    pub challenge_result_ref: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorChallengeRequest {
+    pub context: ComputeValidatorChallengeContext,
+    #[serde(default)]
+    pub protocol: ComputeValidatorChallengeProtocolKind,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeValidatorChallengeSnapshot {
+    pub request: ComputeValidatorChallengeRequest,
+    #[serde(default)]
+    pub status: ComputeValidatorChallengeStatus,
+    pub attempts_used: u32,
+    #[serde(default)]
+    pub active_lease: Option<ComputeValidatorChallengeLease>,
+    #[serde(default)]
+    pub final_result: Option<ComputeValidatorChallengeResult>,
+}
+
 pub fn validate_delivery_proof(proof: &DeliveryProof) -> Result<(), String> {
     if proof.accepted_quantity > proof.metered_quantity {
         return Err("delivery_proof_quantity_invalid".to_string());
