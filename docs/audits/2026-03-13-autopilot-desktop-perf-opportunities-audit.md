@@ -58,6 +58,10 @@ Control / mirror runtimes:
   `apps/autopilot-desktop/src/snapshot_domains.rs`, and desktop-control action
   responses reuse an already-built snapshot when the payload path needs both the
   payload and response metadata.
+- 2026-03-14: `#3533` is implemented. Autopilot peer roster and buy-mode target
+  selection now consume an app-owned incremental presence index instead of
+  replaying every confirmed message in the configured main channel on hot-path
+  queries.
 
 ## Executive Summary
 
