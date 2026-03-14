@@ -181,7 +181,7 @@ shape already includes at least:
 | Subsystem | Current Status | What Is Real Today |
 | --- | --- | --- |
 | Runtime training truth | `implemented_early` | `TrainingRecoveryContext`, checkpoint refs, elastic-membership context, device-mesh context, collective context |
-| Datastream | `implemented_early` | resumable manifests, checkpoint bindings, dataset bindings, delivery receipts |
+| Datastream | `implemented_early` | resumable manifests, checkpoint or dataset bindings, policy-weight control refs, freshness windows, and delivery receipts |
 | Collectives | `implemented_early` | elastic mesh observation, bandwidth-aware local/global sync planning, transport-feedback replanning, and benchmark-gated quantized collective policy |
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
@@ -301,6 +301,7 @@ Its subject model already includes:
 - `TokenizedCorpus`
 - `EvalBundle`
 - `Checkpoint`
+- `PolicyWeights`
 - `ServedArtifact`
 - `AdapterPackage`
 
@@ -310,6 +311,8 @@ Its manifests already support:
 - stable chunk descriptors
 - dataset bindings
 - checkpoint bindings
+- policy-weight bindings
+- control-plane-visible mirror metadata
 - resumable transfer cursors
 - restart-safe client progress
 - final delivery receipts
@@ -318,14 +321,14 @@ That means the train system already has a real substrate for:
 
 - dataset shard transport
 - checkpoint transport
-- later policy-weight broadcast
+- policy-weight shard transport and lightweight control-plane refs
 - eval-bundle movement
 - adapter-package distribution
 
 What is still missing is not "a data plane exists or not." The missing work is
-the training-specific policy over that data plane: freshness windows,
-policy-weight revision cutoffs, staged broadcasts, and artifact retention
-policy.
+the broader lifecycle policy over that data plane: richer retention classes,
+cross-region mirror governance, and tighter integration with higher-level
+orchestrator freshness rules.
 
 ### 3. Collective planning already exists
 
@@ -1049,7 +1052,7 @@ crate names.
 | Checkpoint lineage | present in `psionic-train` and `psionic-runtime` | durable checkpoint families, promotion, replay, and restore across full training programs |
 | Elastic membership | present in `psionic-runtime` and `psionic-train` | full participant lifecycle with heartbeats, rejoin, eviction, and topology history |
 | Collective planning | present in `psionic-collectives` | full local/global sync planning with distributed optimizer integration |
-| Weight broadcast | datastream substrate exists | staged policy-weight broadcast with freshness cutoffs and relay policy |
+| Weight broadcast | present in `psionic-datastream` | staged policy-weight broadcast with freshness cutoffs and relay policy |
 | Training steps | typed fixed-budget reference loop present | broader Rust-native trainer-step engine |
 | RL rollouts | typed rollout and trainer-batch contracts present | freshness enforcement, worker protocols, and validator-ready lineage |
 | Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
@@ -1317,12 +1320,32 @@ state integration or parameter-shard accounting.
 
 ### 9. `Psionic Datastream: add sharded policy-weight broadcast and freshness control`
 
-Datastream already covers checkpoints and datasets, but asynchronous training
-and RL require policy-weight distribution as a first-class data-plane concern.
-This issue should add shard manifests, pipelined weight delivery,
-assembled-artifact digests, freshness windows, stale-artifact rejection, and
-mirror or relay metadata where appropriate. This is the bridge from generic
-artifact movement to training control-plane correctness.
+Status: implemented on 2026-03-14 via GitHub issue `#3572`.
+
+Added policy-weight broadcast contracts inside `psionic-datastream` for:
+
+- explicit `PolicyWeights` subject identity plus `DatastreamPolicyWeightBinding`
+  over policy id, revision, shard identity, assembled-artifact digest, and
+  freshness window
+- lightweight `DatastreamPolicyWeightControlPlaneRef` and
+  `DatastreamPolicyWeightBroadcastManifest` objects so orchestrators can carry
+  refs, digests, and mirror metadata instead of heavy payload bytes
+- mirror or relay metadata through `DatastreamMirrorLocator`
+- stale-artifact rejection at control-plane-ref export time
+- `InMemoryPolicyWeightBroadcast` and
+  `DatastreamPolicyWeightBroadcastReceipt` for pipelined multi-shard delivery
+  over the existing resumable chunk path
+- tests proving the control-plane summary stays smaller than the heavy artifact
+  bytes while the heavy artifact plane remains resumable and byte-accountable
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/POLICY_WEIGHT_BROADCAST_REFERENCE.md`
+- `scripts/release/check-psionic-policy-weight-broadcast.sh`
+
+This issue makes the heavy artifact plane versus lightweight control plane
+split explicit for policy weights. It does not yet land orchestrator-owned
+assignment or rollout freshness budgets.
 
 ### 10. `Psionic Train: build the orchestrator state machine and trainer-batch assembly contracts`
 

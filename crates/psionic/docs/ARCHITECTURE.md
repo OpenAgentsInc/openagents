@@ -134,7 +134,7 @@ Psionic is also not:
 | --- | --- | --- |
 | Local inference substrate | `implemented_early` | runtime, backend, model, and serve crates exist with CPU and partial Metal lanes |
 | Clustered serving substrate | `implemented_early` | `psionic-cluster` owns ordered state, placement, catch-up, and sharded serving topology truth |
-| Datastream and artifact staging | `implemented_early` | resumable manifests, chunk transport, and delivery receipts exist in `psionic-datastream` |
+| Datastream and artifact staging | `implemented_early` | resumable manifests, policy-weight broadcast refs, freshness enforcement, chunk transport, and delivery receipts exist in `psionic-datastream` |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, streamed iteration, and long-context packing policies |
 | Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
@@ -201,7 +201,8 @@ Applications / Operators / Authority
    - peer identity, transport sessions, relay-backed rendezvous, trust and
      candidate state
 7. `psionic-datastream`
-   - resumable manifests, chunk transfer, and delivery receipts for artifacts
+   - resumable manifests, lightweight policy-weight broadcast refs, freshness
+     control, chunk transfer, and delivery receipts for artifacts
 8. `psionic-data`
    - versioned dataset manifests, tokenizer digests, split declarations,
      streamed iteration, and packing policy contracts
@@ -295,6 +296,7 @@ training subsystems.
 | `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | `implemented` |
 | `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | `implemented` |
 | `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts, including explicit distributed KV spill/restore locators | `implemented` |
+| `DatastreamPolicyWeightBroadcastManifest` | `psionic-datastream` | lightweight control-plane summary for a multi-shard policy-weight artifact | `implemented_early` |
 | `DatasetManifest` | `psionic-data` | versioned dataset, tokenizer, split, and shard-lineage contract | `implemented_early` |
 | `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
