@@ -27,7 +27,8 @@ use crate::local_inference_runtime::{
     LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
     LocalInferenceExecutionSnapshot, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
-    local_runtime_execution_posture_label, local_runtime_scheduler_posture_label,
+    local_runtime_device_inventory_label, local_runtime_execution_posture_label,
+    local_runtime_scheduler_posture_label,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
@@ -2609,6 +2610,20 @@ fn mission_control_local_runtime_view_model_for_policy(
                             .max_cached_bytes
                             .map(|value| value.to_string())
                             .unwrap_or_else(|| "unbounded".to_string())
+                    ),
+                ));
+            }
+            for (index, device) in local_inference_runtime
+                .diagnostics
+                .selected_devices
+                .iter()
+                .enumerate()
+            {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS device[{index}]: {}",
+                        local_runtime_device_inventory_label(device)
                     ),
                 ));
             }

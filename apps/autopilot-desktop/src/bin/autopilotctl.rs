@@ -16,7 +16,8 @@ use autopilot_desktop::desktop_control::{
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
-    local_runtime_execution_posture_label, local_runtime_scheduler_posture_label,
+    local_runtime_device_inventory_label, local_runtime_execution_posture_label,
+    local_runtime_scheduler_posture_label,
 };
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -3334,6 +3335,19 @@ fn local_runtime_diagnostic_lines(status: &DesktopControlLocalRuntimeStatus) -> 
                 .unwrap_or_else(|| "unbounded".to_string())
         ));
     }
+    lines.extend(
+        status
+            .diagnostics
+            .selected_devices
+            .iter()
+            .enumerate()
+            .map(|(index, device)| {
+                format!(
+                    "device[{index}]: {}",
+                    local_runtime_device_inventory_label(device)
+                )
+            }),
+    );
     if let Some(compile_path) = status.diagnostics.last_compile_path.as_ref() {
         lines.push(format!(
             "compile_path: temperature={} plan={} kernel={}",
@@ -3692,6 +3706,7 @@ mod tests {
     use psionic_runtime::{
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendRuntimeResources,
         CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
+        DeviceInventoryQualifiers, DeviceMemoryClass, DevicePerformanceClass,
         ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
         KernelCachePolicy, KernelCacheReport, KernelCacheState, LocalRuntimeObservability,
     };
@@ -3758,6 +3773,14 @@ mod tests {
                 },
                 device_memory_budget: None,
             }),
+            selected_devices: vec![DeviceInventoryQualifiers {
+                stable_device_id: "00000000:01:00.0".to_string(),
+                topology_key: Some("00000000:01:00.0".to_string()),
+                performance_class: DevicePerformanceClass::DiscreteAccelerator,
+                memory_class: DeviceMemoryClass::DedicatedDevice,
+                total_memory_bytes: Some(16 * 1024 * 1024 * 1024),
+                free_memory_bytes: Some(12 * 1024 * 1024 * 1024),
+            }],
             last_compile_path: Some(CompilePathEvidence {
                 temperature: CompilePathTemperature::WarmReuse,
                 execution_plan_cache: CacheObservation::new(
@@ -3800,6 +3823,13 @@ mod tests {
             lines
                 .iter()
                 .any(|line| line.starts_with("kernel_cache: entries=1"))
+        );
+        assert!(
+            lines.iter().any(|line| {
+                line.starts_with("device[0]: id=00000000:01:00.0")
+                    && line.contains("topology=00000000:01:00.0")
+            }),
+            "missing device line: {lines:?}"
         );
         assert!(
             lines.iter().any(|line| {

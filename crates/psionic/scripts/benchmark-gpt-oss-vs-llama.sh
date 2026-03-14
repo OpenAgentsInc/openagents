@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--psionic-bin PATH] [--psionic-backend BACKEND] [--psionic-metal-mode MODE] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--max-tokens N] [--startup-timeout-seconds N] [--request-timeout-seconds N] [--json-out DIR]
+  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--server SERVER] [--model PATH] [--psionic-bin PATH] [--psionic-backend BACKEND] [--psionic-metal-mode MODE] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--max-tokens N] [--startup-timeout-seconds N] [--request-timeout-seconds N] [--json-out DIR]
 
 Defaults:
   macOS model:           /Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
@@ -22,10 +22,12 @@ Defaults:
   max_tokens:            64
   startup_timeout:       60
   request_timeout:       60
+  server:                both
 
 Notes:
   - The script prefers ./target/release/psionic-gpt-oss-server, then ./target/debug/psionic-gpt-oss-server.
   - On macOS Metal, Psionic defaults to the native Rust/Metal path. Use `--psionic-metal-mode proxy` only for explicit `llama.cpp` oracle/debug runs.
+  - `--server psionic` runs the Psionic lane only and does not require `llama.cpp`.
   - Each server is measured on three same-host cases:
       1. cold request
       2. warm non-hit request
@@ -61,11 +63,16 @@ PSI_BIN=
 JSON_OUT=
 PSIONIC_METAL_MODE=
 PSIONIC_METAL_MODE_SET=0
+SERVER_SELECTION=both
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model)
       MODEL_PATH=${2:?missing value for --model}
+      shift 2
+      ;;
+    --server)
+      SERVER_SELECTION=${2:?missing value for --server}
       shift 2
       ;;
     --psionic-bin)
@@ -129,6 +136,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$SERVER_SELECTION" in
+  both|psionic|llama)
+    ;;
+  *)
+    echo "invalid --server value: $SERVER_SELECTION (expected both, psionic, or llama)" >&2
+    exit 1
+    ;;
+esac
+
+should_run_psionic() {
+  [[ "$SERVER_SELECTION" == "both" || "$SERVER_SELECTION" == "psionic" ]]
+}
+
+should_run_llama() {
+  [[ "$SERVER_SELECTION" == "both" || "$SERVER_SELECTION" == "llama" ]]
+}
+
 is_truthy() {
   local value=${1:-}
   [[ "$value" == "1" || "$value" == "true" || "$value" == "TRUE" || "$value" == "yes" || "$value" == "YES" ]]
@@ -160,7 +184,7 @@ if [[ "$PSI_BACKEND" == "metal" && "$PSIONIC_METAL_MODE" == "native" ]] && is_tr
   exit 1
 fi
 
-if [[ -z "$PSI_BIN" ]]; then
+if should_run_psionic && [[ -z "$PSI_BIN" ]]; then
   if [[ -x "$REPO_ROOT/target/release/psionic-gpt-oss-server" ]]; then
     PSI_BIN=$REPO_ROOT/target/release/psionic-gpt-oss-server
   elif [[ -x "$REPO_ROOT/target/debug/psionic-gpt-oss-server" ]]; then
@@ -188,12 +212,12 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$PSI_BIN" ]]; then
+if should_run_psionic && [[ ! -x "$PSI_BIN" ]]; then
   echo "psionic binary not executable: $PSI_BIN" >&2
   exit 1
 fi
 
-if [[ ! -x "$LLAMA_BIN" ]]; then
+if should_run_llama && [[ ! -x "$LLAMA_BIN" ]]; then
   echo "llama.cpp server not executable: $LLAMA_BIN" >&2
   exit 1
 fi
@@ -405,11 +429,14 @@ bench() {
 
 echo "repo_root=$REPO_ROOT"
 echo "platform=$PLATFORM"
+echo "server_selection=$SERVER_SELECTION"
 echo "model=$MODEL_PATH"
 echo "psionic_bin=$PSI_BIN"
 echo "psionic_backend=$PSI_BACKEND"
 echo "psionic_metal_mode=$PSIONIC_METAL_MODE"
-echo "llama_bin=$LLAMA_BIN"
+if should_run_llama; then
+  echo "llama_bin=$LLAMA_BIN"
+fi
 echo "max_tokens=$MAX_TOKENS"
 echo "startup_timeout_seconds=$STARTUP_TIMEOUT_SECONDS"
 echo "request_timeout_seconds=$REQUEST_TIMEOUT_SECONDS"
@@ -441,9 +468,11 @@ if [[ "$PSI_BACKEND" == "metal" && "$PSIONIC_METAL_MODE" == "proxy" ]]; then
   )
 fi
 
-bench \
-  "psionic" \
-  "${PSIONIC_CMD[@]}"
+if should_run_psionic; then
+  bench \
+    "psionic" \
+    "${PSIONIC_CMD[@]}"
+fi
 
 LLAMA_CMD=(
   "$LLAMA_BIN" \
@@ -460,19 +489,23 @@ if [[ "$PLATFORM" == "Darwin" ]]; then
   LLAMA_CMD+=(-b 64 -ub 64 --cpu-moe)
 fi
 
-bench \
-  "llama" \
-  "${LLAMA_CMD[@]}"
+if should_run_llama; then
+  bench \
+    "llama" \
+    "${LLAMA_CMD[@]}"
+fi
 
-PSIONIC_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/psionic.prompt_cache_hit.json")
-LLAMA_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/llama.prompt_cache_hit.json")
+if should_run_psionic && should_run_llama; then
+  PSIONIC_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/psionic.prompt_cache_hit.json")
+  LLAMA_VISIBLE_OUTPUT=$(extract_visible_output "$TMP_DIR/llama.prompt_cache_hit.json")
 
-if [[ "$PSIONIC_VISIBLE_OUTPUT" == "$LLAMA_VISIBLE_OUTPUT" ]]; then
-  echo
-  echo "prompt_cache_hit_visible_output_match=true"
-else
-  echo
-  echo "prompt_cache_hit_visible_output_match=false"
-  echo "psionic_visible_output=$PSIONIC_VISIBLE_OUTPUT"
-  echo "llama_visible_output=$LLAMA_VISIBLE_OUTPUT"
+  if [[ "$PSIONIC_VISIBLE_OUTPUT" == "$LLAMA_VISIBLE_OUTPUT" ]]; then
+    echo
+    echo "prompt_cache_hit_visible_output_match=true"
+  else
+    echo
+    echo "prompt_cache_hit_visible_output_match=false"
+    echo "psionic_visible_output=$PSIONIC_VISIBLE_OUTPUT"
+    echo "llama_visible_output=$LLAMA_VISIBLE_OUTPUT"
+  fi
 fi

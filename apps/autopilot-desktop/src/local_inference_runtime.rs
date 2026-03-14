@@ -7,7 +7,7 @@ use crate::state::job_inbox::JobExecutionParam;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use psionic_runtime::{
     BackendRuntimeResources, BatchExecutionPosture, CacheInvalidationTrigger, CompilePathEvidence,
-    CompilePathTemperature, LocalRuntimeObservability, QueueDiscipline,
+    CompilePathTemperature, DeviceInventoryQualifiers, LocalRuntimeObservability, QueueDiscipline,
 };
 use psionic_serve::{
     CpuGgufGptOssTextGenerationService, CpuReferenceTextGenerationService,
@@ -152,6 +152,8 @@ pub struct LocalRuntimeDiagnostics {
     pub observability: Option<LocalRuntimeObservability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<BackendRuntimeResources>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_compile_path: Option<CompilePathEvidence>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,6 +222,27 @@ pub fn local_runtime_execution_posture_label(
         LocalRuntimeExecutionPosture::CompileFailed => "compile_failed",
         LocalRuntimeExecutionPosture::CacheInvalidated => "cache_invalidated",
     }
+}
+
+pub fn local_runtime_device_inventory_label(device: &DeviceInventoryQualifiers) -> String {
+    let topology = device.topology_key.as_deref().unwrap_or("-");
+    let total_memory_bytes = device
+        .total_memory_bytes
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let free_memory_bytes = device
+        .free_memory_bytes
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    format!(
+        "id={} topology={} performance_class={:?} memory_class={:?} total_bytes={} free_bytes={}",
+        device.stable_device_id,
+        topology,
+        device.performance_class,
+        device.memory_class,
+        total_memory_bytes,
+        free_memory_bytes
+    )
 }
 
 pub fn local_runtime_cache_invalidation_reason_label(
@@ -794,6 +817,14 @@ impl GptOssRuntimeService {
         }
     }
 
+    fn selected_devices(&self) -> Vec<DeviceInventoryQualifiers> {
+        match self {
+            Self::Cpu(_) => Vec::new(),
+            Self::Cuda(service) => service.backend_selection().selected_devices_inventory(),
+            Self::Metal(service) => service.backend_selection().selected_devices_inventory(),
+        }
+    }
+
     fn warm_model(&mut self, keep_alive_millis: u64) -> Result<(), String> {
         let model_id = self.model_id().to_string();
         match self {
@@ -936,9 +967,11 @@ impl GptOssRuntimeWorker {
         if let Some(service) = self.service.as_mut() {
             self.snapshot.diagnostics.observability = Some(service.observability());
             self.snapshot.diagnostics.runtime_resources = service.runtime_resources();
+            self.snapshot.diagnostics.selected_devices = service.selected_devices();
         } else {
             self.snapshot.diagnostics.observability = None;
             self.snapshot.diagnostics.runtime_resources = None;
+            self.snapshot.diagnostics.selected_devices.clear();
         }
         self.snapshot
             .diagnostics
