@@ -54,6 +54,14 @@ const HARMONY_START_TOKEN: &str = "<|start|>";
 const HARMONY_END_TOKEN: &str = "<|end|>";
 const HARMONY_MESSAGE_TOKEN: &str = "<|message|>";
 const HARMONY_CHANNEL_TOKEN: &str = "<|channel|>";
+const CPU_SERVER_RESIDENCY_MODE: &str = "cpu_only";
+const CPU_SERVER_HYBRID_OFFLOAD_MODE: &str = "unsupported";
+const CPU_SERVER_FALLBACK_POLICY: &str = "refuse";
+const CPU_SERVER_PERFORMANCE_CLASS: &str = "portable_cpu_degraded";
+const CPU_SERVER_LOAD_STATUS: &str = "loaded";
+const CPU_SERVER_WARM_CONTROL: &str = "not_implemented";
+const CPU_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
+const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
 
 fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
     LocalBlobOpenOptions::default().with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel)
@@ -1103,6 +1111,16 @@ struct ModelCard {
     id: String,
     object: &'static str,
     owned_by: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_served_backend: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_residency_mode: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_hybrid_offload: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_fallback_policy: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_performance_class: Option<&'static str>,
 }
 
 async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<ModelsResponse> {
@@ -1111,6 +1129,11 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             id: state.default_model_name.clone(),
             object: "model",
             owned_by: "psionic",
+            psionic_served_backend: None,
+            psionic_residency_mode: None,
+            psionic_hybrid_offload: None,
+            psionic_fallback_policy: None,
+            psionic_performance_class: None,
         }],
     })
 }
@@ -1123,6 +1146,14 @@ struct GenericHealthResponse {
     execution_engine: &'static str,
     default_model: String,
     model_count: usize,
+    residency_mode: &'static str,
+    hybrid_offload: &'static str,
+    fallback_policy: &'static str,
+    performance_class: &'static str,
+    load_status: &'static str,
+    warm_control: &'static str,
+    unload_control: &'static str,
+    memory_pressure_reporting: &'static str,
 }
 
 async fn generic_health(
@@ -1135,6 +1166,14 @@ async fn generic_health(
         execution_engine: state.execution_engine_label,
         default_model: state.default_model_name.clone(),
         model_count: state.models_by_key.len(),
+        residency_mode: CPU_SERVER_RESIDENCY_MODE,
+        hybrid_offload: CPU_SERVER_HYBRID_OFFLOAD_MODE,
+        fallback_policy: CPU_SERVER_FALLBACK_POLICY,
+        performance_class: CPU_SERVER_PERFORMANCE_CLASS,
+        load_status: CPU_SERVER_LOAD_STATUS,
+        warm_control: CPU_SERVER_WARM_CONTROL,
+        unload_control: CPU_SERVER_UNLOAD_CONTROL,
+        memory_pressure_reporting: CPU_SERVER_MEMORY_PRESSURE_REPORTING,
     })
 }
 
@@ -1147,6 +1186,11 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 id: model.canonical_name.clone(),
                 object: "model",
                 owned_by: "psionic",
+                psionic_served_backend: Some("cpu"),
+                psionic_residency_mode: Some(CPU_SERVER_RESIDENCY_MODE),
+                psionic_hybrid_offload: Some(CPU_SERVER_HYBRID_OFFLOAD_MODE),
+                psionic_fallback_policy: Some(CPU_SERVER_FALLBACK_POLICY),
+                psionic_performance_class: Some(CPU_SERVER_PERFORMANCE_CLASS),
             })
             .collect(),
     })
@@ -1703,6 +1747,22 @@ fn insert_generic_execution_headers(headers: &mut HeaderMap, state: &OpenAiCompa
         HeaderName::from_static("x-psionic-execution-engine"),
         HeaderValue::from_static(state.execution_engine_label),
     );
+    headers.insert(
+        HeaderName::from_static("x-psionic-residency-mode"),
+        HeaderValue::from_static(CPU_SERVER_RESIDENCY_MODE),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-hybrid-offload"),
+        HeaderValue::from_static(CPU_SERVER_HYBRID_OFFLOAD_MODE),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-fallback-policy"),
+        HeaderValue::from_static(CPU_SERVER_FALLBACK_POLICY),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-performance-class"),
+        HeaderValue::from_static(CPU_SERVER_PERFORMANCE_CLASS),
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -2070,15 +2130,17 @@ struct OpenAiErrorBody {
 #[cfg(test)]
 mod tests {
     use super::{
+        CPU_SERVER_FALLBACK_POLICY, CPU_SERVER_HYBRID_OFFLOAD_MODE, CPU_SERVER_RESIDENCY_MODE,
         ChatCompletionMessage, ChatCompletionRequest, GptOssMetalExecutionMode,
         GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, OpenAiCompatConfig,
         OpenAiCompatServer, PromptTokenCache, chat_messages_to_prompt_messages,
         chat_messages_to_prompt_messages_for_family, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
         generation_options_from_chat_request, generation_options_from_chat_request_for_family,
-        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
-        resolve_generic_model,
+        generic_health, generic_list_models, prompt_request_cache_key, render_prompt_for_model,
+        resolve_execution_summary, resolve_generic_model,
     };
+    use axum::extract::State;
     use crate::GenerationRequest;
     use psionic_models::{
         GgufDecoderFamily, GgufMetadataValue, GgufTensorType, GptOssHarmonyParseSource,
@@ -2426,6 +2488,22 @@ mod tests {
         assert_eq!(llama_model.family, GgufDecoderFamily::Llama);
         assert_eq!(qwen_model.family, GgufDecoderFamily::Qwen);
         assert_eq!(server.state.models_by_key.len(), 2);
+        let health = tokio::runtime::Runtime::new()?
+            .block_on(generic_health(State(std::sync::Arc::clone(&server.state))));
+        assert_eq!(health.0.residency_mode, CPU_SERVER_RESIDENCY_MODE);
+        assert_eq!(health.0.fallback_policy, CPU_SERVER_FALLBACK_POLICY);
+        assert_eq!(health.0.hybrid_offload, CPU_SERVER_HYBRID_OFFLOAD_MODE);
+        let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
+            std::sync::Arc::clone(&server.state),
+        )));
+        assert_eq!(models.0.data.len(), 2);
+        assert!(
+            models
+                .0
+                .data
+                .iter()
+                .all(|model| model.psionic_residency_mode == Some(CPU_SERVER_RESIDENCY_MODE))
+        );
 
         let request = ChatCompletionRequest {
             model: Some(String::from("tiny-qwen")),

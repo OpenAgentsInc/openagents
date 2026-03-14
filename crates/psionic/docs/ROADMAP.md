@@ -802,8 +802,11 @@ in-tree through a generic GGUF CPU runtime that executes Llama, Qwen, and
 Mistral families through Psionic-owned paths. `PSI-234` /
 [#3539](https://github.com/OpenAgentsInc/openagents/issues/3539) is now landed
 too through the generic `psionic-openai-server` path, so the next
-dependency-ordered issue in that chain is `PSI-235` /
-[#3540](https://github.com/OpenAgentsInc/openagents/issues/3540).
+dependency-ordered issue in that chain is `PSI-236` /
+[#3541](https://github.com/OpenAgentsInc/openagents/issues/3541). `PSI-235` /
+[#3540](https://github.com/OpenAgentsInc/openagents/issues/3540) is now landed
+too through explicit CPU-lane residency, fallback, and control truth on the
+generic server surface.
 
 ## Current Reality
 
@@ -822,6 +825,10 @@ baseline on `main` is:
   `psionic-openai-server`, that can boot multiple loaded GGUF families on one
   `/v1/chat/completions` surface while still explicitly refusing unfinished
   APIs such as `/v1/embeddings`
+- that generic server now also reports CPU-only residency, unsupported hybrid
+  offload, refuse-on-fallback behavior, and explicit non-implemented
+  warm/unload or memory-pressure controls instead of implying a stronger local
+  lane than is actually shipped today
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
