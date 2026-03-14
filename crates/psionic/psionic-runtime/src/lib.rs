@@ -6719,6 +6719,55 @@ pub struct PrefixCacheReusePolicy {
     pub shared_across_models: bool,
     /// Whether prefixes may be reused across different backend identities.
     pub shared_across_backends: bool,
+    /// Whether prefixes may be reused across different sampler settings.
+    pub shared_across_sampler_settings: bool,
+}
+
+/// Request-level control over automatic prefix caching.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefixCacheMode {
+    /// Allow automatic prefix reuse under the active policy.
+    #[default]
+    Auto,
+    /// Opt out of shared prefix reuse and do not record a new shared entry.
+    Bypass,
+    /// Force invalidation before evaluating the request and rebuild fresh state.
+    Invalidate,
+}
+
+/// Request-scoped automatic prefix-cache controls.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixCacheControl {
+    /// Request-level mode for the shared prefix cache.
+    pub mode: PrefixCacheMode,
+    /// Explicit tenant or security-domain binding when higher layers have one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+}
+
+impl PrefixCacheControl {
+    /// Returns whether the control is the default automatic posture.
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        self.mode == PrefixCacheMode::Auto && self.tenant_id.is_none()
+    }
+}
+
+/// Explicit reason the runtime refused or bypassed one shared prefix reuse path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefixCacheRefusalReason {
+    /// The caller opted out of automatic prefix caching.
+    RequestOptOut,
+    /// The caller forced invalidation before the lookup.
+    ForcedInvalidation,
+    /// The request tenant/security boundary did not match the cached entry.
+    TenantBoundary,
+    /// The sampler boundary did not match the cached entry.
+    SamplerBoundary,
+    /// The request already had session-owned KV state and skipped shared reuse.
+    SessionBoundState,
 }
 
 /// Stable backend/toolchain identity carried into artifact reproducibility claims.
@@ -7250,6 +7299,12 @@ pub struct PrefixCacheIdentity {
     /// Stable generation-defaults digest when prompt rendering depended on one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation_defaults_digest: Option<String>,
+    /// Tenant or security-domain binding for the reusable prefix when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    /// Stable sampler digest when reuse depended on request-level decode settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampler_digest: Option<String>,
     /// Stable backend compatibility label required for reuse.
     pub backend_compatibility: String,
     /// Stable digest of the reusable prompt-prefix tokens.
@@ -9184,6 +9239,7 @@ mod tests {
             shared_across_users: false,
             shared_across_models: false,
             shared_across_backends: false,
+            shared_across_sampler_settings: false,
         };
         let identity = PrefixCacheIdentity {
             served_artifact_digest: String::from("served-artifact-digest"),
@@ -9194,6 +9250,8 @@ mod tests {
             tokenizer_digest: Some(String::from("tokenizer-digest")),
             chat_template_digest: None,
             generation_defaults_digest: None,
+            tenant_id: None,
+            sampler_digest: None,
             backend_compatibility: String::from("cpu"),
             prefix_digest: String::from("prefix-digest"),
             prefix_tokens: 3,
@@ -9205,7 +9263,8 @@ mod tests {
                 "shared_across_sessions": true,
                 "shared_across_users": false,
                 "shared_across_models": false,
-                "shared_across_backends": false
+                "shared_across_backends": false,
+                "shared_across_sampler_settings": false
             })
         );
         assert_eq!(

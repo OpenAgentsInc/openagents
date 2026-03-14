@@ -60,12 +60,13 @@ use super::{
     GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssMetalDecodeLogitsMetrics,
     GptOssMetalLogitsOutputMode, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
     InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
-    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
-    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
-    TokenSequence, TokenizerBoundary, continuous_batch_text_generation_execution_profile,
-    current_time_millis, default_generation_scheduler_policy, default_prefix_cache_policy,
-    generation_runtime_observability, prefix_compatibility,
-    run_continuous_batch_generation_requests, run_generation_request,
+    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, PrefixCacheMode,
+    PrefixCacheRefusalReason, QuantizationMode, ReferenceTextGenerationError, SharedPrefixStore,
+    TextGenerationExecutor, TokenId, TokenSequence, TokenizerBoundary,
+    continuous_batch_text_generation_execution_profile, current_time_millis,
+    default_generation_scheduler_policy, default_prefix_cache_policy,
+    generation_runtime_observability, run_continuous_batch_generation_requests,
+    run_generation_request,
 };
 use thiserror::Error;
 
@@ -1481,9 +1482,11 @@ fn run_cuda_generation_request(
 
         let expected_kv_width = loaded_model.cache_width();
         let mut session_tokens = Vec::new();
-        let compatibility = prefix_compatibility(&loaded_model);
+        let compatibility = super::prefix_compatibility_for_request(&loaded_model, request);
         let prefix_policy = default_prefix_cache_policy();
         let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_cache_refusal_reason = None;
+        let mut prefix_cache_invalidation_trigger = None;
         let mut prefix_tokens_reused = 0usize;
         let mut prefix_identity = None;
         let mut shared_prefix_eligible = false;
@@ -1503,6 +1506,7 @@ fn run_cuda_generation_request(
                 shared_prefix_eligible = true;
             } else {
                 prefix_state = super::PrefixCacheState::Bypassed;
+                prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
             }
             state.cache().state()
         } else {
@@ -1533,7 +1537,12 @@ fn run_cuda_generation_request(
         let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
         let mut exact_prompt_token = None;
         let exact_prefix_hit = if shared_prefix_eligible && request.session_id.is_none() {
-            shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
+            super::controlled_exact_prefix_lookup(
+                shared_prefixes,
+                &compatibility,
+                &prompt_tokens,
+                request,
+            )
         } else {
             None
         };
@@ -1554,8 +1563,15 @@ fn run_cuda_generation_request(
                 expected_kv_width,
             )
         } else if shared_prefix_eligible {
-            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            let lookup = super::controlled_prefix_lookup(
+                shared_prefixes,
+                &compatibility,
+                &prompt_tokens,
+                request,
+            );
             prefix_state = lookup.state;
+            prefix_cache_refusal_reason = lookup.refusal_reason;
+            prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
@@ -1669,8 +1685,9 @@ fn run_cuda_generation_request(
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
-        let should_record_prompt_prefix =
-            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let should_record_prompt_prefix = shared_prefix_eligible
+            && prefix_tokens_reused != prompt_tokens.len()
+            && super::prefix_recording_allowed(request);
         let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
         let prompt_cuda_cache = should_record_prompt_prefix.then(|| cuda_cache.clone());
 
@@ -1880,7 +1897,9 @@ fn run_cuda_generation_request(
                 &request_kv_checkpoint,
                 psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
             ),
+            prefix_cache_control: Some(request.prefix_cache_control.clone()),
             prefix_cache_state: Some(prefix_state),
+            prefix_cache_refusal_reason,
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
             compile_path: compile_path.clone(),
@@ -1900,6 +1919,7 @@ fn run_cuda_generation_request(
                 request.reset_session,
                 &previous_kv_state,
                 prefix_state,
+                prefix_cache_invalidation_trigger,
             ),
             scheduler: None,
             structured_output: sampler.structured_output_report(),
@@ -1971,9 +1991,11 @@ fn run_cuda_hybrid_generation_request(
 
         let expected_kv_width = loaded_model.cache_width();
         let mut session_tokens = Vec::new();
-        let compatibility = prefix_compatibility(&loaded_model);
+        let compatibility = super::prefix_compatibility_for_request(&loaded_model, request);
         let prefix_policy = default_prefix_cache_policy();
         let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_cache_refusal_reason = None;
+        let mut prefix_cache_invalidation_trigger = None;
         let mut prefix_tokens_reused = 0usize;
         let mut prefix_identity = None;
         let mut shared_prefix_eligible = false;
@@ -1993,6 +2015,7 @@ fn run_cuda_hybrid_generation_request(
                 shared_prefix_eligible = true;
             } else {
                 prefix_state = super::PrefixCacheState::Bypassed;
+                prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
             }
             state.cache().state()
         } else {
@@ -2021,8 +2044,15 @@ fn run_cuda_hybrid_generation_request(
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
         let mut cache = if shared_prefix_eligible {
-            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            let lookup = super::controlled_prefix_lookup(
+                shared_prefixes,
+                &compatibility,
+                &prompt_tokens,
+                request,
+            );
             prefix_state = lookup.state;
+            prefix_cache_refusal_reason = lookup.refusal_reason;
+            prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
@@ -2093,8 +2123,9 @@ fn run_cuda_hybrid_generation_request(
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
-        let should_record_prompt_prefix =
-            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let should_record_prompt_prefix = shared_prefix_eligible
+            && prefix_tokens_reused != prompt_tokens.len()
+            && super::prefix_recording_allowed(request);
         let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
 
         let mut sampler = super::GenerationSampler::new(&request.options)?;
@@ -2286,7 +2317,9 @@ fn run_cuda_hybrid_generation_request(
                 &request_kv_checkpoint,
                 psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens),
             ),
+            prefix_cache_control: Some(request.prefix_cache_control.clone()),
             prefix_cache_state: Some(prefix_state),
+            prefix_cache_refusal_reason,
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
             compile_path: compile_path.clone(),
@@ -2306,6 +2339,7 @@ fn run_cuda_hybrid_generation_request(
                 request.reset_session,
                 &previous_kv_state,
                 prefix_state,
+                prefix_cache_invalidation_trigger,
             ),
             scheduler: None,
             structured_output: sampler.structured_output_report(),
@@ -2381,7 +2415,7 @@ fn run_metal_generation_request(
         let layer_count = loaded_model.inner.layer_count();
         let layer_kv_width = loaded_model.inner.layer_kv_width();
         let mut session_tokens = Vec::new();
-        let compatibility = prefix_compatibility(&loaded_model);
+        let compatibility = super::prefix_compatibility_for_request(&loaded_model, request);
         let metal_compatibility = metal_prefix_compatibility(
             &compatibility,
             layer_kv_width,
@@ -2389,6 +2423,8 @@ fn run_metal_generation_request(
         );
         let prefix_policy = default_prefix_cache_policy();
         let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_cache_refusal_reason = None;
+        let mut prefix_cache_invalidation_trigger = None;
         let mut prefix_tokens_reused = 0usize;
         let mut prefix_identity = None;
         let mut shared_prefix_eligible = false;
@@ -2408,6 +2444,7 @@ fn run_metal_generation_request(
                 shared_prefix_eligible = true;
             } else {
                 prefix_state = super::PrefixCacheState::Bypassed;
+                prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
             }
             state.cache().state()
         } else {
@@ -2437,11 +2474,15 @@ fn run_metal_generation_request(
         let mut decode_step_plan = None;
         let mut exact_prompt_token = None;
         let prompt_token_ids = metal_prompt_token_ids(&prompt_tokens);
-        let sessionless_metal_lookup = (shared_prefix_eligible && request.session_id.is_none())
+        let sessionless_metal_lookup = (shared_prefix_eligible
+            && request.session_id.is_none()
+            && request.prefix_cache_control.mode == PrefixCacheMode::Auto)
             .then(|| {
                 metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
             });
-        let sessionless_exact_prefix_hit = (shared_prefix_eligible && request.session_id.is_none())
+        let sessionless_exact_prefix_hit = (shared_prefix_eligible
+            && request.session_id.is_none()
+            && request.prefix_cache_control.mode == PrefixCacheMode::Auto)
             .then(|| metal_prompt_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens))
             .flatten();
         let exact_prompt_cache_hit = sessionless_exact_prefix_hit.is_some()
@@ -2469,8 +2510,15 @@ fn run_metal_generation_request(
                 expected_kv_width,
             )
         } else if shared_prefix_eligible {
-            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            let lookup = super::controlled_prefix_lookup(
+                shared_prefixes,
+                &compatibility,
+                &prompt_tokens,
+                request,
+            );
             prefix_state = lookup.state;
+            prefix_cache_refusal_reason = lookup.refusal_reason;
+            prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
@@ -2517,9 +2565,16 @@ fn run_metal_generation_request(
         let metal_lookup = if request.session_id.is_none() {
             sessionless_metal_lookup.clone()
         } else {
-            (shared_prefix_eligible && prefix_tokens_reused > 0).then(|| {
-                metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
-            })
+            (shared_prefix_eligible
+                && prefix_tokens_reused > 0
+                && request.prefix_cache_control.mode == PrefixCacheMode::Auto)
+                .then(|| {
+                    metal_shared_prefixes.lookup(
+                        &metal_compatibility,
+                        &prompt_token_ids,
+                        layer_count,
+                    )
+                })
         };
         let mut layer_caches = if let Some(lookup) = metal_lookup.as_ref() {
             if let Some(caches) = lookup.caches.as_ref() {
@@ -2647,8 +2702,9 @@ fn run_metal_generation_request(
                 prompt_logits.push(last_logits.clone());
             }
         }
-        let should_record_prompt_prefix =
-            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let should_record_prompt_prefix = shared_prefix_eligible
+            && prefix_tokens_reused != prompt_tokens.len()
+            && super::prefix_recording_allowed(request);
         let prompt_layer_caches = should_record_prompt_prefix.then(|| layer_caches.clone());
 
         let mut sampler = super::GenerationSampler::new(&request.options)?;
@@ -2902,6 +2958,7 @@ fn run_metal_generation_request(
             request.reset_session,
             &previous_kv_state,
             prefix_state,
+            prefix_cache_invalidation_trigger,
         );
         extend_unique_cache_observations(
             &mut cache_observations,
@@ -2923,7 +2980,9 @@ fn run_metal_generation_request(
                 &request_kv_checkpoint,
                 metal_layer_cache_state(layer_caches.as_slice()),
             ),
+            prefix_cache_control: Some(request.prefix_cache_control.clone()),
             prefix_cache_state: Some(prefix_state),
+            prefix_cache_refusal_reason,
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
             compile_path: compile_path.clone(),
@@ -2966,6 +3025,8 @@ fn metal_prefix_compatibility(
         model_revision: compatibility.model_revision.clone(),
         weight_bundle_digest: compatibility.weight_bundle_digest.clone(),
         tokenizer_family: compatibility.tokenizer_family.clone(),
+        tenant_id: compatibility.tenant_id.clone(),
+        sampler_digest: compatibility.sampler_digest.clone(),
         backend_compatibility: compatibility.backend_compatibility.clone(),
         kv_width,
         page_layout: KvCachePageLayout::new(max_context_tokens, 4, kv_width * 4 * 2),

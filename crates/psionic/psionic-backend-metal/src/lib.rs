@@ -430,6 +430,10 @@ pub struct MetalSharedPrefixCompatibility {
     pub weight_bundle_digest: String,
     /// Stable tokenizer family label.
     pub tokenizer_family: String,
+    /// Tenant or security-domain binding when present.
+    pub tenant_id: Option<String>,
+    /// Stable sampler digest when reuse depends on decode settings.
+    pub sampler_digest: Option<String>,
     /// Stable backend compatibility label.
     pub backend_compatibility: String,
     /// KV width required for reuse.
@@ -4779,6 +4783,8 @@ fn prefix_identity(
         tokenizer_digest: None,
         chat_template_digest: None,
         generation_defaults_digest: None,
+        tenant_id: compatibility.tenant_id.clone(),
+        sampler_digest: compatibility.sampler_digest.clone(),
         backend_compatibility: compatibility.backend_compatibility.clone(),
         prefix_digest: format!(
             "metal-prefix:{}:{}",

@@ -91,6 +91,10 @@ Implemented now:
 - a real request-owned block/paged KV manager behind that scheduler, with page
   allocation, reclaim, eviction, session/request/shared-prefix owner bindings,
   and explicit KV ownership receipts across CPU and GPT-OSS execution paths.
+- automatic shared prefix caching on top of that KV substrate, with explicit
+  tenant/session and sampler boundaries, request-level auto/bypass/invalidate
+  controls, refusal/invalidation receipts, and generic-server headers for
+  prefix hit/miss/bypass truth.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
