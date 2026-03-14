@@ -9768,6 +9768,15 @@ pub struct ProviderHeartbeatCadenceState {
     pub last_tick_second: Option<u64>,
 }
 
+#[derive(Default)]
+pub struct BackgroundCadenceState {
+    pub last_fast_poll_at: Option<Instant>,
+    pub last_coarse_poll_at: Option<Instant>,
+    pub every_loop_runs: u64,
+    pub fast_poll_runs: u64,
+    pub coarse_poll_runs: u64,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -9844,6 +9853,7 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub provider_heartbeat_cadence: ProviderHeartbeatCadenceState,
+    pub background_cadence: BackgroundCadenceState,
     pub local_inference: LocalInferencePaneState,
     pub rive_preview: RivePreviewPaneState,
     pub rive_preview_runtime: RivePreviewRuntimeState,
