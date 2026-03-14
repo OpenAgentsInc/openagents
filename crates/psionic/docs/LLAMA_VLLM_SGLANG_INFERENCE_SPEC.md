@@ -1,7 +1,8 @@
 # Psionic Inference Spec From `llama.cpp`, `vLLM`, and `SGLang`
 
-> Status: drafted 2026-03-13 from the current Psionic repo state plus the local
-> `llama.cpp`, `vllm`, and `sglang` trees.
+> Status: canonical `PSI-232` source split and completion-matrix spec, updated
+> 2026-03-14 after re-verifying the live `PSI-232` through `PSI-258` GitHub
+> issue state against this repo.
 >
 > Baseline assumption: the generic Psionic cutover through `PSI-178` and
 > `OA-203` is already landed on `main`, the GPT-OSS enablement path through
@@ -15,6 +16,31 @@
 > specification. It does not change the current MVP product authority in
 > `docs/MVP.md`, and it does not move app or marketplace ownership into
 > `crates/psionic/*`.
+
+## Canonical Status And Review Rule
+
+This document is the canonical source for:
+
+- the `llama.cpp` / `vLLM` / `SGLang` reference split
+- the implemented Psionic inference baseline through `PSI-183` and
+  `ROADMAP_CLUSTER.md`
+- the layer-owner matrix for the remaining inference work
+- the dependency-ordered `PSI-232` through `PSI-258` issue program
+- the completion criteria for claiming a full Rust-native inference and
+  agent-serving stack
+
+Future review and issue-closure decisions for `PSI-233` through `PSI-258`
+should not treat the three upstream source trees as interchangeable. Each issue
+must identify:
+
+- which source layer it is primarily learning from
+- which Psionic crates own that work
+- which explicit non-goals still apply
+- which completion bar in this document it is satisfying
+
+If future work changes the source split, owner split, dependency order, or
+definition of done for the inference stack, it must update this document
+directly instead of scattering that authority across audits or issue comments.
 
 ## Objective
 
@@ -40,6 +66,31 @@ The target end state is:
 - Psionic gains a real `SGLang`-class structured serving and routing layer
 - OpenAgents gets one coherent inference stack instead of a mix of narrow local
   engine fragments and ad hoc agent-serving seams
+
+## `PSI-232` Closure Checklist
+
+`PSI-232` is satisfied by this spec only because all of the following are
+explicit here in one place:
+
+- the authoritative three-source split:
+  - `llama.cpp` for artifact, backend, local-engine, and portable-execution
+    truth
+  - `vLLM` for scheduler, KV, batching, PD, and generic serving-engine truth
+  - `SGLang` for structured serving, parser/runtime, hierarchical KV, routing,
+    and gateway truth
+- the implemented baseline issue blocks that are already assumed landed
+- the current open side queues that remain valid dependencies:
+  - the Apple Metal GPT-OSS completion chain
+  - the NVIDIA 120B throughput queue
+- the owner split by crate family and serving layer
+- the explicit non-goals that keep Psionic Rust-native and keep product or
+  market authority out of `crates/psionic/*`
+- the dependency-ordered completion matrix from `PSI-232` through `PSI-258`
+- the final definition of done for the full Rust-native inference stack
+
+The closure bar for this issue is documentation authority, not runtime code.
+Later issues in this block own the real engine, scheduler, server, router, and
+validation implementation work.
 
 ## Related Docs
 
