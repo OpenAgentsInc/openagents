@@ -586,6 +586,13 @@ The numbering below assumes the current roadmap block ends at `PSI-231`.
 
 ### Phase 1: Engine Generalization
 
+Implemented now: `PSI-233` is materially landed in-tree through the generic
+`CpuGgufTextGenerationService` surface plus a reusable `GgufRuntimeTokenizer`
+and real CPU execution paths for representative Llama, Qwen, and Mistral GGUF
+decoder families. That work keeps GPT-OSS support intact while removing the
+old assumption that Psionic's non-GPT-OSS decoder-family adapters are only
+metadata.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |

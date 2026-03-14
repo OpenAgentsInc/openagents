@@ -73,6 +73,8 @@ Psionic is in an implemented-substrate, not-yet-complete-engine phase.
 Implemented now:
 
 - CPU baseline plus a first Metal-backed `psionic.embeddings` lane.
+- generic CPU GGUF decoder execution for GPT-OSS plus representative Llama,
+  Qwen, and Mistral families through one Psionic-owned runtime surface.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
