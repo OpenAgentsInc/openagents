@@ -7066,6 +7066,320 @@ mod tests {
     }
 
     #[test]
+    fn generic_server_weather_agent_pilot_is_end_to_end_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        struct ScriptedServeToolLoopRunner {
+            turns: Vec<(Option<String>, Vec<ResolvedToolCall>)>,
+            observed_history_lens: Vec<usize>,
+        }
+
+        impl ToolLoopModelRunner for ScriptedServeToolLoopRunner {
+            fn run_turn(
+                &mut self,
+                request: psionic_router::ToolLoopTurnRequest,
+            ) -> Result<ToolLoopModelTurn, ToolLoopError> {
+                self.observed_history_lens
+                    .push(request.prompt_history.len());
+                let (content, tool_calls) =
+                    self.turns.get(request.step_index).cloned().ok_or_else(|| {
+                        ToolLoopError::Execution(String::from("missing scripted turn"))
+                    })?;
+                Ok(ToolLoopModelTurn {
+                    assistant_message: assistant_prompt_message_for_tool_loop(content),
+                    tool_calls: tool_calls
+                        .into_iter()
+                        .map(tool_loop_tool_call_from_resolved)
+                        .collect(),
+                })
+            }
+        }
+
+        struct ScriptedToolExecutor {
+            descriptor: ToolProviderDescriptor,
+        }
+
+        impl ToolLoopToolExecutor for ScriptedToolExecutor {
+            fn descriptor(&self) -> &ToolProviderDescriptor {
+                &self.descriptor
+            }
+
+            fn execute(
+                &self,
+                request: ToolExecutionRequest,
+            ) -> Result<ToolLoopToolResult, ToolLoopError> {
+                Ok(ToolLoopToolResult {
+                    tool_call_id: request.tool_call.id,
+                    tool_name: request.tool_call.name.clone(),
+                    provider: self.descriptor.clone(),
+                    visibility: self.descriptor.result_visibility,
+                    message: tool_result_prompt_message(
+                        request.tool_call.name.as_str(),
+                        "72f and sunny",
+                    ),
+                    structured: Some(serde_json::json!({
+                        "forecast": "sunny",
+                        "temperature_f": 72
+                    })),
+                })
+            }
+        }
+
+        let temp = tempfile::tempdir()?;
+        let tool_path = temp.path().join("tiny-agent-tool-llama.gguf");
+        let structured_path = temp.path().join("tiny-agent-structured-llama.gguf");
+        write_test_gguf(
+            &tool_path,
+            tool_call_llama_metadata("tiny agent tool llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 6, 3, 4).as_slice(),
+        )?;
+        write_test_gguf(
+            &structured_path,
+            json_llama_metadata("tiny agent structured llama").as_slice(),
+            dense_decoder_tensors_with_vocab(false, 8, 3, 6).as_slice(),
+        )?;
+
+        let mut config = OpenAiCompatConfig::new(&tool_path);
+        config.add_model_path(&structured_path);
+        let server = OpenAiCompatServer::from_config(&config)?;
+        let runtime = tokio::runtime::Runtime::new()?;
+        let tenant = String::from("agent-pilot");
+
+        let build_structured_request =
+            |prompt: &str, tenant_id: &str| ChatCompletionRequest {
+                model: Some(String::from("tiny-agent-structured-llama")),
+                messages: vec![ChatCompletionMessage {
+                    role: String::from("user"),
+                    content: String::from(prompt),
+                    name: None,
+                }],
+                temperature: Some(0.0),
+                max_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                response_format: Some(ChatCompletionResponseFormatRequest {
+                    kind: String::from("json_schema"),
+                    json_schema: Some(ChatCompletionJsonSchemaRequest {
+                        name: Some(String::from("weather_summary")),
+                        schema: serde_json::json!({
+                            "type": "object",
+                            "properties": {
+                                "ok": { "type": "boolean" }
+                            },
+                            "required": ["ok"],
+                            "additionalProperties": false
+                        }),
+                        strict: Some(true),
+                    }),
+                    schema: None,
+                }),
+                psionic_grammar: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_prefix_cache: Some(PrefixCacheControl {
+                    mode: PrefixCacheMode::Auto,
+                    tenant_id: Some(String::from(tenant_id)),
+                }),
+            };
+
+        let seeded_summary = runtime.block_on(handle_generic_chat_completions(
+            std::sync::Arc::clone(&server.state),
+            build_structured_request("Paris weather tomorrow", tenant.as_str()),
+        ))?;
+        assert_eq!(
+            header_value(
+                seeded_summary.headers(),
+                "x-psionic-structured-output-mode"
+            ),
+            Some(String::from("fallback_json_schema"))
+        );
+        assert_eq!(
+            header_value(seeded_summary.headers(), "x-psionic-route-worker"),
+            Some(String::from(super::OPENAI_COMPAT_WORKER_ID))
+        );
+        assert_eq!(
+            header_value(seeded_summary.headers(), "x-psionic-route-strategy"),
+            Some(String::from("warm_aware"))
+        );
+        assert_eq!(
+            header_value(seeded_summary.headers(), "x-psionic-prefix-cache-state"),
+            Some(String::from("none"))
+        );
+        let seeded_payload = runtime.block_on(response_json(seeded_summary))?;
+        assert_eq!(
+            seeded_payload["psionic_structured_output"]["kind"],
+            serde_json::json!("json_schema")
+        );
+        assert_eq!(
+            seeded_payload["psionic_structured_value"]["kind"],
+            serde_json::json!("json")
+        );
+        assert_eq!(
+            seeded_payload["psionic_structured_output"]["schema_name"],
+            serde_json::json!("weather_summary")
+        );
+        assert!(
+            seeded_payload["psionic_structured_value"]["value"]["ok"].is_boolean(),
+            "weather summary should remain machine-checkable JSON"
+        );
+
+        let cached_summary = runtime.block_on(handle_generic_chat_completions(
+            std::sync::Arc::clone(&server.state),
+            build_structured_request("Paris weather", tenant.as_str()),
+        ))?;
+        assert_eq!(
+            header_value(cached_summary.headers(), "x-psionic-prefix-cache-state"),
+            Some(String::from("hit"))
+        );
+        assert!(
+            header_value(
+                cached_summary.headers(),
+                "x-psionic-prefix-cache-reused-tokens"
+            )
+            .is_some_and(|value| value != "0"),
+            "cached summary should reuse at least one prompt token"
+        );
+
+        let first_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: Some(String::from("tiny-agent-tool-llama")),
+                instructions: None,
+                conversation: None,
+                input: ResponsesInput::Text(String::from("What's the weather in Paris?")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: vec![weather_tool_definition()],
+                tool_choice: Some(ToolChoiceRequest::Named(NamedToolChoiceRequest {
+                    kind: String::from("function"),
+                    function: NamedToolChoiceFunction {
+                        name: String::from("get_weather"),
+                    },
+                })),
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let first_payload = runtime.block_on(response_json(first_response))?;
+        assert_eq!(
+            first_payload["psionic_tool_calls"][0]["name"],
+            serde_json::json!("get_weather")
+        );
+        assert_eq!(
+            first_payload["psionic_response_state"]["stored"],
+            serde_json::json!(true)
+        );
+        let first_response_id = first_payload["id"]
+            .as_str()
+            .expect("first response id")
+            .to_string();
+        let conversation_id = first_payload["conversation"]["id"]
+            .as_str()
+            .expect("conversation id")
+            .to_string();
+
+        let mut gateway = ToolGateway::new();
+        gateway.register(
+            "get_weather",
+            ScriptedToolExecutor {
+                descriptor: ToolProviderDescriptor::mcp("weather-provider", "weather", "sse")
+                    .with_history_visibility(ToolHistoryVisibility::PromptHistory)
+                    .with_result_visibility(ToolResultVisibility::InjectIntoModel),
+            },
+        );
+        let controller = ToolLoopController::new(&server.state.router, &gateway);
+        let mut runner = ScriptedServeToolLoopRunner {
+            turns: vec![
+                (
+                    Some(String::from("Calling weather tool")),
+                    vec![ResolvedToolCall {
+                        id: String::from("tool-0"),
+                        name: String::from("get_weather"),
+                        arguments: serde_json::json!({"city": "Paris"}),
+                    }],
+                ),
+                (Some(String::from("Paris is 72F and sunny.")), Vec::new()),
+            ],
+            observed_history_lens: Vec::new(),
+        };
+        let outcome = controller.run(
+            ToolLoopRequest::new(
+                RoutingRequest::new(RoutingEndpoint::Responses).require_tool_calling(),
+                vec![PromptMessage::new(
+                    PromptMessageRole::User,
+                    "What's the weather in Paris?",
+                )],
+            ),
+            &mut runner,
+        )?;
+        assert_eq!(outcome.steps.len(), 2);
+        assert_eq!(
+            outcome
+                .final_message
+                .as_ref()
+                .map(|message| message.content.as_str()),
+            Some("Paris is 72F and sunny.")
+        );
+        assert_eq!(
+            outcome.steps[0].route_selection.worker_id,
+            super::OPENAI_COMPAT_WORKER_ID
+        );
+        assert_eq!(
+            outcome.steps[0].tool_results[0].structured.as_ref(),
+            Some(&serde_json::json!({
+                "forecast": "sunny",
+                "temperature_f": 72
+            }))
+        );
+
+        let continued_response = runtime.block_on(handle_generic_responses(
+            std::sync::Arc::clone(&server.state),
+            ResponsesRequest {
+                model: None,
+                instructions: None,
+                conversation: Some(conversation_id.clone()),
+                input: ResponsesInput::Text(String::from("and tomorrow?")),
+                temperature: Some(0.0),
+                max_output_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                previous_response_id: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_response_state: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        let continued_payload = runtime.block_on(response_json(continued_response))?;
+        assert_eq!(
+            continued_payload["previous_response_id"],
+            serde_json::json!(first_response_id)
+        );
+        assert_eq!(
+            continued_payload["conversation"]["id"],
+            serde_json::json!(conversation_id)
+        );
+        assert_eq!(
+            continued_payload["conversation"]["revision"],
+            serde_json::json!(2)
+        );
+        assert!(
+            continued_payload["psionic_response_state"]["replayed_prompt_messages"]
+                .as_u64()
+                .is_some_and(|count| count > 0)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn generic_server_prefix_cache_headers_are_machine_checkable()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
