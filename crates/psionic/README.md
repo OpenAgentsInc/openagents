@@ -189,8 +189,10 @@ Implemented now:
   and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, explicit policy-lineage
-  digests, quarantined-versus-discarded stale-rollout pruning, and typed
-  rollout-validation bundles or verdicts inside `psionic-train`.
+  digests, quarantined-versus-discarded stale-rollout pruning, typed
+  rollout-validation bundles or verdicts, and a first curriculum controller
+  with difficulty- and advantage-aware sample filtering inside
+  `psionic-train`.
 - early data substrate: versioned dataset manifests, tokenizer digests, split
   declarations, resumable streamed-iteration contracts, and long-context
   packing policies in `psionic-data`, with environment packages now binding
@@ -242,6 +244,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_STAGE_PROGRAM_REFERENCE.md](docs/TRAIN_STAGE_PROGRAM_REFERENCE.md)** —
   canonical multi-stage `general_sft -> agentic_sft -> rl` runbook for
   `psionic-train`.
+- **[docs/TRAIN_CURRICULUM_REFERENCE.md](docs/TRAIN_CURRICULUM_REFERENCE.md)** —
+  canonical difficulty-aware curriculum, filtering, and non-zero-advantage
+  runbook for `psionic-train`.
 - **[docs/ENVIRONMENT_ABI_REFERENCE.md](docs/ENVIRONMENT_ABI_REFERENCE.md)** —
   canonical package ABI, runtime-session runbook, and acceptance criteria for
   the first Psionic-native environment contract.
