@@ -8,7 +8,7 @@ use psionic_runtime::{
     ClusterPolicyDigestKind, ClusterPrefillDecodeCapability,
     ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
     ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
-    ExecutionTopologyPlan, PrefillDecodeCapability, ShardedModelManifest,
+    ExecutionTopologyPlan, KvResidencyTier, PrefillDecodeCapability, ShardedModelManifest,
     ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
@@ -117,6 +117,7 @@ fn default_pipeline_sharded_capability_profile() -> ClusterExecutionCapabilityPr
                 ClusterCacheScope::StageLocal,
                 ClusterCacheScope::StageLocal,
             )
+            .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
             .invalidates_on_topology_change()
             .with_detail(
                 "pipeline-parallel prefix and KV reuse are only truthful while the same ordered stage topology remains pinned",

@@ -20,10 +20,10 @@ use psionic_runtime::{
     DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
     ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundle,
     ExecutionProofBundleKind, ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity,
-    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
-    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
-    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, KvResidencyAccounting,
+    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
+    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
+    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     QuantizedActivationFingerprintAdapter, SandboxExecutionCapabilityProfile,
     SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
     ServedArtifactIdentity, SettlementLinkageInput, SignedClusterEvidenceBundle,
@@ -1991,6 +1991,9 @@ pub struct TextGenerationReceipt {
     /// Explicit paged-KV accounting for the request, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
+    /// Explicit hierarchical KV residency accounting for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_residency: Option<KvResidencyAccounting>,
     /// Shared prefix-cache state for the request, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_state: Option<PrefixCacheState>,
@@ -2165,6 +2168,7 @@ impl TextGenerationReceipt {
                 .as_ref()
                 .and_then(|value| value.kv_cache_policy.clone()),
             kv_cache: response.metrics.kv_cache.clone(),
+            kv_residency: response.metrics.kv_residency.clone(),
             prefix_cache_state: response
                 .provenance
                 .as_ref()
@@ -2299,6 +2303,7 @@ impl TextGenerationReceipt {
             load_state: None,
             kv_cache_policy: None,
             kv_cache: None,
+            kv_residency: None,
             prefix_cache_state: None,
             prefix_cache_policy: None,
             prefix_cache_identity: None,
@@ -2744,14 +2749,15 @@ mod tests {
         DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
         ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundleKind,
         ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
-        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
-        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
-        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvResidencyAccounting,
+        KvResidencyTier, KvResidencyTierState, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
+        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
@@ -3332,6 +3338,7 @@ mod tests {
                 plan_cache_misses: 0,
                 kv_growth: None,
                 prefill_decode_handoff: None,
+                kv_residency: None,
             }),
         };
         let diagnostic = Some(LocalRuntimeDiagnostic::new(
@@ -5092,6 +5099,7 @@ mod tests {
                     plan_cache_misses: 0,
                     kv_growth: None,
                     prefill_decode_handoff: None,
+                    kv_residency: None,
                 }),
                 cache_observations: Vec::new(),
             },
@@ -5159,6 +5167,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5189,6 +5198,7 @@ mod tests {
                     plan_cache_misses: 0,
                     kv_growth: None,
                     prefill_decode_handoff: None,
+                    kv_residency: None,
                 }),
                 cache_observations: Vec::new(),
                 scheduler: None,
@@ -5297,6 +5307,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5327,6 +5338,7 @@ mod tests {
                     plan_cache_misses: 0,
                     kv_growth: None,
                     prefill_decode_handoff: None,
+                    kv_residency: None,
                 }),
                 cache_observations: Vec::new(),
                 scheduler: None,
@@ -5404,6 +5416,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5431,6 +5444,7 @@ mod tests {
                     plan_cache_misses: 0,
                     kv_growth: None,
                     prefill_decode_handoff: None,
+                    kv_residency: None,
                 }),
                 cache_observations: Vec::new(),
                 scheduler: None,
@@ -5505,6 +5519,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5618,6 +5633,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5738,6 +5754,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5855,6 +5872,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -5990,6 +6008,19 @@ mod tests {
                         pages: 1,
                     },
                 }),
+                kv_residency: Some(
+                    KvResidencyAccounting::from_policy(&default_decoder_kv_cache_policy(
+                        &request.model,
+                    ))
+                    .with_tier(KvResidencyTierState::resident(
+                        KvResidencyTier::Host,
+                        psionic_runtime::KvCacheState {
+                            tokens: 2,
+                            bytes: 64,
+                            pages: 1,
+                        },
+                    )),
+                ),
                 prefix_tokens_reused: Some(1),
                 gpt_oss_perf: None,
             },
@@ -6046,6 +6077,7 @@ mod tests {
                         pages: 1,
                     }),
                     prefill_decode_handoff: None,
+                    kv_residency: None,
                 }),
                 cache_observations: Vec::new(),
                 scheduler: None,
@@ -6108,6 +6140,12 @@ mod tests {
         assert_eq!(
             receipt.kv_cache.as_ref().map(|value| value.current.pages),
             Some(1)
+        );
+        assert!(
+            receipt
+                .kv_residency
+                .as_ref()
+                .is_some_and(|value| value.has_tier(KvResidencyTier::Host))
         );
         assert_eq!(receipt.prefix_cache_state, Some(PrefixCacheState::Hit));
         assert_eq!(
@@ -6303,6 +6341,7 @@ mod tests {
                 time_to_first_token_ns: None,
                 inter_token_latency_ns: None,
                 kv_cache: None,
+                kv_residency: None,
                 prefix_tokens_reused: Some(0),
                 gpt_oss_perf: None,
             },
@@ -6753,6 +6792,7 @@ mod tests {
                     ClusterCacheScope::ReplicaLocal,
                     ClusterCacheScope::ReplicaLocal,
                 )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
                 .invalidates_on_route_change()
                 .with_detail(
                     "replica-routed prefix and KV reuse are only truthful on one warm replica identity",
@@ -6775,6 +6815,7 @@ mod tests {
                     ClusterCacheScope::StageLocal,
                     ClusterCacheScope::StageLocal,
                 )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
                 .invalidates_on_topology_change()
                 .with_detail(
                     "layer-sharded prefix and KV reuse are only truthful while shard ownership remains pinned",
@@ -6797,6 +6838,7 @@ mod tests {
                     ClusterCacheScope::StageLocal,
                     ClusterCacheScope::StageLocal,
                 )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
                 .invalidates_on_topology_change()
                 .with_detail(
                     "pipeline-parallel prefix and KV reuse are only truthful while ordered stage ownership remains pinned",
@@ -6819,6 +6861,7 @@ mod tests {
                     ClusterCacheScope::StageLocal,
                     ClusterCacheScope::StageLocal,
                 )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
                 .invalidates_on_topology_change()
                 .with_detail(
                     "tensor-sharded prefix and KV reuse are only truthful while collective shard ownership remains pinned",

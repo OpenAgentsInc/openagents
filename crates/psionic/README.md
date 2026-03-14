@@ -100,13 +100,19 @@ Implemented now:
   and ITL metrics, scheduler receipts, and generic-server headers that surface
   the realized prefill/decode mode instead of treating PD behavior as hidden
   runtime detail.
+- hierarchical KV residency accounting across host, device, and explicit
+  datastream-backed distributed tiers, with spill/prefetch/write-back movement
+  truth, refusal surfaces, and cluster cache-capability reporting that only
+  claims the tiers the lane can actually surface.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
   variants.
 - sharded-model manifests, staged artifact residency, and clustered prefix or
   KV-cache compatibility truth.
-- `psionic-datastream` resumable dataset and checkpoint delivery.
+- `psionic-datastream` resumable dataset and checkpoint delivery, now including
+  explicit checkpoint-backed KV external locator contracts for distributed cache
+  tiers.
 - benchmark-backed quantization dispatch plus low-level batching and parking
   hooks used by serve and datastream layers.
 - `psionic-sandbox` runtime detection, bounded execution, background jobs, and

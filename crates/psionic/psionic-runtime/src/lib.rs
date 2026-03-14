@@ -1208,6 +1208,10 @@ impl ClusterExecutionCapabilityProfile {
             hasher.update(cache_capability.prefix_scope.as_str().as_bytes());
             hasher.update(b"|");
             hasher.update(cache_capability.kv_scope.as_str().as_bytes());
+            for tier in &cache_capability.supported_residency_tiers {
+                hasher.update(b"|tier|");
+                hasher.update(tier.as_str().as_bytes());
+            }
             hasher.update(b"|");
             hasher.update(if cache_capability.invalidates_on_route_change {
                 b"route_change".as_slice()
@@ -1778,6 +1782,9 @@ pub struct ClusterCacheCapability {
     pub prefix_scope: ClusterCacheScope,
     /// Truthful KV-state scope for the lane.
     pub kv_scope: ClusterCacheScope,
+    /// Residency tiers that the lane can surface truthfully.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_residency_tiers: Vec<KvResidencyTier>,
     /// Whether route changes invalidate otherwise compatible state.
     pub invalidates_on_route_change: bool,
     /// Whether topology changes invalidate otherwise compatible state.
@@ -1799,10 +1806,33 @@ impl ClusterCacheCapability {
             lane,
             prefix_scope,
             kv_scope,
+            supported_residency_tiers: Vec::new(),
             invalidates_on_route_change: false,
             invalidates_on_topology_change: false,
             detail: None,
         }
+    }
+
+    /// Attaches the residency tiers the lane can surface truthfully.
+    #[must_use]
+    pub fn with_residency_tiers(
+        mut self,
+        mut supported_residency_tiers: Vec<KvResidencyTier>,
+    ) -> Self {
+        supported_residency_tiers.sort_unstable();
+        supported_residency_tiers.dedup();
+        self.supported_residency_tiers = supported_residency_tiers;
+        self
+    }
+
+    /// Appends one supported residency tier.
+    #[must_use]
+    pub fn with_residency_tier(mut self, supported_residency_tier: KvResidencyTier) -> Self {
+        self.supported_residency_tiers
+            .push(supported_residency_tier);
+        self.supported_residency_tiers.sort_unstable();
+        self.supported_residency_tiers.dedup();
+        self
     }
 
     /// Marks route changes as invalidating otherwise compatible state.
@@ -3782,6 +3812,9 @@ pub struct ExecutionDeliveryProof {
     /// Explicit prefill/decode handoff seam for the realized path, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefill_decode_handoff: Option<PrefillDecodeHandoff>,
+    /// Explicit hierarchical KV residency accounting for the realized path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_residency: Option<KvResidencyAccounting>,
 }
 
 /// Provider-facing settlement-linkage inputs derived from a realized execution path.
@@ -6872,6 +6905,341 @@ impl KvCacheState {
     }
 }
 
+/// Explicit residency tier for paged-KV state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvResidencyTier {
+    /// Active device-resident KV pages.
+    Device,
+    /// Host-resident KV pages or mirror state.
+    Host,
+    /// Distributed or externalized KV state.
+    Distributed,
+}
+
+impl KvResidencyTier {
+    /// Returns a stable machine-checkable label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Device => "device",
+            Self::Host => "host",
+            Self::Distributed => "distributed",
+        }
+    }
+}
+
+/// Externalized locator kind for non-local KV tiers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvResidencyLocatorKind {
+    /// A Psionic datastream manifest/reference backs the distributed tier.
+    Datastream,
+}
+
+impl KvResidencyLocatorKind {
+    /// Returns a stable machine-checkable label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Datastream => "datastream",
+        }
+    }
+}
+
+/// Stable external locator for an offloaded or distributed KV tier.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvResidencyExternalLocator {
+    /// Locator kind used for the externalized tier.
+    pub kind: KvResidencyLocatorKind,
+    /// Stable locator identifier such as a datastream ID.
+    pub locator_id: String,
+    /// Stable digest for the locator contract.
+    pub locator_digest: String,
+    /// Stable object digest referenced by the locator.
+    pub object_digest: String,
+    /// Total bytes published behind the locator.
+    pub total_bytes: u64,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl KvResidencyExternalLocator {
+    /// Creates an external locator for one datastream-backed KV tier.
+    #[must_use]
+    pub fn datastream(
+        locator_id: impl Into<String>,
+        locator_digest: impl Into<String>,
+        object_digest: impl Into<String>,
+        total_bytes: u64,
+    ) -> Self {
+        Self {
+            kind: KvResidencyLocatorKind::Datastream,
+            locator_id: locator_id.into(),
+            locator_digest: locator_digest.into(),
+            object_digest: object_digest.into(),
+            total_bytes,
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// One current residency tier snapshot for paged-KV state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvResidencyTierState {
+    /// Tier being described.
+    pub tier: KvResidencyTier,
+    /// KV state visible in the tier.
+    pub state: KvCacheState,
+    /// Whether the tier is actively resident in the current runtime path.
+    pub resident: bool,
+    /// Optional external locator when this tier is offloaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_locator: Option<KvResidencyExternalLocator>,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl KvResidencyTierState {
+    /// Creates a resident tier snapshot.
+    #[must_use]
+    pub fn resident(tier: KvResidencyTier, state: KvCacheState) -> Self {
+        Self {
+            tier,
+            state,
+            resident: true,
+            external_locator: None,
+            detail: None,
+        }
+    }
+
+    /// Creates an externalized tier snapshot.
+    #[must_use]
+    pub fn external(
+        tier: KvResidencyTier,
+        state: KvCacheState,
+        external_locator: KvResidencyExternalLocator,
+    ) -> Self {
+        Self {
+            tier,
+            state,
+            resident: false,
+            external_locator: Some(external_locator),
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Stable movement kind between KV residency tiers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvResidencyMovementKind {
+    /// Pages or bytes were prefetched into a faster tier before execution.
+    Prefetch,
+    /// Pages or bytes were written back into a slower tier after execution.
+    WriteBack,
+    /// Pages or bytes were spilled into a slower tier under capacity pressure.
+    Spill,
+    /// Pages or bytes were restored from a slower tier into an active tier.
+    Restore,
+}
+
+impl KvResidencyMovementKind {
+    /// Returns a stable machine-checkable label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Prefetch => "prefetch",
+            Self::WriteBack => "write_back",
+            Self::Spill => "spill",
+            Self::Restore => "restore",
+        }
+    }
+}
+
+/// One explicit tier movement observed for paged-KV state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvResidencyMovement {
+    /// Movement kind observed for the request path.
+    pub kind: KvResidencyMovementKind,
+    /// Tier that produced the pages or bytes.
+    pub from_tier: KvResidencyTier,
+    /// Tier that received the pages or bytes.
+    pub to_tier: KvResidencyTier,
+    /// Number of moved pages.
+    pub kv_pages: usize,
+    /// Number of moved bytes.
+    pub kv_bytes: u64,
+    /// Movement latency in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ns: Option<u64>,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl KvResidencyMovement {
+    /// Creates a tier movement.
+    #[must_use]
+    pub const fn new(
+        kind: KvResidencyMovementKind,
+        from_tier: KvResidencyTier,
+        to_tier: KvResidencyTier,
+        kv_pages: usize,
+        kv_bytes: u64,
+    ) -> Self {
+        Self {
+            kind,
+            from_tier,
+            to_tier,
+            kv_pages,
+            kv_bytes,
+            latency_ns: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches movement latency.
+    #[must_use]
+    pub const fn with_latency_ns(mut self, latency_ns: u64) -> Self {
+        self.latency_ns = Some(latency_ns);
+        self
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Explicit refusal reason for unsupported or degraded KV residency behavior.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvResidencyRefusalReason {
+    /// The requested residency tier is not supported for the realized path.
+    TierUnsupported,
+    /// The requested spill behavior is not supported for the realized path.
+    SpillUnsupported,
+    /// The requested prefetch behavior is not supported for the realized path.
+    PrefetchUnsupported,
+    /// The requested write-back behavior is not supported for the realized path.
+    WriteBackUnsupported,
+    /// A distributed tier was requested without an external locator contract.
+    ExternalLocatorRequired,
+}
+
+impl KvResidencyRefusalReason {
+    /// Returns a stable machine-checkable label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TierUnsupported => "tier_unsupported",
+            Self::SpillUnsupported => "spill_unsupported",
+            Self::PrefetchUnsupported => "prefetch_unsupported",
+            Self::WriteBackUnsupported => "write_back_unsupported",
+            Self::ExternalLocatorRequired => "external_locator_required",
+        }
+    }
+}
+
+/// Explicit refusal emitted for unsupported KV residency behavior.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvResidencyRefusal {
+    /// Stable refusal reason.
+    pub reason: KvResidencyRefusalReason,
+    /// Plain-language refusal detail.
+    pub detail: String,
+}
+
+impl KvResidencyRefusal {
+    /// Creates one refusal.
+    #[must_use]
+    pub fn new(reason: KvResidencyRefusalReason, detail: impl Into<String>) -> Self {
+        Self {
+            reason,
+            detail: detail.into(),
+        }
+    }
+}
+
+/// Explicit residency accounting for paged-KV tiers and movement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvResidencyAccounting {
+    /// Device-scope contract used by the realized path.
+    pub device_scope: KvCacheDeviceScope,
+    /// Spill policy used by the realized path.
+    pub spill_policy: KvCacheSpillPolicy,
+    /// Visible residency tiers for the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tiers: Vec<KvResidencyTierState>,
+    /// Explicit tier movements observed during the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub movements: Vec<KvResidencyMovement>,
+    /// Explicit refusals for unsupported tier behavior.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusals: Vec<KvResidencyRefusal>,
+}
+
+impl KvResidencyAccounting {
+    /// Creates residency accounting from one realized cache policy.
+    #[must_use]
+    pub fn from_policy(policy: &KvCachePolicy) -> Self {
+        Self {
+            device_scope: policy.device_scope,
+            spill_policy: policy.spill_policy,
+            tiers: Vec::new(),
+            movements: Vec::new(),
+            refusals: Vec::new(),
+        }
+    }
+
+    /// Appends one tier snapshot.
+    #[must_use]
+    pub fn with_tier(mut self, tier: KvResidencyTierState) -> Self {
+        self.tiers.push(tier);
+        self.tiers.sort_by_key(|tier| tier.tier);
+        self
+    }
+
+    /// Appends one observed movement.
+    #[must_use]
+    pub fn with_movement(mut self, movement: KvResidencyMovement) -> Self {
+        self.movements.push(movement);
+        self
+    }
+
+    /// Appends one explicit refusal.
+    #[must_use]
+    pub fn with_refusal(mut self, refusal: KvResidencyRefusal) -> Self {
+        self.refusals.push(refusal);
+        self
+    }
+
+    /// Returns whether the accounting already exposes one residency tier.
+    #[must_use]
+    pub fn has_tier(&self, tier: KvResidencyTier) -> bool {
+        self.tiers.iter().any(|entry| entry.tier == tier)
+    }
+}
+
 /// Growth delta between two paged-KV states.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KvCacheGrowth {
@@ -8713,18 +9081,20 @@ mod tests {
         ExecutionTopologyPlan, GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
         GenerationSchedulerMetrics, GenerationSchedulerPolicy, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationDispatchRequest, QuantizationDispatchWorkload, QuantizationExecution,
-        QuantizationKernelStrategy, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
-        QueuePolicy, ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy,
-        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
-        RuntimeTransitionLog, RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, KvResidencyAccounting,
+        KvResidencyExternalLocator, KvResidencyMovement, KvResidencyMovementKind, KvResidencyTier,
+        KvResidencyTierState, LoadedModelMemoryState, LoadedModelResidency, LoadedModelState,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchRequest,
+        QuantizationDispatchWorkload, QuantizationExecution, QuantizationKernelStrategy,
+        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
+        ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeError,
+        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+        RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
         SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
@@ -9569,6 +9939,116 @@ mod tests {
                     "bytes": 192,
                     "pages": 1
                 }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn kv_residency_accounting_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::CrossDeviceExplicit,
+            spill_policy: KvCacheSpillPolicy::SpillToHost,
+            page_layout: KvCachePageLayout::new(32, 8, 64),
+        };
+        let accounting = KvResidencyAccounting::from_policy(&policy)
+            .with_tier(
+                KvResidencyTierState::resident(
+                    KvResidencyTier::Host,
+                    KvCacheState::paged(&policy.page_layout, 16),
+                )
+                .with_detail("host mirror stays hot for resumed decode"),
+            )
+            .with_tier(
+                KvResidencyTierState::external(
+                    KvResidencyTier::Distributed,
+                    KvCacheState::paged(&policy.page_layout, 16),
+                    KvResidencyExternalLocator::datastream(
+                        "kv-cache-stream-17",
+                        "manifest-digest-17",
+                        "object-digest-17",
+                        1024,
+                    )
+                    .with_detail("checkpoint-backed distributed tier"),
+                )
+                .with_detail("distributed checkpoint kept restorable KV pages"),
+            )
+            .with_movement(
+                KvResidencyMovement::new(
+                    KvResidencyMovementKind::Spill,
+                    KvResidencyTier::Host,
+                    KvResidencyTier::Distributed,
+                    2,
+                    1024,
+                )
+                .with_detail("host tier spilled cold pages into the datastream tier"),
+            )
+            .with_movement(
+                KvResidencyMovement::new(
+                    KvResidencyMovementKind::Restore,
+                    KvResidencyTier::Distributed,
+                    KvResidencyTier::Host,
+                    2,
+                    1024,
+                )
+                .with_detail("replayed a restorable host tier from the distributed locator"),
+            );
+
+        assert!(accounting.has_tier(KvResidencyTier::Host));
+        assert!(accounting.has_tier(KvResidencyTier::Distributed));
+        assert_eq!(
+            serde_json::to_value(&accounting)?,
+            json!({
+                "device_scope": "cross_device_explicit",
+                "spill_policy": "spill_to_host",
+                "tiers": [
+                    {
+                        "tier": "host",
+                        "state": {
+                            "tokens": 16,
+                            "bytes": 1024,
+                            "pages": 2
+                        },
+                        "resident": true,
+                        "detail": "host mirror stays hot for resumed decode"
+                    },
+                    {
+                        "tier": "distributed",
+                        "state": {
+                            "tokens": 16,
+                            "bytes": 1024,
+                            "pages": 2
+                        },
+                        "resident": false,
+                        "external_locator": {
+                            "kind": "datastream",
+                            "locator_id": "kv-cache-stream-17",
+                            "locator_digest": "manifest-digest-17",
+                            "object_digest": "object-digest-17",
+                            "total_bytes": 1024,
+                            "detail": "checkpoint-backed distributed tier"
+                        },
+                        "detail": "distributed checkpoint kept restorable KV pages"
+                    }
+                ],
+                "movements": [
+                    {
+                        "kind": "spill",
+                        "from_tier": "host",
+                        "to_tier": "distributed",
+                        "kv_pages": 2,
+                        "kv_bytes": 1024,
+                        "detail": "host tier spilled cold pages into the datastream tier"
+                    },
+                    {
+                        "kind": "restore",
+                        "from_tier": "distributed",
+                        "to_tier": "host",
+                        "kv_pages": 2,
+                        "kv_bytes": 1024,
+                        "detail": "replayed a restorable host tier from the distributed locator"
+                    }
+                ]
             })
         );
         Ok(())
@@ -10850,6 +11330,38 @@ mod tests {
     }
 
     #[test]
+    fn cluster_execution_capability_profile_digest_changes_when_residency_truth_changes() {
+        let host_only = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::ReplicaRouted])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .with_residency_tier(KvResidencyTier::Host),
+            );
+        let host_and_device = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::ReplicaRouted])
+            .with_clustered_cache_capability(
+                ClusterCacheCapability::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ClusterCacheScope::ReplicaLocal,
+                    ClusterCacheScope::ReplicaLocal,
+                )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device]),
+            );
+
+        assert_ne!(host_only.stable_digest(), host_and_device.stable_digest());
+        assert_eq!(
+            host_and_device
+                .clustered_cache_capability(ClusterExecutionLane::ReplicaRouted)
+                .map(|capability| capability.supported_residency_tiers.clone()),
+            Some(vec![KvResidencyTier::Device, KvResidencyTier::Host])
+        );
+    }
+
+    #[test]
     fn cluster_compute_market_trust_assessment_round_trips_with_stable_digest() {
         let assessment = ClusterComputeMarketTrustAssessment {
             posture: ClusterTrustPosture::AttestedConfiguredPeers,
@@ -11040,6 +11552,7 @@ mod tests {
             plan_cache_misses: 0,
             kv_growth: None,
             prefill_decode_handoff: None,
+            kv_residency: None,
         })
         .with_settlement_linkage(settlement_linkage);
         let signing_key = SigningKey::from_bytes(&[17; 32]);
@@ -11996,6 +12509,7 @@ mod tests {
                 plan_cache_misses: 0,
                 kv_growth: None,
                 prefill_decode_handoff: None,
+                kv_residency: None,
             }),
         };
 

@@ -280,7 +280,7 @@ training subsystems.
 | `RuntimeWorkItem` | `psionic-runtime` | one low-level schedulable unit of work | `implemented` |
 | `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | `implemented` |
 | `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | `implemented` |
-| `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts | `implemented` |
+| `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts, including explicit distributed KV spill/restore locators | `implemented` |
 | `RuntimeManifest` | planned proof/environment layer | digest-bound package for artifact, static-config, and runtime lineage used at execution time | `planned` |
 | `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |
 | `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | `implemented` |
@@ -453,6 +453,8 @@ For serving lanes this typically means:
 - backend and capability gating
 - queue admission, fairness, mixed prefill/decode work, and explicit TTFT/ITL
   plus prefill/decode handoff truth when the lane supports it
+- hierarchical KV residency truth across host, device, and any explicit
+  externalized tier contract the lane can actually surface
 - structured outputs, tool or response-state semantics, and optional multi-model
   routing
 - optional clustered placement and shard handoff

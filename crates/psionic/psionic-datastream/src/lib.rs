@@ -1,12 +1,14 @@
 //! Resumable streamed dataset and checkpoint delivery contracts for Psionic.
 
 use psionic_runtime::{
-    RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeOptimizationBenchmark, RuntimeWorkClass,
-    RuntimeWorkItem, benchmark_dispatch_plan,
+    KvResidencyExternalLocator, RuntimeDispatchPlan, RuntimeDispatchPolicy,
+    RuntimeOptimizationBenchmark, RuntimeWorkClass, RuntimeWorkItem, benchmark_dispatch_plan,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+const KV_CACHE_CHECKPOINT_FAMILY_PREFIX: &str = "serve.kv_cache";
 
 /// High-level subject being delivered over the data plane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -393,6 +395,13 @@ impl DatastreamManifest {
         }
     }
 
+    /// Exports this manifest as an explicit datastream-backed KV locator.
+    pub fn kv_cache_external_locator(
+        &self,
+    ) -> Result<KvResidencyExternalLocator, DatastreamTransferError> {
+        self.manifest_ref().kv_cache_external_locator()
+    }
+
     /// Returns a worker dispatch plan for chunk delivery under the Psionic data-plane policy.
     #[must_use]
     pub fn recommended_dispatch_plan(&self, max_workers: usize) -> RuntimeDispatchPlan {
@@ -511,6 +520,52 @@ pub struct DatastreamManifestRef {
     /// Optional checkpoint binding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint_binding: Option<DatastreamCheckpointBinding>,
+}
+
+impl DatastreamManifestRef {
+    /// Exports this manifest reference as an explicit datastream-backed KV locator.
+    pub fn kv_cache_external_locator(
+        &self,
+    ) -> Result<KvResidencyExternalLocator, DatastreamTransferError> {
+        let checkpoint_family = self
+            .checkpoint_binding
+            .as_ref()
+            .map(|binding| binding.checkpoint_family.as_str());
+        if self.subject != DatastreamSubjectKind::Checkpoint
+            || !checkpoint_family
+                .is_some_and(|family| family.starts_with(KV_CACHE_CHECKPOINT_FAMILY_PREFIX))
+        {
+            return Err(DatastreamTransferError::KvCacheContractInvalid {
+                stream_id: self.stream_id.clone(),
+                subject: self.subject,
+                checkpoint_family: checkpoint_family.map(String::from),
+            });
+        }
+
+        let mut detail = format!(
+            "checkpoint-backed distributed KV tier via family `{}`",
+            checkpoint_family.unwrap_or_default()
+        );
+        if let Some(binding) = &self.checkpoint_binding {
+            if let Some(checkpoint_ref) = &binding.checkpoint_ref {
+                detail.push_str(" ref `");
+                detail.push_str(checkpoint_ref);
+                detail.push('`');
+            }
+            if let Some(step) = binding.step {
+                detail.push_str(" step ");
+                detail.push_str(&step.to_string());
+            }
+        }
+
+        Ok(KvResidencyExternalLocator::datastream(
+            self.stream_id.clone(),
+            self.manifest_digest.clone(),
+            self.object_digest.clone(),
+            self.total_bytes,
+        )
+        .with_detail(detail))
+    }
 }
 
 /// Resume cursor describing the next chunk boundary a client expects.
@@ -683,6 +738,15 @@ pub enum DatastreamTransferError {
     /// The chunk end overflowed usize math.
     #[error("chunk `{index}` end offset overflowed local slicing arithmetic")]
     ChunkEndOverflow { index: usize },
+    /// The manifest reference does not describe a valid distributed KV contract.
+    #[error(
+        "datastream `{stream_id}` is not a valid KV-cache contract: subject `{subject:?}`, checkpoint family `{checkpoint_family:?}`"
+    )]
+    KvCacheContractInvalid {
+        stream_id: String,
+        subject: DatastreamSubjectKind,
+        checkpoint_family: Option<String>,
+    },
 }
 
 /// In-memory server that exposes one manifest-backed payload over resumable windows.
@@ -1148,5 +1212,89 @@ mod tests {
         assert!(plan.total_wake_events < manifest.chunks.len());
         assert!(benchmark.optimized_cost_units < benchmark.baseline_cost_units);
         assert!(benchmark.improvement_basis_points > 0);
+    }
+
+    #[test]
+    fn checkpoint_manifest_can_export_kv_cache_external_locator()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let payload = b"kv-cache-pages-for-request-17".to_vec();
+        let manifest = super::DatastreamManifest::from_bytes(
+            "kv-cache-stream-17",
+            DatastreamSubjectKind::Checkpoint,
+            &payload,
+            8,
+            DatastreamEncoding::RawBinary,
+        )
+        .with_checkpoint_binding(
+            DatastreamCheckpointBinding::new("serve.kv_cache.layer_shard")
+                .with_checkpoint_ref("checkpoint://cluster/kv-cache-stream-17")
+                .with_step(17),
+        );
+
+        let locator = manifest.kv_cache_external_locator()?;
+        assert_eq!(
+            locator.kind,
+            psionic_runtime::KvResidencyLocatorKind::Datastream
+        );
+        assert_eq!(locator.locator_id, "kv-cache-stream-17");
+        assert_eq!(locator.locator_digest, manifest.stable_digest());
+        assert_eq!(locator.object_digest, manifest.object_digest);
+        assert_eq!(locator.total_bytes, payload.len() as u64);
+        assert!(
+            locator
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("serve.kv_cache.layer_shard"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn non_kv_checkpoint_manifest_is_refused_as_external_kv_locator() {
+        let manifest = super::DatastreamManifest::from_bytes(
+            "checkpoint-train-17",
+            DatastreamSubjectKind::Checkpoint,
+            b"weights",
+            4,
+            DatastreamEncoding::RawBinary,
+        )
+        .with_checkpoint_binding(DatastreamCheckpointBinding::new("train.decoder").with_step(17));
+
+        let error = match manifest.kv_cache_external_locator() {
+            Ok(_) => panic!("non-KV checkpoint manifest should be refused"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            DatastreamTransferError::KvCacheContractInvalid {
+                stream_id: String::from("checkpoint-train-17"),
+                subject: DatastreamSubjectKind::Checkpoint,
+                checkpoint_family: Some(String::from("train.decoder")),
+            }
+        );
+    }
+
+    #[test]
+    fn non_checkpoint_manifest_is_refused_as_external_kv_locator() {
+        let manifest = super::DatastreamManifest::from_bytes(
+            "dataset-17",
+            DatastreamSubjectKind::TokenizedCorpus,
+            b"tokens",
+            4,
+            DatastreamEncoding::RawBinary,
+        );
+
+        let error = match manifest.kv_cache_external_locator() {
+            Ok(_) => panic!("dataset manifest should be refused"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            DatastreamTransferError::KvCacheContractInvalid {
+                stream_id: String::from("dataset-17"),
+                subject: DatastreamSubjectKind::TokenizedCorpus,
+                checkpoint_family: None,
+            }
+        );
     }
 }
