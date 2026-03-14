@@ -90,6 +90,8 @@ It already has real substrate for:
 - typed fixed-budget trainer steps
 - per-group optimizer state and residency policy
 - machine-legible step telemetry and checkpoint-anchored restore lineage
+- checkpoint-aware policy revisions
+- proof-bearing rollout artifacts and trainer-batch assembly
 - adapter lineage
 
 It does not yet implement the full distributed trainer-orchestrator-RL runtime.
@@ -120,9 +122,9 @@ stable vocabulary for train-class execution.
 | `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
 | `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `planned` |
 | `TrainerStep` | One optimizer update over one trainer batch | `implemented_early` |
-| `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `planned` |
-| `RolloutArtifact` | One worker-produced trajectory or completion bundle | `planned` |
-| `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `planned` |
+| `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `implemented_early` |
+| `RolloutArtifact` | One worker-produced trajectory or completion bundle | `implemented_early` |
+| `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `implemented_early` |
 | `EnvironmentPackage` | One versioned environment definition used by training and eval | `planned` |
 | `BenchmarkPackage` | One validator-owned packaged benchmark or reference evaluation profile | `planned` |
 | `EvalRun` | One online or offline evaluation execution | `planned` |
@@ -153,10 +155,10 @@ What is still missing most clearly from the current vocabulary is:
 - explicit `BenchmarkPackage` truth for validator-owned, repeatable benchmark
   evaluation rather than folding that concept into generic eval notes
 
-### Planned `RolloutArtifact` Shape
+### Current `RolloutArtifact` Shape
 
-The most important currently missing object is the rollout artifact. The mature
-shape should include at least:
+`RolloutArtifact` now exists in early form inside `psionic-train`. The current
+shape already includes at least:
 
 - `worker_id`
 - `policy_revision`
@@ -184,7 +186,7 @@ shape should include at least:
 | Environment ABI | `partial_outside_psionic` | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
 | Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
-| Rollout artifacts | `planned` | no typed rollout record, reward, advantage, or trainer-batch artifact model |
+| Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `planned` | no rollout verification bundle family or sampled adjudication loop |
 
 ## Current Crate Ownership
@@ -201,8 +203,8 @@ The current train-relevant ownership split in Psionic is:
   - elastic mesh observation and benchmark-gated collective planning
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
-    elastic-membership posture, and the fixed-budget training-core reference
-    loop
+    elastic-membership posture, the fixed-budget training-core reference loop,
+    and RL-facing rollout or batch contracts
 - `psionic-adapters`
   - adapter package identity and hosted binding lineage
 - `psionic-sandbox`
@@ -1110,12 +1112,23 @@ issues are already solved.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
-Psionic needs a reusable rollout artifact model for trajectories, token ids,
-logprobs, rewards, advantages, termination reasons, and proof references. This
-issue should also define trainer-batch assembly types and policy revision
-lineage so the system can later enforce freshness windows, replay batches, and
-support validator review. Without this, RL remains architecture notes rather
-than a Rust-native substrate.
+Status: implemented on 2026-03-14 via GitHub issue `#3565`.
+
+Added `psionic-train` RL-facing contracts for:
+
+- checkpoint-aware `PolicyRevision`
+- proof-bearing `RolloutArtifact`
+- deterministic `TrainerBatch` assembly
+- explicit `PolicyRevisionLineage`
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md`
+- `scripts/release/check-psionic-rl-rollout-artifacts.sh`
+
+This issue makes rollout payloads, trainer-batch assembly, and policy lineage
+real and reusable. It does not yet claim freshness enforcement, worker
+protocols, validator adjudication, or full orchestration.
 
 ### 3. `Environments: define a Rust-native environment ABI and runtime contract`
 
