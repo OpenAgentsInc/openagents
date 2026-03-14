@@ -2,30 +2,52 @@
 
 ## Intent
 
-This audit answers a specific integration question:
+This audit answers the stricter version of the integration question:
 
 > after reading the current OpenAgents compute-market, economy-kernel, and
 > Psionic training-system docs, plus the local `AFMTrainer` and
-> `adapter_training_toolkit_v26_0_0` repos, how should we integrate Apple's
-> adapter-training stack and the AFMTrainer GUI into OpenAgents without
-> violating current ownership boundaries or lying about what the system does?
+> `adapter_training_toolkit_v26_0_0` repos, how should we integrate the Apple
+> adapter-training stack into OpenAgents if the requirement is zero Python?
 
-The short answer is:
+The answer is now explicit:
 
-> we should integrate the Apple adapter toolkit as a narrow, explicit,
-> Apple-specific training compatibility lane and artifact source, while
-> treating AFMTrainer as workflow reference material rather than code to import.
+> yes, the OpenAgents integration path should be Rust-owned and zero-Python.
+> The Apple repos should be treated as reference implementations and format
+> specifications only, not as runtime dependencies, subprocess backends, or
+> embedded tooling.
 
-That means:
+There is one important non-Python exception already sanctioned by the repo:
 
-- do adapt the training/export workflow
-- do adapt the artifact and validation contracts
-- do extend the Apple FM bridge so exported adapters can actually be used
-- do publish training runs and accepted outcomes through kernel authority
-- do not make the Python toolkit the definition of `Psionic Train`
-- do not embed the Tk GUI into the product
-- do not market this as an adapter-hosting market before bridge, eval, and
-  settlement truth exist
+- the Swift Apple Foundation Models bridge remains necessary because Apple's
+  Foundation Models APIs are Swift-native and the repo already owns that bridge
+  boundary
+
+So the actual rule is:
+
+- no Python in runtime
+- no Python in operator flow
+- no Python as a hidden Psionic backend
+- no AFMTrainer subprocess wrapper inside the app
+- Rust owns training orchestration, artifact handling, validation, and market
+  integration
+- Swift remains only at the Apple runtime bridge boundary where Apple forces it
+
+## Decision
+
+The earlier version of this audit recommended a short-term app-owned Python
+compatibility lane.
+
+That recommendation is now rejected.
+
+The retained plan is:
+
+- port the useful Apple adapter concepts into Rust-owned OpenAgents surfaces
+- use the external Apple repos only as implementation references and fixture
+  sources
+- keep the current Swift bridge boundary for serving because Foundation Models
+  requires it
+
+The external repos are now reference material, not integration substrate.
 
 ## Scope
 
@@ -80,630 +102,683 @@ External repos reviewed:
 
 ## Executive Summary
 
-The Apple adapter toolkit is real and useful, but it is much narrower than a
-general training substrate.
+The Apple adapter toolkit is worth studying, but not worth depending on.
 
-What it actually is:
+What those repos give us:
 
-- a Python/Torch/TAMM adapter trainer for Apple's fixed foundation-model asset
-  pack
-- a JSONL chat-data pipeline with optional guided-generation and tool-calling
-  schema augmentation
-- an optional draft-model distillation lane for speculative decoding
-- an exporter that turns checkpoints into an Apple-specific `.fmadapter`
-  package plus optional Apple asset-pack packaging
+- a concrete reference for Apple-style adapter SFT
+- a concrete reference for optional draft-model distillation
+- a concrete reference for Apple's `.fmadapter` output package
+- a concrete reference for guided-generation and tool-calling training data
+- a concrete reference for operator workflow, validation, and monitoring
 
-What AFMTrainer actually is:
+What they do not give us under a zero-Python requirement:
 
-- a standalone Tk GUI wrapper around that toolkit
-- a subprocess orchestrator that shells out to `uv run python -m ...`
-- a workflow reference for setup, validation, training, export, and monitoring
-- not a reusable library or stable service boundary
+- a runtime backend we can honestly integrate
+- a training substrate that matches Psionic ownership rules
+- a product workflow we should embed directly
 
-How this fits OpenAgents:
+The right OpenAgents reading is:
 
-- it fits best as an Apple-specific compatibility backend for one narrow
-  training family, not as the definition of Psionic train
-- it fits cleanly with existing OpenAgents architecture only if we split:
-  - training orchestration and UX in `apps/autopilot-desktop`
-  - artifact identity and package truth in `psionic-adapters`
-  - adapter-serving bridge extensions in `psionic-apple-fm` plus
-    `swift/foundation-bridge`
-  - canonical training-policy, training-run, benchmark, and accepted-outcome
-    truth in kernel plus Nexus
-- it does not fit if we try to import the Tk GUI, hide the Python stack inside
-  `psionic-train`, or promise an adapter market before the bridge can actually
-  load an exported adapter
+> port the semantics, not the implementation.
 
-The most important integration gap is not training.
+That means:
 
-The most important integration gap is serving:
+- reimplement the Apple-compatible dataset, training, artifact, and validation
+  surfaces in Rust
+- extend the Swift bridge only where Apple runtime attachment requires Swift
+- publish training truth through kernel authority
+- keep AFMTrainer and the Apple toolkit outside the runtime and operator path
 
-> OpenAgents can already supervise and use the Apple FM bridge for text,
-> sessions, streaming, structured generation, and tools, but the bridge and its
-> Rust client currently expose no adapter-loading contract at all.
+This makes the program materially larger than the earlier compatibility-lane
+plan, but it also makes it coherent with:
 
-Until that changes, Apple adapter training can produce artifacts, but OpenAgents
-cannot honestly use those artifacts as first-class local-runtime or provider
-outputs.
+- `docs/OWNERSHIP.md`
+- `ADR-0003`
+- `crates/psionic/docs/ARCHITECTURE.md`
+- `crates/psionic/docs/TRAIN_SYSTEM.md`
 
-## What The Apple Repos Actually Give Us
+## Hard Requirement
 
-## 1. The toolkit is a narrow adapter-training stack, not a general train system
+The integration requirement should be stated plainly.
 
-The Apple toolkit is specialized around one bounded training product:
+## Zero Python means all of the following
 
-- chat-style supervised fine-tuning data in JSONL
-- fixed base-model assets shipped inside the toolkit
-- frozen base model with trainable adapter parameters only
-- optional draft-model distillation
-- export into an Apple runtime-specific package format
+- no `uv`
+- no `python -m examples.train_adapter`
+- no `python -m export.export_fmadapter`
+- no Tk sidecar
+- no Python subprocess launched by `apps/autopilot-desktop`
+- no Python hidden inside `psionic-train`
+- no Python in operator CLI flows
+- no repo feature whose truthful use requires users to install Python
 
-This matters because it means the right OpenAgents translation is not:
+## What remains allowed
 
-- "we now have generic training solved"
+- Rust across the app, Psionic, kernel, and authority surfaces
+- Swift where Apple platform APIs require Swift, which currently means the
+  Foundation Models bridge and possibly Apple-specific packaging helpers if
+  later proven unavoidable
+- external Apple repos as documentation, conformance input, and manual
+  reference while implementing the Rust port
 
-It is:
+## Why this matches current repo law
 
-- "we now have one concrete Apple adapter-training backend we can wrap,
-  validate, and turn into typed artifacts and authority records"
+`TRAIN_SYSTEM.md` is already explicit that Psionic Train must not become a
+Python trainer hidden behind Rust wrappers.
 
-The code makes that specialization explicit:
+`ADR-0003` is already explicit that:
 
-- `load_base_model(...)` loads toolkit-bundled base assets and freezes all
-  non-adapter parameters
-- `train_adapter(...)` is an SFT-style adapter trainer, not a general
-  distributed train orchestrator
-- `SchemaAugmenter` injects Apple-guided-generation schemas directly into the
-  message format
-- tool-calling is represented inside the dataset, not as a generic runtime ABI
+- desktop owns product and operator truth
+- Psionic owns reusable execution substrate
+- kernel plus Nexus own economic truth
 
-## 2. The toolkit's data model lines up surprisingly well with our Apple FM bridge
+A Python compatibility lane breaks that architecture immediately because it
+creates a hidden second execution substrate that Psionic does not own and the
+kernel cannot reason about cleanly.
 
-This is the best part of the fit.
+## What The Apple Repos Actually Contribute
 
-The toolkit can train for:
+## 1. A reference data contract
 
-- plain chat responses
-- schema-guided structured outputs
-- tool-calling patterns
+The external toolkit gives us a concrete chat-data format:
 
-Our retained Apple FM lane already has:
+- JSONL
+- lists of message objects
+- roles:
+  - `system`
+  - `user`
+  - `assistant`
+- optional guided-generation schema attachment via `response_format`
+- optional tool definitions in the system message
+
+This is useful because OpenAgents already has a real Apple FM serving lane with:
 
 - sessions
 - streaming
 - structured generation
-- tool-callback plumbing
+- tool callbacks
 
-That means there is a real product path where Apple-trained adapters improve
-exactly the behaviors the current local bridge already exposes. The missing
-piece is adapter attachment, not conceptual alignment.
+So the training data semantics fit the current Apple runtime direction. We
+should port those semantics into Rust-owned dataset and transform contracts.
 
-## 3. The toolkit's output format is Apple-specific and should stay explicit
+## 2. A reference training loop shape
 
-`export_fmadapter.py` writes:
+The toolkit gives us a bounded training loop with:
 
-- `.fmadapter/metadata.json`
-- `.fmadapter/adapter_weights.bin`
-- optional `draft_weights.bin`
-- optional `draft.mil`
+- adapter-only parameter training
+- optimizer and scheduler behavior
+- mixed precision and activation checkpointing knobs
+- sequence packing behavior
+- checkpoint save cadence
+- optional draft-model training
 
-The metadata includes vendor-specific facts like:
+That is useful as algorithmic and workflow reference.
 
-- adapter identifier
-- base-model signature
-- LoRA rank
-- creator-defined metadata
+It is not acceptable as runtime implementation if the rule is zero Python.
 
-This should not be silently flattened into generic `safetensors`.
+## 3. A reference export format
 
-It is a distinct packaging family with distinct serving implications. The
-OpenAgents artifact layer should say that plainly.
+The most concrete thing in the Apple repos is the `.fmadapter` package.
 
-## 4. AFMTrainer is useful as workflow reference, not as code to import
+That matters because it gives us:
 
-AFMTrainer contributes four useful ideas:
+- a target package layout
+- metadata conventions
+- a base-model signature concept
+- LoRA rank metadata
+- optional draft-model side artifacts
 
-- operator-facing setup and validation flow
-- configuration/profile UX
-- progress and logging UX
-- export and packaging workflow
+This is the single most important part to port early, because serving and
+artifact truth depend on it.
 
-But its implementation is the wrong substrate to import:
+## 4. A reference operator workflow
 
-- Tk UI
-- loose local file heuristics
-- regex parsing of stdout for progress
-- `uv` subprocess bootstrapping inside GUI logic
+AFMTrainer is useful mainly because it shows the operator flow we need:
 
-That is not how OpenAgents should represent replay-safe, control-plane-visible
-training behavior.
-
-The right move is:
-
-- copy the workflow shape
-- not the Python/Tk code
-
-## Fit With OpenAgents Architecture
-
-| OpenAgents layer | Correct role in this integration | What should not land there |
-| --- | --- | --- |
-| `apps/autopilot-desktop` | Detect toolkit, validate entitlement/toolchain presence, start and monitor runs, own WGPUI panes, own operator workflow, supervise Apple FM bridge, expose training status through desktop control | Reusable adapter package law, canonical settlement, generic train-system core |
-| `crates/openagents-provider-substrate` | Later: narrow provider health/product descriptors for Apple adapter training or adapter hosting if those become reusable provider products | Python subprocess orchestration, bridge supervision, settlement logic |
-| `crates/psionic/psionic-apple-fm` | Own typed Rust contract additions for adapter attach/list/detach and adapter-aware session/completion requests | Process discovery, app UX, user install/build messaging |
-| `swift/foundation-bridge` | Implement actual adapter loading and execution against Apple runtime APIs | Market truth, desktop workflow, checkpoint or training-policy authority |
-| `crates/psionic/psionic-adapters` | Own Apple adapter package identity, digests, manifests, hosted binding lineage | UI, subprocess management, Nexus authority |
-| `crates/psionic/psionic-train` | Consume Apple-produced artifacts into typed model and lineage surfaces where honest; remain Rust-native core for real train substrate | Hidden Python toolkit wrapper masquerading as Psionic train itself |
-| `crates/openagents-kernel-core` + `apps/nexus-control` | Publish training policies, training runs, benchmark packages, and accepted outcomes for Apple adapter jobs | Local subprocess logs as authority, app-local truth as market truth |
-
-This split matches:
-
-- `docs/OWNERSHIP.md`
-- `ADR-0003`
-- `ARCHITECTURE.md`
-- `TRAIN_SYSTEM.md`
-- `docs/kernel/compute-training-authority.md`
-
-## The Right Integration Model
-
-## Principle 1: treat the Apple toolkit as an external compatibility backend
-
-The toolkit should be treated like:
-
-- a versioned external execution environment
-- an Apple-specific backend for a narrow training family
-- a source of artifacts and metrics that we ingest into our own typed surfaces
-
-It should not be treated like:
-
-- the canonical implementation of `Psionic Train`
-- a reason to pull Python orchestration into Psionic core
-- a reason to weaken the current ownership split
-
-The current Psionic docs are explicit that `Psionic Train` is not supposed to
-be "a Python trainer hidden behind Rust wrappers." That rule should survive
-this integration.
-
-## Principle 2: training and serving must be decoupled and both must be explicit
-
-The toolkit solves:
-
-- training
-- export
-
-It does not solve our serving path inside OpenAgents.
-
-Our serving path today is:
-
-- `psionic-apple-fm` contract/client
-- `swift/foundation-bridge`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-
-Those surfaces must be extended before the training results become a truthful
-product lane.
-
-## Principle 3: artifact lineage is part of the market claim
-
-The compute-market docs are already explicit that artifact lineage is market
-truth. Apple adapter training makes that concrete.
-
-Two Apple adapter-training jobs are not economically comparable unless we know:
-
-- toolkit version
-- base-model signature
-- tokenizer lineage
-- structured-generation or tool-calling schema policy
-- benchmark package
-- validator policy
-- export format version
-- whether a draft model was also trained
-
-Those should not be hidden inside a local output folder.
-
-They should become:
-
-- environment bindings
-- checkpoint bindings
-- adapter package manifests
-- benchmark package refs
-- accepted-outcome artifacts
-
-## Principle 4: AFMTrainer's UI should become an OpenAgents pane, not a bundled side app
-
-The AFMTrainer tabs already suggest the right product shape:
-
-- setup
-- dataset selection
-- training parameters
+- toolkit selection
+- dataset validation
+- parameter editing
+- training progress
 - export metadata
-- monitoring
+- artifact packaging
 
-That should be re-expressed as:
+We should port that workflow into WGPUI and desktop-control.
 
-- app-owned desktop pane(s)
-- desktop-control status
-- `autopilotctl` commands
-- session logs and receipts
+We should not import the Tk code.
 
-It should not stay as a Tk sidecar if the goal is integration into "our own
-systems."
+## What Must Be Ported To Rust
 
-## Concrete Integration Plan
+Under the zero-Python requirement, the integration program is a port, not a
+wrapper.
 
-## Phase 0: add a local compatibility lane in `apps/autopilot-desktop`
+## 1. Dataset and preprocessing contracts
 
-This is the fastest honest integration.
+We need Rust-owned equivalents for:
 
-Build an app-owned runner that:
+- JSONL parsing
+- message validation
+- role-order validation
+- multi-turn sample validation
+- sequence padding and packing rules
+- guided-generation schema injection
+- tool-calling schema augmentation
+- tokenizer binding and digest capture
 
-- detects a user-supplied Apple toolkit root
-- validates required toolkit structure and version
-- validates dataset files against toolkit-compatible rules
-- launches `examples.train_adapter`
-- optionally launches `examples.train_draft_model`
-- launches `export.export_fmadapter`
-- captures stdout/stderr as structured job logs
-- records final artifact paths and digests in app state
+Likely owners:
 
-This should live in the app layer because it is:
+- `psionic-data`
+- `psionic-apple-fm`
+- possibly `psionic-train` for train-only transforms
 
-- local operator workflow
-- subprocess orchestration
-- entitlement/toolchain messaging
-- not reusable train-substrate truth yet
+These should become typed, testable, replay-safe data contracts rather than
+one-off UI validation helpers.
 
-Recommended inputs:
+## 2. Apple-compatible adapter training loop
 
-- `OPENAGENTS_APPLE_ADAPTER_TOOLKIT_DIR`
-- optional explicit Python/UV interpreter path
-- output root under something like
-  `~/.openagents/apple-adapters/<run-id>/`
+We need a Rust-owned implementation of the Apple adapter SFT loop.
 
-Recommended immediate UI:
+That includes:
 
-- a new WGPUI training pane or an Apple-adapter subsection of Mission Control
-- explicit blockers such as:
-  - toolkit missing
-  - entitlements unavailable
-  - Apple export toolchain unavailable
-  - dataset invalid
+- loading the relevant base model artifact family
+- freezing non-adapter parameters
+- training adapter parameters only
+- optimizer and scheduler behavior
+- mixed precision policy
+- activation checkpointing policy
+- checkpoint export and restore
+- step telemetry and summary metrics
 
-Recommended immediate CLI:
+Likely owner:
 
-- `autopilotctl apple-adapter validate`
-- `autopilotctl apple-adapter train`
-- `autopilotctl apple-adapter export`
-- `autopilotctl apple-adapter status`
+- `psionic-train`
 
-## Phase 1: make `.fmadapter` a typed OpenAgents artifact
+If the current Psionic tensor or model stack is not yet sufficient to express
+this faithfully, the right answer is to build that missing Rust substrate, not
+to route around it with Python.
 
-This is the next required foundation.
+## 3. Draft-model distillation loop
 
-Add explicit Apple adapter artifact support in `psionic-adapters`.
+The Apple toolkit's speculative-decoding path is a second distinct workload.
 
-Minimum shape:
+It requires a Rust implementation for:
 
-- package format for Apple FM adapter bundles
-- stable digest of the package
-- parsed metadata fields:
-  - adapter identifier
-  - base-model signature
-  - LoRA rank
-  - draft-model presence
-  - creator metadata
-- references to contained files
-- hosted-binding lineage fields for later serving attachment
+- teacher-model inference
+- draft-model training
+- inverse-KL or equivalent distillation objective
+- dual-model precision policy
+- draft checkpoint output
 
-Important rule:
+This is optional in product sequencing, but if we claim support for it later it
+must also be Rust-owned.
 
-- do not pretend `.fmadapter` is `safetensors`
-- do not force it into the existing `Safetensors` enum slot
+Likely owner:
 
-Two acceptable shapes are:
+- `psionic-train`
 
-- add an explicit Apple package format to `AdapterArtifactFormat`
-- or add a sibling Apple-specific package-manifest type in
-  `psionic-adapters`
+## 4. `.fmadapter` package reader and writer
 
-Either is fine. The wrong move is flattening away the Apple-specific contract.
+We need a Rust-owned package implementation for the Apple artifact format.
 
-This phase should also capture the relationship between:
+That includes:
 
-- training checkpoint `.pt`
-- exported `.fmadapter`
-- optional draft artifacts
-- later served adapter binding
+- metadata parsing and writing
+- adapter binary payload writing
+- package digesting
+- package validation
+- optional draft artifact presence
+- package manifest identity
+- linkage to training runs and hosted adapter bindings
 
-## Phase 2: extend the Apple FM bridge so OpenAgents can actually use trained adapters
+Likely owner:
 
-This is the critical missing piece.
+- `psionic-adapters`
+
+This should be treated as an explicit Apple package family, not squeezed into
+generic `safetensors` types.
+
+## 5. Apple adapter serving attachment
 
 The current bridge stack already supports:
 
 - health
-- model discovery
-- chat completions
+- models
 - sessions
 - structured generation
 - streaming
 - tools
+- transcript restore/export
 
 It does not support:
 
-- loading an exported Apple adapter package
-- selecting an adapter per session/request
+- loading a `.fmadapter`
+- selecting an adapter for a session or request
 - listing loaded adapters
-- resetting or unloading adapter state explicitly
+- unloading or resetting adapter state
 
-Without this, the training lane ends in a dead artifact.
-
-The bridge extension should add an explicit adapter contract, likely one of:
-
-- adapter refs on session creation
-- adapter refs on one-shot completion requests
-- dedicated adapter management endpoints
-
-Recommended ownership:
+So we need a Rust-plus-Swift serving extension:
 
 - `psionic-apple-fm`
-  - typed request/response contracts
-  - reusable Rust client behavior
+  - typed contract and client additions
 - `swift/foundation-bridge`
-  - real adapter-loading implementation
+  - actual adapter load/attach behavior against Apple runtime APIs
 - `apps/autopilot-desktop`
-  - UI, workflow, binary supervision, adapter-picker UX
+  - operator UX, picker, health, and workbench integration
 
-Recommended first target:
+This is not optional. If OpenAgents cannot attach the artifact, then OpenAgents
+does not yet have a real adapter lane.
 
-- local workbench use of one selected adapter
-- not provider-market adapter hosting yet
+## 6. Benchmark and validation path
 
-Once this exists, the existing Apple FM bridge workbench becomes a natural
-test harness for trained adapters.
+The economy kernel does not accept "export succeeded" as economic truth.
 
-## Phase 3: publish Apple adapter jobs into kernel training authority
+We need Rust-owned validation for Apple adapter jobs:
 
-Once the app can run and export adapter jobs repeatably, it should stop living
-only as local process output.
+- held-out eval runs
+- structured-generation conformance checks
+- tool-calling behavior checks where relevant
+- Apple bridge smoke tests on the exported package
+- benchmark package linkage
+- accepted-outcome gating
 
-Map it into existing kernel training authority.
+Likely owners:
 
-Recommended training-policy shape:
+- `psionic-eval`
+- `openagents-kernel-core`
+- `apps/nexus-control`
 
-- `environment_ref`
-  - something like `env://apple/fm/adapter_training/v26`
-- `checkpoint_family`
-  - Apple adapter training family, not generic model training
-- `validator_policy_ref`
-  - Apple-adapter eval and smoke-test policy
-- `benchmark_package_refs`
-  - task-specific benchmarks or held-out eval profiles
-- `stage_policy_refs`
-  - optional split between adapter SFT stage and draft-model distillation stage
+This should terminate in:
 
-Recommended training-run shape:
+- training policies
+- training runs
+- accepted outcomes
 
-- `training_run_id`
-- `training_policy_ref`
-- resolved environment binding
-- checkpoint binding
+## 7. Product workflow and control plane
+
+We need to port AFMTrainer's UX into our own app surfaces.
+
+Likely owner:
+
+- `apps/autopilot-desktop`
+
+Required surfaces:
+
+- WGPUI panes for setup, training, export, and monitoring
+- desktop-control status and logs
+- `autopilotctl` commands
+- session-log persistence
+
+This keeps the operator world unified with the rest of the app instead of
+forking it into a side GUI.
+
+## What Should Remain Reference-Only
+
+The following should not be integrated directly:
+
+- AFMTrainer Tk UI
+- AFMTrainer Python config management
+- AFMTrainer subprocess orchestration
+- AFMTrainer stdout regex parsing
+- Apple's Python/TAMM training scripts
+- Apple's Python export scripts
+- runtime `uv` environment management
+- Weights & Biases Python dependency
+
+Those repos should instead function as:
+
+- implementation references
+- format references
+- behavior references
+- manual audit inputs
+
+## Proposed Owner Split
+
+| Surface | Correct owner in the zero-Python plan | Must not own |
+| --- | --- | --- |
+| Apple operator flow, panes, logs, job orchestration | `apps/autopilot-desktop` | Generic train substrate, canonical settlement |
+| Apple adapter package identity, manifest, digest, hosted lineage | `psionic-adapters` | UI, Python bridge logic, Nexus authority |
+| Apple FM request/session/adapter contract | `psionic-apple-fm` | Process supervision, pane UX |
+| Apple runtime sidecar behavior | `swift/foundation-bridge` | Economic truth, product workflow |
+| Adapter SFT and draft distillation runtime | `psionic-train` | Hidden Python compatibility shell |
+| Dataset and tokenizer contracts | `psionic-data` and related Psionic crates | App-owned validation-only copies |
+| Benchmark and eval execution | `psionic-eval` | Canonical accepted-outcome authority |
+| Policies, training runs, outcomes, receipts | `openagents-kernel-core` plus `apps/nexus-control` | Desktop-local truth as authority |
+
+This is the current repo architecture applied consistently to the Apple lane.
+
+## Revised Integration Sequence
+
+Because Python is off the table, the sequence changes materially.
+
+## Phase 1: freeze the Apple spec in our own docs and tests
+
+Before writing runtime code, capture the external behavior as a spec.
+
+Deliverables:
+
+- explicit doc for Apple adapter data format
+- explicit doc for `.fmadapter` package layout
+- explicit doc for Apple adapter training metadata and required lineage fields
+- test fixtures that represent expected package and metadata shapes
+
+Important rule:
+
+- OpenAgents should not execute the Apple Python repos as part of product or
+  operator flow
+- if fixture generation is needed at all, it should be a one-time manual
+  reference step outside the supported OpenAgents runtime path
+
+The real goal is to stop treating the external repos as "tools we call" and
+start treating them as "formats we implement."
+
+## Phase 2: port the `.fmadapter` package into `psionic-adapters`
+
+This is the first code target because it unblocks both serving and authority.
+
+Deliverables:
+
+- explicit Apple package format enum or sibling Apple package manifest type
+- metadata parser/writer
+- package digesting
+- file inventory
+- base-model signature capture
+- optional draft-artifact linkage
+- hosted binding lineage hooks
+
+Why this goes first:
+
+- the serving path cannot be truthful without an explicit artifact
+- the authority path cannot record accepted outputs cleanly without an explicit
+  artifact
+
+## Phase 3: extend the Swift bridge and Rust client for adapter attachment
+
+Before training is productized, serving must be made real.
+
+Deliverables:
+
+- adapter management contract in `psionic-apple-fm`
+- adapter attach/list/detach behavior in `swift/foundation-bridge`
+- adapter-aware session creation and one-shot completion requests
+- bridge health and capability reporting that includes adapter state
+- desktop workbench support for choosing an adapter
+
+Why this should happen early:
+
+- it allows OpenAgents to validate imported or prebuilt Apple adapter artifacts
+  before the full Rust trainer lands
+- it proves the final execution lane is actually able to consume the format we
+  plan to train and export
+
+## Phase 4: port Apple dataset and schema semantics into Rust
+
+Deliverables:
+
+- JSONL dataset reader and validator
+- role-order and sample validation
+- guided-generation schema augmentation
+- tool schema augmentation
+- tokenizer and prompt-shaping capture
+- deterministic packing rules
+
+Likely owners:
+
+- `psionic-data`
+- `psionic-apple-fm`
+- `psionic-train`
+
+This phase turns the Apple repos' loose Python input handling into typed Rust
+contracts.
+
+## Phase 5: implement the Rust adapter trainer
+
+This is the largest engineering step.
+
+Deliverables:
+
+- Rust adapter-only training loop
+- optimizer and scheduler support required by the Apple lane
+- checkpointing
+- train summary metrics
+- reproducibility metadata
+- exported Apple package generation
+
+This phase should land only when it is honest to say:
+
+- the training computation itself is Rust-owned
+- the export is Rust-owned
+- no Python is required anywhere in the supported flow
+
+## Phase 6: implement Rust draft-model distillation if we still want it
+
+This is optional and should remain clearly secondary to the base adapter lane.
+
+Deliverables:
+
+- teacher-draft distillation runtime
+- draft checkpoint artifact
+- optional draft payload in the final Apple package
+- latency and acceptance-ratio metrics where relevant
+
+This should not block the first honest adapter-training lane.
+
+## Phase 7: bind the Apple lane into kernel authority
+
+Once training and serving are both real, bind them into canonical market truth.
+
+Deliverables:
+
+- Apple-specific environment refs
+- Apple adapter training policies
 - benchmark package refs
-- expected and completed step counts
-- final `.pt` checkpoint refs
-- exported `.fmadapter` recorded as artifact in the summary
-- final metrics such as average loss and best eval score
+- validator policy refs
+- training run creation and finalize flows
+- accepted outcome publication only after eval and Apple-runtime validation
 
-Recommended accepted-outcome rule:
+The correct accepted-outcome rule is:
 
-- do not accept a run into durable outcome truth only because export succeeded
-- accept it only after benchmark/eval and Apple-runtime smoke validation pass
+- not "training process completed"
+- not "artifact exported"
+- but "artifact exported and accepted by the relevant evaluation and Apple
+  runtime validation posture"
 
-This matters because the economy kernel is about verified outcomes, not just
-completed subprocesses.
+## Phase 8: ship the product workflow in desktop and CLI
 
-## Phase 4: turn AFMTrainer's workflow into OpenAgents UI and control-plane truth
+Deliverables:
 
-The current AFMTrainer app gives us a direct UI blueprint.
+- WGPUI training pane
+- desktop-control status and history
+- `autopilotctl` subcommands
+- mission-control visibility where appropriate
+- session-log persistence and replay-safe state reporting
 
-Translate its tabs into our own surfaces:
+This is where AFMTrainer's operator flow gets ported into our own system for
+real.
 
-- `Setup`
-  - toolkit path, dataset path, output root, environment blockers
-- `Training`
-  - epochs, learning rate, precision, packing, gradient accumulation
-- `Export`
-  - adapter name, author, description, optional draft model
-- `Monitor`
-  - streaming logs, progress, checkpoints, exported artifact refs
+## Market And Kernel Implications
 
-What should change in our version:
+## 1. This remains later-family work, not MVP scope
 
-- use WGPUI, not Tk
-- use desktop-control snapshots and session logs, not in-widget-only state
-- use structured job state, not regex-only stdout parsing as source of truth
-- use current OpenAgents training/history panes for later kernel-backed runs
+`docs/MVP.md` is still authoritative.
 
-This is where the existing `desktop_control.rs` training status becomes useful.
+The visible MVP lane is still compute-provider-first.
 
-The repo already has:
+So Apple adapter training is:
 
-- `DesktopControlTrainingStatus`
-- `DesktopControlTrainingRunStatus`
-- loading of training runs and accepted outcomes from kernel authority
+- strategically relevant
+- architecturally compatible
+- not part of the current product promise
 
-So the UI does not need to invent a second training truth model.
+That means the work should be framed as:
 
-## Phase 5: only then productize training and adapter-hosting compute families
+- substrate expansion
+- future training-family preparation
+- future adapter-hosting preparation
+
+Not as "ship this as part of the current MVP loop."
+
+## 2. The compute market should not claim `training` or `adapter_hosting` yet
 
 The compute-market docs already reserve later-family space for:
 
 - `training`
 - `adapter_hosting`
 
-This integration gives us a credible path to those families, but not an excuse
-to claim them early.
+That space is useful, but it should not be marketed as live until all of the
+following are true:
 
-The order should be:
+- Rust-owned training runtime exists
+- Apple package artifact truth exists
+- Apple serving attachment exists
+- benchmark and validation gates exist
+- authority receipts and accepted outcomes exist
 
-1. local compatibility runner
-2. typed Apple adapter artifact
-3. bridge-side adapter loading
-4. benchmark and accepted-outcome validation
-5. training policy/run/outcome authority
-6. only then market-facing training or adapter-hosting products
+Before that, the honest statement is:
 
-That sequencing matches the current compute-market law:
+- OpenAgents is preparing the substrate for later Apple-compatible
+  training-class and adapter-hosting products
 
-- proof before market claims
-- authority before settlement
-- artifact lineage before comparability claims
+## 3. Artifact lineage is part of the market claim
 
-## Specific Component Translation
+For Apple adapter jobs, the economic claim must include at least:
 
-| External component | What it should become in OpenAgents | Notes |
-| --- | --- | --- |
-| `examples/train_adapter.py` | App-owned compatibility runner now; later environment-packaged backend with authority publication | Narrow Apple adapter SFT backend, not generic train core |
-| `examples/train_draft_model.py` | Optional second-stage job behind explicit flag | Good later latency optimization, not phase-zero gate |
-| `examples/generate.py` | Local validation harness and benchmark helper | Useful for smoke tests and post-export checks |
-| `SchemaAugmenter` and tool-calling data schema | Environment-package or dataset-transform metadata | Strong fit with our existing Apple structured/tool surfaces |
-| `export/export_fmadapter.py` | Export step plus artifact ingestion into `psionic-adapters` | Keep export Apple-owned; ingest results into our typed model |
-| `export/produce_asset_pack.py` | Release/distribution pipeline tool, not core training truth | Keep operator-facing and optional |
-| AFMTrainer `TrainingController` | Inspiration for app workflow only | Replace raw stdout regex as truth with structured local job state where possible |
-| AFMTrainer `FileManager` | Better dataset and toolkit validation in desktop app | Use toolkit-compatible rules, not loose heuristics |
-| AFMTrainer `ConfigManager` | App state plus desktop-control serialization | No reason to import Python config code |
-| AFMTrainer `Monitor` tab | WGPUI pane plus session logs | Reuse existing app log and snapshot infrastructure |
+- base-model signature
+- tokenizer lineage
+- training environment ref and version
+- benchmark package refs
+- validator policy ref
+- package format version
+- draft-model presence
+- final package digest
 
-## Important Design Constraints
+These values affect:
 
-## 1. Keep environment truth deterministic
+- comparability
+- admissibility
+- settlement
+- future hosted serving claims
 
-AFMTrainer currently shells into `uv` and resolves dependencies at runtime.
+So they belong in:
 
-That is fine for a standalone hobby GUI.
-
-It is not enough for compute-market or accepted-outcome truth.
-
-OpenAgents should capture at minimum:
-
-- toolkit version
-- Python version
-- torch build
-- TAMM version
-- coremltools version
-- platform and accelerator
-- dependency-lock or environment digest
-
-Those values should sit in:
-
-- environment package metadata
+- artifact manifests
 - training-run metadata
-- exported artifact lineage
+- accepted outcomes
 
-## 2. A Linux training host does not remove the need for Apple validation
+Not in local-only output folders.
 
-The toolkit code itself prefers:
+## Risks And Friction Points
 
-- `mps`
-- then `cuda`
-- then `cpu`
+## 1. The Rust port may expose missing Psionic substrate
 
-So it is plausible to run training on Linux/NVIDIA.
+The external Apple trainer currently relies on:
 
-But that only proves the training process ran.
+- PyTorch
+- TAMM
+- Apple-provided model assets
+- CoreML-related export logic
 
-If the claim is:
+Recreating that in Rust may reveal missing capabilities in:
 
-- "this exported artifact works on Apple Foundation Models"
+- model representation
+- optimizer support
+- mixed-precision handling
+- activation checkpointing
+- export serialization
 
-then final acceptance should still include validation on:
+That is not a reason to use Python. It is evidence of where Psionic still needs
+to grow.
 
-- macOS
-- Apple Silicon
-- Apple runtime bridge with adapter loading
+## 2. The Apple package format may hide undocumented constraints
 
-That can become a validator-policy requirement for accepted outcomes.
+The Python exporter gives us strong clues, not necessarily a full normative
+spec.
 
-## 3. The exported Apple package is not the same as a generic Psionic adapter delta
+So the Rust package port should be built with:
 
-`psionic-train/model_io.rs` and `psionic-adapters` already have useful adapter
-and portable-model vocabulary.
+- parser and validator tests
+- fixture-based conformance checks
+- cautious versioning
+- explicit rejection paths for unsupported package variants
 
-That is a good place to attach Apple artifacts.
+This is another reason to port the package early rather than leaving it as an
+opaque later task.
 
-But the Apple package still remains vendor-specific.
+## 3. Serving support may still require limited Swift growth
 
-The right model is:
+The zero-Python requirement is fully compatible with the current Swift bridge
+boundary.
 
-- keep generic adapter lineage in Psionic
-- add Apple package support explicitly
-- do not erase Apple-specific semantics to make the type graph feel cleaner
+It is not compatible with pretending Swift does not exist.
 
-## 4. The current bridge is richer than the old March 10 audit implies
+If adapter attach or packaging requires additional Swift work, that is still
+acceptable because:
 
-The current retained bridge and Rust client already have:
+- the repo already uses Swift for the Apple runtime boundary
+- Apple forces that boundary
 
-- sessions
-- streaming
-- structured generation
-- tools
-- transcript export/restore
+The unacceptable move is bringing Python back in through a side door.
 
-That makes Apple adapter integration more attractive than it looked in the
-earlier audit.
+## 4. The port is larger, but it is architecturally clean
 
-The limiting factor is now adapter load/selection, not the rest of the bridge
-surface.
+The compatibility-lane plan would have been faster.
+
+The zero-Python plan is slower, but it avoids:
+
+- hidden substrate drift
+- inconsistent receipts
+- operator dependency sprawl
+- a fake Psionic ownership story
+
+It is the cleaner long-term move.
 
 ## What We Should Not Do
 
-- Do not vendor `AFMTrainer` into this repo.
-- Do not ship the Tk GUI inside the desktop app as a parallel product surface.
-- Do not move Python subprocess orchestration into `psionic-train` and call it
-  "training substrate."
-- Do not let local export success count as an accepted training outcome without
-  benchmark and Apple-runtime validation.
-- Do not pretend `.fmadapter` is a generic `safetensors` adapter.
-- Do not add market-facing `adapter_hosting` claims before the Apple bridge can
-  attach and serve exported adapters.
-- Do not make the operator experience depend on ad hoc `uv` resolution with no
-  captured environment digest.
-- Do not rely on AFMTrainer's loose file validation or text-log parsing as the
-  canonical truth path.
+- Do not shell out to the Apple Python toolkit from `apps/autopilot-desktop`.
+- Do not add a `uv` or Python prerequisite to the supported OpenAgents flow.
+- Do not vendor AFMTrainer into the repo as a side app.
+- Do not hide Python calls behind Rust wrappers and call that Psionic.
+- Do not treat `.fmadapter` as generic `safetensors`.
+- Do not market training or adapter-hosting products before the Rust trainer,
+  Apple package support, serving attachment, and authority gates exist.
+- Do not let export success count as accepted economic truth without benchmark
+  and Apple-runtime validation.
 
 ## Recommended Issue Sequence
 
-1. `Autopilot: add Apple adapter toolkit detection and validation lane`
-2. `Autopilot: add app-owned Apple adapter training/export runner with logs and status`
-3. `Psionic Adapters: add explicit Apple FM adapter package manifest and digest support`
-4. `Psionic Apple FM: add adapter attach/load/list contract to bridge client`
-5. `foundation-bridge: implement adapter-aware session/completion support`
-6. `Kernel: define Apple adapter-training environment, checkpoint family, and validator policy metadata`
-7. `Autopilot + Nexus: publish Apple adapter jobs as compute training runs and accepted outcomes`
-8. `WGPUI: add Apple adapter training pane and desktop-control integration`
-9. `Eval: add Apple adapter benchmark packages and acceptance gates`
-10. `Compute Market: productize training then adapter-hosting only after bridge and validation truth are live`
+1. `Apple Adapter Spec: document dataset, metadata, and .fmadapter package contracts`
+2. `Psionic Adapters: add explicit Apple FM adapter package identity and manifest support`
+3. `Psionic Apple FM: add adapter attach/list/detach contract`
+4. `foundation-bridge: implement adapter-aware Apple FM sessions and completions`
+5. `Psionic Data: port Apple adapter dataset and schema augmentation rules to Rust`
+6. `Psionic Train: implement Rust-native Apple adapter SFT lane`
+7. `Psionic Train: add optional Rust-native draft-model distillation lane`
+8. `Kernel: define Apple adapter training policy, benchmark, and validator registry surfaces`
+9. `Nexus: publish Apple adapter training runs and accepted outcomes`
+10. `Autopilot Desktop: ship WGPUI Apple adapter training pane and autopilotctl controls`
+11. `Compute Market: only then productize training and later adapter_hosting claims`
 
 ## Bottom Line
 
-The Apple toolkit is worth integrating.
+The integration answer is now unambiguous:
 
-AFMTrainer is worth studying.
+- yes to Rust-owned integration
+- yes to zero Python
+- yes to using the Apple repos as reference material
+- yes to keeping the existing Swift bridge where Apple runtime APIs require it
+- no to any Python compatibility lane
 
-But the correct OpenAgents move is not "pull their GUI and Python stack into
-our tree."
+So the work is not:
 
-The correct move is:
+- "wrap AFMTrainer"
+- "call Apple's toolkit from the desktop app"
 
-- use the toolkit as a bounded external backend
-- build our own app-owned workflow around it
-- turn `.fmadapter` into a typed Psionic artifact
-- extend the Apple bridge so the artifact can actually be used
-- terminate training truth in kernel authority and accepted outcomes
+The work is:
 
-If we do that, the Apple adapter stack becomes a credible bridge between:
+- port the Apple semantics into Rust
+- port the Apple package into Psionic artifacts
+- extend the Swift bridge for adapter attachment
+- publish training truth through kernel authority
 
-- the current Apple FM local-runtime lane
-- the later `training` compute family
-- the later `adapter_hosting` compute family
-- and the broader economy-kernel requirement that machine work be verified,
-  attributable, and settleable rather than merely executable.
+That is the only version of this integration that is consistent with the
+current Psionic docs, the compute-market owner split, and the stated
+zero-Python requirement.
