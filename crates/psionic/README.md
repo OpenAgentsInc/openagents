@@ -172,7 +172,8 @@ Implemented now:
 - canonical execution-proof bundles and embeddings-first activation-fingerprint
   proof posture.
 - early train substrate: checkpoint-backed recovery, elastic membership,
-  collective planning, and adapter lineage.
+  collective planning, typed fixed-budget trainer steps, checkpoint-anchored
+  restore, and adapter lineage.
 - broader-stack authority flows for environment packages, eval runs, and
   synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
 
@@ -181,7 +182,8 @@ Still planned:
 - full inference-engine maturity across model families and broader serving
   surfaces.
 - Psionic-native environment and eval runtime crates.
-- full Rust-native training core, rollout artifacts, and orchestrator layers.
+- broader distributed training completion, rollout artifacts, and orchestrator
+  layers.
 - training-window protocol, checkpoint pointer/manifest discipline, and
   validator-owned benchmark packages for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
@@ -201,6 +203,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   model, receipts, policy surfaces, and the issue-program path to a full
   Rust-native train stack, now tracked as GitHub issues `#3564` through
   `#3593`.
+- **[docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md](docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md)** —
+  canonical reference loop, runbook, and acceptance criteria for the first
+  real `psionic-train` fixed-budget training-core path.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

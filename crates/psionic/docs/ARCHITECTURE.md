@@ -142,7 +142,7 @@ Psionic is also not:
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate, validator-owned benchmark package runtime, or local validator simulator exists yet |
 | Environment package runtime | `partial_outside_psionic` | environment package descriptors, registry, and binding flows now exist in kernel/Nexus, but no canonical Psionic-native runtime ABI exists yet |
-| Full training core | `planned` | no Rust-native trainer-step and optimizer substrate yet |
+| Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
 
 Recent issue closure changed one important reading of this table:
@@ -635,7 +635,7 @@ of the same direction:
 
 - mature inference engine behavior
 - full environment and eval layers
-- full Rust-native training core
+- broader distributed training completion
 - production-grade receipt, security, and operating discipline across the whole
   subtree
 
