@@ -2216,17 +2216,17 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        EnvironmentArtifactExpectation, EnvironmentArtifactOutput, EnvironmentBenchmarkProfile,
-        EnvironmentCompositionGroup, EnvironmentCompositionMember, EnvironmentContractError,
-        EnvironmentDatasetBinding, EnvironmentDifficultyMetadata, EnvironmentExecutionEntrypoint,
-        EnvironmentInstallRequest, EnvironmentPackageContract, EnvironmentPackageFamily,
-        EnvironmentPackageInstallSource, EnvironmentPackageKey, EnvironmentPolicyKind,
-        EnvironmentPolicyReference, EnvironmentRegistry, EnvironmentRegistryError,
-        EnvironmentRubricHook, EnvironmentRubricOutcome, EnvironmentRubricScoreKind,
-        EnvironmentRuntimeError, EnvironmentRuntimeFamily, EnvironmentStateMode,
-        EnvironmentToolContract, EnvironmentToolInterface, EnvironmentToolResult,
-        EnvironmentTurnInput, EnvironmentUsageSurface, EnvironmentVerificationPosture,
-        EnvironmentWorkloadClass, ENVIRONMENT_ABI_VERSION,
+        ENVIRONMENT_ABI_VERSION, EnvironmentArtifactExpectation, EnvironmentArtifactOutput,
+        EnvironmentBenchmarkProfile, EnvironmentCompositionGroup, EnvironmentCompositionMember,
+        EnvironmentContractError, EnvironmentDatasetBinding, EnvironmentDifficultyMetadata,
+        EnvironmentExecutionEntrypoint, EnvironmentInstallRequest, EnvironmentPackageContract,
+        EnvironmentPackageFamily, EnvironmentPackageInstallSource, EnvironmentPackageKey,
+        EnvironmentPolicyKind, EnvironmentPolicyReference, EnvironmentRegistry,
+        EnvironmentRegistryError, EnvironmentRubricHook, EnvironmentRubricOutcome,
+        EnvironmentRubricScoreKind, EnvironmentRuntimeError, EnvironmentRuntimeFamily,
+        EnvironmentStateMode, EnvironmentToolContract, EnvironmentToolInterface,
+        EnvironmentToolResult, EnvironmentTurnInput, EnvironmentUsageSurface,
+        EnvironmentVerificationPosture, EnvironmentWorkloadClass,
     };
 
     fn weather_package() -> EnvironmentPackageContract {
@@ -2392,13 +2392,15 @@ mod tests {
     }
 
     #[test]
-    fn environment_contract_carries_package_shape_for_train_and_benchmark(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_contract_carries_package_shape_for_train_and_benchmark()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = weather_package();
         package.validate()?;
-        assert!(package
-            .supported_workloads
-            .contains(&EnvironmentWorkloadClass::ValidatorBenchmark));
+        assert!(
+            package
+                .supported_workloads
+                .contains(&EnvironmentWorkloadClass::ValidatorBenchmark)
+        );
         assert_eq!(
             package.policy_references[0].policy_ref,
             String::from("policy://weather/train")
@@ -2418,8 +2420,8 @@ mod tests {
     }
 
     #[test]
-    fn environment_runtime_session_tracks_tools_artifacts_and_rubrics(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_runtime_session_tracks_tools_artifacts_and_rubrics()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = weather_package();
         let expected_storage_key = package.storage_key();
         let mut session = package.open_session("session-weather", "task-paris")?;
@@ -2467,8 +2469,8 @@ mod tests {
     }
 
     #[test]
-    fn environment_runtime_requires_declared_rubric_and_artifact(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_runtime_requires_declared_rubric_and_artifact()
+    -> Result<(), Box<dyn std::error::Error>> {
         let package = weather_package();
         let mut session = package.open_session("session-missing", "task-missing")?;
         session.begin_turn(EnvironmentTurnInput::new("hello"))?;
@@ -2491,8 +2493,8 @@ mod tests {
     }
 
     #[test]
-    fn environment_registry_pins_versions_and_reuses_the_same_member_for_train_and_eval(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_registry_pins_versions_and_reuses_the_same_member_for_train_and_eval()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut registry = EnvironmentRegistry::default();
         let weather_v1 = weather_package();
         let weather_v2 = EnvironmentPackageContract::new(
@@ -2625,8 +2627,8 @@ mod tests {
     }
 
     #[test]
-    fn environment_registry_refuses_missing_benchmark_profile_and_retired_packages(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn environment_registry_refuses_missing_benchmark_profile_and_retired_packages()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut registry = EnvironmentRegistry::default();
         let weather = weather_package();
         registry.install_package(EnvironmentInstallRequest {

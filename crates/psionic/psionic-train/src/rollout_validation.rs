@@ -669,8 +669,8 @@ mod tests {
     }
 
     #[test]
-    fn validator_accepts_fresh_rollouts_and_rejects_stale_policy_outcomes(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn validator_accepts_fresh_rollouts_and_rejects_stale_policy_outcomes()
+    -> Result<(), Box<dyn std::error::Error>> {
         let exact = artifact(
             "worker-a",
             "artifact-a",
@@ -713,9 +713,11 @@ mod tests {
             None,
         ));
         assert_eq!(rejected.disposition, ValidatorDisposition::Rejected);
-        assert!(rejected
-            .reason_codes
-            .contains(&ValidatorReasonCode::StalePolicyRejected));
+        assert!(
+            rejected
+                .reason_codes
+                .contains(&ValidatorReasonCode::StalePolicyRejected)
+        );
         Ok(())
     }
 
@@ -766,9 +768,11 @@ mod tests {
             None,
         ));
         assert_eq!(replay_verdict.disposition, ValidatorDisposition::Rejected);
-        assert!(replay_verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::ReplayedArtifactDetected));
+        assert!(
+            replay_verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::ReplayedArtifactDetected)
+        );
 
         let duplicate_verdict = validator.verify_bundle(RolloutVerificationBundle::new(
             "bundle-duplicate",
@@ -786,12 +790,16 @@ mod tests {
             duplicate_verdict.disposition,
             ValidatorDisposition::Normalized
         );
-        assert!(duplicate_verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::DuplicateDetected));
-        assert!(duplicate_verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::ContributionNormalized));
+        assert!(
+            duplicate_verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::DuplicateDetected)
+        );
+        assert!(
+            duplicate_verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::ContributionNormalized)
+        );
         assert_eq!(
             duplicate_verdict
                 .normalization
@@ -803,8 +811,8 @@ mod tests {
     }
 
     #[test]
-    fn validator_runs_benchmark_checks_with_typed_reason_codes(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn validator_runs_benchmark_checks_with_typed_reason_codes()
+    -> Result<(), Box<dyn std::error::Error>> {
         let artifact = artifact(
             "worker-a",
             "artifact-benchmark",
@@ -841,18 +849,26 @@ mod tests {
         ));
         assert_eq!(verdict.disposition, ValidatorDisposition::Rejected);
         assert!(verdict.ran_benchmark_checks);
-        assert!(verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::TimerIntegrityMismatch));
-        assert!(verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::TokenAccountingMismatch));
-        assert!(verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::FinalStateMismatch));
-        assert!(verdict
-            .reason_codes
-            .contains(&ValidatorReasonCode::ExecutionStrategyMismatch));
+        assert!(
+            verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::TimerIntegrityMismatch)
+        );
+        assert!(
+            verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::TokenAccountingMismatch)
+        );
+        assert!(
+            verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::FinalStateMismatch)
+        );
+        assert!(
+            verdict
+                .reason_codes
+                .contains(&ValidatorReasonCode::ExecutionStrategyMismatch)
+        );
         Ok(())
     }
 }

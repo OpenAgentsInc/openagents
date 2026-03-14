@@ -7,10 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    execute_sandbox_job, ProviderSandboxEntrypointType, ProviderSandboxEnvironmentVar,
-    ProviderSandboxExecutionControls, ProviderSandboxExecutionReceipt,
-    ProviderSandboxExecutionResult, ProviderSandboxJobRequest, ProviderSandboxProfile,
-    ProviderSandboxResourceRequest,
+    ProviderSandboxEntrypointType, ProviderSandboxEnvironmentVar, ProviderSandboxExecutionControls,
+    ProviderSandboxExecutionReceipt, ProviderSandboxExecutionResult, ProviderSandboxJobRequest,
+    ProviderSandboxProfile, ProviderSandboxResourceRequest, execute_sandbox_job,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -192,7 +191,9 @@ impl std::fmt::Display for SandboxPoolError {
             Self::DuplicatePool { pool_id } => {
                 write!(formatter, "sandbox pool `{pool_id}` already exists")
             }
-            Self::UnknownPool { pool_id } => write!(formatter, "sandbox pool `{pool_id}` not found"),
+            Self::UnknownPool { pool_id } => {
+                write!(formatter, "sandbox pool `{pool_id}` not found")
+            }
             Self::UnknownSession {
                 pool_id,
                 session_id,
@@ -226,7 +227,10 @@ impl std::fmt::Display for SandboxPoolError {
                 "sandbox pool `{pool_id}` exhausted max_sessions={max_sessions}"
             ),
             Self::InvalidRelativePath { path } => {
-                write!(formatter, "sandbox staged relative path `{path}` is invalid")
+                write!(
+                    formatter,
+                    "sandbox staged relative path `{path}` is invalid"
+                )
             }
             Self::IoFailure { detail } => formatter.write_str(detail),
         }
@@ -869,8 +873,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_pool_warms_and_reuses_the_same_workspace_across_iterations(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_pool_warms_and_reuses_the_same_workspace_across_iterations()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let runtime = fake_binary(
             temp.path(),
