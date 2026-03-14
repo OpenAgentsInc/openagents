@@ -4,9 +4,9 @@ use crate::compute::{
     ComputeEnvironmentPackageStatus, ComputeEvaluationRun, ComputeEvaluationRunStatus,
     ComputeEvaluationSample, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
     ComputeProductStatus, ComputeSettlementFailureReason, ComputeSyntheticDataJob,
-    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
-    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
+    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};

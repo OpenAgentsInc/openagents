@@ -6,6 +6,7 @@ build
 target
 .DS_Store
 .tmp/
+tmp/
 expo/.tmp
 spacetime_local_storage/
 spacetime/.env.local
