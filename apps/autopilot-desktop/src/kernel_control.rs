@@ -22,8 +22,8 @@ use openagents_kernel_core::compute::{
     ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
     ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
-    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
-    PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
+    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
+    canonical_compute_product_id,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -739,7 +739,7 @@ pub(crate) fn accept_spot_compute_quote(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms,
             status: CapacityInstrumentStatus::Active,
-            environment_binding: None,
+            environment_binding: quote.environment_binding.clone(),
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
@@ -749,6 +749,12 @@ pub(crate) fn accept_spot_compute_quote(
                 "quote_id": quote.quote_id,
                 "compute_family": quote.compute_family_label(),
                 "backend_family": quote.backend_label(),
+                "execution_kind": quote.execution_label(),
+                "topology_kind": quote.topology_label(),
+                "provisioning_kind": quote.provisioning_label(),
+                "proof_posture": quote.proof_posture_label(),
+                "environment_ref": quote.environment_ref(),
+                "sandbox_profile_ref": quote.sandbox_profile_ref.as_deref(),
                 "source_badge": quote.source_badge,
                 "terms_label": quote.terms_label,
             }),
@@ -786,6 +792,12 @@ pub(crate) fn accept_spot_compute_quote(
         provider_id: quote.provider_id.clone(),
         backend_family: quote.backend_family,
         compute_family: quote.compute_family,
+        execution_kind: quote.execution_kind,
+        topology_kind: quote.topology_kind,
+        provisioning_kind: quote.provisioning_kind,
+        proof_posture: quote.proof_posture,
+        environment_binding: quote.environment_binding.clone(),
+        sandbox_profile_ref: quote.sandbox_profile_ref.clone(),
         quantity: quote.requested_quantity,
         price_sats: quote.price_sats,
         delivery_window_label: quote.delivery_window_label.clone(),
@@ -860,7 +872,7 @@ pub(crate) fn accept_forward_compute_quote(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms,
             status: CapacityInstrumentStatus::Active,
-            environment_binding: None,
+            environment_binding: quote.environment_binding.clone(),
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
@@ -870,6 +882,12 @@ pub(crate) fn accept_forward_compute_quote(
                 "quote_id": quote.quote_id,
                 "compute_family": quote.compute_family_label(),
                 "backend_family": quote.backend_label(),
+                "execution_kind": quote.execution_label(),
+                "topology_kind": quote.topology_label(),
+                "provisioning_kind": quote.provisioning_label(),
+                "proof_posture": quote.proof_posture_label(),
+                "environment_ref": quote.environment_ref(),
+                "sandbox_profile_ref": quote.sandbox_profile_ref.as_deref(),
                 "source_badge": quote.source_badge,
                 "terms_label": quote.terms_label,
                 "collateral_summary": quote.collateral_summary,
@@ -912,6 +930,12 @@ pub(crate) fn accept_forward_compute_quote(
         provider_id: quote.provider_id.clone(),
         backend_family: quote.backend_family,
         compute_family: quote.compute_family,
+        execution_kind: quote.execution_kind,
+        topology_kind: quote.topology_kind,
+        provisioning_kind: quote.provisioning_kind,
+        proof_posture: quote.proof_posture,
+        environment_binding: quote.environment_binding.clone(),
+        sandbox_profile_ref: quote.sandbox_profile_ref.clone(),
         quantity: quote.requested_quantity,
         price_sats: quote.price_sats,
         delivery_start_ms: quote.delivery_start_ms,
@@ -932,16 +956,18 @@ fn build_spot_compute_quotes_from_market(
 ) -> Vec<SpotComputeQuoteCandidate> {
     let mut quotes = Vec::new();
     for product in products {
-        let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
-            continue;
-        };
-        if spec.compute_family != rfq.compute_family {
-            continue;
-        }
         let Some(envelope) = product.capability_envelope.as_ref() else {
             continue;
         };
-        if !spot_rfq_matches_envelope(rfq, envelope) {
+        let Some(quoteable) = quoteable_compute_product(product) else {
+            continue;
+        };
+        if !spot_rfq_matches_envelope(
+            rfq,
+            envelope,
+            quoteable.compute_family,
+            quoteable.backend_family,
+        ) {
             continue;
         }
         for lot in lots
@@ -949,6 +975,16 @@ fn build_spot_compute_quotes_from_market(
             .filter(|lot| lot.product_id == product.product_id)
         {
             if !spot_lot_is_quotable(rfq, lot) {
+                continue;
+            }
+            let environment_binding = effective_environment_binding(lot, envelope);
+            let sandbox_profile_ref = sandbox_profile_ref_for_quote(product, lot);
+            if !spot_rfq_matches_quote_posture(
+                &rfq.capability_constraints,
+                &quoteable,
+                environment_binding.as_ref(),
+                sandbox_profile_ref.as_deref(),
+            ) {
                 continue;
             }
             let reserved_quantity =
@@ -976,8 +1012,14 @@ fn build_spot_compute_quotes_from_market(
                 product_id: product.product_id.clone(),
                 capacity_lot_id: lot.capacity_lot_id.clone(),
                 provider_id: lot.provider_id.clone(),
-                backend_family: spec.backend_family,
-                compute_family: spec.compute_family,
+                backend_family: quoteable.backend_family,
+                compute_family: quoteable.compute_family,
+                execution_kind: Some(quoteable.execution_kind),
+                topology_kind: Some(quoteable.topology_kind),
+                provisioning_kind: Some(quoteable.provisioning_kind),
+                proof_posture: Some(quoteable.proof_posture),
+                environment_binding,
+                sandbox_profile_ref,
                 available_quantity,
                 requested_quantity: rfq.quantity,
                 price_sats,
@@ -985,7 +1027,7 @@ fn build_spot_compute_quotes_from_market(
                     "{}m inside lot {}..{}",
                     rfq.window_minutes, lot.delivery_start_ms, lot.delivery_end_ms
                 ),
-                capability_summary: capability_summary_for_product(product),
+                capability_summary: quoteable.capability_summary.clone(),
                 source_badge: quote_source_badge(product, lot).to_string(),
                 terms_label: quote_terms_label(product, lot).to_string(),
             });
@@ -1015,13 +1057,10 @@ fn build_forward_compute_quotes_from_market(
             .max(60_000),
     );
     for product in products {
-        let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
+        let Some(envelope) = product.capability_envelope.as_ref() else {
             continue;
         };
-        if spec.compute_family != rfq.compute_family {
-            continue;
-        }
-        let Some(envelope) = product.capability_envelope.as_ref() else {
+        let Some(quoteable) = quoteable_compute_product(product) else {
             continue;
         };
         if !spot_rfq_matches_envelope(
@@ -1035,6 +1074,8 @@ fn build_forward_compute_quotes_from_market(
                 capability_constraints: rfq.capability_constraints.clone(),
             },
             envelope,
+            quoteable.compute_family,
+            quoteable.backend_family,
         ) {
             continue;
         }
@@ -1046,6 +1087,16 @@ fn build_forward_compute_quotes_from_market(
                 continue;
             }
             if lot.delivery_start_ms > desired_start_ms || lot.delivery_end_ms < desired_end_ms {
+                continue;
+            }
+            let environment_binding = effective_environment_binding(lot, envelope);
+            let sandbox_profile_ref = sandbox_profile_ref_for_quote(product, lot);
+            if !spot_rfq_matches_quote_posture(
+                &rfq.capability_constraints,
+                &quoteable,
+                environment_binding.as_ref(),
+                sandbox_profile_ref.as_deref(),
+            ) {
                 continue;
             }
             let reserved_quantity =
@@ -1075,8 +1126,14 @@ fn build_forward_compute_quotes_from_market(
                 product_id: product.product_id.clone(),
                 capacity_lot_id: lot.capacity_lot_id.clone(),
                 provider_id: lot.provider_id.clone(),
-                backend_family: spec.backend_family,
-                compute_family: spec.compute_family,
+                backend_family: quoteable.backend_family,
+                compute_family: quoteable.compute_family,
+                execution_kind: Some(quoteable.execution_kind),
+                topology_kind: Some(quoteable.topology_kind),
+                provisioning_kind: Some(quoteable.provisioning_kind),
+                proof_posture: Some(quoteable.proof_posture),
+                environment_binding,
+                sandbox_profile_ref,
                 available_quantity,
                 requested_quantity: rfq.quantity,
                 price_sats,
@@ -1086,7 +1143,7 @@ fn build_forward_compute_quotes_from_market(
                     "start+{}m / {}..{}",
                     rfq.delivery_start_minutes, lot.delivery_start_ms, lot.delivery_end_ms
                 ),
-                capability_summary: capability_summary_for_product(product),
+                capability_summary: quoteable.capability_summary.clone(),
                 source_badge: "desktop.forward_inventory".to_string(),
                 terms_label: forward_terms_label_for_product_id(product.product_id.as_str())
                     .to_string(),
@@ -3194,14 +3251,18 @@ fn inferred_compute_family(
     envelope: &ComputeCapabilityEnvelope,
 ) -> Option<ComputeFamily> {
     envelope.compute_family.or_else(|| {
-        ProviderComputeProduct::for_product_id(product.product_id.as_str()).map(|product| match product {
-            ProviderComputeProduct::GptOssInference
-            | ProviderComputeProduct::AppleFoundationModelsInference => ComputeFamily::Inference,
-            ProviderComputeProduct::GptOssEmbeddings => ComputeFamily::Embeddings,
-            ProviderComputeProduct::SandboxContainerExec
-            | ProviderComputeProduct::SandboxPythonExec
-            | ProviderComputeProduct::SandboxNodeExec
-            | ProviderComputeProduct::SandboxPosixExec => ComputeFamily::SandboxExecution,
+        ProviderComputeProduct::for_product_id(product.product_id.as_str()).map(|product| {
+            match product {
+                ProviderComputeProduct::GptOssInference
+                | ProviderComputeProduct::AppleFoundationModelsInference => {
+                    ComputeFamily::Inference
+                }
+                ProviderComputeProduct::GptOssEmbeddings => ComputeFamily::Embeddings,
+                ProviderComputeProduct::SandboxContainerExec
+                | ProviderComputeProduct::SandboxPythonExec
+                | ProviderComputeProduct::SandboxNodeExec
+                | ProviderComputeProduct::SandboxPosixExec => ComputeFamily::SandboxExecution,
+            }
         })
     })
 }
@@ -3536,7 +3597,7 @@ fn capability_summary_for_product(
     format!(
         "backend={} execution={} family={} topology={} provisioning={} proof={} model_policy={} model_family={} latency_ms_p50={} throughput_per_minute={} environment_ref={} sandbox_profile_ref={}{}",
         backend_family_label(backend_family, compute_family, execution_kind),
-        execution_kind.label(),
+        execution_kind_label(execution_kind),
         compute_family_label(compute_family),
         topology_kind.label(),
         provisioning_kind.label(),
@@ -3551,6 +3612,16 @@ fn capability_summary_for_product(
     )
 }
 
+fn execution_kind_label(execution_kind: ComputeExecutionKind) -> &'static str {
+    match execution_kind {
+        ComputeExecutionKind::LocalInference => "local_inference",
+        ComputeExecutionKind::ClusteredInference => "clustered_inference",
+        ComputeExecutionKind::SandboxExecution => "sandbox_execution",
+        ComputeExecutionKind::EvaluationRun => "evaluation_run",
+        ComputeExecutionKind::TrainingJob => "training_job",
+    }
+}
+
 fn backend_family_label(
     backend_family: Option<ComputeBackendFamily>,
     compute_family: ComputeFamily,
@@ -3559,9 +3630,8 @@ fn backend_family_label(
     match backend_family {
         Some(ComputeBackendFamily::GptOss) => "gpt_oss",
         Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
-        None
-            if matches!(compute_family, ComputeFamily::SandboxExecution)
-                || matches!(execution_kind, ComputeExecutionKind::SandboxExecution) =>
+        None if matches!(compute_family, ComputeFamily::SandboxExecution)
+            || matches!(execution_kind, ComputeExecutionKind::SandboxExecution) =>
         {
             "sandbox"
         }
@@ -3600,6 +3670,12 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
+        "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
+        | "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+        | "psionic.remote_sandbox.sandbox_execution.node_exec.sandbox_isolated"
+        | "psionic.remote_sandbox.sandbox_execution.posix_exec.sandbox_isolated" => {
+            "forward_physical.sandbox.v1"
+        }
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => "forward_physical.apple_fm.v1",
         _ => "forward_physical.inference.v1",
     }
@@ -3750,8 +3826,10 @@ mod tests {
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementMode, DeliveryProofStatus, GptOssRuntimeCapability,
+        ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind,
+        ComputeFamily, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+        ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind, DeliveryProofStatus,
+        GptOssRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::json;
@@ -4290,6 +4368,113 @@ mod tests {
         assert_eq!(quotes[0].product_id, "gpt_oss.text_generation");
         assert_eq!(quotes[0].requested_quantity, 1);
         assert_eq!(quotes[0].source_badge, "desktop.forward_inventory");
+    }
+
+    #[test]
+    fn sandbox_quotes_match_profile_environment_and_posture_constraints() {
+        let rfq = SpotComputeRfqDraft {
+            rfq_id: "rfq-sandbox-1".to_string(),
+            compute_family: ComputeFamily::SandboxExecution,
+            preferred_backend: None,
+            quantity: 1,
+            window_minutes: 30,
+            max_price_sats: 80,
+            capability_constraints: SpotComputeCapabilityConstraints {
+                topology_kind: Some("sandbox_isolated".to_string()),
+                proof_posture: Some("topology_and_delivery".to_string()),
+                environment_ref: Some("env://sandbox/python".to_string()),
+                sandbox_profile_ref: Some("python-batch".to_string()),
+                ..SpotComputeCapabilityConstraints::default()
+            },
+        };
+        let products = vec![ComputeProduct {
+            product_id: "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+                .to_string(),
+            resource_class: "compute".to_string(),
+            capacity_unit: "job".to_string(),
+            window_spec: "session".to_string(),
+            region_spec: vec!["local".to_string()],
+            performance_band: Some("sandbox".to_string()),
+            sla_terms_ref: Some("sandbox best effort".to_string()),
+            cost_proof_required: false,
+            attestation_required: false,
+            settlement_mode: ComputeSettlementMode::Physical,
+            index_eligible: false,
+            status: ComputeProductStatus::Active,
+            version: "v1".to_string(),
+            created_at_ms: 1_762_000_000_000,
+            taxonomy_version: Some(
+                openagents_kernel_core::compute::COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string(),
+            ),
+            capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: None,
+                execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+                compute_family: Some(ComputeFamily::SandboxExecution),
+                topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+                provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+                proof_posture: Some(ComputeProofPosture::TopologyAndDelivery),
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: Some(ComputeEnvironmentBinding {
+                    environment_ref: "env://sandbox/python".to_string(),
+                    environment_version: Some("v1".to_string()),
+                    ..ComputeEnvironmentBinding::default()
+                }),
+                checkpoint_binding: None,
+                model_policy: Some("sandbox.python.exec".to_string()),
+                model_family: None,
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: None,
+                latency_ms_p50: Some(600),
+                throughput_per_minute: Some(120),
+                concurrency_limit: Some(1),
+            }),
+            metadata: json!({
+                "source": "desktop.sandbox_inventory",
+                "sandbox_profile_ref": "python-batch"
+            }),
+        }];
+        let lots = vec![CapacityLot {
+            capacity_lot_id: "lot.sandbox.python".to_string(),
+            product_id: products[0].product_id.clone(),
+            provider_id: "npub1sandbox".to_string(),
+            delivery_start_ms: 0,
+            delivery_end_ms: i64::MAX / 4,
+            quantity: 2,
+            min_unit_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(34),
+            }),
+            region_hint: Some("local".to_string()),
+            attestation_posture: Some("sandbox".to_string()),
+            reserve_state: CapacityReserveState::Available,
+            offer_expires_at_ms: i64::MAX / 4,
+            status: CapacityLotStatus::Open,
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env://sandbox/python".to_string(),
+                environment_version: Some("v1".to_string()),
+                ..ComputeEnvironmentBinding::default()
+            }),
+            metadata: json!({
+                "source_badge": "desktop.sandbox_inventory",
+                "terms_label": "spot session / declared sandbox profile",
+                "sandbox_profile_ref": "python-batch"
+            }),
+        }];
+
+        let quotes = build_spot_compute_quotes_from_market(&rfq, &products, &lots, &[]);
+
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].backend_label(), "sandbox");
+        assert_eq!(quotes[0].execution_label(), "sandbox_execution");
+        assert_eq!(quotes[0].topology_label(), "sandbox_isolated");
+        assert_eq!(quotes[0].proof_posture_label(), "topology_and_delivery");
+        assert_eq!(quotes[0].environment_ref(), Some("env://sandbox/python"));
+        assert_eq!(
+            quotes[0].sandbox_profile_ref.as_deref(),
+            Some("python-batch")
+        );
     }
 
     #[test]

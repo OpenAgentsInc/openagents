@@ -1733,6 +1733,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
     for line in inventory_status_lines(snapshot) {
         println!("{line}");
     }
+    for line in buyer_procurement_status_lines(snapshot) {
+        println!("{line}");
+    }
     println!(
         "cluster: available={} topology={} members={}",
         snapshot.cluster.available, snapshot.cluster.topology_label, snapshot.cluster.member_count
@@ -1887,6 +1890,117 @@ fn inventory_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             section.open_quantity,
             section.blocker_reason.as_deref().unwrap_or("-"),
             section.summary
+        ));
+    }
+    lines
+}
+
+fn buyer_procurement_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "buyer procurement: load={} mode={} spot_quotes={} forward_quotes={} accepted_spot_orders={} accepted_forward_orders={} selected_spot={} selected_forward={}",
+        snapshot.buyer_procurement.load_state,
+        snapshot.buyer_procurement.quote_mode,
+        snapshot.buyer_procurement.spot_quotes.len(),
+        snapshot.buyer_procurement.forward_quotes.len(),
+        snapshot.buyer_procurement.accepted_spot_orders.len(),
+        snapshot.buyer_procurement.accepted_forward_orders.len(),
+        snapshot
+            .buyer_procurement
+            .selected_spot_quote_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .buyer_procurement
+            .selected_forward_quote_id
+            .as_deref()
+            .unwrap_or("-"),
+    )];
+    if let Some(summary) = snapshot.buyer_procurement.last_spot_rfq_summary.as_deref() {
+        lines.push(format!("buyer spot rfq: {summary}"));
+    }
+    if let Some(summary) = snapshot
+        .buyer_procurement
+        .last_forward_rfq_summary
+        .as_deref()
+    {
+        lines.push(format!("buyer forward rfq: {summary}"));
+    }
+    for quote in snapshot.buyer_procurement.spot_quotes.iter().take(3) {
+        lines.push(format!(
+            "buyer spot quote: id={} selected={} product={} backend={} topology={} proof={} env={} profile={} qty={}/{} price={} provider={}",
+            quote.quote_id,
+            quote.selected,
+            quote.product_id,
+            quote.backend,
+            quote.topology,
+            quote.proof_posture,
+            quote.environment_ref.as_deref().unwrap_or("-"),
+            quote.sandbox_profile_ref.as_deref().unwrap_or("-"),
+            quote.requested_quantity,
+            quote.available_quantity,
+            quote.price_sats,
+            quote.provider_id
+        ));
+    }
+    for quote in snapshot.buyer_procurement.forward_quotes.iter().take(3) {
+        lines.push(format!(
+            "buyer forward quote: id={} selected={} product={} backend={} topology={} proof={} env={} profile={} qty={}/{} price={} window={} provider={}",
+            quote.quote_id,
+            quote.selected,
+            quote.product_id,
+            quote.backend,
+            quote.topology,
+            quote.proof_posture,
+            quote.environment_ref.as_deref().unwrap_or("-"),
+            quote.sandbox_profile_ref.as_deref().unwrap_or("-"),
+            quote.requested_quantity,
+            quote.available_quantity,
+            quote.price_sats,
+            quote.delivery_window_label,
+            quote.provider_id
+        ));
+    }
+    for order in snapshot
+        .buyer_procurement
+        .accepted_spot_orders
+        .iter()
+        .take(3)
+    {
+        lines.push(format!(
+            "buyer spot order: id={} instrument={} product={} backend={} topology={} proof={} env={} profile={} qty={} price={} status={}",
+            order.order_id,
+            order.instrument_id,
+            order.product_id,
+            order.backend,
+            order.topology,
+            order.proof_posture,
+            order.environment_ref.as_deref().unwrap_or("-"),
+            order.sandbox_profile_ref.as_deref().unwrap_or("-"),
+            order.quantity,
+            order.price_sats,
+            order.authority_status
+        ));
+    }
+    for order in snapshot
+        .buyer_procurement
+        .accepted_forward_orders
+        .iter()
+        .take(3)
+    {
+        lines.push(format!(
+            "buyer forward order: id={} instrument={} product={} backend={} topology={} proof={} env={} profile={} qty={} price={} status={} remedy={}",
+            order.order_id,
+            order.instrument_id,
+            order.product_id,
+            order.backend,
+            order.topology,
+            order.proof_posture,
+            order.environment_ref.as_deref().unwrap_or("-"),
+            order.sandbox_profile_ref.as_deref().unwrap_or("-"),
+            order.quantity,
+            order.price_sats,
+            order.authority_status,
+            order.remedy_summary.as_deref().unwrap_or("-")
         ));
     }
     lines
@@ -2512,8 +2626,9 @@ mod tests {
         AppleFmCommand, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
         SandboxEntrypointTypeArg, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, ensure_buy_mode_budget_ack,
-        inventory_status_lines, request_has_failed, request_has_paid, request_has_payment_required,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        ensure_buy_mode_budget_ack, inventory_status_lines, request_has_failed, request_has_paid,
+        request_has_payment_required,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -2577,6 +2692,60 @@ mod tests {
             lines
                 .iter()
                 .any(|line| line.contains("inventory section: id=sandbox"))
+        );
+    }
+
+    #[test]
+    fn buyer_procurement_status_lines_surface_sandbox_quote_details() {
+        let mut snapshot = sample_snapshot();
+        snapshot.buyer_procurement.load_state = "ready".to_string();
+        snapshot.buyer_procurement.quote_mode = "forward_physical".to_string();
+        snapshot.buyer_procurement.last_forward_rfq_summary =
+            Some("rfq=rfq-forward-1 family=sandbox_execution".to_string());
+        snapshot.buyer_procurement.forward_quotes.push(
+            autopilot_desktop::desktop_control::DesktopControlBuyerProcurementQuoteStatus {
+                quote_id: "forward-quote-1".to_string(),
+                rfq_id: "rfq-forward-1".to_string(),
+                product_id: "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+                    .to_string(),
+                provider_id: "npub1sandbox".to_string(),
+                compute_family: "sandbox_execution".to_string(),
+                backend: "sandbox".to_string(),
+                execution: "sandbox_execution".to_string(),
+                topology: "sandbox_isolated".to_string(),
+                provisioning: "remote_sandbox".to_string(),
+                proof_posture: "topology_and_delivery".to_string(),
+                requested_quantity: 1,
+                available_quantity: 2,
+                price_sats: 55,
+                delivery_window_label: "start+180m / 1..2".to_string(),
+                environment_ref: Some("env://sandbox/python".to_string()),
+                sandbox_profile_ref: Some("python-batch".to_string()),
+                source_badge: "desktop.forward_inventory".to_string(),
+                terms_label: "forward physical / declared sandbox profile window".to_string(),
+                capability_summary: "backend=sandbox execution=sandbox.python.exec".to_string(),
+                collateral_summary: Some("bond=performance_bond".to_string()),
+                remedy_summary: Some("forward_physical.sandbox.v1".to_string()),
+                selected: true,
+            },
+        );
+
+        let lines = buyer_procurement_status_lines(&snapshot);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("buyer procurement: load=ready mode=forward_physical"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("buyer forward quote: id=forward-quote-1"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("env=env://sandbox/python"))
         );
     }
 

@@ -449,12 +449,14 @@ impl Default for NetworkRequestsPaneInputs {
         Self {
             compute_family: TextInput::new()
                 .value("inference")
-                .placeholder("Compute family"),
+                .placeholder("Compute family (inference, embeddings, sandbox_execution)"),
             preferred_backend: TextInput::new()
                 .value("gpt_oss")
-                .placeholder("Preferred backend (optional)"),
+                .placeholder("Preferred backend (optional; blank for sandbox)"),
             capability_constraints: TextInput::new()
-                .placeholder("Capability envelope constraints (JSON or key=value list)"),
+                .placeholder(
+                    "Constraints: topology_kind=replicated,proof_posture=challenge_eligible,environment_ref=env://...,sandbox_profile_ref=python-batch",
+                ),
             quantity: TextInput::new()
                 .value("1")
                 .placeholder("Requested quantity"),

@@ -9956,9 +9956,10 @@ fn build_spot_compute_rfq_from_inputs(
         "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
             ComputeFamily::Embeddings
         }
+        "sandbox" | "sandbox_exec" | "sandbox_execution" => ComputeFamily::SandboxExecution,
         other => {
             return Err(format!(
-                "Compute family must be inference or embeddings, got {other}"
+                "Compute family must be inference, embeddings, or sandbox_execution, got {other}"
             ));
         }
     };
@@ -9977,6 +9978,7 @@ fn build_spot_compute_rfq_from_inputs(
             "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
                 Some(ComputeBackendFamily::AppleFoundationModels)
             }
+            "sandbox" | "none" | "any" if compute_family == ComputeFamily::SandboxExecution => None,
             other => {
                 return Err(format!(
                     "Preferred backend must be gpt_oss, apple_foundation_models, or empty, got {other}"
@@ -10104,9 +10106,15 @@ fn capability_constraints_from_pairs(
             }
             "model_policy" => constraints.model_policy = Some(value.trim().to_string()),
             "model_family" => constraints.model_family = Some(value.trim().to_string()),
+            "topology_kind" => constraints.topology_kind = Some(value.trim().to_string()),
+            "proof_posture" => constraints.proof_posture = Some(value.trim().to_string()),
+            "environment_ref" => constraints.environment_ref = Some(value.trim().to_string()),
+            "sandbox_profile_ref" => {
+                constraints.sandbox_profile_ref = Some(value.trim().to_string())
+            }
             other => {
                 return Err(format!(
-                    "Unsupported capability constraint key {other}. Supported keys: accelerator_vendor, accelerator_family, min_memory_gb, max_latency_ms, min_throughput_per_minute, model_policy, model_family"
+                    "Unsupported capability constraint key {other}. Supported keys: accelerator_vendor, accelerator_family, min_memory_gb, max_latency_ms, min_throughput_per_minute, model_policy, model_family, topology_kind, proof_posture, environment_ref, sandbox_profile_ref"
                 ));
             }
         }

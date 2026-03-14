@@ -29,6 +29,8 @@ It can:
 - inspect advanced provider inventory truth for local, clustered, and sandbox
   compute surfaces, including projection source, open quantities, and section
   blockers
+- inspect buyer procurement truth for spot and forward RFQs, quote selection,
+  accepted orders, and the topology/proof/environment posture of quoted compute
 - inspect cluster, sandbox, proof, and challenge status through the same
   app-owned snapshot the desktop uses
 - list, open, focus, close, and inspect panes in the running desktop shell
@@ -112,6 +114,11 @@ autopilotctl pane open provider_control
 the Provider Control pane uses, including the projection source, kernel snapshot
 ID when present, per-section product and open-quantity counts, and any current
 blocker reason for the local, cluster, or sandbox inventory sections.
+
+It also prints the app-owned buyer procurement summary for compute RFQs and
+quotes, including the active quote mode, selected quote IDs, and the quoted
+backend, topology, proof posture, environment ref, and sandbox profile where
+those fields are present.
 
 Useful MCP starting point:
 
