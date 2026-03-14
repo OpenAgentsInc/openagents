@@ -15,8 +15,9 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openagents_kernel_core::authority::KernelAuthority;
 use openagents_kernel_core::compute::{
-    CapacityInstrument, CapacityInstrumentKind, ComputeCapabilityEnvelope, ComputeProofPosture,
-    ComputeProvisioningKind, ComputeTopologyKind, ComputeValidatorChallengeSnapshot,
+    CapacityInstrument, CapacityInstrumentKind, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
+    ComputeCapabilityEnvelope, ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
+    ComputeTrainingRun, ComputeTrainingRunStatus, ComputeValidatorChallengeSnapshot,
     ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
     StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus,
@@ -54,7 +55,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 9;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 10;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -89,6 +90,7 @@ pub struct DesktopControlSnapshot {
     pub buyer_procurement: DesktopControlBuyerProcurementStatus,
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
+    pub training: DesktopControlTrainingStatus,
     pub proofs: DesktopControlProofStatus,
     pub challenges: DesktopControlChallengeStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
@@ -358,6 +360,68 @@ pub struct DesktopControlSandboxStatus {
     pub active_job_count: usize,
     pub profiles: Vec<DesktopControlSandboxProfileStatus>,
     pub jobs: Vec<DesktopControlSandboxJobStatus>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTrainingRunStatus {
+    pub training_run_id: String,
+    pub status: String,
+    pub training_policy_ref: String,
+    pub environment_ref: String,
+    pub environment_version: Option<String>,
+    pub checkpoint_family: String,
+    pub validator_policy_ref: String,
+    pub benchmark_package_count: usize,
+    pub rollout_verification_eval_run_count: usize,
+    pub expected_step_count: Option<u64>,
+    pub completed_step_count: Option<u64>,
+    pub final_checkpoint_ref: Option<String>,
+    pub promotion_checkpoint_ref: Option<String>,
+    pub accepted_outcome_id: Option<String>,
+    pub best_eval_score_bps: Option<u32>,
+    pub control_plane_state: String,
+    pub artifact_plane_state: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTrainingParticipantStatus {
+    pub participant_id: String,
+    pub visible_reason: String,
+    pub admitted: bool,
+    pub contributing: bool,
+    pub priority_label: String,
+    pub deweight_reason: Option<String>,
+    pub exclusion_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTrainingStatus {
+    pub available: bool,
+    pub source: String,
+    pub control_plane_state: String,
+    pub artifact_plane_state: String,
+    pub last_synced_at_epoch_ms: Option<u64>,
+    pub run_count: usize,
+    pub active_run_count: usize,
+    pub accepted_run_count: usize,
+    pub accepted_outcome_count: usize,
+    pub environment_versions: Vec<String>,
+    pub checkpoint_refs: Vec<String>,
+    pub contributor_set_revision: Option<String>,
+    pub contributor_reselection_timing: Option<String>,
+    pub admitted_participant_count: usize,
+    pub contributing_participant_count: usize,
+    pub stale_rollout_discard_count: usize,
+    pub duplicate_rollout_quarantine_count: usize,
+    pub duplicate_rollout_deweight_count: usize,
+    pub validator_verified_count: usize,
+    pub validator_rejected_count: usize,
+    pub validator_timed_out_count: usize,
+    pub sandbox_ready_profile_count: usize,
+    pub sandbox_active_job_count: usize,
+    pub runs: Vec<DesktopControlTrainingRunStatus>,
+    pub participants: Vec<DesktopControlTrainingParticipantStatus>,
     pub last_error: Option<String>,
 }
 
@@ -692,6 +756,7 @@ pub enum DesktopControlActionRequest {
         job_id: String,
         relative_path: String,
     },
+    GetTrainingStatus,
     GetProofStatus,
     GetChallengeStatus,
     ListPanes,
@@ -756,6 +821,7 @@ impl DesktopControlActionRequest {
             Self::WaitSandboxJob { .. } => "sandbox-wait",
             Self::DownloadSandboxArtifact { .. } => "sandbox-download-artifact",
             Self::DownloadSandboxWorkspaceFile { .. } => "sandbox-download-workspace",
+            Self::GetTrainingStatus => "training-status",
             Self::GetProofStatus => "proof-status",
             Self::GetChallengeStatus => "challenge-status",
             Self::ListPanes => "pane-list",
@@ -1470,6 +1536,7 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology
         | DesktopControlActionRequest::GetSandboxStatus
+        | DesktopControlActionRequest::GetTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
@@ -1688,6 +1755,16 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.sandbox).ok(),
         });
     }
+    if previous.is_none_or(|snapshot| snapshot.training != current.training) {
+        changed_domains.push("training");
+        events.push(DesktopControlEventDraft {
+            event_type: "training.state.changed".to_string(),
+            summary: training_status_summary(&current.training),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.training).ok(),
+        });
+    }
     if previous.is_none_or(|snapshot| snapshot.proofs != current.proofs) {
         changed_domains.push("proofs");
         events.push(DesktopControlEventDraft {
@@ -1817,6 +1894,24 @@ fn sandbox_status_summary(status: &DesktopControlSandboxStatus) -> String {
         status.declared_profile_count,
         status.job_count,
         status.active_job_count
+    )
+}
+
+fn training_status_summary(status: &DesktopControlTrainingStatus) -> String {
+    format!(
+        "training available={} source={} control={} artifact={} runs={} active_runs={} accepted_outcomes={} participants={}/{} validator={}/{}/{}",
+        status.available,
+        status.source,
+        status.control_plane_state,
+        status.artifact_plane_state,
+        status.run_count,
+        status.active_run_count,
+        status.accepted_outcome_count,
+        status.contributing_participant_count,
+        status.admitted_participant_count,
+        status.validator_verified_count,
+        status.validator_rejected_count,
+        status.validator_timed_out_count
     )
 }
 
@@ -2242,6 +2337,7 @@ fn apply_action_request(
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology => cluster_payload_response(state),
         DesktopControlActionRequest::GetSandboxStatus => sandbox_status_payload_response(state),
+        DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
         DesktopControlActionRequest::CreateSandboxJob {
             profile_id,
             job_id,
@@ -3098,6 +3194,19 @@ fn proof_payload_response(state: &mut RenderState) -> DesktopControlActionRespon
     }
 }
 
+fn training_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
+    refresh_compute_history_cache_if_due(state, true);
+    match serde_json::to_value(desktop_control_training_status(state)) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured training control state",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode training control state: {error}"
+        )),
+    }
+}
+
 fn challenge_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
     refresh_compute_history_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_challenge_status(state)) {
@@ -3394,6 +3503,8 @@ struct LoadedComputeHistory {
     delivery_proofs: Vec<DeliveryProof>,
     capacity_instruments: Vec<CapacityInstrument>,
     structured_capacity_instruments: Vec<StructuredCapacityInstrument>,
+    training_runs: Vec<ComputeTrainingRun>,
+    accepted_outcomes: Vec<ComputeAcceptedOutcome>,
     validator_challenges: Vec<ComputeValidatorChallengeSnapshot>,
 }
 
@@ -3433,6 +3544,12 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
             .compute_history
             .structured_capacity_instruments
             .clear();
+        state.desktop_control.compute_history.training_runs.clear();
+        state
+            .desktop_control
+            .compute_history
+            .accepted_outcomes
+            .clear();
         state
             .desktop_control
             .compute_history
@@ -3449,16 +3566,22 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
             changed |= cache.capacity_instruments != loaded.capacity_instruments;
             changed |=
                 cache.structured_capacity_instruments != loaded.structured_capacity_instruments;
+            changed |= cache.training_runs != loaded.training_runs;
+            changed |= cache.accepted_outcomes != loaded.accepted_outcomes;
             changed |= cache.validator_challenges != loaded.validator_challenges;
             changed |= cache.last_error.is_some();
             cache.delivery_proofs = loaded.delivery_proofs;
             cache.capacity_instruments = loaded.capacity_instruments;
             cache.structured_capacity_instruments = loaded.structured_capacity_instruments;
+            cache.training_runs = loaded.training_runs;
+            cache.accepted_outcomes = loaded.accepted_outcomes;
             cache.validator_challenges = loaded.validator_challenges;
             cache.last_error = None;
             cache.last_action = Some(format!(
-                "Loaded kernel compute proof, challenge, and settlement history for {} proofs",
-                cache.delivery_proofs.len()
+                "Loaded kernel compute proof, challenge, training, and outcome history for {} proofs / {} runs / {} outcomes",
+                cache.delivery_proofs.len(),
+                cache.training_runs.len(),
+                cache.accepted_outcomes.len()
             ));
         }
         Err(error) => {
@@ -3499,6 +3622,10 @@ fn load_compute_history_from_authority(
                 .cmp(&left.created_at_ms)
                 .then_with(|| left.delivery_proof_id.cmp(&right.delivery_proof_id))
         });
+        let provider_delivery_proof_ids = delivery_proofs
+            .iter()
+            .map(|proof| proof.delivery_proof_id.clone())
+            .collect::<BTreeSet<_>>();
 
         let proof_instrument_ids = delivery_proofs
             .iter()
@@ -3563,10 +3690,52 @@ fn load_compute_history_from_authority(
                 })
         });
 
+        let mut training_runs = client.list_compute_training_runs(None, None, None).await?;
+        training_runs.retain(|run| {
+            run.capacity_lot_id
+                .as_deref()
+                .is_some_and(|lot_id| provider_lot_ids.contains(lot_id))
+                || run
+                    .delivery_proof_id
+                    .as_deref()
+                    .is_some_and(|proof_id| provider_delivery_proof_ids.contains(proof_id))
+        });
+        training_runs.sort_by(|left, right| {
+            training_run_sort_epoch_ms(right)
+                .cmp(&training_run_sort_epoch_ms(left))
+                .then_with(|| left.training_run_id.cmp(&right.training_run_id))
+        });
+
+        let training_run_ids = training_runs
+            .iter()
+            .map(|run| run.training_run_id.clone())
+            .collect::<BTreeSet<_>>();
+        let related_eval_run_ids = training_runs
+            .iter()
+            .flat_map(|run| run.rollout_verification_eval_run_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let mut accepted_outcomes = client.list_compute_accepted_outcomes(None, None).await?;
+        accepted_outcomes.retain(|outcome| match outcome.outcome_kind {
+            ComputeAcceptedOutcomeKind::TrainingRun => {
+                training_run_ids.contains(outcome.source_run_id.as_str())
+            }
+            ComputeAcceptedOutcomeKind::EvaluationRun => {
+                related_eval_run_ids.contains(outcome.source_run_id.as_str())
+            }
+        });
+        accepted_outcomes.sort_by(|left, right| {
+            right
+                .accepted_at_ms
+                .cmp(&left.accepted_at_ms)
+                .then_with(|| left.outcome_id.cmp(&right.outcome_id))
+        });
+
         Ok(LoadedComputeHistory {
             delivery_proofs,
             capacity_instruments,
             structured_capacity_instruments,
+            training_runs,
+            accepted_outcomes,
             validator_challenges,
         })
     })
@@ -3606,6 +3775,12 @@ fn challenge_sort_epoch_ms(challenge: &ComputeValidatorChallengeSnapshot) -> u64
         .unwrap_or(challenge.request.context.created_at_ms)
 }
 
+fn training_run_sort_epoch_ms(run: &ComputeTrainingRun) -> i64 {
+    run.finalized_at_ms
+        .or(run.started_at_ms)
+        .unwrap_or(run.created_at_ms)
+}
+
 fn authority_history_source_label(state: &RenderState) -> String {
     let authority_configured = state
         .hosted_control_base_url
@@ -3627,6 +3802,8 @@ fn authority_history_source_label(state: &RenderState) -> String {
             && cache.validator_challenges.is_empty()
             && cache.capacity_instruments.is_empty()
             && cache.structured_capacity_instruments.is_empty()
+            && cache.training_runs.is_empty()
+            && cache.accepted_outcomes.is_empty()
         {
             "kernel_authority_error".to_string()
         } else {
@@ -3634,6 +3811,312 @@ fn authority_history_source_label(state: &RenderState) -> String {
         }
     } else {
         "kernel_authority".to_string()
+    }
+}
+
+fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainingStatus {
+    let cache = &state.desktop_control.compute_history;
+    let source = authority_history_source_label(state);
+    let cluster = desktop_control_cluster_status();
+    let sandbox = desktop_control_sandbox_status(state);
+    let available = cache.last_refreshed_at_epoch_ms.is_some();
+    let control_plane_state = if cache.last_refreshed_at_epoch_ms.is_none() {
+        if cache.last_error.is_some() {
+            "error"
+        } else {
+            "pending"
+        }
+    } else if cache.last_error.is_some() {
+        if cache.training_runs.is_empty() && cache.accepted_outcomes.is_empty() {
+            "error"
+        } else {
+            "authority_projected_stale"
+        }
+    } else if cache.training_runs.is_empty() && cache.accepted_outcomes.is_empty() {
+        "authority_projected_idle"
+    } else {
+        "authority_projected"
+    }
+    .to_string();
+    let artifact_plane_state = if sandbox.active_job_count > 0 {
+        "staging_active"
+    } else if sandbox.available && sandbox.ready_profile_count > 0 {
+        "staging_idle"
+    } else if cluster.available && cluster.member_count > 0 {
+        "cluster_ready"
+    } else if sandbox.available || cluster.available {
+        "available_idle"
+    } else {
+        "unavailable"
+    }
+    .to_string();
+
+    let accepted_training_outcomes = cache
+        .accepted_outcomes
+        .iter()
+        .filter(|outcome| outcome.outcome_kind == ComputeAcceptedOutcomeKind::TrainingRun)
+        .map(|outcome| (outcome.source_run_id.as_str(), outcome))
+        .collect::<BTreeMap<_, _>>();
+
+    let environment_versions = cache
+        .training_runs
+        .iter()
+        .filter_map(|run| run.environment_binding.environment_version.clone())
+        .chain(
+            cache
+                .accepted_outcomes
+                .iter()
+                .filter_map(|outcome| outcome.environment_binding.environment_version.clone()),
+        )
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let checkpoint_refs = cache
+        .training_runs
+        .iter()
+        .filter_map(|run| run.checkpoint_binding.latest_checkpoint_ref.clone())
+        .chain(
+            cache
+                .training_runs
+                .iter()
+                .filter_map(|run| run.final_checkpoint_ref.clone()),
+        )
+        .chain(
+            cache
+                .training_runs
+                .iter()
+                .filter_map(|run| run.promotion_checkpoint_ref.clone()),
+        )
+        .chain(cache.training_runs.iter().filter_map(|run| {
+            run.summary
+                .as_ref()
+                .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+        }))
+        .chain(cache.accepted_outcomes.iter().filter_map(|outcome| {
+            outcome
+                .checkpoint_binding
+                .as_ref()
+                .and_then(|binding| binding.latest_checkpoint_ref.clone())
+        }))
+        .chain(cache.accepted_outcomes.iter().filter_map(|outcome| {
+            outcome
+                .training_summary
+                .as_ref()
+                .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+        }))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let contributor_set_revision = cache.training_runs.iter().find_map(|run| {
+        metadata_string(
+            &run.metadata,
+            &["contributor_set_revision_id", "contributor_set_revision"],
+        )
+    });
+    let contributor_reselection_timing = cache.training_runs.iter().find_map(|run| {
+        metadata_string(
+            &run.metadata,
+            &[
+                "contributor_reselection_timing",
+                "contributor_reselection_interval",
+            ],
+        )
+        .or_else(|| {
+            metadata_u64(&run.metadata, &["contributor_reselection_interval_ms"])
+                .map(|value| format!("{value}ms"))
+        })
+    });
+    let stale_rollout_discard_count = cache
+        .training_runs
+        .iter()
+        .filter_map(|run| {
+            metadata_u64(
+                &run.metadata,
+                &["stale_rollout_discard_count", "stale_rollout_drop_count"],
+            )
+        })
+        .sum::<u64>() as usize;
+    let duplicate_rollout_quarantine_count = cache
+        .training_runs
+        .iter()
+        .filter_map(|run| metadata_u64(&run.metadata, &["duplicate_rollout_quarantine_count"]))
+        .sum::<u64>() as usize;
+    let duplicate_rollout_deweight_count = cache
+        .training_runs
+        .iter()
+        .filter_map(|run| metadata_u64(&run.metadata, &["duplicate_rollout_deweight_count"]))
+        .sum::<u64>() as usize;
+
+    let runs = cache
+        .training_runs
+        .iter()
+        .take(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT)
+        .map(|run| {
+            let accepted_outcome = accepted_training_outcomes.get(run.training_run_id.as_str());
+            let run_control_plane_state = match run.status {
+                ComputeTrainingRunStatus::Queued => "queued",
+                ComputeTrainingRunStatus::Preparing => "preparing",
+                ComputeTrainingRunStatus::Running => "running",
+                ComputeTrainingRunStatus::Finalizing => "finalizing",
+                ComputeTrainingRunStatus::Accepted => "accepted",
+                ComputeTrainingRunStatus::Failed => "failed",
+                ComputeTrainingRunStatus::Cancelled => "cancelled",
+            }
+            .to_string();
+            let run_artifact_plane_state = if run
+                .promotion_checkpoint_ref
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                "promotion_materialized"
+            } else if run
+                .final_checkpoint_ref
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                "checkpoint_materialized"
+            } else if run.status == ComputeTrainingRunStatus::Finalizing {
+                "promotion_pending"
+            } else if matches!(
+                run.status,
+                ComputeTrainingRunStatus::Preparing | ComputeTrainingRunStatus::Running
+            ) {
+                if sandbox.active_job_count > 0 {
+                    "artifacts_active"
+                } else {
+                    "artifacts_pending"
+                }
+            } else if matches!(
+                run.status,
+                ComputeTrainingRunStatus::Failed | ComputeTrainingRunStatus::Cancelled
+            ) {
+                "incomplete"
+            } else {
+                "idle"
+            }
+            .to_string();
+            DesktopControlTrainingRunStatus {
+                training_run_id: run.training_run_id.clone(),
+                status: run.status.label().to_string(),
+                training_policy_ref: run.training_policy_ref.clone(),
+                environment_ref: run.environment_binding.environment_ref.clone(),
+                environment_version: run.environment_binding.environment_version.clone(),
+                checkpoint_family: run.checkpoint_binding.checkpoint_family.clone(),
+                validator_policy_ref: run.validator_policy_ref.clone(),
+                benchmark_package_count: run.benchmark_package_refs.len(),
+                rollout_verification_eval_run_count: run.rollout_verification_eval_run_ids.len(),
+                expected_step_count: run.expected_step_count,
+                completed_step_count: run.completed_step_count.or_else(|| {
+                    run.summary
+                        .as_ref()
+                        .and_then(|summary| summary.completed_step_count)
+                }),
+                final_checkpoint_ref: run.final_checkpoint_ref.clone(),
+                promotion_checkpoint_ref: run.promotion_checkpoint_ref.clone(),
+                accepted_outcome_id: accepted_outcome.map(|outcome| outcome.outcome_id.clone()),
+                best_eval_score_bps: run
+                    .summary
+                    .as_ref()
+                    .and_then(|summary| summary.best_eval_score_bps)
+                    .or_else(|| {
+                        accepted_outcome
+                            .and_then(|outcome| outcome.training_summary.as_ref())
+                            .and_then(|summary| summary.best_eval_score_bps)
+                    }),
+                control_plane_state: run_control_plane_state,
+                artifact_plane_state: run_artifact_plane_state,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let participants = cluster
+        .members
+        .iter()
+        .map(|member| {
+            let admitted = member.state != "removed";
+            let contributing = matches!(member.state.as_str(), "ready" | "active" | "online");
+            DesktopControlTrainingParticipantStatus {
+                participant_id: member.peer_node_id.clone(),
+                visible_reason: if cluster.available {
+                    "cluster_member".to_string()
+                } else {
+                    "cluster_not_integrated".to_string()
+                },
+                admitted,
+                contributing,
+                priority_label: if contributing {
+                    "selected".to_string()
+                } else {
+                    "standby".to_string()
+                },
+                deweight_reason: None,
+                exclusion_reason: member.last_error.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    DesktopControlTrainingStatus {
+        available,
+        source,
+        control_plane_state,
+        artifact_plane_state,
+        last_synced_at_epoch_ms: cache.last_refreshed_at_epoch_ms,
+        run_count: cache.training_runs.len(),
+        active_run_count: cache
+            .training_runs
+            .iter()
+            .filter(|run| {
+                matches!(
+                    run.status,
+                    ComputeTrainingRunStatus::Preparing
+                        | ComputeTrainingRunStatus::Running
+                        | ComputeTrainingRunStatus::Finalizing
+                )
+            })
+            .count(),
+        accepted_run_count: cache
+            .training_runs
+            .iter()
+            .filter(|run| {
+                run.status == ComputeTrainingRunStatus::Accepted
+                    || accepted_training_outcomes.contains_key(run.training_run_id.as_str())
+            })
+            .count(),
+        accepted_outcome_count: cache.accepted_outcomes.len(),
+        environment_versions,
+        checkpoint_refs,
+        contributor_set_revision,
+        contributor_reselection_timing,
+        admitted_participant_count: participants.iter().filter(|item| item.admitted).count(),
+        contributing_participant_count: participants
+            .iter()
+            .filter(|item| item.contributing)
+            .count(),
+        stale_rollout_discard_count,
+        duplicate_rollout_quarantine_count,
+        duplicate_rollout_deweight_count,
+        validator_verified_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Verified)
+            .count(),
+        validator_rejected_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Rejected)
+            .count(),
+        validator_timed_out_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::TimedOut)
+            .count(),
+        sandbox_ready_profile_count: sandbox.ready_profile_count,
+        sandbox_active_job_count: sandbox.active_job_count,
+        runs,
+        participants,
+        last_error: cache.last_error.clone(),
     }
 }
 
@@ -4358,6 +4841,16 @@ fn metadata_bool(metadata: &Value, keys: &[&str]) -> Option<bool> {
         .find_map(|key| metadata.get(*key).and_then(Value::as_bool))
 }
 
+fn metadata_u64(metadata: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter().find_map(|key| {
+        metadata.get(*key).and_then(|value| match value {
+            Value::Number(number) => number.as_u64(),
+            Value::String(text) => text.trim().parse::<u64>().ok(),
+            _ => None,
+        })
+    })
+}
+
 fn procurement_backend_label(
     backend_family: Option<openagents_kernel_core::compute::ComputeBackendFamily>,
     compute_family: openagents_kernel_core::compute::ComputeFamily,
@@ -4731,6 +5224,7 @@ fn snapshot_for_state_with_signature(
         buyer_procurement,
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
+        training: desktop_control_training_status(state),
         proofs: desktop_control_proof_status(state),
         challenges: desktop_control_challenge_status(state),
         buy_mode: DesktopControlBuyModeStatus {
@@ -5420,7 +5914,9 @@ mod tests {
         DesktopControlMissionControlStatus, DesktopControlProofStatus,
         DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
         DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
+        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
+        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
+        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
         DesktopControlWalletStatus, apply_response_snapshot_metadata, build_settlement_history,
         challenges_by_delivery_proof, command_outcome_event, command_received_event,
         desktop_control_challenge_history_status, desktop_control_proof_history_status,
@@ -5723,6 +6219,74 @@ mod tests {
                 jobs: Vec::new(),
                 last_error: None,
             },
+            training: DesktopControlTrainingStatus {
+                available: true,
+                source: "kernel_authority".to_string(),
+                control_plane_state: "authority_projected".to_string(),
+                artifact_plane_state: "staging_idle".to_string(),
+                last_synced_at_epoch_ms: Some(1_762_500_002_000),
+                run_count: 1,
+                active_run_count: 1,
+                accepted_run_count: 0,
+                accepted_outcome_count: 1,
+                environment_versions: vec!["2026.03.13".to_string()],
+                checkpoint_refs: vec![
+                    "checkpoint://decoder/base".to_string(),
+                    "checkpoint://decoder/promoted".to_string(),
+                ],
+                contributor_set_revision: Some("contributors-7".to_string()),
+                contributor_reselection_timing: Some("30000ms".to_string()),
+                admitted_participant_count: 2,
+                contributing_participant_count: 1,
+                stale_rollout_discard_count: 1,
+                duplicate_rollout_quarantine_count: 1,
+                duplicate_rollout_deweight_count: 2,
+                validator_verified_count: 3,
+                validator_rejected_count: 1,
+                validator_timed_out_count: 0,
+                sandbox_ready_profile_count: 1,
+                sandbox_active_job_count: 0,
+                runs: vec![DesktopControlTrainingRunStatus {
+                    training_run_id: "training-run-1".to_string(),
+                    status: "running".to_string(),
+                    training_policy_ref: "policy://train/weather".to_string(),
+                    environment_ref: "env.openagents.weather.agent".to_string(),
+                    environment_version: Some("2026.03.13".to_string()),
+                    checkpoint_family: "decoder".to_string(),
+                    validator_policy_ref: "policy://validator/training".to_string(),
+                    benchmark_package_count: 2,
+                    rollout_verification_eval_run_count: 1,
+                    expected_step_count: Some(64),
+                    completed_step_count: Some(23),
+                    final_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                    promotion_checkpoint_ref: None,
+                    accepted_outcome_id: None,
+                    best_eval_score_bps: Some(9_320),
+                    control_plane_state: "running".to_string(),
+                    artifact_plane_state: "artifacts_pending".to_string(),
+                }],
+                participants: vec![
+                    DesktopControlTrainingParticipantStatus {
+                        participant_id: "node-a".to_string(),
+                        visible_reason: "cluster_member".to_string(),
+                        admitted: true,
+                        contributing: true,
+                        priority_label: "selected".to_string(),
+                        deweight_reason: None,
+                        exclusion_reason: None,
+                    },
+                    DesktopControlTrainingParticipantStatus {
+                        participant_id: "node-b".to_string(),
+                        visible_reason: "cluster_member".to_string(),
+                        admitted: true,
+                        contributing: false,
+                        priority_label: "standby".to_string(),
+                        deweight_reason: Some("duplicate_contribution".to_string()),
+                        exclusion_reason: None,
+                    },
+                ],
+                last_error: None,
+            },
             proofs: DesktopControlProofStatus {
                 available: false,
                 source: "unavailable".to_string(),
@@ -5995,6 +6559,24 @@ mod tests {
         assert!(inventory.summary.contains("inventory authority=local_only"));
         assert_eq!(inventory.command_label, None);
         assert_eq!(inventory.success, None);
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_training_event_when_training_truth_changes() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        current.training.control_plane_state = "authority_projected_stale".to_string();
+        current.training.duplicate_rollout_quarantine_count = 2;
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        let training = events
+            .iter()
+            .find(|event| event.event_type == "training.state.changed")
+            .expect("training change event should be emitted");
+
+        assert!(training.summary.contains("training available=true"));
+        assert_eq!(training.command_label, None);
+        assert_eq!(training.success, None);
     }
 
     #[test]
