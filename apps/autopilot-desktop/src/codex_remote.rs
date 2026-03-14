@@ -15,7 +15,6 @@ use codex_client::{
     AppServerRequestId, ApprovalDecision, CommandExecutionRequestApprovalResponse,
     FileChangeRequestApprovalResponse, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
 };
-use openagents_kernel_core::ids::sha256_prefixed_text;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
@@ -541,22 +540,17 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     let Some(runtime) = state.codex_remote_runtime.as_ref() else {
         return false;
     };
-    let snapshot = snapshot_for_state(state);
-    let signature = match serde_json::to_string(&snapshot) {
-        Ok(json) => sha256_prefixed_text(json.as_str()),
-        Err(error) => {
-            state.codex_remote.last_error =
-                Some(format!("Failed to encode remote snapshot: {error}"));
-            return false;
-        }
-    };
-    let should_sync = state.codex_remote_last_sync_signature.as_deref() != Some(signature.as_str())
-        || state
-            .codex_remote_last_sync_at
-            .is_none_or(|last| last.elapsed() >= REMOTE_SYNC_INTERVAL);
+    let signature = crate::snapshot_domains::codex_remote_signature(state);
+    let signature_changed =
+        state.codex_remote_last_sync_signature.as_deref() != Some(signature.as_str());
+    let interval_due = state
+        .codex_remote_last_sync_at
+        .is_none_or(|last| last.elapsed() >= REMOTE_SYNC_INTERVAL);
+    let should_sync = signature_changed || interval_due;
     if !should_sync {
         return false;
     }
+    let snapshot = snapshot_for_state(state);
     if let Err(error) = runtime.sync_snapshot(snapshot) {
         state.codex_remote.last_error = Some(error);
         return false;
@@ -564,7 +558,7 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
     state.codex_remote_last_sync_signature = Some(signature);
     state.codex_remote_last_sync_at = Some(Instant::now());
     state.codex_remote.last_error = None;
-    false
+    true
 }
 
 fn apply_remote_action(
