@@ -731,6 +731,18 @@ Where relevant, each issue can reference the completed `Wave 6` work
 (`Environments`, `Evals`, `Psionic Train`, `Psionic Adapters`) plus the
 completed proof and validator foundations as prerequisites.
 
+My updated read after pressure-testing the critique is:
+
+- issues 1-22 below are sufficient for the core all-Rust RL substrate
+- they are not sufficient for the final production-complete system
+
+So the list below should be read in two layers:
+
+- issues 1-22 build the actual Rust-native training platform
+- the later Wave 2 issues add productionization around reproducibility,
+  interoperability, security, storage, scheduling, reliability, and
+  benchmarking
+
 The first five issues below are hard Rust-only prerequisites. They are required
 before the later trainer/orchestrator/validator architecture can be honestly
 called "all-Rust."
@@ -1056,6 +1068,169 @@ Description:
 References:
 
 - Final integration issue after all items above are complete.
+
+## Wave 2 Issues Needed Beyond The Core 22
+
+The critique is valid that the 22 issues above are strong and near-complete for
+core platform build-out, but they still stop short of full production
+completeness.
+
+The missing work is mostly second-wave hardening and operating discipline, not
+evidence that the core issue set is weak.
+
+### 23. `Psionic Train: define distributed optimizer, precision, and memory-sharding contracts`
+
+Description:
+
+- Make parameter sharding, optimizer-state sharding, gradient accumulation,
+  activation checkpointing or rematerialization, and long-run memory planning
+  explicit parts of the training contract.
+- Add precision-policy surfaces for bf16, mixed precision, and future lower-
+  precision postures where truthful.
+- Split these concerns out from the generic "training core" issue so the
+  implementation family is explicit rather than implied.
+
+Why this is a valid gap:
+
+- issue 1 creates the training core crate, but it does not yet force clarity on
+  the concrete distributed optimizer and memory model.
+
+### 24. `Model IO: add Rust-native checkpoint, tokenizer, and model-format interoperability`
+
+Description:
+
+- Add import/export and conversion contracts for checkpoints, tokenizer assets,
+  serving-compatible model formats, and adapter merge or unmerge flows.
+- Ensure artifacts trained in Rust can move into serving and evaluation paths
+  without bespoke conversion glue.
+
+Why this is a valid gap:
+
+- the current issue set defines training, data, and eval substrate, but it does
+  not yet make artifact interoperability explicit enough to avoid stranded
+  outputs.
+
+### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
+
+Description:
+
+- Define seed discipline across trainer, orchestrator, workers, and validators.
+- Add replayable trainer-batch assembly, deterministic sample-selection rules,
+  pinned environment and tool versions, and reproducible eval-run postures
+  where possible.
+- Make "same receipt, same recomputation" an explicit goal rather than an
+  incidental property.
+
+Why this is a valid gap:
+
+- the issue set already records lineage and receipts, but it does not yet have a
+  dedicated reproducibility program.
+
+### 26. `Security: harden environment packages, artifact provenance, and untrusted worker admission`
+
+Description:
+
+- Define the Byzantine or malicious-worker threat model for training and rollout
+  roles.
+- Add artifact signing, trust-root policy, environment-package verification,
+  rollout spam or poisoning controls, trainer-side admission control, and rate
+  limiting.
+- Tie validator posture to a broader security model rather than treating
+  verification as the whole security story.
+
+Why this is a valid gap:
+
+- issue 13 covers rollout verification, but not the full security and admission
+  posture around untrusted workers and environment artifacts.
+
+### 27. `Artifact Storage: define retention, garbage collection, archival, and cold-restore policy`
+
+Description:
+
+- Define hot-path retention windows, archival classes, deduplication rules, GC
+  behavior, checkpoint or rollout storage tiers, and cold-restore objectives.
+- Make storage lifecycle part of the artifact model instead of an operational
+  afterthought.
+
+Why this is a valid gap:
+
+- the issue set creates many artifact families, but it does not yet specify
+  their lifetime, recovery expectations, or cost-bearing storage policy.
+
+### 28. `Scheduling and Accounting: add budget, priority, preemption, and cost attribution`
+
+Description:
+
+- Add budget caps, queueing classes, preemption policy, role-aware accounting,
+  environment cost attribution, validator cost modeling, and sandbox cost
+  visibility.
+- Make the system operable under real shared-resource and decentralized
+  constraints, not only functionally correct.
+
+Why this is a valid gap:
+
+- the current issue set builds the machinery, but not the operator economics
+  around it.
+
+### 29. `Reliability: add chaos and failure-injection suites for topology, checkpoint, and validator flows`
+
+Description:
+
+- Add churn simulation, network degradation drills, stale-weight flood tests,
+  validator-sampling stress, checkpoint corruption drills, and orchestrator
+  restart or recovery tests.
+- Treat failure injection as a first-class acceptance program for elastic and
+  untrusted training flows.
+
+Why this is a valid gap:
+
+- the architecture issues define how failure should be handled, but not the
+  systematic program to prove those claims under stress.
+
+### 30. `Benchmarking: define performance acceptance thresholds for trainer, sandbox, datastream, and validation`
+
+Description:
+
+- Define throughput, latency, recovery, reuse, and scaling targets for trainer
+  steps, rollout ingestion, sandbox reuse, checkpoint recovery, validator cost,
+  and elastic scaling curves.
+- Make performance acceptance quantitative instead of only qualitative.
+
+Why this is a valid gap:
+
+- issue 22 gives an end-to-end pilot, but it does not yet define the benchmark
+  thresholds that distinguish "works" from "production-real."
+
+## Additional Later-Scope Issues
+
+Two other critique points are valid, but I do not treat them as part of the
+minimal Wave 2 set.
+
+### Model promotion and release governance
+
+This is real later work:
+
+- release thresholds
+- rollback policy
+- checkpoint-to-release lineage
+- human signoff hooks
+
+But it can follow the core training, eval, and kernel receipt work rather than
+block the first production-hardening wave.
+
+### Human preference, critique, and label-ingestion pipelines
+
+This is also real later work:
+
+- critique and preference record schemas
+- human-plus-rubric score blending
+- provenance and adjudication for noisy labels
+
+But it is scope-dependent.
+
+It is required if OpenAgents expands from mostly environment-verifiable RL into
+broader RLHF or critique-driven post-training. It is not a prerequisite for the
+environment-first Intellect-style stack described in this audit.
 
 ## Ownership Map For The Adaptation
 
