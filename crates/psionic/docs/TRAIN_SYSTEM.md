@@ -92,6 +92,8 @@ It already has real substrate for:
 - machine-legible step telemetry and checkpoint-anchored restore lineage
 - checkpoint-aware policy revisions
 - proof-bearing rollout artifacts and trainer-batch assembly
+- versioned dataset manifests, tokenizer digests, split declarations, and
+  long-context packing contracts
 - environment package ABI and deterministic runtime sessions
 - adapter lineage
 
@@ -180,6 +182,7 @@ shape already includes at least:
 | Datastream | `implemented_early` | resumable manifests, checkpoint bindings, dataset bindings, delivery receipts |
 | Collectives | `implemented_early` | elastic mesh observation, benchmark-gated quantized collective planning |
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
+| Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
@@ -200,11 +203,15 @@ The current train-relevant ownership split in Psionic is:
 - `psionic-datastream`
   - resumable transport for datasets, checkpoints, served artifacts, and
     adapter packages
+- `psionic-data`
+  - versioned dataset manifests, tokenizer digests, split declarations,
+    streamed iteration contracts, and long-context packing rules
 - `psionic-collectives`
   - elastic mesh observation and benchmark-gated collective planning
 - `psionic-environments`
   - environment package ABI, execution entrypoints, tool and rubric hooks,
-    artifact expectations, and deterministic runtime sessions
+    artifact expectations, versioned dataset bindings, and deterministic
+    runtime sessions
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
     elastic-membership posture, the fixed-budget training-core reference loop,
@@ -1156,11 +1163,27 @@ Psionic-side runtime and contract layer only.
 
 ### 4. `Psionic Data: add Rust-native dataset, tokenizer, split, and packing contracts`
 
-The current datastream layer can move bytes, but the train system still needs a
-canonical data model. This issue should add dataset manifests, tokenizer
-digests, split declarations, streamed iteration contracts, and sequence-packing
-or batch-packing rules for long-context workloads. The result should make data
-lineage just as explicit as checkpoint lineage.
+Status: implemented on 2026-03-14 via GitHub issue `#3567`.
+
+Added the `psionic-data` crate for:
+
+- canonical `dataset_ref@version` identity through `DatasetKey`
+- typed dataset manifests bound to tokenizer digests and tokenized shard refs
+- split declarations over `psionic-datastream` manifest refs with explicit
+  shard-level sequence and token counts
+- resumable streamed iteration contracts with deterministic shard ordering and
+  epoch-wrap semantics
+- sequence-packing and batch-packing policies for long-context workloads
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/DATASET_TOKENIZER_PACKING_REFERENCE.md`
+- `scripts/release/check-psionic-data-contracts.sh`
+
+This issue keeps byte movement in `psionic-datastream` but makes data lineage,
+iteration, and packing policy first-class typed Psionic contracts. The
+environment ABI now binds versioned dataset keys from this layer instead of
+free-form dataset refs.
 
 ### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
 

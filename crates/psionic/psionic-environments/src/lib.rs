@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use psionic_data::DatasetKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -107,8 +108,8 @@ pub enum EnvironmentRubricScoreKind {
 /// Dataset binding visible to the runtime contract.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvironmentDatasetBinding {
-    /// Stable dataset reference.
-    pub dataset_ref: String,
+    /// Stable versioned dataset identity.
+    pub dataset: DatasetKey,
     /// Split identifier when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split: Option<String>,
@@ -309,7 +310,7 @@ impl EnvironmentPackageContract {
         }
         for dataset in &self.datasets {
             hasher.update(b"|dataset|");
-            hasher.update(dataset.dataset_ref.as_bytes());
+            hasher.update(dataset.dataset.storage_key().as_bytes());
             hasher.update(b"|");
             hasher.update(dataset.mount_path.as_bytes());
             if let Some(split) = &dataset.split {
@@ -378,6 +379,22 @@ impl EnvironmentPackageContract {
         }
 
         let mut tool_names = BTreeSet::new();
+        for dataset in &self.datasets {
+            if dataset.dataset.dataset_ref.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingDatasetRef);
+            }
+            if dataset.dataset.version.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingDatasetVersion {
+                    dataset_ref: dataset.dataset.dataset_ref.clone(),
+                });
+            }
+            if dataset.mount_path.trim().is_empty() {
+                return Err(EnvironmentContractError::MissingDatasetMountPath {
+                    dataset_ref: dataset.dataset.dataset_ref.clone(),
+                });
+            }
+        }
+
         for tool in &self.tools {
             if tool.tool_name.trim().is_empty() {
                 return Err(EnvironmentContractError::MissingToolName);
@@ -483,6 +500,21 @@ pub enum EnvironmentContractError {
     /// One tool contract omitted the tool name.
     #[error("environment package tool is missing `tool_name`")]
     MissingToolName,
+    /// One dataset binding omitted the dataset ref.
+    #[error("environment package dataset binding is missing `dataset_ref`")]
+    MissingDatasetRef,
+    /// One dataset binding omitted the dataset version.
+    #[error("environment package dataset `{dataset_ref}` is missing immutable `version`")]
+    MissingDatasetVersion {
+        /// Dataset ref with missing version.
+        dataset_ref: String,
+    },
+    /// One dataset binding omitted the mount path.
+    #[error("environment package dataset `{dataset_ref}` is missing `mount_path`")]
+    MissingDatasetMountPath {
+        /// Dataset ref with missing mount path.
+        dataset_ref: String,
+    },
     /// Duplicate tool name.
     #[error("environment package tool `{tool_name}` was defined more than once")]
     DuplicateTool {
@@ -750,9 +782,7 @@ pub enum EnvironmentRuntimeError {
         session_id: String,
     },
     /// One required artifact was never emitted.
-    #[error(
-        "environment session `{session_id}` is missing required artifact `{artifact_kind}`"
-    )]
+    #[error("environment session `{session_id}` is missing required artifact `{artifact_kind}`")]
     MissingRequiredArtifact {
         /// Stable session identifier.
         session_id: String,
@@ -768,9 +798,7 @@ pub enum EnvironmentRuntimeError {
         rubric_ref: String,
     },
     /// One rubric result targeted a rubric not declared by the package.
-    #[error(
-        "environment session `{session_id}` received unknown rubric `{rubric_ref}`"
-    )]
+    #[error("environment session `{session_id}` received unknown rubric `{rubric_ref}`")]
     UnknownRubricOutcome {
         /// Stable session identifier.
         session_id: String,
@@ -856,7 +884,12 @@ impl EnvironmentRuntimeSession {
                 session_id: self.session_id.clone(),
             });
         }
-        if !self.package.tools.iter().any(|tool| tool.tool_name == tool_name) {
+        if !self
+            .package
+            .tools
+            .iter()
+            .any(|tool| tool.tool_name == tool_name)
+        {
             return Err(EnvironmentRuntimeError::UnknownTool {
                 package_key: self.package.storage_key(),
                 tool_name: String::from(tool_name),
@@ -980,7 +1013,8 @@ impl EnvironmentRuntimeSession {
             .map(|artifact| artifact.artifact_kind.clone())
             .collect::<BTreeSet<_>>();
         for artifact in &self.package.expected_artifacts {
-            if artifact.required && !emitted_artifact_kinds.contains(artifact.artifact_kind.as_str())
+            if artifact.required
+                && !emitted_artifact_kinds.contains(artifact.artifact_kind.as_str())
             {
                 return Err(EnvironmentRuntimeError::MissingRequiredArtifact {
                     session_id: self.session_id.clone(),
@@ -1142,15 +1176,17 @@ fn environment_tool_interface_label(tool_interface: EnvironmentToolInterface) ->
 
 #[cfg(test)]
 mod tests {
+    use psionic_data::DatasetKey;
     use serde_json::json;
 
     use super::{
         ENVIRONMENT_ABI_VERSION, EnvironmentArtifactExpectation, EnvironmentArtifactOutput,
-        EnvironmentContractError, EnvironmentExecutionEntrypoint, EnvironmentPackageContract,
-        EnvironmentPackageFamily, EnvironmentPackageKey, EnvironmentRubricHook,
-        EnvironmentRubricOutcome, EnvironmentRubricScoreKind, EnvironmentRuntimeError,
-        EnvironmentRuntimeFamily, EnvironmentStateMode, EnvironmentToolContract,
-        EnvironmentToolInterface, EnvironmentToolResult, EnvironmentTurnInput,
+        EnvironmentContractError, EnvironmentDatasetBinding, EnvironmentExecutionEntrypoint,
+        EnvironmentPackageContract, EnvironmentPackageFamily, EnvironmentPackageKey,
+        EnvironmentRubricHook, EnvironmentRubricOutcome, EnvironmentRubricScoreKind,
+        EnvironmentRuntimeError, EnvironmentRuntimeFamily, EnvironmentStateMode,
+        EnvironmentToolContract, EnvironmentToolInterface, EnvironmentToolResult,
+        EnvironmentTurnInput,
     };
 
     fn weather_package() -> EnvironmentPackageContract {
@@ -1168,6 +1204,12 @@ mod tests {
                 time_budget_ms: Some(30_000),
             },
         )
+        .with_datasets(vec![EnvironmentDatasetBinding {
+            dataset: DatasetKey::new("dataset://openagents/weather-dialog", "2026.03.14"),
+            split: Some(String::from("train")),
+            mount_path: String::from("/datasets/weather"),
+            required: true,
+        }])
         .with_tools(vec![EnvironmentToolContract {
             tool_name: String::from("get_weather"),
             interface: EnvironmentToolInterface::NativeFunction,
@@ -1210,6 +1252,10 @@ mod tests {
             package.storage_key(),
             String::from("env.openagents.weather.agent@2026.03.14")
         );
+        assert_eq!(
+            package.datasets[0].dataset.storage_key(),
+            String::from("dataset://openagents/weather-dialog@2026.03.14")
+        );
         let digest_a = package.stable_digest();
         let digest_b = package.stable_digest();
         assert_eq!(digest_a, digest_b);
@@ -1248,9 +1294,8 @@ mod tests {
         let expected_storage_key = package.storage_key();
         let mut session = package.open_session("session-weather", "task-paris")?;
 
-        let turn_id = session.begin_turn(EnvironmentTurnInput::new(
-            "What is the weather in Paris?",
-        ))?;
+        let turn_id =
+            session.begin_turn(EnvironmentTurnInput::new("What is the weather in Paris?"))?;
         assert_eq!(turn_id, "session-weather-turn-1");
 
         let tool_call = session.request_tool("get_weather", json!({"city": "Paris"}))?;
@@ -1273,11 +1318,7 @@ mod tests {
         )?;
         assert_eq!(receipt.turn_index, 1);
         assert_eq!(
-            receipt
-                .tool_result
-                .as_ref()
-                .expect("tool result")
-                .tool_name,
+            receipt.tool_result.as_ref().expect("tool result").tool_name,
             "get_weather"
         );
 

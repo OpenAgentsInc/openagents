@@ -39,6 +39,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-sandbox`: bounded sandbox runtime detection, profile realization, and execution receipts.
 - `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
 - `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
+- `psionic-data`: versioned dataset manifests, tokenizer digests, split declarations, streamed iteration contracts, and long-context packing policies.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
 - `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
@@ -178,6 +179,10 @@ Implemented now:
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
   digests inside `psionic-train`.
+- early data substrate: versioned dataset manifests, tokenizer digests, split
+  declarations, resumable streamed-iteration contracts, and long-context
+  packing policies in `psionic-data`, with environment packages now binding
+  versioned dataset keys instead of free-form dataset refs.
 - early environment substrate: a Psionic-native package ABI, tool interfaces,
   rubric hooks, expected artifact contracts, and reference runtime sessions in
   `psionic-environments`, keyed to the same `environment_ref@version` identity
@@ -221,6 +226,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ENVIRONMENT_ABI_REFERENCE.md](docs/ENVIRONMENT_ABI_REFERENCE.md)** —
   canonical package ABI, runtime-session runbook, and acceptance criteria for
   the first Psionic-native environment contract.
+- **[docs/DATASET_TOKENIZER_PACKING_REFERENCE.md](docs/DATASET_TOKENIZER_PACKING_REFERENCE.md)** —
+  canonical versioned-dataset, tokenizer-digest, streamed-iteration, and
+  long-context packing runbook for the first Psionic-native data-contract
+  layer.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

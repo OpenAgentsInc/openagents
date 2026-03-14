@@ -1,11 +1,11 @@
 [package]
-name = "psionic-environments"
+name = "psionic-data"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Rust-native environment ABI and runtime contract for Psionic"
+description = "Rust-native dataset, tokenizer, split, iteration, and packing contracts for Psionic"
 
 [lints]
 workspace = true
@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 hex = { workspace = true }
-psionic-data = { path = "../psionic-data" }
+psionic-datastream = { path = "../psionic-datastream" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
