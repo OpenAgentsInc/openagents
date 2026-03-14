@@ -22,7 +22,7 @@ mod gpt_oss;
 mod openai_http;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -63,16 +63,18 @@ use psionic_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
     CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
     ClusterExecutionContext, CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile,
-    ExecutionDeliveryProof, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
-    KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-    LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-    LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
-    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    QuantizationDispatchDecision, QuantizationDispatchRequest, QuantizationDispatchWorkload,
-    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
-    ShardedModelManifestError, StructuredOutputError, StructuredOutputExecutionReport,
-    StructuredOutputMatchStatus, StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
+    ExecutionDeliveryProof, GenerationSchedulerMetrics, GenerationSchedulerPolicy,
+    GenerationSchedulerRequestReceipt, GenerationSchedulingClass, HealthStatus, KvCacheAccounting,
+    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
+    QuantizationDispatchRequest, QuantizationDispatchWorkload, RuntimeError,
+    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
+    SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest, ShardedModelManifestError,
+    StructuredOutputError, StructuredOutputExecutionReport, StructuredOutputMatchStatus,
+    StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
     default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
@@ -236,6 +238,20 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
 #[must_use]
 pub fn default_text_generation_execution_profile() -> ExecutionCapabilityProfile {
     ExecutionCapabilityProfile::single_request_latency_optimized()
+}
+
+/// Returns the default scheduler policy for shared continuous-batching generation.
+#[must_use]
+pub fn default_generation_scheduler_policy() -> GenerationSchedulerPolicy {
+    GenerationSchedulerPolicy::default()
+}
+
+/// Returns the execution profile for the first shared continuous-batching path.
+#[must_use]
+pub fn continuous_batch_text_generation_execution_profile() -> ExecutionCapabilityProfile {
+    ExecutionCapabilityProfile::continuous_batch_throughput_optimized(
+        &default_generation_scheduler_policy(),
+    )
 }
 
 fn generation_product_supported(request: &GenerationRequest) -> bool {
@@ -1490,6 +1506,9 @@ pub struct GenerationProvenance {
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+    /// Explicit shared-scheduler receipt for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<GenerationSchedulerRequestReceipt>,
     /// Structured-output fallback report when the request used constrained generation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub structured_output: Option<StructuredOutputExecutionReport>,
@@ -2424,6 +2443,7 @@ fn generation_runtime_observability<M>(
     models: &InMemoryGenerationModelRegistry<M>,
     sessions: &InMemoryGenerationSessionStore,
     backend_health: &BackendHealthTracker,
+    execution_profile: ExecutionCapabilityProfile,
 ) -> LocalRuntimeObservability
 where
     M: GenerationModelHandle,
@@ -2444,9 +2464,10 @@ where
     LocalRuntimeObservability {
         isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
         cache_invalidation_policy: cache_invalidation_policy(),
-        execution_profile: default_text_generation_execution_profile(),
+        execution_profile: execution_profile.clone(),
         queue_depth: 0,
-        queue_capacity: None,
+        queue_capacity: (execution_profile.queue_policy.max_queued_requests > 0)
+            .then_some(execution_profile.queue_policy.max_queued_requests),
         active_sessions: sessions.len(),
         active_requests: models.active_request_count(),
         memory_footprint: models.memory_snapshot(),
@@ -4032,7 +4053,12 @@ impl CpuReferenceTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe("cpu", self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            continuous_batch_text_generation_execution_profile(),
+        )
     }
 
     /// Returns runtime observability after applying idle expiry.
@@ -4092,6 +4118,21 @@ impl CpuReferenceTextGenerationService {
         session_id: &SessionId,
     ) -> Result<GenerationSession, ReferenceTextGenerationError> {
         Ok(self.sessions.close(session_id)?)
+    }
+
+    /// Executes a shared continuous-batching run across compatible requests.
+    pub fn generate_continuous_batch(
+        &mut self,
+        requests: Vec<GenerationRequest>,
+    ) -> ContinuousBatchGenerationResult {
+        run_continuous_batch_generation_requests(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            requests,
+            default_generation_scheduler_policy(),
+        )
     }
 }
 
@@ -4252,7 +4293,12 @@ impl CpuModelTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe("cpu", self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            continuous_batch_text_generation_execution_profile(),
+        )
     }
 
     /// Returns runtime observability after applying idle expiry.
@@ -4312,6 +4358,21 @@ impl CpuModelTextGenerationService {
         session_id: &SessionId,
     ) -> Result<GenerationSession, ReferenceTextGenerationError> {
         Ok(self.sessions.close(session_id)?)
+    }
+
+    /// Executes a shared continuous-batching run across compatible requests.
+    pub fn generate_continuous_batch(
+        &mut self,
+        requests: Vec<GenerationRequest>,
+    ) -> ContinuousBatchGenerationResult {
+        run_continuous_batch_generation_requests(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            requests,
+            default_generation_scheduler_policy(),
+        )
     }
 }
 
@@ -4518,7 +4579,12 @@ impl MetalModelTextGenerationService {
         self.models.expire_idle(now_millis);
         self.backend_health
             .observe("metal", self.backend.health(), now_millis);
-        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+        generation_runtime_observability(
+            &self.models,
+            &self.sessions,
+            &self.backend_health,
+            default_text_generation_execution_profile(),
+        )
     }
 
     /// Returns runtime observability after applying idle expiry.
@@ -4698,6 +4764,832 @@ impl GenerationSampler {
         self.structured_output
             .as_ref()
             .map(StructuredOutputMatcher::execution_report)
+    }
+}
+
+/// Result of one shared continuous-batching generation run.
+#[derive(Debug)]
+pub struct ContinuousBatchGenerationResult {
+    /// Responses in the same order as the supplied requests.
+    pub responses: Vec<Result<GenerationResponse, ReferenceTextGenerationError>>,
+    /// Aggregate scheduler metrics for the realized run.
+    pub scheduler_metrics: GenerationSchedulerMetrics,
+}
+
+struct ScheduledGenerationState<M>
+where
+    M: CompiledWordGenerationModel,
+{
+    request: GenerationRequest,
+    loaded_model: M,
+    model_id: String,
+    served_artifact: ServedArtifactIdentity,
+    load_state: GenerationLoadState,
+    generation_start: Instant,
+    memory_plan: Option<ModelMemoryPlan>,
+    residency_policy: Option<ModelResidencyPolicy>,
+    residency_snapshot: Option<MemoryResidencySnapshot>,
+    prompt_eval_started_at: Option<Instant>,
+    prompt_eval_duration_ns: Option<u64>,
+    context_window: ContextWindowAccounting,
+    previous_kv_state: KvCacheState,
+    cache: InMemoryKvCache,
+    session_tokens: Vec<TokenId>,
+    prompt_tokens: TokenSequence,
+    prompt_logits: Vec<Vec<f32>>,
+    prefill_cursor: usize,
+    prefix_compatibility: SharedPrefixCompatibility,
+    shared_prefix_eligible: bool,
+    prefix_policy: PrefixCacheReusePolicy,
+    prefix_state: PrefixCacheState,
+    prefix_tokens_reused: usize,
+    prefix_identity: Option<PrefixCacheIdentity>,
+    prompt_prefix_recorded: bool,
+    execution_plan_digest: Option<String>,
+    compile_path: Option<CompilePathEvidence>,
+    kernel_count: usize,
+    bytes_moved: u64,
+    plan_cache_hits: usize,
+    plan_cache_misses: usize,
+    gpt_oss_perf: Option<GptOssPerformanceMetrics>,
+    last_logits: Vec<f32>,
+    sampler: GenerationSampler,
+    generated_tokens: Vec<TokenId>,
+    termination: Option<TerminationReason>,
+}
+
+impl<M> ScheduledGenerationState<M>
+where
+    M: CompiledWordGenerationModel,
+{
+    fn prepare(
+        models: &mut InMemoryGenerationModelRegistry<M>,
+        sessions: &mut InMemoryGenerationSessionStore,
+        shared_prefixes: &mut SharedPrefixStore,
+        request: &GenerationRequest,
+    ) -> Result<Self, ReferenceTextGenerationError> {
+        if !generation_product_supported(request) {
+            return Err(ReferenceTextGenerationError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+
+        let loaded_model = models
+            .active(request.model.model.model_id.as_str())
+            .ok_or_else(|| {
+                ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+            })?
+            .clone();
+        if loaded_model.descriptor() != &request.model {
+            return Err(ReferenceTextGenerationError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+
+        let model_id = request.model.model.model_id.clone();
+        let load_state = models
+            .load_state(model_id.as_str())
+            .unwrap_or(GenerationLoadState::Warm);
+        models.begin_request(model_id.as_str(), current_time_millis())?;
+        let memory_plan = models.memory_plan(model_id.as_str()).cloned();
+        let residency_policy = Some(models.residency_policy().clone());
+        let residency_snapshot = Some(models.memory_snapshot());
+        let served_artifact = served_artifact_identity_for_decoder_backend(
+            loaded_model.descriptor(),
+            loaded_model.backend_compatibility(),
+            &[],
+        );
+        let effective_served_artifact_digest = effective_generation_served_artifact_digest(
+            &served_artifact,
+            request.adapter_serving.as_ref(),
+        );
+
+        let prepared = (|| -> Result<Self, ReferenceTextGenerationError> {
+            let tokenizer = loaded_model.tokenizer();
+            let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
+            if prompt_tokens.is_empty() {
+                return Err(ReferenceTextGenerationError::EmptyPrompt);
+            }
+
+            let expected_kv_width = loaded_model.cache_width();
+            let mut session_tokens = Vec::new();
+            let prefix_compatibility =
+                prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
+            let prefix_policy = default_prefix_cache_policy();
+            let mut prefix_state = PrefixCacheState::None;
+            let mut prefix_tokens_reused = 0usize;
+            let mut prefix_identity = None;
+            let mut shared_prefix_eligible = false;
+            let previous_kv_state = if let Some(session_id) = &request.session_id {
+                if request.reset_session {
+                    sessions.reset(session_id)?;
+                }
+                let state = sessions.state(session_id)?;
+                validate_session_model(
+                    state,
+                    session_id,
+                    loaded_model.descriptor(),
+                    effective_served_artifact_digest.as_str(),
+                )?;
+                session_tokens = state.tokens().to_vec();
+                if state.cache().is_empty() {
+                    shared_prefix_eligible = true;
+                } else {
+                    prefix_state = PrefixCacheState::Bypassed;
+                }
+                state.cache().state()
+            } else {
+                shared_prefix_eligible = true;
+                KvCacheState::default()
+            };
+            let preserve_prefix_tokens = usize::from(
+                prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+            );
+            let (prompt_tokens, context_window) = apply_context_window(
+                &prompt_tokens,
+                loaded_model.descriptor().config.max_context,
+                previous_kv_state.tokens,
+                request.options.max_output_tokens,
+                request.options.context_overflow_policy,
+                preserve_prefix_tokens,
+            )?;
+            let mut prompt_logits = Vec::new();
+            let mut last_logits = Vec::new();
+            let cache = if shared_prefix_eligible {
+                let lookup = shared_prefixes.lookup(&prefix_compatibility, &prompt_tokens);
+                prefix_state = lookup.state;
+                prefix_tokens_reused = lookup.reused_tokens;
+                prefix_identity = lookup.identity;
+                prompt_logits = lookup.prompt_logits;
+                last_logits = if lookup.last_logits.is_empty() {
+                    prompt_logits.last().cloned().unwrap_or_default()
+                } else {
+                    lookup.last_logits
+                };
+                lookup.cache.unwrap_or_else(|| {
+                    InMemoryKvCache::new(
+                        loaded_model.descriptor().config.max_context,
+                        expected_kv_width,
+                    )
+                })
+            } else if let Some(session_id) = &request.session_id {
+                sessions.state(session_id)?.cache().clone()
+            } else {
+                InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    expected_kv_width,
+                )
+            };
+            if cache.width() != expected_kv_width {
+                return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                    expected_kv_width,
+                    kv_width: cache.width(),
+                });
+            }
+
+            let prompt_prefix_recorded =
+                !shared_prefix_eligible || prefix_tokens_reused == prompt_tokens.len();
+            let prompt_eval_duration_ns =
+                (prefix_tokens_reused == prompt_tokens.len()).then_some(0_u64);
+
+            Ok(Self {
+                request: request.clone(),
+                loaded_model,
+                model_id: model_id.clone(),
+                served_artifact,
+                load_state,
+                generation_start: Instant::now(),
+                memory_plan,
+                residency_policy,
+                residency_snapshot,
+                prompt_eval_started_at: None,
+                prompt_eval_duration_ns,
+                context_window,
+                previous_kv_state,
+                cache,
+                session_tokens,
+                prompt_tokens,
+                prompt_logits,
+                prefill_cursor: prefix_tokens_reused,
+                prefix_compatibility,
+                shared_prefix_eligible,
+                prefix_policy,
+                prefix_state,
+                prefix_tokens_reused,
+                prefix_identity,
+                prompt_prefix_recorded,
+                execution_plan_digest: None,
+                compile_path: None,
+                kernel_count: 0,
+                bytes_moved: 0,
+                plan_cache_hits: 0,
+                plan_cache_misses: 0,
+                gpt_oss_perf: None,
+                last_logits,
+                sampler: GenerationSampler::new(&request.options)?,
+                generated_tokens: Vec::new(),
+                termination: None,
+            })
+        })();
+
+        match prepared {
+            Ok(state) => Ok(state),
+            Err(error) => {
+                let _ = models.finish_request(model_id.as_str(), current_time_millis());
+                Err(error)
+            }
+        }
+    }
+
+    fn prefill_complete(&self) -> bool {
+        self.prefill_cursor >= self.prompt_tokens.len()
+    }
+
+    fn is_finished(&self) -> bool {
+        self.termination.is_some()
+    }
+
+    fn finish_request(&self, models: &mut InMemoryGenerationModelRegistry<M>) {
+        let _ = models.finish_request(self.model_id.as_str(), current_time_millis());
+    }
+
+    fn step_prefill<B>(
+        &mut self,
+        backend: &mut B,
+        shared_prefixes: &mut SharedPrefixStore,
+        max_tokens: usize,
+    ) -> Result<usize, ReferenceTextGenerationError>
+    where
+        M: CompiledWordGenerationModel<Backend = B>,
+    {
+        if self.prefill_complete() || max_tokens == 0 {
+            return Ok(0);
+        }
+        let mut processed = 0usize;
+        while processed < max_tokens && self.prefill_cursor < self.prompt_tokens.len() {
+            if self.prompt_eval_started_at.is_none() {
+                self.prompt_eval_started_at = Some(Instant::now());
+            }
+            let token = self.prompt_tokens.as_slice()[self.prefill_cursor];
+            let step =
+                self.loaded_model
+                    .execute_step(backend, token, self.cache.len(), &self.cache)?;
+            accumulate_generation_step_counters(
+                &step,
+                &mut self.execution_plan_digest,
+                &mut self.compile_path,
+                &mut self.kernel_count,
+                &mut self.bytes_moved,
+                &mut self.plan_cache_hits,
+                &mut self.plan_cache_misses,
+                &mut self.gpt_oss_perf,
+            );
+            self.cache.append(token, step.key, step.value)?;
+            self.last_logits = step.logits;
+            self.prompt_logits.push(self.last_logits.clone());
+            self.prefill_cursor = self.prefill_cursor.saturating_add(1);
+            processed = processed.saturating_add(1);
+        }
+
+        if self.prefill_complete() {
+            if self.prompt_eval_duration_ns.is_none() {
+                self.prompt_eval_duration_ns = Some(
+                    self.prompt_eval_started_at
+                        .take()
+                        .map(|start| start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX))
+                        .unwrap_or(0),
+                );
+            }
+            if self.shared_prefix_eligible && !self.prompt_prefix_recorded {
+                let recorded_identity = shared_prefixes.record(
+                    self.prefix_compatibility.clone(),
+                    &self.prompt_tokens,
+                    &self.prompt_logits,
+                    &self.cache,
+                );
+                if self.prefix_state != PrefixCacheState::Hit || self.prefix_identity.is_none() {
+                    self.prefix_identity = Some(recorded_identity);
+                }
+                self.prompt_prefix_recorded = true;
+            }
+        }
+
+        Ok(processed)
+    }
+
+    fn step_decode<B>(
+        &mut self,
+        backend: &mut B,
+        max_tokens: usize,
+    ) -> Result<usize, ReferenceTextGenerationError>
+    where
+        M: CompiledWordGenerationModel<Backend = B>,
+    {
+        if !self.prefill_complete() || self.is_finished() || max_tokens == 0 {
+            return Ok(0);
+        }
+
+        let mut decoded = 0usize;
+        while decoded < max_tokens && self.termination.is_none() {
+            if self.generated_tokens.len() >= self.request.options.max_output_tokens {
+                self.termination = Some(TerminationReason::MaxOutputTokens);
+                break;
+            }
+            if self.cache.len() >= self.cache.max_context() {
+                self.termination = Some(TerminationReason::ContextLimit);
+                break;
+            }
+
+            let next_token = match self.sampler.select_next_token(
+                self.loaded_model.tokenizer(),
+                &self.last_logits,
+                &self.cache,
+                self.generated_tokens.as_slice(),
+            )? {
+                GenerationSelection::Token(token) => token,
+                GenerationSelection::Terminate => {
+                    self.termination = Some(TerminationReason::EndOfSequence);
+                    break;
+                }
+            };
+            if self.loaded_model.is_end_of_sequence(next_token) {
+                self.termination = Some(TerminationReason::EndOfSequence);
+                break;
+            }
+
+            self.generated_tokens.push(next_token);
+            let step = self.loaded_model.execute_step(
+                backend,
+                next_token,
+                self.cache.len(),
+                &self.cache,
+            )?;
+            accumulate_generation_step_counters(
+                &step,
+                &mut self.execution_plan_digest,
+                &mut self.compile_path,
+                &mut self.kernel_count,
+                &mut self.bytes_moved,
+                &mut self.plan_cache_hits,
+                &mut self.plan_cache_misses,
+                &mut self.gpt_oss_perf,
+            );
+            self.cache.append(next_token, step.key, step.value)?;
+            self.last_logits = step.logits;
+            decoded = decoded.saturating_add(1);
+
+            if truncate_generated_text(
+                self.loaded_model.tokenizer(),
+                &mut self.generated_tokens,
+                &self.request.options.stop_sequences,
+            )
+            .is_some()
+            {
+                self.termination = Some(TerminationReason::EndOfSequence);
+                break;
+            }
+        }
+
+        Ok(decoded)
+    }
+
+    fn finalize(
+        mut self,
+        models: &mut InMemoryGenerationModelRegistry<M>,
+        sessions: &mut InMemoryGenerationSessionStore,
+        scheduler: Option<GenerationSchedulerRequestReceipt>,
+    ) -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let model_id = self.model_id.clone();
+        let termination = self.termination.unwrap_or(TerminationReason::EndOfSequence);
+        if let Some(session_id) = &self.request.session_id {
+            self.session_tokens
+                .extend_from_slice(self.prompt_tokens.as_slice());
+            self.session_tokens
+                .extend_from_slice(self.generated_tokens.as_slice());
+            sessions.replace_cache(
+                session_id,
+                self.loaded_model.descriptor(),
+                self.served_artifact.served_artifact_digest.as_str(),
+                self.cache.clone(),
+                TokenSequence::new(self.session_tokens),
+            )?;
+        }
+
+        let generated = TokenSequence::new(self.generated_tokens);
+        let text = self.loaded_model.tokenizer().decode(generated.as_slice());
+        let usage = GenerationUsage {
+            input_tokens: self.prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: self.cache.len(),
+        };
+        let total_duration_ns = self
+            .generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let metrics = GenerationMetrics {
+            total_duration_ns: Some(total_duration_ns),
+            load_duration_ns: Some(match self.load_state {
+                GenerationLoadState::Cold => self.loaded_model.load_duration_ns(),
+                GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(self.prompt_eval_duration_ns.unwrap_or(0)),
+            context_window: Some(self.context_window),
+            eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(
+                total_duration_ns.saturating_sub(self.prompt_eval_duration_ns.unwrap_or(0)),
+            ),
+            kv_cache: Some(KvCacheAccounting::from_states(
+                &self.previous_kv_state,
+                self.cache.state(),
+            )),
+            prefix_tokens_reused: Some(self.prefix_tokens_reused),
+            gpt_oss_perf: self.gpt_oss_perf.filter(|perf| !perf.is_zero()),
+        };
+        let delivery_plan_digest = self
+            .execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| self.loaded_model.plan_digest().to_string());
+        let provenance = GenerationProvenance {
+            served_artifact: self.served_artifact,
+            adapter_serving: self.request.adapter_serving.clone(),
+            execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
+            load_state: self.load_state,
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+            streaming_policy: None,
+            memory_plan: self.memory_plan,
+            residency_policy: self.residency_policy,
+            residency_snapshot: self.residency_snapshot,
+            kv_cache_policy: Some(self.cache.policy().clone()),
+            prefix_cache_state: Some(self.prefix_state),
+            prefix_cache_policy: Some(self.prefix_policy.clone()),
+            prefix_cache_identity: self.prefix_identity.clone(),
+            compile_path: self.compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                self.kernel_count,
+                self.bytes_moved,
+                self.plan_cache_hits,
+                self.plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
+            cache_observations: generation_cache_observations(
+                self.loaded_model.descriptor(),
+                self.compile_path.as_ref(),
+                self.load_state,
+                self.request.session_id.as_ref(),
+                self.request.reset_session,
+                &self.previous_kv_state,
+                self.prefix_state,
+            ),
+            scheduler,
+            structured_output: self.sampler.structured_output_report(),
+        };
+        let response = GenerationResponse::new(
+            &self.request,
+            self.request.session_id.clone(),
+            generated,
+            text,
+            usage.input_tokens,
+            usage.cache_tokens,
+            termination,
+        )
+        .with_metrics_and_provenance(metrics, provenance);
+        let _ = models.finish_request(model_id.as_str(), current_time_millis());
+        Ok(response)
+    }
+}
+
+struct ActiveScheduledGenerationRequest<M>
+where
+    M: CompiledWordGenerationModel,
+{
+    index: usize,
+    queue_depth_at_admission: usize,
+    max_batch_size_observed: usize,
+    prefill_tokens: usize,
+    decode_tokens: usize,
+    saw_prefill: bool,
+    saw_decode: bool,
+    state: ScheduledGenerationState<M>,
+}
+
+impl<M> ActiveScheduledGenerationRequest<M>
+where
+    M: CompiledWordGenerationModel,
+{
+    fn new(
+        index: usize,
+        queue_depth_at_admission: usize,
+        state: ScheduledGenerationState<M>,
+    ) -> Self {
+        Self {
+            index,
+            queue_depth_at_admission,
+            max_batch_size_observed: 1,
+            prefill_tokens: 0,
+            decode_tokens: 0,
+            saw_prefill: false,
+            saw_decode: false,
+            state,
+        }
+    }
+
+    fn scheduling_class(&self) -> GenerationSchedulingClass {
+        match (self.saw_prefill, self.saw_decode) {
+            (true, true) => GenerationSchedulingClass::MixedPrefillDecode,
+            (true, false) => GenerationSchedulingClass::Prefill,
+            (false, true) => GenerationSchedulingClass::Decode,
+            (false, false) => GenerationSchedulingClass::FallbackSingleRequest,
+        }
+    }
+
+    fn scheduler_receipt(
+        &self,
+        policy: &GenerationSchedulerPolicy,
+    ) -> GenerationSchedulerRequestReceipt {
+        GenerationSchedulerRequestReceipt {
+            policy: policy.clone(),
+            batch_posture: psionic_runtime::BatchExecutionPosture::ContinuousBatch,
+            queue_depth_at_admission: self.queue_depth_at_admission,
+            max_batch_size_observed: self.max_batch_size_observed,
+            scheduling_class: self.scheduling_class(),
+            prefill_tokens: self.prefill_tokens,
+            decode_tokens: self.decode_tokens,
+            fallback_reason: None,
+        }
+    }
+}
+
+fn response_with_scheduler_receipt(
+    mut response: GenerationResponse,
+    receipt: GenerationSchedulerRequestReceipt,
+) -> GenerationResponse {
+    if let Some(provenance) = response.provenance.as_mut() {
+        provenance.scheduler = Some(receipt);
+    }
+    response
+}
+
+fn fallback_single_request_receipt(
+    policy: &GenerationSchedulerPolicy,
+    response: &GenerationResponse,
+    fallback_reason: psionic_runtime::GenerationSchedulerFallbackReason,
+) -> GenerationSchedulerRequestReceipt {
+    GenerationSchedulerRequestReceipt {
+        policy: policy.clone(),
+        batch_posture: psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+        queue_depth_at_admission: policy.max_queued_requests,
+        max_batch_size_observed: 1,
+        scheduling_class: GenerationSchedulingClass::FallbackSingleRequest,
+        prefill_tokens: response
+            .usage
+            .input_tokens
+            .saturating_sub(response.metrics.prefix_tokens_reused.unwrap_or(0)),
+        decode_tokens: response.usage.output_tokens,
+        fallback_reason: Some(fallback_reason),
+    }
+}
+
+fn run_continuous_batch_generation_requests<B, M>(
+    backend: &mut B,
+    models: &mut InMemoryGenerationModelRegistry<M>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    shared_prefixes: &mut SharedPrefixStore,
+    requests: Vec<GenerationRequest>,
+    policy: GenerationSchedulerPolicy,
+) -> ContinuousBatchGenerationResult
+where
+    M: CompiledWordGenerationModel<Backend = B>,
+{
+    let mut scheduler_metrics = GenerationSchedulerMetrics::for_policy(policy.clone());
+    let mut responses = std::iter::repeat_with(|| None)
+        .take(requests.len())
+        .collect::<Vec<_>>();
+    let total_capacity = policy.total_request_capacity();
+    let mut waiting = VecDeque::new();
+
+    for (index, request) in requests.into_iter().enumerate() {
+        waiting.push_back((index, request));
+    }
+
+    let mut overflow = waiting.split_off(total_capacity.min(waiting.len()));
+    while let Some((index, request)) = overflow.pop_front() {
+        scheduler_metrics.record_fallback(
+            psionic_runtime::GenerationSchedulerFallbackReason::QueueCapacityExceeded,
+        );
+        let result = run_generation_request(backend, models, sessions, shared_prefixes, &request)
+            .map(|response| {
+                let receipt = fallback_single_request_receipt(
+                    &policy,
+                    &response,
+                    psionic_runtime::GenerationSchedulerFallbackReason::QueueCapacityExceeded,
+                );
+                response_with_scheduler_receipt(response, receipt)
+            });
+        responses[index] = Some(result);
+    }
+
+    let mut active = VecDeque::<ActiveScheduledGenerationRequest<M>>::new();
+    while !waiting.is_empty() || !active.is_empty() {
+        scheduler_metrics.max_queue_depth = scheduler_metrics.max_queue_depth.max(waiting.len());
+
+        while active.len() < policy.max_active_requests && !waiting.is_empty() {
+            let active_sessions = active
+                .iter()
+                .filter_map(|entry| entry.state.request.session_id.as_ref())
+                .map(SessionId::as_str)
+                .collect::<Vec<_>>();
+            let next_index = waiting
+                .iter()
+                .position(|(_, request)| {
+                    request
+                        .session_id
+                        .as_ref()
+                        .map(|session_id| !active_sessions.contains(&session_id.as_str()))
+                        .unwrap_or(true)
+                })
+                .unwrap_or(0);
+            let Some((index, request)) = waiting.remove(next_index) else {
+                break;
+            };
+            match ScheduledGenerationState::prepare(models, sessions, shared_prefixes, &request) {
+                Ok(state) => {
+                    scheduler_metrics.total_admitted_requests =
+                        scheduler_metrics.total_admitted_requests.saturating_add(1);
+                    active.push_back(ActiveScheduledGenerationRequest::new(
+                        index,
+                        waiting.len(),
+                        state,
+                    ));
+                }
+                Err(error) => {
+                    responses[index] = Some(Err(error));
+                }
+            }
+        }
+
+        if active.is_empty() {
+            continue;
+        }
+
+        scheduler_metrics.total_cycles = scheduler_metrics.total_cycles.saturating_add(1);
+        scheduler_metrics.max_batch_size = scheduler_metrics.max_batch_size.max(active.len());
+        let active_batch_size = active.len();
+
+        let mut decode_budget = policy.max_decode_tokens_per_tick;
+        let mut cycle_decode_tokens = 0usize;
+        while decode_budget > 0
+            && active
+                .iter()
+                .any(|entry| entry.state.prefill_complete() && !entry.state.is_finished())
+        {
+            let active_len = active.len();
+            let mut made_progress = false;
+            for _ in 0..active_len {
+                let Some(mut entry) = active.pop_front() else {
+                    break;
+                };
+                entry.max_batch_size_observed =
+                    entry.max_batch_size_observed.max(active_batch_size);
+                if entry.state.prefill_complete() && !entry.state.is_finished() && decode_budget > 0
+                {
+                    entry.saw_decode = true;
+                    match entry.state.step_decode(backend, 1) {
+                        Ok(decoded) => {
+                            if decoded > 0 {
+                                entry.decode_tokens = entry.decode_tokens.saturating_add(decoded);
+                                scheduler_metrics.total_decode_tokens = scheduler_metrics
+                                    .total_decode_tokens
+                                    .saturating_add(decoded);
+                                cycle_decode_tokens = cycle_decode_tokens.saturating_add(decoded);
+                                decode_budget = decode_budget.saturating_sub(decoded);
+                                made_progress = true;
+                            }
+                        }
+                        Err(error) => {
+                            entry.state.finish_request(models);
+                            responses[entry.index] = Some(Err(error));
+                            continue;
+                        }
+                    }
+                }
+                if entry.state.is_finished() {
+                    let receipt = entry.scheduler_receipt(&policy);
+                    match entry.state.finalize(models, sessions, Some(receipt)) {
+                        Ok(response) => {
+                            scheduler_metrics.total_completed_requests =
+                                scheduler_metrics.total_completed_requests.saturating_add(1);
+                            responses[entry.index] = Some(Ok(response));
+                        }
+                        Err(error) => {
+                            responses[entry.index] = Some(Err(error));
+                        }
+                    }
+                    continue;
+                }
+                active.push_back(entry);
+            }
+            if !made_progress {
+                break;
+            }
+        }
+
+        let mut prefill_budget = policy.max_prefill_tokens_per_tick;
+        let mut cycle_prefill_tokens = 0usize;
+        while prefill_budget > 0
+            && active
+                .iter()
+                .any(|entry| !entry.state.prefill_complete() && !entry.state.is_finished())
+        {
+            let active_len = active.len();
+            let mut made_progress = false;
+            for _ in 0..active_len {
+                let Some(mut entry) = active.pop_front() else {
+                    break;
+                };
+                entry.max_batch_size_observed =
+                    entry.max_batch_size_observed.max(active_batch_size);
+                if !entry.state.prefill_complete()
+                    && !entry.state.is_finished()
+                    && prefill_budget > 0
+                {
+                    match entry.state.step_prefill(backend, shared_prefixes, 1) {
+                        Ok(prefilled) => {
+                            if prefilled > 0 {
+                                entry.saw_prefill = true;
+                                entry.prefill_tokens =
+                                    entry.prefill_tokens.saturating_add(prefilled);
+                                scheduler_metrics.total_prefill_tokens = scheduler_metrics
+                                    .total_prefill_tokens
+                                    .saturating_add(prefilled);
+                                cycle_prefill_tokens =
+                                    cycle_prefill_tokens.saturating_add(prefilled);
+                                prefill_budget = prefill_budget.saturating_sub(prefilled);
+                                made_progress = true;
+                            }
+                        }
+                        Err(error) => {
+                            entry.state.finish_request(models);
+                            responses[entry.index] = Some(Err(error));
+                            continue;
+                        }
+                    }
+                }
+                active.push_back(entry);
+            }
+            if !made_progress {
+                break;
+            }
+        }
+
+        let observed_class = if cycle_decode_tokens > 0 && cycle_prefill_tokens > 0 {
+            Some(GenerationSchedulingClass::MixedPrefillDecode)
+        } else if cycle_decode_tokens > 0 {
+            Some(GenerationSchedulingClass::Decode)
+        } else if cycle_prefill_tokens > 0 {
+            Some(GenerationSchedulingClass::Prefill)
+        } else {
+            None
+        };
+        scheduler_metrics.last_scheduling_class =
+            match (scheduler_metrics.last_scheduling_class, observed_class) {
+                (Some(GenerationSchedulingClass::MixedPrefillDecode), _) => {
+                    Some(GenerationSchedulingClass::MixedPrefillDecode)
+                }
+                (
+                    Some(GenerationSchedulingClass::Prefill),
+                    Some(GenerationSchedulingClass::Decode),
+                )
+                | (
+                    Some(GenerationSchedulingClass::Decode),
+                    Some(GenerationSchedulingClass::Prefill),
+                )
+                | (_, Some(GenerationSchedulingClass::MixedPrefillDecode)) => {
+                    Some(GenerationSchedulingClass::MixedPrefillDecode)
+                }
+                (_, Some(observed_class)) => Some(observed_class),
+                (current, None) => current,
+            };
+    }
+
+    ContinuousBatchGenerationResult {
+        responses: responses
+            .into_iter()
+            .map(|response| {
+                response.unwrap_or_else(|| {
+                    Err(ReferenceTextGenerationError::Runtime(
+                        RuntimeError::Backend(String::from(
+                            "continuous batch scheduler dropped a response",
+                        )),
+                    ))
+                })
+            })
+            .collect(),
+        scheduler_metrics,
     }
 }
 
@@ -5078,6 +5970,7 @@ where
                 &self.previous_kv_state,
                 self.prefix_state,
             ),
+            scheduler: None,
             structured_output: self.sampler.structured_output_report(),
         };
         GenerationResponse::new(
@@ -5681,6 +6574,7 @@ where
                 &previous_kv_state,
                 prefix_state,
             ),
+            scheduler: None,
             structured_output: structured_output_report,
         };
         Ok(GenerationResponse::new(
@@ -8184,6 +9078,76 @@ mod tests {
                 .iter()
                 .any(|event| event.kind == RuntimeTransitionKind::ModelBecameWarm)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_continuous_batch_scheduler_mixes_prefill_and_decode()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let descriptor = service.model_descriptor().clone();
+        let long_prompt_len = descriptor
+            .config
+            .max_context
+            .saturating_sub(2)
+            .min(5)
+            .max(1);
+        let long_prompt_tokens = (0..long_prompt_len)
+            .map(|index| match index % 4 {
+                0 => FixtureWordTokenizer::HELLO_ID,
+                1 => FixtureWordTokenizer::OPEN_ID,
+                2 => FixtureWordTokenizer::AGENTS_ID,
+                _ => FixtureWordTokenizer::WORLD_ID,
+            })
+            .collect::<Vec<_>>();
+        let long_prompt = GenerationRequest::new_tokens(
+            "batch-long",
+            descriptor.clone(),
+            None,
+            TokenSequence::new(long_prompt_tokens),
+            GenerationOptions::greedy(1),
+        );
+        let short_prompt = GenerationRequest::new_text(
+            "batch-short",
+            descriptor,
+            None,
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+
+        let result = service.generate_continuous_batch(vec![long_prompt, short_prompt]);
+        assert_eq!(result.scheduler_metrics.max_batch_size, 2);
+        assert_eq!(
+            result.scheduler_metrics.last_scheduling_class,
+            Some(psionic_runtime::GenerationSchedulingClass::MixedPrefillDecode)
+        );
+        assert!(result.scheduler_metrics.total_prefill_tokens >= 6);
+        assert!(result.scheduler_metrics.total_decode_tokens >= 3);
+
+        let responses = result
+            .responses
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(responses.len(), 2);
+        assert_eq!(responses[0].usage.output_tokens, 1);
+        assert_eq!(responses[1].output.text, "open agents");
+        for response in responses {
+            let receipt = response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.scheduler.as_ref())
+                .expect("scheduler receipt");
+            assert_eq!(
+                receipt.batch_posture,
+                psionic_runtime::BatchExecutionPosture::ContinuousBatch
+            );
+            assert!(matches!(
+                receipt.scheduling_class,
+                psionic_runtime::GenerationSchedulingClass::MixedPrefillDecode
+                    | psionic_runtime::GenerationSchedulingClass::Decode
+            ));
+            assert!(receipt.max_batch_size_observed >= 1);
+        }
         Ok(())
     }
 

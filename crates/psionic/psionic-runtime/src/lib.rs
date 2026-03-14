@@ -5056,6 +5056,17 @@ impl QueuePolicy {
             per_model_serialization: true,
         }
     }
+
+    /// Runtime-owned FIFO queueing for a shared per-model scheduler.
+    #[must_use]
+    pub const fn scheduler_fifo(max_active_requests: usize, max_queued_requests: usize) -> Self {
+        Self {
+            discipline: QueueDiscipline::Fifo,
+            max_active_requests,
+            max_queued_requests,
+            per_model_serialization: true,
+        }
+    }
 }
 
 /// High-level throughput category for one served path.
@@ -5589,12 +5600,187 @@ impl ExecutionCapabilityProfile {
             throughput_class: ThroughputClass::Balanced,
         }
     }
+
+    /// Runtime-owned continuous batching with explicit FIFO queueing.
+    #[must_use]
+    pub fn continuous_batch_throughput_optimized(policy: &GenerationSchedulerPolicy) -> Self {
+        Self {
+            batch_posture: BatchExecutionPosture::ContinuousBatch,
+            queue_policy: QueuePolicy::scheduler_fifo(
+                policy.max_active_requests,
+                policy.max_queued_requests,
+            ),
+            throughput_class: ThroughputClass::ThroughputOptimized,
+        }
+    }
 }
 
 impl Default for ExecutionCapabilityProfile {
     fn default() -> Self {
         Self::single_request_latency_optimized()
     }
+}
+
+/// Shared scheduler policy for continuous batched text generation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationSchedulerPolicy {
+    /// Maximum concurrently active requests the scheduler may keep live.
+    pub max_active_requests: usize,
+    /// Maximum queued requests admitted behind the active set.
+    pub max_queued_requests: usize,
+    /// Total prompt-prefill tokens the scheduler may execute in one scheduling tick.
+    pub max_prefill_tokens_per_tick: usize,
+    /// Total decode tokens the scheduler may execute in one scheduling tick.
+    pub max_decode_tokens_per_tick: usize,
+}
+
+impl GenerationSchedulerPolicy {
+    /// Default policy for the first continuous-batching scheduler.
+    #[must_use]
+    pub const fn continuous_batch_default() -> Self {
+        Self {
+            max_active_requests: 4,
+            max_queued_requests: 32,
+            max_prefill_tokens_per_tick: 4,
+            max_decode_tokens_per_tick: 8,
+        }
+    }
+
+    /// Total number of requests that may be admitted into one scheduler cycle.
+    #[must_use]
+    pub const fn total_request_capacity(&self) -> usize {
+        self.max_active_requests + self.max_queued_requests
+    }
+}
+
+impl Default for GenerationSchedulerPolicy {
+    fn default() -> Self {
+        Self::continuous_batch_default()
+    }
+}
+
+/// High-level scheduling class observed for one realized generation path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationSchedulingClass {
+    /// The request spent its realized runtime in prompt-prefill work only.
+    Prefill,
+    /// The request spent its realized runtime in decode work only.
+    Decode,
+    /// The request was interleaved across both prefill and decode classes.
+    MixedPrefillDecode,
+    /// The request fell back to one-request-at-a-time execution.
+    FallbackSingleRequest,
+}
+
+/// Stable reason the scheduler fell back instead of running one request in the shared batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationSchedulerFallbackReason {
+    /// The runtime path does not currently expose the shared scheduler.
+    UnsupportedRuntime,
+    /// The shared queue hit its explicit admitted capacity.
+    QueueCapacityExceeded,
+    /// The request had to serialize around conflicting request-owned session state.
+    SessionSerialization,
+}
+
+/// Aggregate count for one observed scheduler fallback reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationSchedulerFallbackCount {
+    /// Stable fallback reason.
+    pub reason: GenerationSchedulerFallbackReason,
+    /// Number of requests that observed that reason.
+    pub count: usize,
+}
+
+/// Aggregate metrics for one realized continuous-batching run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationSchedulerMetrics {
+    /// Policy that governed the run.
+    pub policy: GenerationSchedulerPolicy,
+    /// Number of scheduler ticks executed.
+    pub total_cycles: usize,
+    /// Number of requests admitted into the scheduler.
+    pub total_admitted_requests: usize,
+    /// Number of requests completed by the scheduler.
+    pub total_completed_requests: usize,
+    /// Maximum queued depth observed behind the active set.
+    pub max_queue_depth: usize,
+    /// Maximum concurrently active requests observed in one tick.
+    pub max_batch_size: usize,
+    /// Total prompt-prefill tokens executed across all requests.
+    pub total_prefill_tokens: usize,
+    /// Total decode tokens executed across all requests.
+    pub total_decode_tokens: usize,
+    /// Last realized scheduling class, when one tick made progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_scheduling_class: Option<GenerationSchedulingClass>,
+    /// Stable fallback counts observed during the run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback_counts: Vec<GenerationSchedulerFallbackCount>,
+}
+
+impl GenerationSchedulerMetrics {
+    /// Creates an empty metric set for the supplied policy.
+    #[must_use]
+    pub fn for_policy(policy: GenerationSchedulerPolicy) -> Self {
+        Self {
+            policy,
+            total_cycles: 0,
+            total_admitted_requests: 0,
+            total_completed_requests: 0,
+            max_queue_depth: 0,
+            max_batch_size: 0,
+            total_prefill_tokens: 0,
+            total_decode_tokens: 0,
+            last_scheduling_class: None,
+            fallback_counts: Vec::new(),
+        }
+    }
+
+    /// Records one fallback reason.
+    pub fn record_fallback(&mut self, reason: GenerationSchedulerFallbackReason) {
+        if let Some(entry) = self
+            .fallback_counts
+            .iter_mut()
+            .find(|entry| entry.reason == reason)
+        {
+            entry.count = entry.count.saturating_add(1);
+            return;
+        }
+        self.fallback_counts
+            .push(GenerationSchedulerFallbackCount { reason, count: 1 });
+        self.fallback_counts.sort_by_key(|entry| entry.reason);
+    }
+}
+
+impl Default for GenerationSchedulerMetrics {
+    fn default() -> Self {
+        Self::for_policy(GenerationSchedulerPolicy::default())
+    }
+}
+
+/// Per-request scheduling receipt attached to one realized generation response.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationSchedulerRequestReceipt {
+    /// Shared scheduler policy that governed the request.
+    pub policy: GenerationSchedulerPolicy,
+    /// Realized batch posture for the request path.
+    pub batch_posture: BatchExecutionPosture,
+    /// Queue depth observed when the request was admitted.
+    pub queue_depth_at_admission: usize,
+    /// Maximum concurrently active requests observed while this request was live.
+    pub max_batch_size_observed: usize,
+    /// High-level realized scheduling class for the request.
+    pub scheduling_class: GenerationSchedulingClass,
+    /// Prompt-prefill tokens executed for the request.
+    pub prefill_tokens: usize,
+    /// Decode tokens executed for the request.
+    pub decode_tokens: usize,
+    /// Explicit fallback reason when the request did not stay on the shared scheduler.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<GenerationSchedulerFallbackReason>,
 }
 
 /// Explicit isolation boundary for bounded sandbox execution.
@@ -7980,20 +8166,21 @@ mod tests {
         DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
         ExecutionDeliveryProof, ExecutionMetrics, ExecutionPartition, ExecutionPlanCachePolicy,
         ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchRequest,
-        QuantizationDispatchWorkload, QuantizationExecution, QuantizationKernelStrategy,
-        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
-        ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeError,
-        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-        RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
+        ExecutionTopologyPlan, GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
+        GenerationSchedulerMetrics, GenerationSchedulerPolicy, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationDispatchRequest, QuantizationDispatchWorkload, QuantizationExecution,
+        QuantizationKernelStrategy, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy,
+        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
+        RuntimeTransitionLog, RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
         SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
@@ -11027,6 +11214,44 @@ mod tests {
                 },
                 throughput_class: ThroughputClass::Balanced,
             }
+        );
+        let scheduler_policy = GenerationSchedulerPolicy::continuous_batch_default();
+        assert_eq!(
+            ExecutionCapabilityProfile::continuous_batch_throughput_optimized(&scheduler_policy),
+            ExecutionCapabilityProfile {
+                batch_posture: BatchExecutionPosture::ContinuousBatch,
+                queue_policy: QueuePolicy {
+                    discipline: QueueDiscipline::Fifo,
+                    max_active_requests: scheduler_policy.max_active_requests,
+                    max_queued_requests: scheduler_policy.max_queued_requests,
+                    per_model_serialization: true,
+                },
+                throughput_class: ThroughputClass::ThroughputOptimized,
+            }
+        );
+    }
+
+    #[test]
+    fn generation_scheduler_metrics_track_fallback_counts() {
+        let mut metrics = GenerationSchedulerMetrics::for_policy(
+            GenerationSchedulerPolicy::continuous_batch_default(),
+        );
+        metrics.record_fallback(GenerationSchedulerFallbackReason::QueueCapacityExceeded);
+        metrics.record_fallback(GenerationSchedulerFallbackReason::SessionSerialization);
+        metrics.record_fallback(GenerationSchedulerFallbackReason::QueueCapacityExceeded);
+
+        assert_eq!(
+            metrics.fallback_counts,
+            vec![
+                GenerationSchedulerFallbackCount {
+                    reason: GenerationSchedulerFallbackReason::QueueCapacityExceeded,
+                    count: 2,
+                },
+                GenerationSchedulerFallbackCount {
+                    reason: GenerationSchedulerFallbackReason::SessionSerialization,
+                    count: 1,
+                },
+            ]
         );
     }
 

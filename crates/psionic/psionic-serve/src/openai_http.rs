@@ -32,6 +32,7 @@ use psionic_models::{
     parse_gpt_oss_harmony_text, render_gpt_oss_harmony_prompt,
 };
 use psionic_runtime::{
+    ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
     StructuredGrammarSyntax, StructuredOutputExecutionReport, StructuredOutputParser,
     StructuredOutputRequest, local_structured_output_parsers,
 };
@@ -49,6 +50,7 @@ use crate::{
     GenerationOptions, GenerationRequest, GgufDecoderAdapterLoader, GptOssPerformanceMetrics,
     MetalGgufGptOssTextGenerationService, MetalGptOssTextGenerationError, PromptRenderError,
     ReferenceTextGenerationError, TerminationReason, TextGenerationExecutor, TokenSequence,
+    continuous_batch_text_generation_execution_profile, default_generation_scheduler_policy,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -514,6 +516,8 @@ struct OpenAiCompatLoadedModel {
     family: GgufDecoderFamily,
     prompt_renderer: Option<GgufPromptTemplateRenderer>,
     prompt_options: PromptRenderOptions,
+    execution_profile: ExecutionCapabilityProfile,
+    scheduler_policy: GenerationSchedulerPolicy,
 }
 
 #[derive(Clone)]
@@ -571,6 +575,8 @@ impl OpenAiCompatServer {
                 prompt_renderer: (!matches!(family, GgufDecoderFamily::GptOss))
                     .then(|| adapter.prompt_renderer()),
                 prompt_options,
+                execution_profile: continuous_batch_text_generation_execution_profile(),
+                scheduler_policy: default_generation_scheduler_policy(),
             };
             if models_by_key
                 .insert(loaded_model.model_key.clone(), loaded_model.clone())
@@ -667,23 +673,55 @@ impl OpenAiCompatWorker {
                     }
                 }
                 let _ = ready_tx.send(Ok::<(), String>(()));
-                while let Some(command) = receiver.blocking_recv() {
-                    match command {
-                        OpenAiCompatWorkerCommand::Generate {
-                            model_key,
-                            request,
-                            reply,
-                        } => {
-                            let result = services
-                                .get_mut(model_key.as_str())
-                                .ok_or_else(|| {
-                                    ReferenceTextGenerationError::UnsupportedModel(
-                                        model_key.clone(),
-                                    )
-                                })
-                                .and_then(|service| service.generate(&request));
-                            let _ = reply.send(result);
+                let mut pending_commands = VecDeque::new();
+                loop {
+                    let Some(command) = pending_commands
+                        .pop_front()
+                        .or_else(|| receiver.blocking_recv())
+                    else {
+                        break;
+                    };
+                    pending_commands.push_back(command);
+                    while let Ok(command) = receiver.try_recv() {
+                        pending_commands.push_back(command);
+                    }
+
+                    let Some(model_key) = pending_commands.front().map(|command| match command {
+                        OpenAiCompatWorkerCommand::Generate { model_key, .. } => model_key.clone(),
+                    }) else {
+                        continue;
+                    };
+                    let mut selected = Vec::new();
+                    let mut remaining = VecDeque::new();
+                    while let Some(command) = pending_commands.pop_front() {
+                        match command {
+                            OpenAiCompatWorkerCommand::Generate {
+                                model_key: command_model_key,
+                                request,
+                                reply,
+                            } if command_model_key == model_key => {
+                                selected.push((request, reply));
+                            }
+                            other => remaining.push_back(other),
                         }
+                    }
+                    pending_commands = remaining;
+
+                    let Some(service) = services.get_mut(model_key.as_str()) else {
+                        for (_, reply) in selected {
+                            let _ = reply.send(Err(
+                                ReferenceTextGenerationError::UnsupportedModel(model_key.clone()),
+                            ));
+                        }
+                        continue;
+                    };
+                    let requests = selected
+                        .iter()
+                        .map(|(request, _)| request.clone())
+                        .collect::<Vec<_>>();
+                    let results = service.generate_continuous_batch(requests);
+                    for ((_, reply), result) in selected.into_iter().zip(results.responses) {
+                        let _ = reply.send(result);
                     }
                 }
             })?;
@@ -1134,6 +1172,10 @@ struct ModelCard {
     psionic_performance_class: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_structured_outputs: Option<Vec<&'static str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_execution_profile: Option<ExecutionCapabilityProfile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_scheduler_policy: Option<GenerationSchedulerPolicy>,
 }
 
 async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<ModelsResponse> {
@@ -1148,6 +1190,8 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             psionic_fallback_policy: None,
             psionic_performance_class: None,
             psionic_structured_outputs: None,
+            psionic_execution_profile: None,
+            psionic_scheduler_policy: None,
         }],
     })
 }
@@ -1169,6 +1213,8 @@ struct GenericHealthResponse {
     unload_control: &'static str,
     memory_pressure_reporting: &'static str,
     structured_output_fallbacks: Vec<&'static str>,
+    execution_profile: ExecutionCapabilityProfile,
+    scheduler_policy: GenerationSchedulerPolicy,
 }
 
 async fn generic_health(
@@ -1190,6 +1236,8 @@ async fn generic_health(
         unload_control: CPU_SERVER_UNLOAD_CONTROL,
         memory_pressure_reporting: CPU_SERVER_MEMORY_PRESSURE_REPORTING,
         structured_output_fallbacks: structured_output_parser_labels(),
+        execution_profile: continuous_batch_text_generation_execution_profile(),
+        scheduler_policy: default_generation_scheduler_policy(),
     })
 }
 
@@ -1208,6 +1256,8 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 psionic_fallback_policy: Some(CPU_SERVER_FALLBACK_POLICY),
                 psionic_performance_class: Some(CPU_SERVER_PERFORMANCE_CLASS),
                 psionic_structured_outputs: Some(structured_output_parser_labels()),
+                psionic_execution_profile: Some(model.execution_profile.clone()),
+                psionic_scheduler_policy: Some(model.scheduler_policy.clone()),
             })
             .collect(),
     })
@@ -1483,6 +1533,7 @@ async fn handle_chat_completions(
                 .collect()
         }),
         psionic_structured_output: None,
+        psionic_scheduler: None,
     })
     .into_response();
     insert_execution_headers(response.headers_mut(), state.as_ref());
@@ -1553,6 +1604,10 @@ async fn handle_generic_chat_completions(
         .provenance
         .as_ref()
         .and_then(|value| value.structured_output.clone());
+    let scheduler_receipt = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.scheduler.clone());
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
             request_id.as_str(),
@@ -1577,6 +1632,7 @@ async fn handle_generic_chat_completions(
             response.headers_mut(),
             state.as_ref(),
             structured_output_report.as_ref(),
+            scheduler_receipt.as_ref(),
         );
         return Ok(response);
     }
@@ -1621,12 +1677,17 @@ async fn handle_generic_chat_completions(
             .provenance
             .as_ref()
             .and_then(|value| value.structured_output.clone()),
+        psionic_scheduler: state
+            .include_psionic_fields
+            .then(|| scheduler_receipt.clone())
+            .flatten(),
     };
     let mut response = Json(body).into_response();
     insert_generic_execution_headers(
         response.headers_mut(),
         state.as_ref(),
         structured_output_report.as_ref(),
+        scheduler_receipt.as_ref(),
     );
     Ok(response)
 }
@@ -1714,6 +1775,8 @@ struct ChatCompletionResponse {
     psionic_output_tokens: Option<Vec<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_structured_output: Option<StructuredOutputExecutionReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_scheduler: Option<GenerationSchedulerRequestReceipt>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1864,6 +1927,7 @@ fn insert_generic_execution_headers(
     headers: &mut HeaderMap,
     state: &OpenAiCompatState,
     structured_output: Option<&StructuredOutputExecutionReport>,
+    scheduler: Option<&GenerationSchedulerRequestReceipt>,
 ) {
     headers.insert(
         HeaderName::from_static("x-psionic-backend"),
@@ -1893,6 +1957,32 @@ fn insert_generic_execution_headers(
         HeaderName::from_static("x-psionic-performance-class"),
         HeaderValue::from_static(CPU_SERVER_PERFORMANCE_CLASS),
     );
+    if let Some(scheduler) = scheduler {
+        headers.insert(
+            HeaderName::from_static("x-psionic-batch-posture"),
+            HeaderValue::from_static(match scheduler.batch_posture {
+                psionic_runtime::BatchExecutionPosture::SingleRequestOnly => "single_request_only",
+                psionic_runtime::BatchExecutionPosture::CallerStaticBatch => "caller_static_batch",
+                psionic_runtime::BatchExecutionPosture::SchedulerStaticBatch => {
+                    "scheduler_static_batch"
+                }
+                psionic_runtime::BatchExecutionPosture::ContinuousBatch => "continuous_batch",
+            }),
+        );
+        headers.insert(
+            HeaderName::from_static("x-psionic-scheduling-class"),
+            HeaderValue::from_static(match scheduler.scheduling_class {
+                psionic_runtime::GenerationSchedulingClass::Prefill => "prefill",
+                psionic_runtime::GenerationSchedulingClass::Decode => "decode",
+                psionic_runtime::GenerationSchedulingClass::MixedPrefillDecode => {
+                    "mixed_prefill_decode"
+                }
+                psionic_runtime::GenerationSchedulingClass::FallbackSingleRequest => {
+                    "fallback_single_request"
+                }
+            }),
+        );
+    }
     insert_structured_output_headers(headers, structured_output);
 }
 
@@ -2304,7 +2394,7 @@ mod tests {
         PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, TokenId, TokenSequence,
         render_gpt_oss_harmony_prompt,
     };
-    use psionic_runtime::StructuredGrammarSyntax;
+    use psionic_runtime::{BatchExecutionPosture, QueueDiscipline, StructuredGrammarSyntax};
 
     #[test]
     fn chat_messages_map_to_prompt_messages() {
@@ -2656,6 +2746,15 @@ mod tests {
             health.0.structured_output_fallbacks,
             vec!["gbnf_subset", "json_schema_subset", "json_object"]
         );
+        assert_eq!(
+            health.0.execution_profile.batch_posture,
+            BatchExecutionPosture::ContinuousBatch
+        );
+        assert_eq!(
+            health.0.execution_profile.queue_policy.discipline,
+            QueueDiscipline::Fifo
+        );
+        assert!(health.0.scheduler_policy.max_active_requests > 0);
         let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
             std::sync::Arc::clone(&server.state),
         )));
@@ -2674,6 +2773,20 @@ mod tests {
                 .iter()
                 .all(|model| model.psionic_structured_outputs.as_deref()
                     == Some(["gbnf_subset", "json_schema_subset", "json_object"].as_slice()))
+        );
+        assert!(models.0.data.iter().all(|model| {
+            model
+                .psionic_execution_profile
+                .as_ref()
+                .map(|profile| profile.batch_posture)
+                == Some(BatchExecutionPosture::ContinuousBatch)
+        }));
+        assert!(
+            models
+                .0
+                .data
+                .iter()
+                .all(|model| model.psionic_scheduler_policy.is_some())
         );
 
         let request = ChatCompletionRequest {
@@ -2805,6 +2918,14 @@ mod tests {
             Some(String::from("fallback_grammar"))
         );
         assert_eq!(
+            header_value(response.headers(), "x-psionic-batch-posture"),
+            Some(String::from("continuous_batch"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-scheduling-class"),
+            Some(String::from("mixed_prefill_decode"))
+        );
+        assert_eq!(
             header_value(response.headers(), "x-psionic-structured-output-parser"),
             Some(String::from("gbnf_subset"))
         );
@@ -2869,6 +2990,14 @@ mod tests {
         assert_eq!(
             header_value(response.headers(), "x-psionic-structured-output-mode"),
             Some(String::from("fallback_json_schema"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-batch-posture"),
+            Some(String::from("continuous_batch"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-scheduling-class"),
+            Some(String::from("mixed_prefill_decode"))
         );
         assert_eq!(
             header_value(response.headers(), "x-psionic-structured-output-parser"),

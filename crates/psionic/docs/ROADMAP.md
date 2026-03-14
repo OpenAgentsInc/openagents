@@ -807,8 +807,13 @@ too through explicit CPU-lane residency, fallback, and control truth on the
 generic server surface. `PSI-236` /
 [#3541](https://github.com/OpenAgentsInc/openagents/issues/3541) is now landed
 too through Psionic-owned GBNF and JSON-schema constrained-generation fallback
-on the generic server, so the next dependency-ordered issue in that chain is
-`PSI-237` / [#3542](https://github.com/OpenAgentsInc/openagents/issues/3542).
+on the generic server. `PSI-237` /
+[#3542](https://github.com/OpenAgentsInc/openagents/issues/3542) is now landed
+too through a first Psionic-owned continuous-batching scheduler for CPU text
+generation, mixed prefill/decode queueing, FIFO queue truth on the generic
+server, and per-request scheduling receipts. The next dependency-ordered issue
+in that chain is `PSI-238` /
+[#3543](https://github.com/OpenAgentsInc/openagents/issues/3543).
 
 ## Current Reality
 
@@ -835,6 +840,9 @@ baseline on `main` is:
   fallback for `psionic_grammar`, `response_format.type = json_object`, and a
   useful `json_schema` subset, with explicit response headers and refusal on
   unsupported schema features instead of hiding structure behind prompt hacks
+- that generic server now also owns a first continuous-batching CPU scheduler
+  with mixed prefill/decode admission, FIFO queue truth, and machine-checkable
+  scheduling receipts instead of hard-coding `single_request_only` execution
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through

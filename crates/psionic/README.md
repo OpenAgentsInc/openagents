@@ -84,6 +84,10 @@ Implemented now:
   `psionic_grammar` plus OpenAI-style `response_format` for `json_object` and a
   useful `json_schema` subset, with explicit response headers and refusal on
   unsupported schema features instead of hidden prompt-only conventions.
+- a first Psionic-owned continuous-batching scheduler for CPU text generation,
+  with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
+  receipts, and generic-server execution headers instead of a hard-coded
+  `single_request_only` posture on the shared local server lane.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
