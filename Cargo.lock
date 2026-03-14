@@ -6527,6 +6527,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-data"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "psionic-datastream",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-datastream"
 version = "0.1.1"
 dependencies = [
@@ -6542,6 +6554,7 @@ name = "psionic-environments"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-data",
  "serde",
  "serde_json",
  "sha2",

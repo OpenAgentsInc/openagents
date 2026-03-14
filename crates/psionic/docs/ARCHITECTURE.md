@@ -135,6 +135,7 @@ Psionic is also not:
 | Local inference substrate | `implemented_early` | runtime, backend, model, and serve crates exist with CPU and partial Metal lanes |
 | Clustered serving substrate | `implemented_early` | `psionic-cluster` owns ordered state, placement, catch-up, and sharded serving topology truth |
 | Datastream and artifact staging | `implemented_early` | resumable manifests, chunk transport, and delivery receipts exist in `psionic-datastream` |
+| Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, streamed iteration, and long-context packing policies |
 | Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
 | Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
@@ -168,7 +169,7 @@ Applications / Operators / Authority
  psionic-serve / psionic-models
         |
         v
- psionic-train / psionic-collectives / psionic-adapters
+ psionic-train / psionic-data / psionic-collectives / psionic-adapters
         |
         v
  psionic-cluster / psionic-datastream / psionic-sandbox / psionic-net
@@ -199,26 +200,29 @@ Applications / Operators / Authority
      candidate state
 7. `psionic-datastream`
    - resumable manifests, chunk transfer, and delivery receipts for artifacts
-8. `psionic-cluster`
+8. `psionic-data`
+   - versioned dataset manifests, tokenizer digests, split declarations,
+     streamed iteration, and packing policy contracts
+9. `psionic-cluster`
    - ordered state, cluster admission, catch-up, scheduling, topology and
      placement truth
-9. `psionic-collectives`
+10. `psionic-collectives`
    - elastic device-mesh and quantized collective planning
-10. `psionic-train`
+11. `psionic-train`
    - training-session truth for checkpointing, live recovery, and
      elastic-membership posture
-11. `psionic-adapters`
+12. `psionic-adapters`
    - adapter identity, packaging, and hosted binding lineage
-12. backend crates
+13. backend crates
    - backend-specific runtime implementations only
-13. `psionic-models`
+14. `psionic-models`
    - reusable model definitions and metadata
-14. `psionic-serve`
+15. `psionic-serve`
    - request, response, and execution contracts for served products
-15. `psionic-router`
+16. `psionic-router`
    - reusable multi-model routing inventory, policy filters, and worker-path
      selection for served fleets
-16. `psionic-provider`
+17. `psionic-provider`
    - provider-facing capability, readiness, and receipt types at the OpenAgents
      boundary
 
@@ -284,6 +288,9 @@ training subsystems.
 | `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | `implemented` |
 | `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | `implemented` |
 | `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts, including explicit distributed KV spill/restore locators | `implemented` |
+| `DatasetManifest` | `psionic-data` | versioned dataset, tokenizer, split, and shard-lineage contract | `implemented_early` |
+| `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
+| `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
 | `RuntimeManifest` | planned proof/environment layer | digest-bound package for artifact, static-config, and runtime lineage used at execution time | `planned` |
 | `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |
 | `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | `implemented` |

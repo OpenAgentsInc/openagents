@@ -100,6 +100,11 @@ expectation, policy refs, digest, and metadata.
 - `#3566`: `psionic-environments` now reuses `environment_ref@version` as the
   canonical Psionic-side runtime key and owns the Rust-native environment ABI
   plus deterministic session contract
+- `#3567`: `psionic-data` now owns versioned dataset manifests, tokenizer
+  digests, split declarations, and streamed iteration or packing contracts, and
+  `psionic-environments` now binds versioned `dataset_ref@version` keys on the
+  Psionic runtime side even though kernel authority still only carries dataset
+  refs today
 - `#3517`: bind `environment_ref` and `environment_version` truth into compute
   products and delivery proofs against this registry
 - `#3518`: make eval runs terminate in environment-backed objects
