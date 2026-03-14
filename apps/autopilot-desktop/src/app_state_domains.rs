@@ -2,6 +2,7 @@ use super::*;
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
+const FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY: usize = 1_024;
 
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
@@ -226,6 +227,7 @@ pub struct FrameRenderReport {
     pub image_instances: u32,
     pub svg_instances: u32,
     pub svg_cache_size: usize,
+    pub pane_paint_samples: Vec<PanePaintTimingSample>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -245,6 +247,67 @@ pub struct FrameSample {
     pub svg_cache_size: usize,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PanePaintTimingSample {
+    pub pane_kind: String,
+    pub pane_title: String,
+    pub render_mode: String,
+    pub active: bool,
+    pub elapsed_ms: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RuntimePumpTimingSample {
+    pub cadence: String,
+    pub operation: String,
+    pub changed: bool,
+    pub elapsed_ms: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnapshotTimingSample {
+    pub subsystem: String,
+    pub phase: String,
+    pub synced: bool,
+    pub success: bool,
+    pub elapsed_ms: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PanePaintTimingSummary {
+    pub pane_kind: String,
+    pub pane_title: String,
+    pub render_mode: String,
+    pub sample_count: usize,
+    pub active_samples: usize,
+    pub total_ms: f32,
+    pub max_ms: f32,
+    pub last_ms: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RuntimePumpTimingSummary {
+    pub cadence: String,
+    pub operation: String,
+    pub sample_count: usize,
+    pub changed_samples: usize,
+    pub total_ms: f32,
+    pub max_ms: f32,
+    pub last_ms: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnapshotTimingSummary {
+    pub subsystem: String,
+    pub phase: String,
+    pub sample_count: usize,
+    pub sync_attempts: usize,
+    pub success_count: usize,
+    pub total_ms: f32,
+    pub max_ms: f32,
+    pub last_ms: f32,
+}
+
 pub struct FrameDebuggerPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -261,6 +324,9 @@ pub struct FrameDebuggerPaneState {
     pub redraw_reason_counters: FrameRedrawReasonCounters,
     last_frame_completed_at: Option<Instant>,
     samples: std::collections::VecDeque<FrameSample>,
+    pane_paint_samples: std::collections::VecDeque<PanePaintTimingSample>,
+    runtime_pump_samples: std::collections::VecDeque<RuntimePumpTimingSample>,
+    snapshot_timing_samples: std::collections::VecDeque<SnapshotTimingSample>,
 }
 
 impl Default for FrameDebuggerPaneState {
@@ -281,6 +347,15 @@ impl Default for FrameDebuggerPaneState {
             redraw_reason_counters: FrameRedrawReasonCounters::default(),
             last_frame_completed_at: None,
             samples: std::collections::VecDeque::with_capacity(FRAME_DEBUGGER_SAMPLE_CAPACITY),
+            pane_paint_samples: std::collections::VecDeque::with_capacity(
+                FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+            ),
+            runtime_pump_samples: std::collections::VecDeque::with_capacity(
+                FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+            ),
+            snapshot_timing_samples: std::collections::VecDeque::with_capacity(
+                FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+            ),
         }
     }
 }
@@ -288,6 +363,18 @@ impl Default for FrameDebuggerPaneState {
 impl FrameDebuggerPaneState {
     pub fn samples(&self) -> &std::collections::VecDeque<FrameSample> {
         &self.samples
+    }
+
+    pub fn pane_paint_samples(&self) -> &std::collections::VecDeque<PanePaintTimingSample> {
+        &self.pane_paint_samples
+    }
+
+    pub fn runtime_pump_samples(&self) -> &std::collections::VecDeque<RuntimePumpTimingSample> {
+        &self.runtime_pump_samples
+    }
+
+    pub fn snapshot_timing_samples(&self) -> &std::collections::VecDeque<SnapshotTimingSample> {
+        &self.snapshot_timing_samples
     }
 
     pub fn note_redraw_pressure(&mut self, snapshot: FrameRedrawPressureSnapshot) {
@@ -364,6 +451,14 @@ impl FrameDebuggerPaneState {
             .unwrap_or(report.total_cpu_ms.max(0.0));
         self.last_frame_completed_at = Some(now);
 
+        for sample in report.pane_paint_samples {
+            push_timing_sample(
+                &mut self.pane_paint_samples,
+                FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+                sample,
+            );
+        }
+
         let sample = FrameSample {
             frame_interval_ms,
             scene_build_ms: report.scene_build_ms,
@@ -416,15 +511,146 @@ impl FrameDebuggerPaneState {
         ));
     }
 
+    pub fn record_runtime_pump_sample(&mut self, sample: RuntimePumpTimingSample) {
+        push_timing_sample(
+            &mut self.runtime_pump_samples,
+            FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+            sample,
+        );
+    }
+
+    pub fn record_snapshot_timing_sample(&mut self, sample: SnapshotTimingSample) {
+        push_timing_sample(
+            &mut self.snapshot_timing_samples,
+            FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY,
+            sample,
+        );
+    }
+
+    pub fn top_pane_paint_summaries(&self, limit: usize) -> Vec<PanePaintTimingSummary> {
+        let mut grouped =
+            std::collections::BTreeMap::<(String, String, String), PanePaintTimingSummary>::new();
+        for sample in &self.pane_paint_samples {
+            let key = (
+                sample.pane_kind.clone(),
+                sample.pane_title.clone(),
+                sample.render_mode.clone(),
+            );
+            let entry = grouped
+                .entry(key)
+                .or_insert_with(|| PanePaintTimingSummary {
+                    pane_kind: sample.pane_kind.clone(),
+                    pane_title: sample.pane_title.clone(),
+                    render_mode: sample.render_mode.clone(),
+                    ..PanePaintTimingSummary::default()
+                });
+            entry.sample_count = entry.sample_count.saturating_add(1);
+            entry.active_samples = entry.active_samples.saturating_add(sample.active as usize);
+            entry.total_ms += sample.elapsed_ms;
+            entry.max_ms = entry.max_ms.max(sample.elapsed_ms);
+            entry.last_ms = sample.elapsed_ms;
+        }
+        sort_and_limit_by_total(grouped.into_values().collect(), limit, |entry| {
+            (
+                entry.total_ms,
+                entry.pane_title.as_str(),
+                entry.render_mode.as_str(),
+            )
+        })
+    }
+
+    pub fn top_runtime_pump_summaries(&self, limit: usize) -> Vec<RuntimePumpTimingSummary> {
+        let mut grouped =
+            std::collections::BTreeMap::<(String, String), RuntimePumpTimingSummary>::new();
+        for sample in &self.runtime_pump_samples {
+            let key = (sample.cadence.clone(), sample.operation.clone());
+            let entry = grouped
+                .entry(key)
+                .or_insert_with(|| RuntimePumpTimingSummary {
+                    cadence: sample.cadence.clone(),
+                    operation: sample.operation.clone(),
+                    ..RuntimePumpTimingSummary::default()
+                });
+            entry.sample_count = entry.sample_count.saturating_add(1);
+            entry.changed_samples = entry
+                .changed_samples
+                .saturating_add(sample.changed as usize);
+            entry.total_ms += sample.elapsed_ms;
+            entry.max_ms = entry.max_ms.max(sample.elapsed_ms);
+            entry.last_ms = sample.elapsed_ms;
+        }
+        sort_and_limit_by_total(grouped.into_values().collect(), limit, |entry| {
+            (
+                entry.total_ms,
+                entry.cadence.as_str(),
+                entry.operation.as_str(),
+            )
+        })
+    }
+
+    pub fn top_snapshot_timing_summaries(&self, limit: usize) -> Vec<SnapshotTimingSummary> {
+        let mut grouped =
+            std::collections::BTreeMap::<(String, String), SnapshotTimingSummary>::new();
+        for sample in &self.snapshot_timing_samples {
+            let key = (sample.subsystem.clone(), sample.phase.clone());
+            let entry = grouped.entry(key).or_insert_with(|| SnapshotTimingSummary {
+                subsystem: sample.subsystem.clone(),
+                phase: sample.phase.clone(),
+                ..SnapshotTimingSummary::default()
+            });
+            entry.sample_count = entry.sample_count.saturating_add(1);
+            entry.sync_attempts = entry.sync_attempts.saturating_add(sample.synced as usize);
+            entry.success_count = entry.success_count.saturating_add(sample.success as usize);
+            entry.total_ms += sample.elapsed_ms;
+            entry.max_ms = entry.max_ms.max(sample.elapsed_ms);
+            entry.last_ms = sample.elapsed_ms;
+        }
+        sort_and_limit_by_total(grouped.into_values().collect(), limit, |entry| {
+            (
+                entry.total_ms,
+                entry.subsystem.as_str(),
+                entry.phase.as_str(),
+            )
+        })
+    }
+
     pub fn record_error(&mut self, error: impl Into<String>) {
         self.load_state = PaneLoadState::Error;
         self.last_error = Some(error.into());
     }
 }
 
+fn push_timing_sample<T>(ring: &mut std::collections::VecDeque<T>, capacity: usize, sample: T) {
+    if ring.len() == capacity {
+        ring.pop_front();
+    }
+    ring.push_back(sample);
+}
+
+fn sort_and_limit_by_total<T, F>(mut entries: Vec<T>, limit: usize, key: F) -> Vec<T>
+where
+    F: Fn(&T) -> (f32, &str, &str),
+{
+    entries.sort_by(|left, right| {
+        let left_key = key(left);
+        let right_key = key(right);
+        right_key
+            .0
+            .partial_cmp(&left_key.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left_key.1.cmp(right_key.1))
+            .then_with(|| left_key.2.cmp(right_key.2))
+    });
+    entries.truncate(limit);
+    entries
+}
+
 #[cfg(test)]
 mod frame_debugger_tests {
-    use super::{FrameDebuggerPaneState, FrameRedrawPressureSnapshot, FrameRenderReport};
+    use super::{
+        FrameDebuggerPaneState, FrameRedrawPressureSnapshot, FrameRenderReport,
+        PanePaintTimingSample, RuntimePumpTimingSample, SnapshotTimingSample,
+    };
 
     #[test]
     fn frame_debugger_records_samples_and_rolling_fps() {
@@ -446,6 +672,70 @@ mod frame_debugger_tests {
         assert_eq!(state.samples().len(), 2);
         assert!(state.rolling_fps.is_some());
         assert!(state.last_report.is_some());
+    }
+
+    #[test]
+    fn frame_debugger_persists_recent_timing_rings_and_top_summaries() {
+        let mut state = FrameDebuggerPaneState::default();
+        state.record_frame(FrameRenderReport {
+            total_cpu_ms: 8.0,
+            pane_paint_samples: vec![
+                PanePaintTimingSample {
+                    pane_kind: "ProviderControl".to_string(),
+                    pane_title: "Provider Control".to_string(),
+                    render_mode: "full".to_string(),
+                    active: true,
+                    elapsed_ms: 2.5,
+                },
+                PanePaintTimingSample {
+                    pane_kind: "ProviderControl".to_string(),
+                    pane_title: "Provider Control".to_string(),
+                    render_mode: "summary".to_string(),
+                    active: false,
+                    elapsed_ms: 1.0,
+                },
+            ],
+            ..FrameRenderReport::default()
+        });
+        state.record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "every_loop".to_string(),
+            operation: "desktop_control::drain_runtime_updates".to_string(),
+            changed: true,
+            elapsed_ms: 0.8,
+        });
+        state.record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "every_loop".to_string(),
+            operation: "desktop_control::drain_runtime_updates".to_string(),
+            changed: false,
+            elapsed_ms: 0.4,
+        });
+        state.record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "signature".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: 0.6,
+        });
+
+        assert_eq!(state.pane_paint_samples().len(), 2);
+        assert_eq!(state.runtime_pump_samples().len(), 2);
+        assert_eq!(state.snapshot_timing_samples().len(), 1);
+
+        let top_pane = state.top_pane_paint_summaries(1);
+        assert_eq!(top_pane[0].pane_title, "Provider Control");
+        assert_eq!(top_pane[0].render_mode, "full");
+        assert_eq!(top_pane[0].sample_count, 1);
+
+        let top_runtime = state.top_runtime_pump_summaries(1);
+        assert_eq!(
+            top_runtime[0].operation,
+            "desktop_control::drain_runtime_updates"
+        );
+        assert_eq!(top_runtime[0].changed_samples, 1);
+
+        let top_snapshot = state.top_snapshot_timing_summaries(1);
+        assert_eq!(top_snapshot[0].subsystem, "desktop_control");
+        assert_eq!(top_snapshot[0].phase, "signature");
     }
 
     #[test]

@@ -809,6 +809,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
 
     let provider_blockers = state.provider_blockers();
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
+    let pane_paint_report;
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
@@ -1075,7 +1076,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             ));
         }
 
-        let hotbar_layer = PaneRenderer::paint(
+        pane_paint_report = PaneRenderer::paint(
             &mut state.panes,
             Bounds::new(0.0, 0.0, width, height),
             active_pane,
@@ -1157,6 +1158,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.spark_replay,
             &mut paint,
         );
+        let hotbar_layer = pane_paint_report.next_layer;
         paint.scene.set_layer(hotbar_layer);
 
         if fullscreen_pane_active {
@@ -1342,6 +1344,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
         image_instances: metrics.image_instances,
         svg_instances: metrics.svg_instances,
         svg_cache_size: state.renderer.svg_cache_size(),
+        pane_paint_samples: pane_paint_report.pane_paint_samples,
     })
 }
 

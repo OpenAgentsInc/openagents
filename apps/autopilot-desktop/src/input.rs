@@ -40,7 +40,7 @@ use crate::app_state::{
     AlertDomain, App, CadCameraDragMode, CadCameraDragState, CadHotkeyAction,
     ChatTranscriptSelectionDragState, EarnFailureClass, FrameRedrawPressureSnapshot,
     JobInboxNetworkRequest, JobInboxValidation, NetworkRequestSubmission, PaneKind, ProviderMode,
-    RiveCadenceSnapshot,
+    RiveCadenceSnapshot, RuntimePumpTimingSample,
 };
 use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::hotbar::{
@@ -819,7 +819,45 @@ fn background_poll_interval(
     }
 }
 
+fn record_runtime_changed_op(
+    state: &mut crate::app_state::RenderState,
+    cadence: &str,
+    operation: &str,
+    run: impl FnOnce(&mut crate::app_state::RenderState) -> bool,
+) -> bool {
+    let started_at = std::time::Instant::now();
+    let changed = run(state);
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: cadence.to_string(),
+            operation: operation.to_string(),
+            changed,
+            elapsed_ms: started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
+    changed
+}
+
+fn record_runtime_observer_op(
+    state: &mut crate::app_state::RenderState,
+    cadence: &str,
+    operation: &str,
+    run: impl FnOnce(&mut crate::app_state::RenderState),
+) {
+    let started_at = std::time::Instant::now();
+    run(state);
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: cadence.to_string(),
+            operation: operation.to_string(),
+            changed: false,
+            elapsed_ms: started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
+}
+
 fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
+    let loop_started_at = std::time::Instant::now();
     let now = std::time::Instant::now();
     let mut changed = pump_background_every_loop(state, now);
     if cadence_due(
@@ -844,14 +882,47 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
             changed = true;
         }
     }
-    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
-    if state.sync_nip90_payment_facts_background_tick(now) {
+    record_runtime_observer_op(
+        state,
+        "post_loop",
+        "spacetime_presence::snapshot",
+        |state| {
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+        },
+    );
+    if record_runtime_changed_op(
+        state,
+        "post_loop",
+        "nip90_payment_facts::background_tick",
+        |state| state.sync_nip90_payment_facts_background_tick(now),
+    ) {
         changed = true;
     }
-    refresh_network_aggregate_counters(state, now);
-    refresh_earnings_scoreboard(state, now);
-    refresh_sync_health(state);
-    mirror_ui_errors_to_console(state);
+    record_runtime_observer_op(state, "post_loop", "network_aggregate::refresh", |state| {
+        refresh_network_aggregate_counters(state, now);
+    });
+    record_runtime_observer_op(
+        state,
+        "post_loop",
+        "earnings_scoreboard::refresh",
+        |state| {
+            refresh_earnings_scoreboard(state, now);
+        },
+    );
+    record_runtime_observer_op(state, "post_loop", "sync_health::refresh", |state| {
+        refresh_sync_health(state);
+    });
+    record_runtime_observer_op(state, "post_loop", "ui_errors::mirror_console", |state| {
+        mirror_ui_errors_to_console(state);
+    });
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "loop".to_string(),
+            operation: "pump_background_state".to_string(),
+            changed,
+            elapsed_ms: loop_started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     changed
 }
 
@@ -860,123 +931,288 @@ fn pump_background_every_loop(
     now: std::time::Instant,
 ) -> bool {
     // Cheap drains and local state machines that must keep advancing every loop.
+    let started_at = std::time::Instant::now();
     state.background_cadence.every_loop_runs =
         state.background_cadence.every_loop_runs.saturating_add(1);
     let mut changed = false;
-    if reducers::drain_spark_worker_updates(state) {
-        changed = true;
-    }
-    if reducers::drain_stable_sats_blink_worker_updates(state) {
-        changed = true;
-    }
-    if reducers::drain_runtime_lane_updates(state) {
-        changed = true;
-    }
-    if crate::provider_admin::drain_runtime_updates(state) {
-        changed = true;
-    }
-    if crate::desktop_control::drain_runtime_updates(state) {
-        changed = true;
-    }
-    if crate::codex_remote::drain_runtime_updates(state) {
-        changed = true;
-    }
-    if crate::chat_terminal::pump_runtime(state) {
-        changed = true;
-    }
-    if crate::kernel_control::drain_kernel_projection_updates(state) {
-        changed = true;
-    }
-    if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
-        changed = true;
-    }
-    if run_goal_restart_recovery(state) {
-        changed = true;
-    }
-    if run_goal_interval_scheduler(state) {
-        changed = true;
-    }
-    if run_autonomous_goal_loop(state) {
-        changed = true;
-    }
-    if reducers::refresh_goal_profile_state(state) {
-        changed = true;
-    }
-    if state.nostr_secret_state.expire(now) {
-        changed = true;
-    }
-    if state.autopilot_chat.expire_copy_notice(now) {
-        changed = true;
-    }
-    if run_cast_control_process_tick(state) {
-        changed = true;
-    }
-    if run_auto_cast_control_loop(state, now) {
-        changed = true;
-    }
-    if run_mission_control_buy_mode_tick(state, now) {
-        changed = true;
-    }
-    if run_startup_spark_wallet_convergence_tick(state) {
-        changed = true;
-    }
-    if run_pending_buyer_payment_watchdog_tick(state, now) {
-        changed = true;
-    }
-    if run_auto_starter_demand_generator(state, now) {
-        changed = true;
-    }
-    if reducers::run_job_inbox_auto_admission_tick(state) {
-        changed = true;
-    }
-    if reducers::run_active_job_execution_tick(state) {
-        changed = true;
-    }
-    if run_hosted_starter_lease_heartbeat(state, now) {
-        changed = true;
-    }
-    if run_reciprocal_loop_engine_tick(state) {
-        changed = true;
-    }
-    if run_open_network_paid_transition_reconciliation(state, now) {
-        changed = true;
-    }
-    if state.spacetime_presence.tick(state.provider_runtime.mode) {
-        changed = true;
-    }
-    if crate::autopilot_compute_presence::pump_provider_chat_presence(
-        &mut state.provider_runtime,
-        &mut state.autopilot_chat,
-        state.nostr_identity.as_ref(),
-        now,
-        current_epoch_seconds(),
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "spark::drain_worker_updates",
+        |state| reducers::drain_spark_worker_updates(state),
     ) {
         changed = true;
     }
-    if state.log_stream.has_pending_mirrored_trace_logs() {
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "stable_sats_blink::drain_worker_updates",
+        |state| reducers::drain_stable_sats_blink_worker_updates(state),
+    ) {
         changed = true;
     }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "runtime_lanes::drain_updates",
+        |state| reducers::drain_runtime_lane_updates(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "provider_admin::drain_runtime_updates",
+        |state| crate::provider_admin::drain_runtime_updates(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "desktop_control::drain_runtime_updates",
+        |state| crate::desktop_control::drain_runtime_updates(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "codex_remote::drain_runtime_updates",
+        |state| crate::codex_remote::drain_runtime_updates(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "chat_terminal::pump_runtime",
+        |state| crate::chat_terminal::pump_runtime(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "kernel_control::drain_projection_updates",
+        |state| crate::kernel_control::drain_kernel_projection_updates(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "cad_demo::noop_tick", |state| {
+        reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "goals::restart_recovery", |state| {
+        run_goal_restart_recovery(state)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "goals::interval_scheduler", |state| {
+        run_goal_interval_scheduler(state)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "goals::autonomous_loop", |state| {
+        run_autonomous_goal_loop(state)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "goals::refresh_profile_state",
+        |state| reducers::refresh_goal_profile_state(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "nostr_secret::expire", |state| {
+        state.nostr_secret_state.expire(now)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "autopilot_chat::expire_copy_notice",
+        |state| state.autopilot_chat.expire_copy_notice(now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "cast_control::process_tick", |state| {
+        run_cast_control_process_tick(state)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "cast_control::auto_loop", |state| {
+        run_auto_cast_control_loop(state, now)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "buy_mode::tick", |state| {
+        run_mission_control_buy_mode_tick(state, now)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "spark_wallet::startup_convergence_tick",
+        |state| run_startup_spark_wallet_convergence_tick(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "buyer_payments::watchdog_tick",
+        |state| run_pending_buyer_payment_watchdog_tick(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "starter_jobs::auto_demand_generator",
+        |state| run_auto_starter_demand_generator(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "job_inbox::auto_admission_tick",
+        |state| reducers::run_job_inbox_auto_admission_tick(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "active_job::execution_tick", |state| {
+        reducers::run_active_job_execution_tick(state)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "starter_jobs::lease_heartbeat",
+        |state| run_hosted_starter_lease_heartbeat(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "reciprocal_loop::engine_tick",
+        |state| run_reciprocal_loop_engine_tick(state),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "provider_runtime::paid_transition_reconciliation",
+        |state| run_open_network_paid_transition_reconciliation(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "spacetime_presence::tick", |state| {
+        state.spacetime_presence.tick(state.provider_runtime.mode)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "compute_presence::pump_provider_chat_presence",
+        |state| {
+            crate::autopilot_compute_presence::pump_provider_chat_presence(
+                &mut state.provider_runtime,
+                &mut state.autopilot_chat,
+                state.nostr_identity.as_ref(),
+                now,
+                current_epoch_seconds(),
+            )
+        },
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "log_stream::pending_trace_logs",
+        |state| state.log_stream.has_pending_mirrored_trace_logs(),
+    ) {
+        changed = true;
+    }
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "every_loop".to_string(),
+            operation: "every_loop.total".to_string(),
+            changed,
+            elapsed_ms: started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     changed
 }
 
 fn pump_background_fast_interval(state: &mut crate::app_state::RenderState) -> bool {
     // Mirrored control surfaces and derived inventory can tolerate a short poll cadence.
+    let started_at = std::time::Instant::now();
     let mut changed = false;
-    if crate::desktop_control::poll_runtime(state) {
+    if record_runtime_changed_op(
+        state,
+        "fast_interval",
+        "desktop_control::poll_runtime",
+        |state| crate::desktop_control::poll_runtime(state),
+    ) {
         changed = true;
     }
-    if crate::codex_remote::poll_runtime(state) {
+    if record_runtime_changed_op(
+        state,
+        "fast_interval",
+        "codex_remote::poll_runtime",
+        |state| crate::codex_remote::poll_runtime(state),
+    ) {
         changed = true;
     }
-    if crate::kernel_control::refresh_provider_inventory_rows(state) {
+    if record_runtime_changed_op(
+        state,
+        "fast_interval",
+        "kernel_control::refresh_provider_inventory_rows",
+        |state| crate::kernel_control::refresh_provider_inventory_rows(state),
+    ) {
         changed = true;
     }
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "fast_interval".to_string(),
+            operation: "fast_interval.total".to_string(),
+            changed,
+            elapsed_ms: started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
     changed
 }
 
 fn pump_background_coarse_interval(state: &mut crate::app_state::RenderState) -> bool {
     // Provider admin sync is intentionally slower than the UI/control mirrors.
-    crate::provider_admin::poll_runtime(state)
+    let started_at = std::time::Instant::now();
+    let changed = record_runtime_changed_op(
+        state,
+        "coarse_interval",
+        "provider_admin::poll_runtime",
+        |state| crate::provider_admin::poll_runtime(state),
+    );
+    state
+        .frame_debugger
+        .record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "coarse_interval".to_string(),
+            operation: "coarse_interval.total".to_string(),
+            changed,
+            elapsed_ms: started_at.elapsed().as_secs_f32() * 1_000.0,
+        });
+    changed
 }
 
 fn cadence_due(

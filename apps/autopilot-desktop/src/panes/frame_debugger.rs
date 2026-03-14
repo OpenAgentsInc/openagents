@@ -19,13 +19,13 @@ pub fn paint(
     paint_source_badge(content_bounds, "runtime+render", paint);
     let title_x = content_bounds.origin.x + PANEL_PAD;
     paint.scene.draw_text(paint.text.layout_mono(
-        "FRAME DEBUGGER  //  LIVE REDRAW CADENCE + PRESSURE",
+        "FRAME DEBUGGER  //  LIVE REDRAW CADENCE + PERF HOTSPOTS",
         Point::new(title_x, content_bounds.origin.y + 16.0),
         12.0,
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Rolling redraw cadence, frame-phase breakdown, and current redraw drivers for the desktop loop.",
+        "Rolling redraw cadence, pane paint hotspots, runtime pump timings, and current redraw drivers for the desktop loop.",
         Point::new(title_x, content_bounds.origin.y + 34.0),
         10.0,
         theme::text::MUTED,
@@ -318,6 +318,58 @@ fn paint_runtime_snapshot(
             counters.presentation
         ),
     );
+
+    let pane_timings = frame_debugger.top_pane_paint_summaries(1);
+    let runtime_timings = frame_debugger.top_runtime_pump_summaries(1);
+    let snapshot_timings = frame_debugger.top_snapshot_timing_summaries(1);
+    let y = y + 26.0;
+    let y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Top pane paint",
+        pane_timings
+            .first()
+            .map(|entry| {
+                format!(
+                    "{} [{}] {:.2}ms total",
+                    entry.pane_title.as_str(),
+                    entry.render_mode.as_str(),
+                    entry.total_ms
+                )
+            })
+            .unwrap_or_else(|| "-".to_string())
+            .as_str(),
+    );
+    let y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Top runtime pump",
+        runtime_timings
+            .first()
+            .map(|entry| format!("{} {:.2}ms total", entry.operation.as_str(), entry.total_ms))
+            .unwrap_or_else(|| "-".to_string())
+            .as_str(),
+    );
+    let _ = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Top snapshot",
+        snapshot_timings
+            .first()
+            .map(|entry| {
+                format!(
+                    "{}:{} {:.2}ms",
+                    entry.subsystem.as_str(),
+                    entry.phase.as_str(),
+                    entry.total_ms
+                )
+            })
+            .unwrap_or_else(|| "-".to_string())
+            .as_str(),
+    );
 }
 
 fn paint_timeline(
@@ -406,7 +458,7 @@ fn paint_timeline(
 
 fn paint_footer(bounds: Bounds, frame_debugger: &FrameDebuggerPaneState, paint: &mut PaintContext) {
     paint.scene.draw_text(paint.text.layout_mono(
-        "LAST FRAME BREAKDOWN",
+        "LAST FRAME + HOTSPOTS",
         Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
         10.0,
         Hsla::from_hex(0x60A5FA),
@@ -423,8 +475,17 @@ fn paint_footer(bounds: Bounds, frame_debugger: &FrameDebuggerPaneState, paint: 
     };
 
     let left_x = bounds.origin.x + 12.0;
-    let right_x = bounds.origin.x + bounds.size.width * 0.5;
+    let metrics_x = bounds.origin.x + bounds.size.width * 0.26;
+    let pane_x = bounds.origin.x + bounds.size.width * 0.52;
+    let runtime_x = bounds.origin.x + bounds.size.width * 0.76;
     let mut left_y = bounds.origin.y + 30.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        "FRAME PHASES",
+        Point::new(left_x, left_y - 4.0),
+        9.0,
+        theme::accent::PRIMARY,
+    ));
+    left_y += 12.0;
     left_y = paint_label_line(
         paint,
         left_x,
@@ -454,41 +515,118 @@ fn paint_footer(bounds: Bounds, frame_debugger: &FrameDebuggerPaneState, paint: 
         &format!("{:.2}ms", sample.render_cpu_ms),
     );
 
-    let mut right_y = bounds.origin.y + 30.0;
-    right_y = paint_label_line(
+    let mut metrics_y = bounds.origin.y + 42.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        "RENDER METRICS",
+        Point::new(metrics_x, bounds.origin.y + 26.0),
+        9.0,
+        Hsla::from_hex(0x93C5FD),
+    ));
+    metrics_y = paint_label_line(
         paint,
-        right_x,
-        right_y,
+        metrics_x,
+        metrics_y,
         "Submit + present",
         &format!("{:.2}ms", sample.submit_present_ms),
     );
-    right_y = paint_label_line(
+    metrics_y = paint_label_line(
         paint,
-        right_x,
-        right_y,
+        metrics_x,
+        metrics_y,
         "Draw calls",
         &sample.draw_calls.to_string(),
     );
-    right_y = paint_label_line(
+    metrics_y = paint_label_line(
         paint,
-        right_x,
-        right_y,
+        metrics_x,
+        metrics_y,
         "Layers / vectors",
         &format!("{} / {}", sample.layer_count, sample.vector_batches),
     );
-    right_y = paint_label_line(
+    metrics_y = paint_label_line(
         paint,
-        right_x,
-        right_y,
+        metrics_x,
+        metrics_y,
         "Images / SVGs",
         &format!("{} / {}", sample.image_instances, sample.svg_instances),
     );
     let _ = paint_label_line(
         paint,
-        right_x,
-        right_y,
+        metrics_x,
+        metrics_y,
         "SVG cache",
         &sample.svg_cache_size.to_string(),
+    );
+
+    paint_timing_summary_block(
+        Bounds::new(
+            pane_x,
+            bounds.origin.y + 26.0,
+            (runtime_x - pane_x - 12.0).max(120.0),
+            bounds.size.height - 38.0,
+        ),
+        "TOP PANE PAINT",
+        frame_debugger
+            .top_pane_paint_summaries(3)
+            .iter()
+            .map(|entry| {
+                format!(
+                    "{} [{}] tot {:.2}ms max {:.2}ms",
+                    entry.pane_title.as_str(),
+                    entry.render_mode.as_str(),
+                    entry.total_ms,
+                    entry.max_ms
+                )
+            })
+            .collect::<Vec<_>>(),
+        paint,
+    );
+
+    let runtime_lines = frame_debugger
+        .top_runtime_pump_summaries(3)
+        .iter()
+        .map(|entry| {
+            format!(
+                "{} {:.2}ms tot // max {:.2}ms",
+                entry.operation.as_str(),
+                entry.total_ms,
+                entry.max_ms
+            )
+        })
+        .collect::<Vec<_>>();
+    let snapshot_lines = frame_debugger
+        .top_snapshot_timing_summaries(3)
+        .iter()
+        .map(|entry| {
+            format!(
+                "{}:{} {:.2}ms tot",
+                entry.subsystem.as_str(),
+                entry.phase.as_str(),
+                entry.total_ms
+            )
+        })
+        .collect::<Vec<_>>();
+    paint_timing_summary_block(
+        Bounds::new(
+            runtime_x,
+            bounds.origin.y + 26.0,
+            bounds.max_x() - runtime_x - 12.0,
+            ((bounds.size.height - 44.0) * 0.5).max(56.0),
+        ),
+        "TOP RUNTIME PUMPS",
+        runtime_lines,
+        paint,
+    );
+    paint_timing_summary_block(
+        Bounds::new(
+            runtime_x,
+            bounds.origin.y + bounds.size.height * 0.54,
+            bounds.max_x() - runtime_x - 12.0,
+            bounds.max_y() - (bounds.origin.y + bounds.size.height * 0.54) - 12.0,
+        ),
+        "SNAPSHOT TIMINGS",
+        snapshot_lines,
+        paint,
     );
 }
 
@@ -633,6 +771,42 @@ fn paint_legend(bounds: Bounds, paint: &mut PaintContext) {
     }
 }
 
+fn paint_timing_summary_block(
+    bounds: Bounds,
+    title: &str,
+    lines: Vec<String>,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_text(paint.text.layout_mono(
+        title,
+        Point::new(bounds.origin.x, bounds.origin.y),
+        9.0,
+        Hsla::from_hex(0xBFDBFE),
+    ));
+    if lines.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No timing samples yet.",
+            Point::new(bounds.origin.x, bounds.origin.y + 16.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+    let mut y = bounds.origin.y + 16.0;
+    for line in lines {
+        if y > bounds.max_y() - 12.0 {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            &line,
+            Point::new(bounds.origin.x, y),
+            9.0,
+            theme::text::SECONDARY,
+        ));
+        y += 14.0;
+    }
+}
+
 fn format_ms(value: Option<f32>) -> String {
     value
         .map(|value| format!("{value:.2}ms"))
@@ -646,7 +820,10 @@ fn bool_label(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::paint;
-    use crate::app_state::{FrameDebuggerPaneState, FrameRenderReport};
+    use crate::app_state::{
+        FrameDebuggerPaneState, FrameRenderReport, PanePaintTimingSample, RuntimePumpTimingSample,
+        SnapshotTimingSample,
+    };
     use wgpui::{Bounds, PaintContext, Scene, TextSystem};
 
     #[test]
@@ -659,7 +836,27 @@ mod tests {
             total_cpu_ms: 8.0,
             draw_calls: 12,
             layer_count: 3,
+            pane_paint_samples: vec![PanePaintTimingSample {
+                pane_kind: "ProviderControl".to_string(),
+                pane_title: "Provider Control".to_string(),
+                render_mode: "full".to_string(),
+                active: true,
+                elapsed_ms: 1.8,
+            }],
             ..FrameRenderReport::default()
+        });
+        state.record_runtime_pump_sample(RuntimePumpTimingSample {
+            cadence: "every_loop".to_string(),
+            operation: "desktop_control::drain_runtime_updates".to_string(),
+            changed: true,
+            elapsed_ms: 0.8,
+        });
+        state.record_snapshot_timing_sample(SnapshotTimingSample {
+            subsystem: "desktop_control".to_string(),
+            phase: "sync_snapshot".to_string(),
+            synced: true,
+            success: true,
+            elapsed_ms: 0.6,
         });
         let mut scene = Scene::new();
         let mut text_system = TextSystem::new(1.0);

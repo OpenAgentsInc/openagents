@@ -36,6 +36,8 @@ It can:
   validator outcomes, and settlement history when kernel authority is
   configured
 - list, open, focus, close, and inspect panes in the running desktop shell
+- emit structured desktop perf snapshots from the app-owned `Frame Debugger`
+  surface through `autopilotctl perf`
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
 - refresh, warm, unload, and wait on GPT-OSS directly
@@ -106,11 +108,26 @@ autopilotctl sandbox status
 autopilotctl proof status
 autopilotctl challenge status
 autopilotctl logs --tail 50
+autopilotctl perf
+autopilotctl perf --json
 autopilotctl pane list
 autopilotctl pane status provider_control
+autopilotctl pane status frame_debugger --json
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+`autopilotctl perf` is a convenience wrapper over the `frame_debugger` pane
+snapshot. It emits the rolling redraw cadence plus grouped and recent timing
+data for:
+
+- per-pane paint CPU
+- per-runtime background pump work
+- desktop-control, provider-admin, and Codex-remote snapshot/signature/sync
+  phases
+
+That output is intended for harness automation, so prefer `--json` when you are
+collecting or diffing perf runs.
 
 `autopilotctl status` now prints the same app-owned inventory projection summary
 the Provider Control pane uses, including the projection source, kernel snapshot
