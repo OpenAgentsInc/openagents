@@ -24,7 +24,8 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-core`: foundational tensor, shape, dtype, and device types.
 - `psionic-ir`: canonical graph and execution-plan representation.
 - `psionic-compiler`: lowering and scheduling boundaries over IR.
-- `psionic-runtime`: runtime traits for devices, allocation, and execution.
+- `psionic-runtime`: runtime traits for devices, allocation, execution, and
+  canonical execution-proof bundles for local, clustered, and sandbox lanes.
 - `psionic-sandbox`: bounded sandbox runtime detection, profile realization, and execution receipts.
 - `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
 - `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
@@ -69,8 +70,10 @@ runtime quantization-dispatch and low-level worker batching/parking hooks now
 consumed by the datastream and serve layers, plus Psionic-owned sandbox runtime
 detection and bounded execution extracted from provider-substrate behind
 compatibility re-exports with explicit container/python/node/posix runner
-coverage and a reusable background-job/file-transfer lifecycle. AMD execution
-support is still future work.
+coverage and a reusable background-job/file-transfer lifecycle, plus canonical
+execution-proof bundles and proof-bundle digests now emitted through provider
+receipts and clustered evidence exports. AMD execution support is still future
+work.
 
 ## Docs
 

@@ -2,6 +2,7 @@
 
 mod gpt_oss;
 mod parity;
+mod proof;
 mod validation;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -9,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 pub use gpt_oss::*;
 pub use parity::*;
+pub use proof::*;
 use psionic_core::{
     BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
     TensorId, TensorSpec,
@@ -3049,6 +3051,9 @@ pub struct ClusterEvidenceBundlePayload {
     /// Settlement-linkage facts derived from the request path, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settlement_linkage: Option<SettlementLinkageInput>,
+    /// Stable digest of the canonical execution-proof bundle for this path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_bundle_digest: Option<String>,
     /// Failure detail when the bundled receipt did not succeed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
@@ -3086,6 +3091,7 @@ impl ClusterEvidenceBundlePayload {
             cluster_execution,
             delivery_proof: None,
             settlement_linkage: None,
+            proof_bundle_digest: None,
             failure_reason: None,
             diagnostic: None,
         }
@@ -3102,6 +3108,13 @@ impl ClusterEvidenceBundlePayload {
     #[must_use]
     pub fn with_settlement_linkage(mut self, settlement_linkage: SettlementLinkageInput) -> Self {
         self.settlement_linkage = Some(settlement_linkage);
+        self
+    }
+
+    /// Attaches a canonical proof-bundle digest to the bundle payload.
+    #[must_use]
+    pub fn with_proof_bundle_digest(mut self, proof_bundle_digest: impl Into<String>) -> Self {
+        self.proof_bundle_digest = Some(proof_bundle_digest.into());
         self
     }
 

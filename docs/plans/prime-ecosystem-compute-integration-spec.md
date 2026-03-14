@@ -923,6 +923,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 5: Proof, Validators, And Risk
 
 26. **Psionic Proof: define canonical execution-proof bundles for local, clustered, and sandbox compute**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3510`.
    - Standardize the bundle shape for execution-plan digest, topology digest, artifact residency, runtime identity, and any optional proof add-ons.
    - This is the core interface between execution and economic settlement.
 
