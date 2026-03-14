@@ -141,6 +141,7 @@ Psionic is also not:
 | Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
+| Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, and trainer-batch assembly requests over the run graph |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
@@ -217,8 +218,8 @@ Applications / Operators / Authority
      replanning, and quantized collective policy
 12. `psionic-train`
    - training-session truth for checkpointing, live recovery,
-     elastic-membership posture, checkpoint pointers/manifests, and restore
-     receipts
+     elastic-membership posture, checkpoint pointers/manifests, restore
+     receipts, and orchestrator control state
 13. `psionic-adapters`
    - adapter identity, packaging, and hosted binding lineage
 14. backend crates
@@ -313,6 +314,7 @@ training subsystems.
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | `psionic-train` | root identity, participant graph, and lifecycle state for one training program | `implemented_early` |
 | `TrainingWindow` | `psionic-train` | one synchronized contribution or trainer interval with contributor-set and transition state | `implemented_early` |
+| `TrainerBatchAssemblyRequest` | `psionic-train` | lightweight control-plane request for one trainer batch over rollout refs | `implemented_early` |
 | `CollectiveSyncCadenceReceipt` | `psionic-collectives` | typed cadence, transport-feedback, and replan-trace receipt for one sync step | `implemented_early` |
 | `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
