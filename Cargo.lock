@@ -6538,6 +6538,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-environments"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-ir"
 version = "0.1.1"
 dependencies = [
@@ -6674,6 +6685,7 @@ dependencies = [
  "psionic-cluster",
  "psionic-core",
  "psionic-datastream",
+ "psionic-environments",
  "psionic-runtime",
  "serde",
  "sha2",

@@ -141,15 +141,15 @@ Psionic is also not:
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows now exist in kernel/Nexus, but no `psionic-eval` crate, validator-owned benchmark package runtime, or local validator simulator exists yet |
-| Environment package runtime | `partial_outside_psionic` | environment package descriptors, registry, and binding flows now exist in kernel/Nexus, but no canonical Psionic-native runtime ABI exists yet |
+| Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
 
 Recent issue closure changed one important reading of this table:
 
 > environment packages, eval runs, and synthetic-data authority flows now exist
-> in the broader OpenAgents stack, but Psionic still does not own the
-> corresponding runtime crates or execution loops.
+> in the broader OpenAgents stack, and Psionic now owns the first environment
+> runtime crate, but eval and broader generation loops still remain unfinished.
 
 ## Canonical Layer Model
 
@@ -296,7 +296,7 @@ training subsystems.
 | `AdapterPackageManifest` | `psionic-adapters` | package manifest for adapter bytes tied to datastream | `implemented` |
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | planned train layer | root identity for one training program | `planned` |
-| `EnvironmentPackage` | planned environment layer | reusable task, rubric, and tool environment package | `planned` |
+| `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
 | `BenchmarkPackage` | planned eval layer | validator-owned packaged benchmark harness or reference evaluation profile | `planned` |
 | `EvalRun` | planned eval layer | one evaluation execution over a declared environment and artifact set | `planned` |
 
@@ -346,7 +346,7 @@ Psionic is also an artifact system, not only an execution engine.
 | Adapter package | `DatastreamSubjectKind::AdapterPackage` plus adapter manifests | adapter or LoRA artifact delivered with lineage |
 | Proof artifact | execution-proof bundle or augmentation | evidence about what the runtime or cluster actually did |
 | Sandbox artifact | sandbox input/output digest sets | staged inputs and outputs of bounded execution |
-| Environment package | planned | versioned task, tool, rubric, and sandbox contract |
+| Environment package | `psionic-environments` | versioned task, tool, rubric, dataset, and sandbox contract |
 
 ### Artifact Rules
 

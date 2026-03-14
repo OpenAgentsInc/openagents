@@ -33,8 +33,8 @@ scripts/release/check-psionic-rl-rollout-artifacts.sh
 The current reference path proves one bounded but real loop:
 
 1. create checkpoint-backed policy revisions
-2. create rollout artifacts with token ids, logprobs, rewards, advantages, and
-   proof references
+2. create rollout artifacts with canonical `environment_ref@version` package
+   keys, token ids, logprobs, rewards, advantages, and proof references
 3. assemble those artifacts into a trainer batch targeting a later policy
    revision
 4. surface deterministic batch and lineage digests for replay and validator
@@ -68,7 +68,7 @@ This issue intentionally does not claim:
 - off-policy freshness enforcement
 - rollout worker heartbeats or upload protocols
 - validator adjudication bundles
-- environment ABI completion
+- broader environment registry and composition flows
 - full trainer orchestration
 
 Those are later train-system issues. This issue only makes the rollout payload,
