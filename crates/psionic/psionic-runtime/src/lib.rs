@@ -4550,6 +4550,494 @@ pub enum ThroughputClass {
     ThroughputOptimized,
 }
 
+/// Workload class for quantized runtime dispatch decisions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationDispatchWorkload {
+    /// Single-token or otherwise latency-critical decode work.
+    LatencyCriticalDecode,
+    /// Multi-token batched prefill or bounded batch execution.
+    BatchedPrefill,
+    /// Grouped expert or fused-id dispatch across quantized experts.
+    GroupedExpert,
+    /// Collective or shard-side quantized work across multiple devices.
+    CollectiveShard,
+}
+
+/// Runtime-selected low-level kernel family for one quantized path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationKernelStrategy {
+    /// Dense/unquantized fallback path.
+    DenseF32,
+    /// Native backend int8 kernels remain available.
+    NativeInt8,
+    /// Native backend block-quantized kernels remain available.
+    NativeBlock,
+    /// Grouped expert block-quantized kernels remain available.
+    GroupedBlock,
+    /// The runtime must dequantize one batch before dense execution.
+    DequantizePerBatch,
+}
+
+/// Machine-checkable runtime input for quantized dispatch planning.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationDispatchRequest {
+    /// Weight quantization mode under consideration.
+    pub mode: QuantizationMode,
+    /// Workload class for the planned execution.
+    pub workload: QuantizationDispatchWorkload,
+    /// Logical token count or batch width of the work.
+    pub logical_tokens: usize,
+    /// Matrix width or comparable compute width for the hot kernel.
+    pub matrix_columns: usize,
+    /// Whether the backend exposes native quantized kernels for the mode.
+    pub supports_native_quantized_kernels: bool,
+    /// Whether the backend exposes grouped expert / grouped-id dispatch.
+    pub supports_grouped_dispatch: bool,
+}
+
+impl QuantizationDispatchRequest {
+    /// Creates a quantized dispatch request from explicit workload geometry.
+    #[must_use]
+    pub fn new(
+        mode: QuantizationMode,
+        workload: QuantizationDispatchWorkload,
+        logical_tokens: usize,
+        matrix_columns: usize,
+    ) -> Self {
+        Self {
+            mode,
+            workload,
+            logical_tokens: logical_tokens.max(1),
+            matrix_columns: matrix_columns.max(1),
+            supports_native_quantized_kernels: false,
+            supports_grouped_dispatch: false,
+        }
+    }
+
+    /// Declares whether native quantized kernels are available for the mode.
+    #[must_use]
+    pub const fn with_native_quantized_kernels(
+        mut self,
+        supports_native_quantized_kernels: bool,
+    ) -> Self {
+        self.supports_native_quantized_kernels = supports_native_quantized_kernels;
+        self
+    }
+
+    /// Declares whether grouped expert dispatch is available.
+    #[must_use]
+    pub const fn with_grouped_dispatch(mut self, supports_grouped_dispatch: bool) -> Self {
+        self.supports_grouped_dispatch = supports_grouped_dispatch;
+        self
+    }
+}
+
+/// Runtime-selected low-level quantization dispatch decision.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationDispatchDecision {
+    /// Chosen low-level kernel strategy.
+    pub strategy: QuantizationKernelStrategy,
+    /// Number of tokens the runtime should tile together on the hot path.
+    pub tile_tokens: usize,
+    /// Suggested worker width for the kernel family.
+    pub worker_width: usize,
+    /// Simulated cost units used by repeatable validation harnesses.
+    pub estimated_cost_units: u64,
+    /// Human-readable detail for the selected strategy.
+    pub detail: String,
+}
+
+impl QuantizationDispatchDecision {
+    /// Chooses a runtime-owned quantization strategy from explicit workload facts.
+    #[must_use]
+    pub fn advise(request: &QuantizationDispatchRequest) -> Self {
+        let logical_tokens = request.logical_tokens.max(1);
+        let matrix_columns = request.matrix_columns.max(1);
+        let baseline_units = logical_tokens.saturating_mul(matrix_columns) as u64;
+        let (strategy, numerator, denominator, tile_tokens, worker_width, detail) = match request
+            .mode
+        {
+            QuantizationMode::None => (
+                QuantizationKernelStrategy::DenseF32,
+                100_u64,
+                100_u64,
+                logical_tokens.min(4),
+                1,
+                String::from("dense path remains truthful for unquantized weights"),
+            ),
+            QuantizationMode::Int8Symmetric if request.supports_native_quantized_kernels => (
+                QuantizationKernelStrategy::NativeInt8,
+                62,
+                100,
+                logical_tokens.min(8),
+                2,
+                String::from("native int8 kernels avoid dense dequantization staging"),
+            ),
+            QuantizationMode::GgmlMxfp4
+            | QuantizationMode::GgmlQ4_0
+            | QuantizationMode::GgmlQ4_1
+            | QuantizationMode::GgmlQ8_0
+                if request.supports_native_quantized_kernels
+                    && request.supports_grouped_dispatch
+                    && request.workload == QuantizationDispatchWorkload::GroupedExpert =>
+            {
+                (
+                    QuantizationKernelStrategy::GroupedBlock,
+                    44,
+                    100,
+                    logical_tokens.min(8),
+                    4,
+                    String::from(
+                        "grouped block dispatch keeps expert fan-out on the quantized path",
+                    ),
+                )
+            }
+            QuantizationMode::GgmlMxfp4
+            | QuantizationMode::GgmlQ4_0
+            | QuantizationMode::GgmlQ4_1
+            | QuantizationMode::GgmlQ8_0
+                if request.supports_native_quantized_kernels =>
+            {
+                (
+                    QuantizationKernelStrategy::NativeBlock,
+                    57,
+                    100,
+                    logical_tokens.min(8),
+                    3,
+                    String::from(
+                        "native block kernels avoid dense expansion for quantized weights",
+                    ),
+                )
+            }
+            _ => {
+                let latency_sensitive =
+                    request.workload == QuantizationDispatchWorkload::LatencyCriticalDecode;
+                (
+                    QuantizationKernelStrategy::DequantizePerBatch,
+                    if latency_sensitive { 84 } else { 72 },
+                    100,
+                    if latency_sensitive {
+                        1
+                    } else {
+                        logical_tokens.min(8)
+                    },
+                    2,
+                    String::from(
+                        "batch-local dequantization is the least-worst fallback without native quantized kernels",
+                    ),
+                )
+            }
+        };
+        let estimated_cost_units = baseline_units
+            .saturating_mul(numerator)
+            .div_ceil(denominator.max(1));
+        Self {
+            strategy,
+            tile_tokens: tile_tokens.max(1),
+            worker_width: worker_width.max(1),
+            estimated_cost_units,
+            detail,
+        }
+    }
+}
+
+/// Runtime work class for low-level batching and worker wake decisions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeWorkClass {
+    /// One latency-sensitive decode step.
+    DecodeToken,
+    /// One batched prefill or compile-time preparation step.
+    PrefillBatch,
+    /// One datastream chunk transfer.
+    DatastreamChunk,
+    /// One collective or shard synchronization step.
+    CollectiveStep,
+    /// One checkpoint flush or artifact persistence step.
+    CheckpointFlush,
+}
+
+/// One runtime work item admitted into the low-level planner.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeWorkItem {
+    /// High-level work class.
+    pub class: RuntimeWorkClass,
+    /// Relative compute units used by the planner.
+    pub work_units: usize,
+    /// Number of bytes moved or touched by the work item.
+    pub bytes: u64,
+    /// Whether the item is latency-sensitive and should avoid batching delay.
+    pub latency_sensitive: bool,
+}
+
+impl RuntimeWorkItem {
+    /// Creates one runtime work item from explicit class, work units, and byte volume.
+    #[must_use]
+    pub fn new(class: RuntimeWorkClass, work_units: usize, bytes: u64) -> Self {
+        Self {
+            class,
+            work_units: work_units.max(1),
+            bytes,
+            latency_sensitive: false,
+        }
+    }
+
+    /// Marks the work item as latency-sensitive.
+    #[must_use]
+    pub const fn latency_sensitive(mut self) -> Self {
+        self.latency_sensitive = true;
+        self
+    }
+}
+
+/// Runtime-owned batching and parking policy for low-level worker scheduling.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDispatchPolicy {
+    /// Maximum workers the planner may wake for one batch.
+    pub max_workers: usize,
+    /// Target work units per batch before the planner emits another wake boundary.
+    pub target_batch_work_units: usize,
+    /// Maximum bytes admitted into one batch before the planner emits another wake boundary.
+    pub max_batch_bytes: u64,
+    /// Idle-batch threshold after which workers should be considered parked.
+    pub park_after_idle_batches: usize,
+}
+
+impl RuntimeDispatchPolicy {
+    /// Default policy for latency-critical quantized decode work.
+    #[must_use]
+    pub fn quantized_decode_default(max_workers: usize) -> Self {
+        Self {
+            max_workers: max_workers.max(1),
+            target_batch_work_units: 2,
+            max_batch_bytes: 256 * 1024,
+            park_after_idle_batches: 1,
+        }
+    }
+
+    /// Default policy for streaming dataset/checkpoint delivery.
+    #[must_use]
+    pub fn data_plane_default(max_workers: usize) -> Self {
+        Self {
+            max_workers: max_workers.max(1),
+            target_batch_work_units: 4,
+            max_batch_bytes: 4 * 1024 * 1024,
+            park_after_idle_batches: 4,
+        }
+    }
+}
+
+/// One concrete worker batch emitted by the low-level planner.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDispatchBatch {
+    /// Number of items fused into the batch.
+    pub item_count: usize,
+    /// Aggregate work units fused into the batch.
+    pub total_work_units: usize,
+    /// Aggregate byte volume fused into the batch.
+    pub total_bytes: u64,
+    /// Number of workers the planner would wake for the batch.
+    pub worker_count: usize,
+}
+
+/// Runtime-owned worker dispatch plan with simulated wake/park costs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDispatchPlan {
+    /// Policy used to plan the work.
+    pub policy: RuntimeDispatchPolicy,
+    /// Concrete worker batches emitted for the supplied work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub batches: Vec<RuntimeDispatchBatch>,
+    /// Total wake boundaries emitted by the planner.
+    pub total_wake_events: usize,
+    /// Number of workers likely parked under the idle policy.
+    pub parked_workers: usize,
+}
+
+impl RuntimeDispatchPlan {
+    /// Plans low-level worker batches from the supplied work items.
+    #[must_use]
+    pub fn plan(policy: RuntimeDispatchPolicy, items: &[RuntimeWorkItem]) -> Self {
+        if items.is_empty() {
+            return Self {
+                parked_workers: policy.max_workers.saturating_sub(1),
+                policy,
+                batches: Vec::new(),
+                total_wake_events: 0,
+            };
+        }
+
+        let mut batches = Vec::new();
+        let mut batch_work_units = 0usize;
+        let mut batch_bytes = 0u64;
+        let mut batch_items = 0usize;
+
+        for item in items {
+            let should_flush = batch_items > 0
+                && (item.latency_sensitive
+                    || batch_work_units.saturating_add(item.work_units)
+                        > policy.target_batch_work_units
+                    || batch_bytes.saturating_add(item.bytes) > policy.max_batch_bytes);
+            if should_flush {
+                batches.push(RuntimeDispatchBatch {
+                    item_count: batch_items,
+                    total_work_units: batch_work_units,
+                    total_bytes: batch_bytes,
+                    worker_count: batch_work_units.min(policy.max_workers).max(1),
+                });
+                batch_work_units = 0;
+                batch_bytes = 0;
+                batch_items = 0;
+            }
+
+            batch_work_units = batch_work_units.saturating_add(item.work_units);
+            batch_bytes = batch_bytes.saturating_add(item.bytes);
+            batch_items = batch_items.saturating_add(1);
+
+            if item.latency_sensitive {
+                batches.push(RuntimeDispatchBatch {
+                    item_count: batch_items,
+                    total_work_units: batch_work_units,
+                    total_bytes: batch_bytes,
+                    worker_count: batch_work_units.min(policy.max_workers).max(1),
+                });
+                batch_work_units = 0;
+                batch_bytes = 0;
+                batch_items = 0;
+            }
+        }
+
+        if batch_items > 0 {
+            batches.push(RuntimeDispatchBatch {
+                item_count: batch_items,
+                total_work_units: batch_work_units,
+                total_bytes: batch_bytes,
+                worker_count: batch_work_units.min(policy.max_workers).max(1),
+            });
+        }
+
+        let total_wake_events = batches.len();
+        let parked_workers = policy
+            .max_workers
+            .saturating_sub(batches.last().map_or(0, |batch| batch.worker_count));
+        Self {
+            policy,
+            batches,
+            total_wake_events,
+            parked_workers,
+        }
+    }
+
+    /// Returns a deterministic cost model for validation harnesses.
+    #[must_use]
+    pub fn simulated_cost_units(&self) -> u64 {
+        let batch_cost = self
+            .batches
+            .iter()
+            .map(|batch| {
+                batch.total_work_units as u64
+                    + batch.worker_count as u64 * 3
+                    + batch.total_bytes.div_ceil(512 * 1024)
+            })
+            .sum::<u64>();
+        batch_cost
+            .saturating_add(self.total_wake_events as u64 * 5)
+            .saturating_add(self.parked_workers as u64 * self.policy.park_after_idle_batches as u64)
+    }
+
+    /// Returns a naive one-item-per-batch baseline for the same work items.
+    #[must_use]
+    pub fn naive(items: &[RuntimeWorkItem], max_workers: usize) -> Self {
+        let max_workers = max_workers.max(1);
+        Self {
+            policy: RuntimeDispatchPolicy {
+                max_workers,
+                target_batch_work_units: 1,
+                max_batch_bytes: 0,
+                park_after_idle_batches: 1,
+            },
+            batches: items
+                .iter()
+                .map(|item| RuntimeDispatchBatch {
+                    item_count: 1,
+                    total_work_units: item.work_units,
+                    total_bytes: item.bytes,
+                    worker_count: 1.min(max_workers),
+                })
+                .collect(),
+            total_wake_events: items.len(),
+            parked_workers: max_workers.saturating_sub(1),
+        }
+    }
+}
+
+/// Repeatable benchmark result for one runtime optimization decision.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeOptimizationBenchmark {
+    /// Stable benchmark scenario identifier.
+    pub scenario: String,
+    /// Simulated baseline cost units.
+    pub baseline_cost_units: u64,
+    /// Simulated optimized cost units.
+    pub optimized_cost_units: u64,
+    /// Improvement in basis points relative to the baseline.
+    pub improvement_basis_points: u32,
+}
+
+impl RuntimeOptimizationBenchmark {
+    /// Creates a benchmark result from baseline and optimized cost units.
+    #[must_use]
+    pub fn new(
+        scenario: impl Into<String>,
+        baseline_cost_units: u64,
+        optimized_cost_units: u64,
+    ) -> Self {
+        let improvement_basis_points =
+            if baseline_cost_units == 0 || optimized_cost_units >= baseline_cost_units {
+                0
+            } else {
+                let improvement = baseline_cost_units.saturating_sub(optimized_cost_units);
+                improvement
+                    .saturating_mul(10_000)
+                    .div_ceil(baseline_cost_units)
+                    .try_into()
+                    .unwrap_or(u32::MAX)
+            };
+        Self {
+            scenario: scenario.into(),
+            baseline_cost_units,
+            optimized_cost_units,
+            improvement_basis_points,
+        }
+    }
+}
+
+/// Returns a repeatable quantization-dispatch benchmark for one workload.
+#[must_use]
+pub fn benchmark_quantization_dispatch(
+    request: &QuantizationDispatchRequest,
+) -> RuntimeOptimizationBenchmark {
+    let baseline = (request
+        .logical_tokens
+        .saturating_mul(request.matrix_columns)) as u64;
+    let optimized = QuantizationDispatchDecision::advise(request).estimated_cost_units;
+    RuntimeOptimizationBenchmark::new("quantization_dispatch", baseline, optimized)
+}
+
+/// Returns a repeatable worker scheduling benchmark for one workload.
+#[must_use]
+pub fn benchmark_dispatch_plan(
+    scenario: impl Into<String>,
+    policy: RuntimeDispatchPolicy,
+    items: &[RuntimeWorkItem],
+) -> RuntimeOptimizationBenchmark {
+    let baseline = RuntimeDispatchPlan::naive(items, policy.max_workers).simulated_cost_units();
+    let optimized = RuntimeDispatchPlan::plan(policy, items).simulated_cost_units();
+    RuntimeOptimizationBenchmark::new(scenario, baseline, optimized)
+}
+
 /// Reusable execution profile for capability and observability surfaces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionCapabilityProfile {
@@ -6974,10 +7462,12 @@ mod tests {
         ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
         NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
         NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchRequest,
+        QuantizationDispatchWorkload, QuantizationExecution, QuantizationKernelStrategy,
         QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
-        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
-        RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
+        ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeError,
+        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+        RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
         SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
@@ -6986,8 +7476,8 @@ mod tests {
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
         SettlementLinkageInput, ShardedModelArtifactRef, ShardedModelLayoutKind,
         ShardedModelManifest, ShardedModelManifestError, SignedClusterEvidenceBundle,
-        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
-        plan_model_admission,
+        ThroughputClass, TokenSampler, apply_sampling_penalties, benchmark_dispatch_plan,
+        benchmark_quantization_dispatch, default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9856,6 +10346,56 @@ mod tests {
                 throughput_class: ThroughputClass::Balanced,
             }
         );
+    }
+
+    #[test]
+    fn quantization_dispatch_prefers_grouped_block_for_grouped_ggml_workload() {
+        let request = QuantizationDispatchRequest::new(
+            QuantizationMode::GgmlQ4_0,
+            QuantizationDispatchWorkload::GroupedExpert,
+            8,
+            4096,
+        )
+        .with_native_quantized_kernels(true)
+        .with_grouped_dispatch(true);
+
+        let decision = super::QuantizationDispatchDecision::advise(&request);
+        let benchmark = benchmark_quantization_dispatch(&request);
+
+        assert_eq!(decision.strategy, QuantizationKernelStrategy::GroupedBlock);
+        assert!(benchmark.optimized_cost_units < benchmark.baseline_cost_units);
+        assert!(benchmark.improvement_basis_points > 0);
+    }
+
+    #[test]
+    fn runtime_dispatch_plan_batches_data_plane_work_and_reduces_cost() {
+        let items = vec![
+            RuntimeWorkItem::new(RuntimeWorkClass::DatastreamChunk, 1, 256 * 1024),
+            RuntimeWorkItem::new(RuntimeWorkClass::DatastreamChunk, 1, 256 * 1024),
+            RuntimeWorkItem::new(RuntimeWorkClass::DatastreamChunk, 1, 256 * 1024),
+            RuntimeWorkItem::new(RuntimeWorkClass::DatastreamChunk, 1, 256 * 1024),
+        ];
+        let policy = RuntimeDispatchPolicy::data_plane_default(4);
+        let plan = RuntimeDispatchPlan::plan(policy.clone(), &items);
+        let naive = RuntimeDispatchPlan::naive(&items, policy.max_workers);
+        let benchmark = benchmark_dispatch_plan("data_plane", policy, &items);
+
+        assert!(plan.total_wake_events < naive.total_wake_events);
+        assert!(plan.simulated_cost_units() < naive.simulated_cost_units());
+        assert!(benchmark.optimized_cost_units < benchmark.baseline_cost_units);
+    }
+
+    #[test]
+    fn quantized_decode_policy_keeps_latency_sensitive_work_unbatched() {
+        let items = vec![
+            RuntimeWorkItem::new(RuntimeWorkClass::DecodeToken, 1, 4096).latency_sensitive(),
+            RuntimeWorkItem::new(RuntimeWorkClass::DecodeToken, 1, 4096).latency_sensitive(),
+        ];
+        let plan =
+            RuntimeDispatchPlan::plan(RuntimeDispatchPolicy::quantized_decode_default(2), &items);
+
+        assert_eq!(plan.batches.len(), 2);
+        assert_eq!(plan.total_wake_events, 2);
     }
 
     #[test]

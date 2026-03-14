@@ -1,5 +1,9 @@
 //! Resumable streamed dataset and checkpoint delivery contracts for Psionic.
 
+use psionic_runtime::{
+    RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeOptimizationBenchmark, RuntimeWorkClass,
+    RuntimeWorkItem, benchmark_dispatch_plan,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -387,6 +391,47 @@ impl DatastreamManifest {
             dataset_binding: self.dataset_binding.clone(),
             checkpoint_binding: self.checkpoint_binding.clone(),
         }
+    }
+
+    /// Returns a worker dispatch plan for chunk delivery under the Psionic data-plane policy.
+    #[must_use]
+    pub fn recommended_dispatch_plan(&self, max_workers: usize) -> RuntimeDispatchPlan {
+        let items = self
+            .chunks
+            .iter()
+            .map(|chunk| {
+                RuntimeWorkItem::new(
+                    RuntimeWorkClass::DatastreamChunk,
+                    chunk.length.div_ceil(self.chunk_bytes.max(1)),
+                    len_to_u64(chunk.length),
+                )
+            })
+            .collect::<Vec<_>>();
+        RuntimeDispatchPlan::plan(
+            RuntimeDispatchPolicy::data_plane_default(max_workers),
+            &items,
+        )
+    }
+
+    /// Returns a repeatable benchmark for chunk-delivery scheduling.
+    #[must_use]
+    pub fn dispatch_benchmark(&self, max_workers: usize) -> RuntimeOptimizationBenchmark {
+        let items = self
+            .chunks
+            .iter()
+            .map(|chunk| {
+                RuntimeWorkItem::new(
+                    RuntimeWorkClass::DatastreamChunk,
+                    chunk.length.div_ceil(self.chunk_bytes.max(1)),
+                    len_to_u64(chunk.length),
+                )
+            })
+            .collect::<Vec<_>>();
+        benchmark_dispatch_plan(
+            "datastream_chunk_delivery",
+            RuntimeDispatchPolicy::data_plane_default(max_workers),
+            &items,
+        )
     }
 
     /// Validates that a payload still matches this manifest.
@@ -1085,5 +1130,23 @@ mod tests {
         .with_checkpoint_binding(DatastreamCheckpointBinding::new("train.decoder").with_step(17));
 
         assert_ne!(dataset.stable_digest(), checkpoint.stable_digest());
+    }
+
+    #[test]
+    fn datastream_dispatch_plan_batches_chunks_and_beats_naive_baseline() {
+        let manifest = super::DatastreamManifest::from_bytes(
+            "dataset-plan",
+            DatastreamSubjectKind::TokenizedCorpus,
+            b"alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa",
+            6,
+            DatastreamEncoding::RawBinary,
+        );
+
+        let plan = manifest.recommended_dispatch_plan(4);
+        let benchmark = manifest.dispatch_benchmark(4);
+
+        assert!(plan.total_wake_events < manifest.chunks.len());
+        assert!(benchmark.optimized_cost_units < benchmark.baseline_cost_units);
+        assert!(benchmark.improvement_basis_points > 0);
     }
 }

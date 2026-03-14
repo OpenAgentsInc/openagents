@@ -885,6 +885,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is required for future training lanes and for serious environment/eval execution.
 
 20. **Psionic Runtime: import fast quantization and low-level scheduling lessons**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3504`.
    - Rebuild the useful `pi-quant`, `threadpark`, and `threadpool` ideas only where Rust-native runtime bottlenecks justify them.
    - This issue should produce explicit performance hooks rather than speculative low-level rewrites everywhere.
 

@@ -63,8 +63,10 @@ and pre-shard artifact support across runtime, serve, and clustered execution
 evidence, plus truthful clustered prefix/KV cache compatibility and invalidation
 posture surfaced through capability envelopes and execution receipts, plus a
 new Psionic datastream substrate for resumable dataset and checkpoint delivery
-that cluster artifact staging can consume directly. AMD execution support is
-still future work.
+that cluster artifact staging can consume directly, plus benchmark-backed
+runtime quantization-dispatch and low-level worker batching/parking hooks now
+consumed by the datastream and serve layers. AMD execution support is still
+future work.
 
 ## Docs
 

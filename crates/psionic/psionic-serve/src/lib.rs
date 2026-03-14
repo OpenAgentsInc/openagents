@@ -65,6 +65,7 @@ use psionic_runtime::{
     LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
     LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
     ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    QuantizationDispatchDecision, QuantizationDispatchRequest, QuantizationDispatchWorkload,
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
     ShardedModelManifestError, TokenSampler, default_cache_invalidation_policy,
@@ -234,6 +235,28 @@ pub fn default_text_generation_execution_profile() -> ExecutionCapabilityProfile
 #[must_use]
 pub fn default_embeddings_execution_profile() -> ExecutionCapabilityProfile {
     ExecutionCapabilityProfile::caller_static_batch_balanced()
+}
+
+/// Returns the current runtime-owned quantization dispatch recommendation for generation work.
+#[must_use]
+pub fn recommended_generation_quantization_dispatch(
+    quantization: QuantizationMode,
+    logical_tokens: usize,
+    matrix_columns: usize,
+    grouped_experts: bool,
+) -> QuantizationDispatchDecision {
+    let workload = if grouped_experts {
+        QuantizationDispatchWorkload::GroupedExpert
+    } else if logical_tokens <= 1 {
+        QuantizationDispatchWorkload::LatencyCriticalDecode
+    } else {
+        QuantizationDispatchWorkload::BatchedPrefill
+    };
+    QuantizationDispatchDecision::advise(
+        &QuantizationDispatchRequest::new(quantization, workload, logical_tokens, matrix_columns)
+            .with_native_quantized_kernels(quantization != QuantizationMode::None)
+            .with_grouped_dispatch(grouped_experts),
+    )
 }
 
 /// Returns the current runtime-owned cache invalidation policy.
@@ -6955,8 +6978,9 @@ mod tests {
         KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
         KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
         LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
-        ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
-        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
+        QuantizationKernelStrategy, ResidencyPressureAction, RuntimeTransitionEvent,
+        RuntimeTransitionKind, ShardedModelArtifactRef, ShardedModelLayoutKind,
+        ShardedModelManifest,
     };
     use tempfile::tempdir;
 
@@ -6976,7 +7000,7 @@ mod tests {
         WeightTensorMetadata, WordDecoderExecutionModel, current_time_millis,
         default_generation_streaming_policy, finalize_embedding_values,
         load_sharded_model_manifest_json, prefix_compatibility,
-        served_artifact_identity_for_decoder_model,
+        recommended_generation_quantization_dispatch, served_artifact_identity_for_decoder_model,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use psionic_models::{
@@ -6985,6 +7009,18 @@ mod tests {
         assert_rendered_prompt_case, golden_prompt_fixture, golden_prompt_fixtures,
         golden_tokenizer_fixture,
     };
+
+    #[test]
+    fn generation_quantization_dispatch_prefers_grouped_quantized_path() {
+        let decision = recommended_generation_quantization_dispatch(
+            super::QuantizationMode::GgmlQ4_0,
+            8,
+            4096,
+            true,
+        );
+
+        assert_eq!(decision.strategy, QuantizationKernelStrategy::GroupedBlock);
+    }
 
     #[test]
     fn embedding_request_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
