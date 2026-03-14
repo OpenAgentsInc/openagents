@@ -577,6 +577,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
             .iter()
             .any(|pane| pane.kind == PaneKind::ProviderControl),
         state.provider_control_hud_runtime.surface.as_ref(),
+        false,
     );
     let preview_rive = build_rive_cadence_snapshot(
         state
@@ -584,6 +585,9 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
             .iter()
             .any(|pane| pane.kind == PaneKind::RivePreview),
         state.rive_preview_runtime.surface.as_ref(),
+        state
+            .rive_preview_runtime
+            .controller_sync_pending(state.rive_preview.fit_mode, state.rive_preview.playing),
     );
     let presentation_rive = build_rive_cadence_snapshot(
         state
@@ -591,6 +595,9 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
             .iter()
             .any(|pane| pane.kind == PaneKind::Presentation),
         state.presentation_runtime.surface.as_ref(),
+        state
+            .presentation_runtime
+            .controller_sync_pending(wgpui::RiveFitMode::Contain, true),
     );
     let debug_probe_active = state
         .panes
@@ -649,7 +656,13 @@ fn open_rive_surface_needs_redraw(state: &crate::app_state::RenderState) -> bool
             .rive_preview_runtime
             .surface
             .as_ref()
-            .is_some_and(|surface| surface.needs_redraw()),
+            .is_some_and(|surface| {
+                surface.needs_redraw()
+                    || state.rive_preview_runtime.controller_sync_pending(
+                        state.rive_preview.fit_mode,
+                        state.rive_preview.playing,
+                    )
+            }),
     ) || rive_preview_cadence_active(
         state
             .panes
@@ -659,7 +672,12 @@ fn open_rive_surface_needs_redraw(state: &crate::app_state::RenderState) -> bool
             .presentation_runtime
             .surface
             .as_ref()
-            .is_some_and(|surface| surface.needs_redraw()),
+            .is_some_and(|surface| {
+                surface.needs_redraw()
+                    || state
+                        .presentation_runtime
+                        .controller_sync_pending(wgpui::RiveFitMode::Contain, true)
+            }),
     )
 }
 
@@ -670,14 +688,20 @@ fn rive_preview_cadence_active(pane_open: bool, surface_needs_redraw: bool) -> b
 fn build_rive_cadence_snapshot(
     pane_open: bool,
     surface: Option<&wgpui::RiveSurface>,
+    pending_controller_sync: bool,
 ) -> RiveCadenceSnapshot {
     let surface_loaded = surface.is_some();
     RiveCadenceSnapshot {
         pane_open,
         surface_loaded,
-        needs_redraw: pane_open && surface.is_some_and(|candidate| candidate.needs_redraw()),
+        needs_redraw: pane_open
+            && (pending_controller_sync
+                || surface.is_some_and(|candidate| candidate.needs_redraw())),
         animating: pane_open && surface.is_some_and(|candidate| candidate.is_animating()),
-        settled: pane_open && surface.is_some_and(|candidate| candidate.is_settled()),
+        settled: pane_open
+            && !pending_controller_sync
+            && surface.is_some_and(|candidate| candidate.is_settled()),
+        pending_controller_sync,
     }
 }
 

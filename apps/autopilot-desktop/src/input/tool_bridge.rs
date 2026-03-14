@@ -1920,6 +1920,10 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
             }
             PaneKind::RivePreview => {
                 let runtime_surface = state.rive_preview_runtime.surface.as_ref();
+                let pending_controller_sync = state.rive_preview_runtime.controller_sync_pending(
+                    state.rive_preview.fit_mode,
+                    state.rive_preview.playing,
+                );
                 map.insert(
                     "rive_preview".to_string(),
                     json!({
@@ -1934,9 +1938,10 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "draw_call_count": state.rive_preview.draw_call_count,
                         "image_count": state.rive_preview.image_count,
                         "scene_name": state.rive_preview.scene_name,
-                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()),
+                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()) || pending_controller_sync,
                         "animating": runtime_surface.is_some_and(|surface| surface.is_animating()),
-                        "settled": runtime_surface.map(|surface| surface.is_settled()).unwrap_or(true),
+                        "settled": runtime_surface.map(|surface| surface.is_settled() && !pending_controller_sync).unwrap_or(true),
+                        "pending_controller_sync": pending_controller_sync,
                         "pointer_capture": runtime_surface.is_some_and(|surface| surface.has_pointer_capture()),
                         "render_backend": "vector batch -> rasterized texture",
                         "renderer_diagnostic": if state.rive_preview.draw_call_count == 0
@@ -1953,14 +1958,18 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
             }
             PaneKind::Presentation => {
                 let runtime_surface = state.presentation_runtime.surface.as_ref();
+                let pending_controller_sync = state
+                    .presentation_runtime
+                    .controller_sync_pending(wgpui::RiveFitMode::Contain, true);
                 map.insert(
                     "presentation".to_string(),
                     json!({
                         "asset_id": state.presentation.asset_id,
                         "asset_name": state.presentation.asset_name,
-                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()),
+                        "needs_redraw": runtime_surface.is_some_and(|surface| surface.needs_redraw()) || pending_controller_sync,
                         "animating": runtime_surface.is_some_and(|surface| surface.is_animating()),
-                        "settled": runtime_surface.map(|surface| surface.is_settled()).unwrap_or(true),
+                        "settled": runtime_surface.map(|surface| surface.is_settled() && !pending_controller_sync).unwrap_or(true),
+                        "pending_controller_sync": pending_controller_sync,
                         "last_error": state.presentation.last_error,
                     }),
                 );

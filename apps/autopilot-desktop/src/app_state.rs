@@ -9792,11 +9792,43 @@ pub struct CastControlProcess {
 #[derive(Default)]
 pub struct RivePreviewRuntimeState {
     pub surface: Option<RiveSurface>,
+    pub last_applied_fit_mode: Option<wgpui::RiveFitMode>,
+    pub last_applied_playing: Option<bool>,
 }
 
 #[derive(Default)]
 pub struct PresentationRuntimeState {
     pub surface: Option<RiveSurface>,
+    pub last_applied_fit_mode: Option<wgpui::RiveFitMode>,
+    pub last_applied_playing: Option<bool>,
+}
+
+impl RivePreviewRuntimeState {
+    pub fn reset_surface(&mut self) {
+        self.surface = None;
+        self.last_applied_fit_mode = None;
+        self.last_applied_playing = None;
+    }
+
+    pub fn controller_sync_pending(&self, fit_mode: wgpui::RiveFitMode, playing: bool) -> bool {
+        self.surface.is_some()
+            && (self.last_applied_fit_mode != Some(fit_mode)
+                || self.last_applied_playing != Some(playing))
+    }
+}
+
+impl PresentationRuntimeState {
+    pub fn reset_surface(&mut self) {
+        self.surface = None;
+        self.last_applied_fit_mode = None;
+        self.last_applied_playing = None;
+    }
+
+    pub fn controller_sync_pending(&self, fit_mode: wgpui::RiveFitMode, playing: bool) -> bool {
+        self.surface.is_some()
+            && (self.last_applied_fit_mode != Some(fit_mode)
+                || self.last_applied_playing != Some(playing))
+    }
 }
 
 #[derive(Default)]

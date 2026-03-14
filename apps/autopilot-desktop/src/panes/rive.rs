@@ -195,10 +195,13 @@ fn ensure_runtime_loaded(
     let scene_handle = handle_from_state(pane_state.state_machine_name.as_deref());
     match RiveSurface::from_bytes_with_handles(asset.bytes, artboard_handle, scene_handle, None) {
         Ok(mut surface) => {
-            if !pane_state.autoplay || !pane_state.playing {
-                surface.controller_mut().pause();
-            }
-            surface.controller_mut().set_fit_mode(pane_state.fit_mode);
+            sync_controller_state(
+                &mut surface,
+                &mut runtime.last_applied_fit_mode,
+                &mut runtime.last_applied_playing,
+                pane_state.fit_mode,
+                pane_state.playing,
+            );
             pane_state.asset_id = asset.id.to_string();
             pane_state.asset_name = asset.file_name.to_string();
             pane_state.load_state = crate::app_state::PaneLoadState::Ready;
@@ -222,12 +225,41 @@ fn sync_runtime_state(pane_state: &RivePreviewPaneState, runtime: &mut RivePrevi
     let Some(surface) = runtime.surface.as_mut() else {
         return;
     };
-    surface.controller_mut().set_fit_mode(pane_state.fit_mode);
-    if pane_state.playing {
-        surface.controller_mut().play();
-    } else {
-        surface.controller_mut().pause();
+    let _ = sync_controller_state(
+        surface,
+        &mut runtime.last_applied_fit_mode,
+        &mut runtime.last_applied_playing,
+        pane_state.fit_mode,
+        pane_state.playing,
+    );
+}
+
+fn sync_controller_state(
+    surface: &mut RiveSurface,
+    last_applied_fit_mode: &mut Option<wgpui::RiveFitMode>,
+    last_applied_playing: &mut Option<bool>,
+    desired_fit_mode: wgpui::RiveFitMode,
+    desired_playing: bool,
+) -> bool {
+    let mut changed = false;
+    if *last_applied_fit_mode != Some(desired_fit_mode) {
+        surface.controller_mut().set_fit_mode(desired_fit_mode);
+        *last_applied_fit_mode = Some(desired_fit_mode);
+        changed = true;
     }
+    if *last_applied_playing != Some(desired_playing) {
+        if desired_playing {
+            surface.controller_mut().play();
+        } else {
+            surface.controller_mut().pause();
+        }
+        *last_applied_playing = Some(desired_playing);
+        changed = true;
+    }
+    if changed {
+        surface.mark_dirty();
+    }
+    changed
 }
 
 fn handle_from_state(value: Option<&str>) -> RiveHandle {
@@ -424,10 +456,10 @@ fn selected_packaged_asset(pane_state: &RivePreviewPaneState) -> PackagedRiveAss
 
 #[cfg(test)]
 mod tests {
-    use super::paint;
+    use super::{paint, sync_runtime_state};
     use crate::app_state::{PaneLoadState, RivePreviewPaneState, RivePreviewRuntimeState};
     use crate::rive_assets::SIMPLE_FUI_HUD_FIXTURE_B_ASSET_ID;
-    use wgpui::{Bounds, PaintContext, Scene, TextSystem};
+    use wgpui::{Bounds, PaintContext, RiveFitMode, Scene, TextSystem};
 
     #[test]
     fn packaged_rive_preview_paint_loads_runtime_and_updates_metrics() {
@@ -454,6 +486,8 @@ mod tests {
             "pane paint should produce drawable content",
         );
         assert!(pane_state.frame_build_ms.is_some());
+        assert_eq!(runtime.last_applied_fit_mode, Some(RiveFitMode::Contain));
+        assert_eq!(runtime.last_applied_playing, Some(true));
     }
 
     #[test]
@@ -478,5 +512,28 @@ mod tests {
         assert_eq!(pane_state.load_state, PaneLoadState::Ready);
         assert_eq!(pane_state.asset_id, SIMPLE_FUI_HUD_FIXTURE_B_ASSET_ID);
         assert!(pane_state.asset_name.ends_with("fixture-b.riv"));
+    }
+
+    #[test]
+    fn packaged_rive_preview_sync_runtime_state_noops_when_playback_and_fit_match() {
+        let mut pane_state = RivePreviewPaneState::default();
+        let mut runtime = RivePreviewRuntimeState::default();
+        let mut scene = Scene::new();
+        let mut text_system = TextSystem::new(1.0);
+        let mut paint_context = PaintContext::new(&mut scene, &mut text_system, 1.0);
+
+        paint(
+            Bounds::new(0.0, 0.0, 1080.0, 700.0),
+            &mut pane_state,
+            &mut runtime,
+            &mut paint_context,
+        );
+
+        let before_fit = runtime.last_applied_fit_mode;
+        let before_playing = runtime.last_applied_playing;
+        sync_runtime_state(&pane_state, &mut runtime);
+
+        assert_eq!(runtime.last_applied_fit_mode, before_fit);
+        assert_eq!(runtime.last_applied_playing, before_playing);
     }
 }
