@@ -70,7 +70,8 @@ use psionic_runtime::{
     KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
     LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
     MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
+    PrefixCacheControl, PrefixCacheIdentity, PrefixCacheMode, PrefixCacheRefusalReason,
+    PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
     QuantizationDispatchRequest, QuantizationDispatchWorkload, RuntimeError,
     RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
     SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest, ShardedModelManifestError,
@@ -232,6 +233,7 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
         shared_across_users: false,
         shared_across_models: false,
         shared_across_backends: false,
+        shared_across_sampler_settings: false,
     }
 }
 
@@ -604,8 +606,11 @@ fn accumulate_optional_gpt_oss_perf(
     }
 }
 
-fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
-    match prefix_state {
+fn prefix_cache_observation(
+    prefix_state: PrefixCacheState,
+    invalidation_trigger: Option<CacheInvalidationTrigger>,
+) -> CacheObservation {
+    let observation = match prefix_state {
         PrefixCacheState::None => CacheObservation::new(
             CacheKind::PrefixCache,
             CacheAction::Bypass,
@@ -631,6 +636,11 @@ fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation 
             CacheAction::Rebuild,
             "stale shared prefix state was discarded and rebuilt",
         ),
+    };
+    if let Some(invalidation_trigger) = invalidation_trigger {
+        observation.with_trigger(invalidation_trigger)
+    } else {
+        observation
     }
 }
 
@@ -677,10 +687,14 @@ fn generation_cache_observations(
     reset_session: bool,
     previous_kv_state: &KvCacheState,
     prefix_state: PrefixCacheState,
+    prefix_invalidation_trigger: Option<CacheInvalidationTrigger>,
 ) -> Vec<CacheObservation> {
     let mut observations = compile_path_cache_observations(compile_path, Some(load_state));
     observations.push(paged_tensor_cache_observation(&model.weights));
-    observations.push(prefix_cache_observation(prefix_state));
+    observations.push(prefix_cache_observation(
+        prefix_state,
+        prefix_invalidation_trigger,
+    ));
     observations.push(kv_state_observation(
         session_id,
         reset_session,
@@ -1038,6 +1052,9 @@ pub struct GenerationRequest {
     /// Explicit adapter-serving binding when the request targets a hosted adapter product.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adapter_serving: Option<AdapterServingBinding>,
+    /// Request-level automatic prefix-cache control.
+    #[serde(default, skip_serializing_if = "PrefixCacheControl::is_default")]
+    pub prefix_cache_control: PrefixCacheControl,
     /// Whether to reset the session cache before generation.
     pub reset_session: bool,
 }
@@ -1060,6 +1077,7 @@ impl GenerationRequest {
             prompt: GenerationInput::Text(prompt.into()),
             options,
             adapter_serving: None,
+            prefix_cache_control: PrefixCacheControl::default(),
             reset_session: false,
         }
     }
@@ -1081,6 +1099,7 @@ impl GenerationRequest {
             prompt: GenerationInput::Tokens(prompt),
             options,
             adapter_serving: None,
+            prefix_cache_control: PrefixCacheControl::default(),
             reset_session: false,
         }
     }
@@ -1097,6 +1116,13 @@ impl GenerationRequest {
     pub fn with_adapter_serving(mut self, adapter_serving: AdapterServingBinding) -> Self {
         self.product_id = String::from(ADAPTER_TEXT_GENERATION_PRODUCT_ID);
         self.adapter_serving = Some(adapter_serving);
+        self
+    }
+
+    /// Attaches request-level automatic prefix-cache control.
+    #[must_use]
+    pub fn with_prefix_cache_control(mut self, prefix_cache_control: PrefixCacheControl) -> Self {
+        self.prefix_cache_control = prefix_cache_control;
         self
     }
 }
@@ -1530,9 +1556,15 @@ pub struct GenerationProvenance {
     /// Explicit request- or session-owned paged-KV accounting for the realized path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_ownership: Option<KvCacheOwnershipAccounting>,
+    /// Request-level automatic prefix-cache control that governed the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_control: Option<PrefixCacheControl>,
     /// Observable shared prefix-cache state for the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_state: Option<PrefixCacheState>,
+    /// Explicit refusal reason when the runtime bypassed or invalidated unsafe reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_refusal_reason: Option<PrefixCacheRefusalReason>,
     /// Explicit shared prefix-cache reuse policy for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_policy: Option<PrefixCacheReusePolicy>,
@@ -3188,6 +3220,8 @@ struct SharedPrefixCompatibility {
     chat_template_digest: Option<String>,
     generation_defaults_digest: Option<String>,
     backend_compatibility: String,
+    tenant_id: Option<String>,
+    sampler_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3213,6 +3247,8 @@ struct PrefixLookupResult {
     cache: Option<InMemoryKvCache>,
     prompt_logits: Vec<Vec<f32>>,
     last_logits: Vec<f32>,
+    refusal_reason: Option<PrefixCacheRefusalReason>,
+    invalidation_trigger: Option<CacheInvalidationTrigger>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3223,7 +3259,69 @@ struct ExactPrefixLookupResult {
     greedy_token: Option<u32>,
 }
 
+impl SharedPrefixCompatibility {
+    fn storage_identity_matches(&self, other: &Self) -> bool {
+        self.served_artifact_digest == other.served_artifact_digest
+            && self.model_id == other.model_id
+            && self.model_revision == other.model_revision
+            && self.weight_bundle_digest == other.weight_bundle_digest
+            && self.tokenizer_family == other.tokenizer_family
+            && self.tokenizer_digest == other.tokenizer_digest
+            && self.chat_template_digest == other.chat_template_digest
+            && self.generation_defaults_digest == other.generation_defaults_digest
+            && self.backend_compatibility == other.backend_compatibility
+    }
+}
+
 impl SharedPrefixStore {
+    fn empty_lookup(state: PrefixCacheState) -> PrefixLookupResult {
+        PrefixLookupResult {
+            state,
+            reused_tokens: 0,
+            identity: None,
+            cache: None,
+            prompt_logits: Vec::new(),
+            last_logits: Vec::new(),
+            refusal_reason: None,
+            invalidation_trigger: None,
+        }
+    }
+
+    fn boundary_refusal_reason(
+        &self,
+        compatibility: &SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> Option<PrefixCacheRefusalReason> {
+        let mut saw_sampler_boundary = false;
+        for entry in &self.entries {
+            if !entry.compatibility.storage_identity_matches(compatibility)
+                || shared_prefix_len(entry.prompt_tokens.as_slice(), prompt_tokens.as_slice()) == 0
+            {
+                continue;
+            }
+            if entry.compatibility.tenant_id != compatibility.tenant_id {
+                return Some(PrefixCacheRefusalReason::TenantBoundary);
+            }
+            if entry.compatibility.sampler_digest != compatibility.sampler_digest {
+                saw_sampler_boundary = true;
+            }
+        }
+        saw_sampler_boundary.then_some(PrefixCacheRefusalReason::SamplerBoundary)
+    }
+
+    fn invalidate(
+        &mut self,
+        compatibility: &SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> bool {
+        let retained = self.entries.len();
+        self.entries.retain(|entry| {
+            !(entry.compatibility.storage_identity_matches(compatibility)
+                && shared_prefix_len(entry.prompt_tokens.as_slice(), prompt_tokens.as_slice()) > 0)
+        });
+        self.entries.len() != retained
+    }
+
     fn lookup_exact_prompt(
         &self,
         compatibility: &SharedPrefixCompatibility,
@@ -3261,14 +3359,13 @@ impl SharedPrefixStore {
             .filter_map(|(index, entry)| (&entry.compatibility == compatibility).then_some(index))
             .collect();
         if compatible_indices.is_empty() {
-            return PrefixLookupResult {
-                state: PrefixCacheState::None,
-                reused_tokens: 0,
-                identity: None,
-                cache: None,
-                prompt_logits: Vec::new(),
-                last_logits: Vec::new(),
-            };
+            if let Some(refusal_reason) = self.boundary_refusal_reason(compatibility, prompt_tokens)
+            {
+                let mut result = Self::empty_lookup(PrefixCacheState::Bypassed);
+                result.refusal_reason = Some(refusal_reason);
+                return result;
+            }
+            return Self::empty_lookup(PrefixCacheState::None);
         }
 
         let mut best: Option<(usize, usize)> = None;
@@ -3322,6 +3419,8 @@ impl SharedPrefixStore {
                 } else {
                     Vec::new()
                 },
+                refusal_reason: None,
+                invalidation_trigger: None,
             };
         }
 
@@ -3331,24 +3430,12 @@ impl SharedPrefixStore {
                     && (entry.cache.len() < entry.prompt_tokens.len()
                         || entry.prompt_logits.len() < entry.prompt_tokens.len()))
             });
-            return PrefixLookupResult {
-                state: PrefixCacheState::Rebuilt,
-                reused_tokens: 0,
-                identity: None,
-                cache: None,
-                prompt_logits: Vec::new(),
-                last_logits: Vec::new(),
-            };
+            let mut result = Self::empty_lookup(PrefixCacheState::Rebuilt);
+            result.invalidation_trigger = Some(CacheInvalidationTrigger::PrefixCacheFormatUpgrade);
+            return result;
         }
 
-        PrefixLookupResult {
-            state: PrefixCacheState::Miss,
-            reused_tokens: 0,
-            identity: None,
-            cache: None,
-            prompt_logits: Vec::new(),
-            last_logits: Vec::new(),
-        }
+        Self::empty_lookup(PrefixCacheState::Miss)
     }
 
     fn record(
@@ -3424,20 +3511,79 @@ where
             .as_ref()
             .map(|value| value.generation_defaults_digest.clone()),
         backend_compatibility: model.backend_compatibility().to_string(),
+        tenant_id: None,
+        sampler_digest: None,
     }
+}
+
+fn prefix_cache_tenant_id(
+    request: &GenerationRequest,
+    policy: &PrefixCacheReusePolicy,
+) -> Option<String> {
+    if policy.shared_across_users {
+        None
+    } else {
+        request.prefix_cache_control.tenant_id.clone().or_else(|| {
+            request
+                .session_id
+                .as_ref()
+                .map(|value| value.as_str().to_string())
+        })
+    }
+}
+
+fn prefix_cache_sampler_digest(
+    request: &GenerationRequest,
+    policy: &PrefixCacheReusePolicy,
+) -> Option<String> {
+    if policy.shared_across_sampler_settings {
+        return None;
+    }
+    let sampling_policy = request.options.sampling_policy();
+    let mut hasher = Sha256::new();
+    hasher.update(b"prefix_cache_sampler|");
+    hasher.update(
+        if matches!(sampling_policy.strategy, SamplingStrategy::Greedy) {
+            b"greedy".as_slice()
+        } else {
+            b"sample".as_slice()
+        },
+    );
+    for value in [
+        sampling_policy.temperature.map(f32::to_bits),
+        sampling_policy.top_p.map(f32::to_bits),
+        sampling_policy.repeat_penalty.map(f32::to_bits),
+        sampling_policy.presence_penalty.map(f32::to_bits),
+        sampling_policy.frequency_penalty.map(f32::to_bits),
+    ] {
+        hasher.update(value.unwrap_or_default().to_le_bytes());
+    }
+    hasher.update(
+        sampling_policy
+            .top_k
+            .unwrap_or_default()
+            .try_into()
+            .unwrap_or(u64::MAX)
+            .to_le_bytes(),
+    );
+    hasher.update(sampling_policy.seed.unwrap_or_default().to_le_bytes());
+    Some(hex::encode(hasher.finalize()))
 }
 
 fn prefix_compatibility_for_request<M>(
     model: &M,
-    adapter_serving: Option<&AdapterServingBinding>,
+    request: &GenerationRequest,
 ) -> SharedPrefixCompatibility
 where
     M: CompiledWordGenerationModel,
 {
     let mut compatibility = prefix_compatibility(model);
-    if let Some(adapter_serving) = adapter_serving {
+    if let Some(adapter_serving) = request.adapter_serving.as_ref() {
         compatibility.served_artifact_digest = adapter_serving.served_adapter_digest.clone();
     }
+    let policy = default_prefix_cache_policy();
+    compatibility.tenant_id = prefix_cache_tenant_id(request, &policy);
+    compatibility.sampler_digest = prefix_cache_sampler_digest(request, &policy);
     compatibility
 }
 
@@ -3458,10 +3604,50 @@ fn prefix_identity(
         tokenizer_digest: compatibility.tokenizer_digest.clone(),
         chat_template_digest: compatibility.chat_template_digest.clone(),
         generation_defaults_digest: compatibility.generation_defaults_digest.clone(),
+        tenant_id: compatibility.tenant_id.clone(),
+        sampler_digest: compatibility.sampler_digest.clone(),
         backend_compatibility: compatibility.backend_compatibility.clone(),
         prefix_digest: hex::encode(hasher.finalize()),
         prefix_tokens: prompt_tokens.len(),
     }
+}
+
+fn controlled_prefix_lookup(
+    shared_prefixes: &mut SharedPrefixStore,
+    compatibility: &SharedPrefixCompatibility,
+    prompt_tokens: &TokenSequence,
+    request: &GenerationRequest,
+) -> PrefixLookupResult {
+    match request.prefix_cache_control.mode {
+        PrefixCacheMode::Auto => shared_prefixes.lookup(compatibility, prompt_tokens),
+        PrefixCacheMode::Bypass => {
+            let mut result = SharedPrefixStore::empty_lookup(PrefixCacheState::Bypassed);
+            result.refusal_reason = Some(PrefixCacheRefusalReason::RequestOptOut);
+            result
+        }
+        PrefixCacheMode::Invalidate => {
+            let _ = shared_prefixes.invalidate(compatibility, prompt_tokens);
+            let mut result = SharedPrefixStore::empty_lookup(PrefixCacheState::Rebuilt);
+            result.refusal_reason = Some(PrefixCacheRefusalReason::ForcedInvalidation);
+            result.invalidation_trigger = Some(CacheInvalidationTrigger::ExplicitReset);
+            result
+        }
+    }
+}
+
+fn controlled_exact_prefix_lookup(
+    shared_prefixes: &SharedPrefixStore,
+    compatibility: &SharedPrefixCompatibility,
+    prompt_tokens: &TokenSequence,
+    request: &GenerationRequest,
+) -> Option<ExactPrefixLookupResult> {
+    (request.prefix_cache_control.mode == PrefixCacheMode::Auto)
+        .then(|| shared_prefixes.lookup_exact_prompt(compatibility, prompt_tokens))
+        .flatten()
+}
+
+fn prefix_recording_allowed(request: &GenerationRequest) -> bool {
+    request.prefix_cache_control.mode != PrefixCacheMode::Bypass
 }
 
 fn validate_session_model(
@@ -5056,6 +5242,8 @@ where
     shared_prefix_eligible: bool,
     prefix_policy: PrefixCacheReusePolicy,
     prefix_state: PrefixCacheState,
+    prefix_cache_refusal_reason: Option<PrefixCacheRefusalReason>,
+    prefix_cache_invalidation_trigger: Option<CacheInvalidationTrigger>,
     prefix_tokens_reused: usize,
     prefix_identity: Option<PrefixCacheIdentity>,
     prompt_prefix_recorded: bool,
@@ -5127,10 +5315,11 @@ where
 
             let expected_kv_width = loaded_model.cache_width();
             let mut session_tokens = Vec::new();
-            let prefix_compatibility =
-                prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
+            let prefix_compatibility = prefix_compatibility_for_request(&loaded_model, request);
             let prefix_policy = default_prefix_cache_policy();
             let mut prefix_state = PrefixCacheState::None;
+            let mut prefix_cache_refusal_reason = None;
+            let mut prefix_cache_invalidation_trigger = None;
             let mut prefix_tokens_reused = 0usize;
             let mut prefix_identity = None;
             let mut shared_prefix_eligible = false;
@@ -5150,6 +5339,7 @@ where
                     shared_prefix_eligible = true;
                 } else {
                     prefix_state = PrefixCacheState::Bypassed;
+                    prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
                 }
                 state.cache().state()
             } else {
@@ -5170,8 +5360,15 @@ where
             let mut prompt_logits = Vec::new();
             let mut last_logits = Vec::new();
             let mut cache = if shared_prefix_eligible {
-                let lookup = shared_prefixes.lookup(&prefix_compatibility, &prompt_tokens);
+                let lookup = controlled_prefix_lookup(
+                    shared_prefixes,
+                    &prefix_compatibility,
+                    &prompt_tokens,
+                    request,
+                );
                 prefix_state = lookup.state;
+                prefix_cache_refusal_reason = lookup.refusal_reason;
+                prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
                 prefix_tokens_reused = lookup.reused_tokens;
                 prefix_identity = lookup.identity;
                 prompt_logits = lookup.prompt_logits;
@@ -5236,6 +5433,8 @@ where
                 shared_prefix_eligible,
                 prefix_policy,
                 prefix_state,
+                prefix_cache_refusal_reason,
+                prefix_cache_invalidation_trigger,
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_prefix_recorded,
@@ -5495,7 +5694,9 @@ where
             residency_snapshot: self.residency_snapshot,
             kv_cache_policy: Some(self.cache.policy().clone()),
             kv_ownership,
+            prefix_cache_control: Some(self.request.prefix_cache_control.clone()),
             prefix_cache_state: Some(self.prefix_state),
+            prefix_cache_refusal_reason: self.prefix_cache_refusal_reason,
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
             compile_path: self.compile_path.clone(),
@@ -5515,6 +5716,7 @@ where
                 self.request.reset_session,
                 &self.previous_kv_state,
                 self.prefix_state,
+                self.prefix_cache_invalidation_trigger,
             ),
             scheduler,
             structured_output: self.sampler.structured_output_report(),
@@ -5952,6 +6154,8 @@ where
     prompt_tokens: TokenSequence,
     prefix_policy: PrefixCacheReusePolicy,
     prefix_state: PrefixCacheState,
+    prefix_cache_refusal_reason: Option<PrefixCacheRefusalReason>,
+    prefix_cache_invalidation_trigger: Option<CacheInvalidationTrigger>,
     prefix_tokens_reused: usize,
     prefix_identity: Option<PrefixCacheIdentity>,
     execution_plan_digest: String,
@@ -6028,10 +6232,11 @@ where
 
             let expected_kv_width = loaded_model.cache_width();
             let mut session_tokens = Vec::new();
-            let compatibility =
-                prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
+            let compatibility = prefix_compatibility_for_request(&loaded_model, request);
             let prefix_policy = default_prefix_cache_policy();
             let mut prefix_state = PrefixCacheState::None;
+            let mut prefix_cache_refusal_reason = None;
+            let mut prefix_cache_invalidation_trigger = None;
             let mut prefix_tokens_reused = 0usize;
             let mut prefix_identity = None;
             let mut shared_prefix_eligible = false;
@@ -6051,6 +6256,7 @@ where
                     shared_prefix_eligible = true;
                 } else {
                     prefix_state = PrefixCacheState::Bypassed;
+                    prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
                 }
                 state.cache().state()
             } else {
@@ -6077,8 +6283,15 @@ where
             let mut plan_cache_hits = 0usize;
             let mut plan_cache_misses = 0usize;
             let mut cache = if shared_prefix_eligible {
-                let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+                let lookup = controlled_prefix_lookup(
+                    shared_prefixes,
+                    &compatibility,
+                    &prompt_tokens,
+                    request,
+                );
                 prefix_state = lookup.state;
+                prefix_cache_refusal_reason = lookup.refusal_reason;
+                prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
                 prefix_tokens_reused = lookup.reused_tokens;
                 prefix_identity = lookup.identity;
                 prompt_logits = lookup.prompt_logits;
@@ -6153,6 +6366,8 @@ where
                 session_tokens,
                 prefix_policy,
                 prefix_state,
+                prefix_cache_refusal_reason,
+                prefix_cache_invalidation_trigger,
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
@@ -6176,6 +6391,8 @@ where
                 session_tokens,
                 prefix_policy,
                 prefix_state,
+                prefix_cache_refusal_reason,
+                prefix_cache_invalidation_trigger,
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
@@ -6212,6 +6429,8 @@ where
                 prompt_tokens,
                 prefix_policy,
                 prefix_state,
+                prefix_cache_refusal_reason,
+                prefix_cache_invalidation_trigger,
                 prefix_tokens_reused,
                 prefix_identity,
                 compile_path,
@@ -6291,7 +6510,9 @@ where
             residency_snapshot: self.residency_snapshot.clone(),
             kv_cache_policy: Some(self.cache.policy().clone()),
             kv_ownership: self.cache.ownership_since(&self.request_kv_checkpoint),
+            prefix_cache_control: Some(self.request.prefix_cache_control.clone()),
             prefix_cache_state: Some(self.prefix_state),
+            prefix_cache_refusal_reason: self.prefix_cache_refusal_reason,
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
             compile_path: self.compile_path.clone(),
@@ -6311,6 +6532,7 @@ where
                 self.request.reset_session,
                 &self.previous_kv_state,
                 self.prefix_state,
+                self.prefix_cache_invalidation_trigger,
             ),
             scheduler: None,
             structured_output: self.sampler.structured_output_report(),
@@ -6672,10 +6894,11 @@ where
 
         let expected_kv_width = loaded_model.cache_width();
         let mut session_tokens = Vec::new();
-        let compatibility =
-            prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
+        let compatibility = prefix_compatibility_for_request(&loaded_model, request);
         let prefix_policy = default_prefix_cache_policy();
         let mut prefix_state = PrefixCacheState::None;
+        let mut prefix_cache_refusal_reason = None;
+        let mut prefix_cache_invalidation_trigger = None;
         let mut prefix_tokens_reused = 0usize;
         let mut prefix_identity = None;
         let mut shared_prefix_eligible = false;
@@ -6695,6 +6918,7 @@ where
                 shared_prefix_eligible = true;
             } else {
                 prefix_state = PrefixCacheState::Bypassed;
+                prefix_cache_refusal_reason = Some(PrefixCacheRefusalReason::SessionBoundState);
             }
             state.cache().state()
         } else {
@@ -6722,8 +6946,11 @@ where
         let mut plan_cache_misses = 0usize;
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut cache = if shared_prefix_eligible {
-            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            let lookup =
+                controlled_prefix_lookup(shared_prefixes, &compatibility, &prompt_tokens, request);
             prefix_state = lookup.state;
+            prefix_cache_refusal_reason = lookup.refusal_reason;
+            prefix_cache_invalidation_trigger = lookup.invalidation_trigger;
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
@@ -6902,7 +7129,9 @@ where
             residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
             kv_ownership: cache.ownership_since(&request_kv_checkpoint),
+            prefix_cache_control: Some(request.prefix_cache_control.clone()),
             prefix_cache_state: Some(prefix_state),
+            prefix_cache_refusal_reason,
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
             compile_path: compile_path.clone(),
@@ -6922,6 +7151,7 @@ where
                 request.reset_session,
                 &previous_kv_state,
                 prefix_state,
+                prefix_cache_invalidation_trigger,
             ),
             scheduler: None,
             structured_output: structured_output_report,
@@ -8388,10 +8618,11 @@ mod tests {
     use psionic_backend_cpu::CpuBackend;
     use psionic_core::{DType, Shape};
     use psionic_runtime::{
-        AdmissionRefusalReason, BackendSelection, ExecutionPartition, HealthStatus,
-        KvCacheAccounting, KvCacheDeviceScope, KvCacheOwnerClass, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
-        LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
+        AdmissionRefusalReason, BackendSelection, CacheInvalidationTrigger, CacheKind,
+        ExecutionPartition, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCacheOwnerClass,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState,
+        LocalRuntimeErrorCode, LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy,
+        PrefixCacheControl, PrefixCacheMode, PrefixCacheRefusalReason, PrefixCacheState,
         QuantizationKernelStrategy, ResidencyPressureAction, RuntimeTransitionEvent,
         RuntimeTransitionKind, ShardedModelArtifactRef, ShardedModelLayoutKind,
         ShardedModelManifest,
@@ -8632,7 +8863,15 @@ mod tests {
         let binding = sample_adapter_serving_binding();
 
         let baseline = prefix_compatibility(&model);
-        let adapter = prefix_compatibility_for_request(&model, Some(&binding));
+        let request = GenerationRequest::new_text(
+            "adapter-prefix",
+            model.descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(1),
+        )
+        .with_adapter_serving(binding.clone());
+        let adapter = prefix_compatibility_for_request(&model, &request);
 
         assert_eq!(
             adapter.served_artifact_digest, binding.served_adapter_digest,
@@ -9224,6 +9463,8 @@ mod tests {
             chat_template_digest: Some(String::from("chat-template")),
             generation_defaults_digest: Some(String::from("defaults")),
             backend_compatibility: String::from("cpu"),
+            tenant_id: None,
+            sampler_digest: None,
         };
         let hello_world = decoder.encode_prompt_text("hello world");
         let hello = decoder.encode_prompt_text("hello");
@@ -9260,6 +9501,57 @@ mod tests {
             .expect("exact-only receipt should still support exact hits");
         assert_eq!(exact.cache.len(), hello_world.len());
         assert_eq!(exact.last_logits, last_logits);
+        Ok(())
+    }
+
+    #[test]
+    fn shared_prefix_store_reports_tenant_and_sampler_boundary_refusals()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let loaded_model = CpuWordGenerationModel::new(ReferenceWordDecoder::new())?;
+        let mut compatibility = prefix_compatibility(&loaded_model);
+        compatibility.tenant_id = Some(String::from("tenant-a"));
+        compatibility.sampler_digest = Some(String::from("sampler-a"));
+
+        let tokenizer = loaded_model.model().tokenizer();
+        let hello_world = tokenizer.encode_with_special_tokens("hello world", true, false);
+        let hello = tokenizer.encode_with_special_tokens("hello", true, false);
+        let width = loaded_model.descriptor().config.hidden_size;
+        let vocab_size = loaded_model.descriptor().config.vocab_size;
+
+        let mut cache = InMemoryKvCache::new(loaded_model.descriptor().config.max_context, width);
+        for token in hello_world.as_slice() {
+            cache.append(*token, vec![0.0; width], vec![1.0; width])?;
+        }
+        let prompt_logits = hello_world
+            .as_slice()
+            .iter()
+            .map(|token| {
+                let mut logits = vec![-1.0_f32; vocab_size];
+                logits[token.as_u32() as usize] = token.as_u32() as f32;
+                logits
+            })
+            .collect::<Vec<_>>();
+
+        let mut store = SharedPrefixStore::default();
+        store.record(compatibility.clone(), &hello_world, &prompt_logits, &cache);
+
+        let mut tenant_mismatch = compatibility.clone();
+        tenant_mismatch.tenant_id = Some(String::from("tenant-b"));
+        let tenant_result = store.lookup(&tenant_mismatch, &hello);
+        assert_eq!(tenant_result.state, PrefixCacheState::Bypassed);
+        assert_eq!(
+            tenant_result.refusal_reason,
+            Some(PrefixCacheRefusalReason::TenantBoundary)
+        );
+
+        let mut sampler_mismatch = compatibility;
+        sampler_mismatch.sampler_digest = Some(String::from("sampler-b"));
+        let sampler_result = store.lookup(&sampler_mismatch, &hello);
+        assert_eq!(sampler_result.state, PrefixCacheState::Bypassed);
+        assert_eq!(
+            sampler_result.refusal_reason,
+            Some(PrefixCacheRefusalReason::SamplerBoundary)
+        );
         Ok(())
     }
 
@@ -10203,14 +10495,21 @@ mod tests {
     fn cpu_reference_text_generation_reports_prefix_hits_and_bypasses()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
+        let shared_tenant = PrefixCacheControl {
+            mode: PrefixCacheMode::Auto,
+            tenant_id: Some(String::from("tenant-a")),
+        };
 
-        let first = service.generate(&GenerationRequest::new_text(
-            "gen-ref-prefix-1",
-            service.model_descriptor().clone(),
-            None,
-            "hello world",
-            GenerationOptions::greedy(4),
-        ))?;
+        let first = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-1",
+                service.model_descriptor().clone(),
+                None,
+                "hello world",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(shared_tenant.clone()),
+        )?;
         assert_eq!(
             first
                 .provenance
@@ -10220,13 +10519,16 @@ mod tests {
         );
         assert_eq!(first.metrics.prefix_tokens_reused, Some(0));
 
-        let second = service.generate(&GenerationRequest::new_text(
-            "gen-ref-prefix-2",
-            service.model_descriptor().clone(),
-            None,
-            "hello",
-            GenerationOptions::greedy(4),
-        ))?;
+        let second = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-2",
+                service.model_descriptor().clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(shared_tenant.clone()),
+        )?;
         assert_eq!(
             second
                 .provenance
@@ -10246,13 +10548,16 @@ mod tests {
         );
 
         let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
-        let warmed_session = service.generate(&GenerationRequest::new_text(
-            "gen-ref-prefix-3",
-            service.model_descriptor().clone(),
-            Some(session.session_id.clone()),
-            "hello",
-            GenerationOptions::greedy(4),
-        ))?;
+        let warmed_session = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-3",
+                service.model_descriptor().clone(),
+                Some(session.session_id.clone()),
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(shared_tenant.clone()),
+        )?;
         assert_eq!(
             warmed_session
                 .provenance
@@ -10262,8 +10567,32 @@ mod tests {
         );
         assert_eq!(warmed_session.metrics.prefix_tokens_reused, Some(2));
 
-        let bypassed = service.generate(&GenerationRequest::new_text(
+        let boundary_session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
+        let tenant_boundary = service.generate(&GenerationRequest::new_text(
             "gen-ref-prefix-4",
+            service.model_descriptor().clone(),
+            Some(boundary_session.session_id),
+            "hello",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            tenant_boundary
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Bypassed)
+        );
+        assert_eq!(
+            tenant_boundary
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_refusal_reason),
+            Some(PrefixCacheRefusalReason::TenantBoundary)
+        );
+        assert_eq!(tenant_boundary.metrics.prefix_tokens_reused, Some(0));
+
+        let bypassed = service.generate(&GenerationRequest::new_text(
+            "gen-ref-prefix-5",
             service.model_descriptor().clone(),
             Some(session.session_id),
             "rusty",
@@ -10276,8 +10605,153 @@ mod tests {
                 .and_then(|value| value.prefix_cache_state),
             Some(PrefixCacheState::Bypassed)
         );
+        assert_eq!(
+            bypassed
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_refusal_reason),
+            Some(PrefixCacheRefusalReason::SessionBoundState)
+        );
         assert_eq!(bypassed.metrics.prefix_tokens_reused, Some(0));
         assert_eq!(bypassed.output.text, "grad");
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_reports_prefix_control_refusals_and_invalidations()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let tenant = String::from("tenant-a");
+
+        let seed = GenerationRequest::new_text(
+            "gen-ref-prefix-control-1",
+            service.model_descriptor().clone(),
+            None,
+            "hello world",
+            GenerationOptions::greedy(4),
+        )
+        .with_prefix_cache_control(PrefixCacheControl {
+            mode: PrefixCacheMode::Auto,
+            tenant_id: Some(tenant.clone()),
+        });
+        let seeded = service.generate(&seed)?;
+        assert_eq!(
+            seeded
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::None)
+        );
+
+        let bypassed = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-control-2",
+                service.model_descriptor().clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(PrefixCacheControl {
+                mode: PrefixCacheMode::Bypass,
+                tenant_id: Some(tenant.clone()),
+            }),
+        )?;
+        assert_eq!(
+            bypassed
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Bypassed)
+        );
+        assert_eq!(
+            bypassed
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_refusal_reason),
+            Some(PrefixCacheRefusalReason::RequestOptOut)
+        );
+        assert_eq!(bypassed.metrics.prefix_tokens_reused, Some(0));
+
+        let hit = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-control-3",
+                service.model_descriptor().clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(PrefixCacheControl {
+                mode: PrefixCacheMode::Auto,
+                tenant_id: Some(tenant.clone()),
+            }),
+        )?;
+        assert_eq!(
+            hit.provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Hit)
+        );
+        assert_eq!(hit.metrics.prefix_tokens_reused, Some(2));
+
+        let invalidated = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-control-4",
+                service.model_descriptor().clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(PrefixCacheControl {
+                mode: PrefixCacheMode::Invalidate,
+                tenant_id: Some(tenant.clone()),
+            }),
+        )?;
+        assert_eq!(
+            invalidated
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Rebuilt)
+        );
+        assert_eq!(
+            invalidated
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_refusal_reason),
+            Some(PrefixCacheRefusalReason::ForcedInvalidation)
+        );
+        assert!(
+            invalidated
+                .provenance
+                .as_ref()
+                .map(|value| value.cache_observations.iter().any(|observation| {
+                    observation.kind == CacheKind::PrefixCache
+                        && observation.trigger == Some(CacheInvalidationTrigger::ExplicitReset)
+                }))
+                .unwrap_or(false)
+        );
+
+        let rehit = service.generate(
+            &GenerationRequest::new_text(
+                "gen-ref-prefix-control-5",
+                service.model_descriptor().clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(4),
+            )
+            .with_prefix_cache_control(PrefixCacheControl {
+                mode: PrefixCacheMode::Auto,
+                tenant_id: Some(tenant),
+            }),
+        )?;
+        assert_eq!(
+            rehit
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Hit)
+        );
+        assert_eq!(rehit.metrics.prefix_tokens_reused, Some(2));
         Ok(())
     }
 

@@ -5188,6 +5188,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5321,6 +5323,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5420,6 +5424,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5512,6 +5518,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5621,6 +5629,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5737,6 +5747,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5850,6 +5862,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -5992,6 +6006,8 @@ mod tests {
                     tokenizer_digest: Some(String::from("tokenizer-digest")),
                     chat_template_digest: None,
                     generation_defaults_digest: None,
+                    tenant_id: None,
+                    sampler_digest: None,
                     backend_compatibility: String::from("cpu"),
                     prefix_digest: String::from("prefix-digest"),
                     prefix_tokens: 1,
@@ -6012,6 +6028,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );
@@ -6291,6 +6309,8 @@ mod tests {
                 cache_observations: Vec::new(),
                 scheduler: None,
                 kv_ownership: None,
+                prefix_cache_control: None,
+                prefix_cache_refusal_reason: None,
                 structured_output: None,
             },
         );

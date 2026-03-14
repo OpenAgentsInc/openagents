@@ -33,8 +33,9 @@ use psionic_models::{
 };
 use psionic_runtime::{
     ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
-    StructuredGrammarSyntax, StructuredOutputExecutionReport, StructuredOutputParser,
-    StructuredOutputRequest, local_structured_output_parsers,
+    PrefixCacheControl, PrefixCacheRefusalReason, PrefixCacheState, StructuredGrammarSyntax,
+    StructuredOutputExecutionReport, StructuredOutputParser, StructuredOutputRequest,
+    local_structured_output_parsers,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1280,6 +1281,8 @@ struct ChatCompletionRequest {
     response_format: Option<ChatCompletionResponseFormatRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     psionic_grammar: Option<PsionicGrammarRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_prefix_cache: Option<PrefixCacheControl>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1448,7 +1451,8 @@ async fn handle_chat_completions(
         None,
         prompt_tokens,
         options,
-    );
+    )
+    .with_prefix_cache_control(request.psionic_prefix_cache.clone().unwrap_or_default());
 
     let worker = state.worker.as_ref().ok_or_else(|| {
         OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::BackendUnavailable {
@@ -1577,7 +1581,8 @@ async fn handle_generic_chat_completions(
         None,
         rendered.text,
         options,
-    );
+    )
+    .with_prefix_cache_control(request.psionic_prefix_cache.clone().unwrap_or_default());
 
     let response = state
         .worker
@@ -1608,6 +1613,15 @@ async fn handle_generic_chat_completions(
         .provenance
         .as_ref()
         .and_then(|value| value.scheduler.clone());
+    let prefix_cache_state = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.prefix_cache_state);
+    let prefix_cache_refusal_reason = response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.prefix_cache_refusal_reason);
+    let prefix_tokens_reused = response.metrics.prefix_tokens_reused;
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
             request_id.as_str(),
@@ -1633,6 +1647,9 @@ async fn handle_generic_chat_completions(
             state.as_ref(),
             structured_output_report.as_ref(),
             scheduler_receipt.as_ref(),
+            prefix_cache_state,
+            prefix_cache_refusal_reason,
+            prefix_tokens_reused,
         );
         return Ok(response);
     }
@@ -1688,6 +1705,9 @@ async fn handle_generic_chat_completions(
         state.as_ref(),
         structured_output_report.as_ref(),
         scheduler_receipt.as_ref(),
+        prefix_cache_state,
+        prefix_cache_refusal_reason,
+        prefix_tokens_reused,
     );
     Ok(response)
 }
@@ -1928,6 +1948,9 @@ fn insert_generic_execution_headers(
     state: &OpenAiCompatState,
     structured_output: Option<&StructuredOutputExecutionReport>,
     scheduler: Option<&GenerationSchedulerRequestReceipt>,
+    prefix_cache_state: Option<PrefixCacheState>,
+    prefix_cache_refusal_reason: Option<PrefixCacheRefusalReason>,
+    prefix_tokens_reused: Option<usize>,
 ) {
     headers.insert(
         HeaderName::from_static("x-psionic-backend"),
@@ -1982,6 +2005,38 @@ fn insert_generic_execution_headers(
                 }
             }),
         );
+    }
+    if let Some(prefix_cache_state) = prefix_cache_state {
+        headers.insert(
+            HeaderName::from_static("x-psionic-prefix-cache-state"),
+            HeaderValue::from_static(match prefix_cache_state {
+                PrefixCacheState::None => "none",
+                PrefixCacheState::Hit => "hit",
+                PrefixCacheState::Miss => "miss",
+                PrefixCacheState::Bypassed => "bypassed",
+                PrefixCacheState::Rebuilt => "rebuilt",
+            }),
+        );
+    }
+    if let Some(prefix_cache_refusal_reason) = prefix_cache_refusal_reason {
+        headers.insert(
+            HeaderName::from_static("x-psionic-prefix-cache-refusal"),
+            HeaderValue::from_static(match prefix_cache_refusal_reason {
+                PrefixCacheRefusalReason::RequestOptOut => "request_opt_out",
+                PrefixCacheRefusalReason::ForcedInvalidation => "forced_invalidation",
+                PrefixCacheRefusalReason::TenantBoundary => "tenant_boundary",
+                PrefixCacheRefusalReason::SamplerBoundary => "sampler_boundary",
+                PrefixCacheRefusalReason::SessionBoundState => "session_bound_state",
+            }),
+        );
+    }
+    if let Some(prefix_tokens_reused) = prefix_tokens_reused {
+        if let Ok(value) = HeaderValue::from_str(prefix_tokens_reused.to_string().as_str()) {
+            headers.insert(
+                HeaderName::from_static("x-psionic-prefix-cache-reused-tokens"),
+                value,
+            );
+        }
     }
     insert_structured_output_headers(headers, structured_output);
 }
@@ -2394,7 +2449,10 @@ mod tests {
         PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, TokenId, TokenSequence,
         render_gpt_oss_harmony_prompt,
     };
-    use psionic_runtime::{BatchExecutionPosture, QueueDiscipline, StructuredGrammarSyntax};
+    use psionic_runtime::{
+        BatchExecutionPosture, PrefixCacheControl, PrefixCacheMode, QueueDiscipline,
+        StructuredGrammarSyntax,
+    };
 
     #[test]
     fn chat_messages_map_to_prompt_messages() {
@@ -2527,6 +2585,7 @@ mod tests {
             stream: false,
             response_format: None,
             psionic_grammar: None,
+            psionic_prefix_cache: None,
         });
 
         assert!(
@@ -2802,6 +2861,7 @@ mod tests {
             stream: false,
             response_format: None,
             psionic_grammar: None,
+            psionic_prefix_cache: None,
         };
         let prompt_messages =
             chat_messages_to_prompt_messages_for_family(&request.messages, qwen_model.family)?;
@@ -2855,6 +2915,7 @@ mod tests {
             stream: false,
             response_format: None,
             psionic_grammar: None,
+            psionic_prefix_cache: None,
         };
         let prompt_messages =
             chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?;
@@ -2908,6 +2969,7 @@ mod tests {
                 grammar: String::from("root ::= \"psionic\"\n"),
                 syntax: Some(StructuredGrammarSyntax::Gbnf),
             }),
+            psionic_prefix_cache: None,
         };
 
         let response = tokio::runtime::Runtime::new()?.block_on(
@@ -2982,6 +3044,7 @@ mod tests {
                 schema: None,
             }),
             psionic_grammar: None,
+            psionic_prefix_cache: None,
         };
 
         let response = tokio::runtime::Runtime::new()?.block_on(
@@ -3012,6 +3075,104 @@ mod tests {
         assert_eq!(
             payload["psionic_structured_output"]["schema_name"],
             serde_json::json!("ok_object")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_prefix_cache_headers_are_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-prefix-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny prefix llama").as_slice(),
+            dense_decoder_tensors(false, 3, 5).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let tenant = String::from("tenant-a");
+        let build_request =
+            |prompt: &str, prefix_cache: PrefixCacheControl| ChatCompletionRequest {
+                model: Some(String::from("tiny-prefix-llama")),
+                messages: vec![ChatCompletionMessage {
+                    role: String::from("user"),
+                    content: String::from(prompt),
+                    name: None,
+                }],
+                temperature: Some(0.0),
+                max_tokens: Some(1),
+                stop: None,
+                stream: false,
+                response_format: None,
+                psionic_grammar: None,
+                psionic_prefix_cache: Some(prefix_cache),
+            };
+
+        let seeded = tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+            std::sync::Arc::clone(&server.state),
+            build_request(
+                "hello world",
+                PrefixCacheControl {
+                    mode: PrefixCacheMode::Auto,
+                    tenant_id: Some(tenant.clone()),
+                },
+            ),
+        ))?;
+        assert_eq!(
+            header_value(seeded.headers(), "x-psionic-prefix-cache-state"),
+            Some(String::from("none"))
+        );
+        assert_eq!(
+            header_value(seeded.headers(), "x-psionic-prefix-cache-reused-tokens"),
+            Some(String::from("0"))
+        );
+
+        let hit = tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+            std::sync::Arc::clone(&server.state),
+            build_request(
+                "hello",
+                PrefixCacheControl {
+                    mode: PrefixCacheMode::Auto,
+                    tenant_id: Some(tenant.clone()),
+                },
+            ),
+        ))?;
+        assert_eq!(
+            header_value(hit.headers(), "x-psionic-prefix-cache-state"),
+            Some(String::from("hit"))
+        );
+        assert_eq!(
+            header_value(hit.headers(), "x-psionic-prefix-cache-reused-tokens"),
+            Some(String::from("1"))
+        );
+        assert_eq!(
+            header_value(hit.headers(), "x-psionic-prefix-cache-refusal"),
+            None
+        );
+
+        let bypassed =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                build_request(
+                    "hello",
+                    PrefixCacheControl {
+                        mode: PrefixCacheMode::Bypass,
+                        tenant_id: Some(tenant),
+                    },
+                ),
+            ))?;
+        assert_eq!(
+            header_value(bypassed.headers(), "x-psionic-prefix-cache-state"),
+            Some(String::from("bypassed"))
+        );
+        assert_eq!(
+            header_value(bypassed.headers(), "x-psionic-prefix-cache-refusal"),
+            Some(String::from("request_opt_out"))
+        );
+        assert_eq!(
+            header_value(bypassed.headers(), "x-psionic-prefix-cache-reused-tokens"),
+            Some(String::from("0"))
         );
         Ok(())
     }
@@ -3052,6 +3213,7 @@ mod tests {
                 schema: None,
             }),
             psionic_grammar: None,
+            psionic_prefix_cache: None,
         };
 
         let response = tokio::runtime::Runtime::new()?.block_on(super::generic_chat_completions(

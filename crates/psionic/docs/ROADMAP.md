@@ -816,8 +816,12 @@ server, and per-request scheduling receipts. `PSI-238` /
 too through a real block/paged KV manager with request/session/shared-prefix
 owner bindings, deterministic page allocation and reclaim, eviction-aware
 accounting, scheduler KV peak metrics, and per-response KV ownership receipts.
-The next dependency-ordered issue in that chain is `PSI-239` /
-[#3544](https://github.com/OpenAgentsInc/openagents/issues/3544).
+`PSI-239` / [#3544](https://github.com/OpenAgentsInc/openagents/issues/3544)
+is now landed too through automatic shared prefix caching with explicit
+tenant/session and sampler boundaries, request-level auto/bypass/invalidate
+controls, refusal and invalidation receipts, and generic-server prefix-cache
+headers. The next dependency-ordered issue in that chain is `PSI-240` /
+[#3545](https://github.com/OpenAgentsInc/openagents/issues/3545).
 
 ## Current Reality
 
@@ -990,9 +994,11 @@ baseline on `main` is:
   growth accounting, and `refuse_new_pages` policy surfaced through
   `psionic-runtime`, `psionic-serve`, and `psionic-provider`
 - shared prompt-prefix reuse now has explicit identity, policy, state, and
-  reused-token evidence in `psionic-runtime`, `psionic-serve`, and `psionic-provider`,
-  with longest-safe prefix reuse on the CPU reference path and explicit bypass
-  when session-owned KV state is already populated
+  reused-token evidence in `psionic-runtime`, `psionic-serve`, and
+  `psionic-provider`, with longest-safe prefix reuse on the CPU reference path,
+  explicit tenant/session and sampler boundaries, request-level
+  bypass/invalidate controls, and generic-server visibility for
+  hit/miss/bypass/refusal truth
 - GGUF tokenizer metadata loading exists for SentencePiece and GPT-style BPE
   families, and a real golden tokenizer/prompt-template fixture corpus now
   exists with GGUF chat-template extraction, stop-default references, and
