@@ -54,6 +54,7 @@ mod provider_admin;
 mod provider_inventory;
 mod provider_nip90_lane;
 mod render;
+mod research_control;
 pub mod rive_assets;
 mod runtime_lanes;
 mod runtime_log;

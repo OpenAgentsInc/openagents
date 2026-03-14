@@ -67,6 +67,10 @@ enum Command {
         #[command(subcommand)]
         command: TrainingCommand,
     },
+    Research {
+        #[command(subcommand)]
+        command: ResearchCommand,
+    },
     Pane {
         #[command(subcommand)]
         command: PaneCommand,
@@ -243,6 +247,12 @@ enum ChallengeCommand {
 #[derive(Subcommand, Debug)]
 enum TrainingCommand {
     Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum ResearchCommand {
+    Status,
+    Reset,
 }
 
 #[derive(Subcommand, Debug)]
@@ -514,6 +524,15 @@ impl TrainingCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
             Self::Status => DesktopControlActionRequest::GetTrainingStatus,
+        }
+    }
+}
+
+impl ResearchCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetResearchStatus,
+            Self::Reset => DesktopControlActionRequest::ResetResearchState,
         }
     }
 }
@@ -858,6 +877,19 @@ fn main() -> Result<()> {
                 print_json(payload)?;
             } else {
                 print_training_text(payload);
+            }
+        }
+        Command::Research { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                if matches!(command, ResearchCommand::Reset) {
+                    println!("{}", response.message);
+                }
+                print_research_text(payload);
             }
         }
         Command::Pane { command } => match command {
@@ -3134,6 +3166,102 @@ fn print_training_text(payload: &Value) {
     }
 }
 
+fn print_research_text(payload: &Value) {
+    println!(
+        "research: programs={} updated_at={} storage={}",
+        payload
+            .get("programs")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("updated_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or_default(),
+        payload
+            .get("storage_path")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    if let Some(last_action) = payload.get("last_action").and_then(Value::as_str) {
+        println!("last action: {last_action}");
+    }
+    if let Some(last_error) = payload.get("last_error").and_then(Value::as_str) {
+        println!("last error: {last_error}");
+    }
+    let Some(programs) = payload.get("programs").and_then(Value::as_array) else {
+        return;
+    };
+    for program in programs {
+        println!(
+            "program: id={} family={} objective={} leader={} promoted={} frontier={} candidates={}",
+            program
+                .get("program_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            program.get("family").and_then(Value::as_str).unwrap_or("-"),
+            program
+                .get("objective")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            program
+                .get("leader_candidate_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            program
+                .get("promoted_candidate_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            program
+                .get("frontier_candidate_ids")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len),
+            program
+                .get("candidate_count")
+                .and_then(Value::as_u64)
+                .unwrap_or_default()
+        );
+        if let Some(candidates) = program.get("candidates").and_then(Value::as_array) {
+            for candidate in candidates {
+                println!(
+                    "research candidate: id={} run={} status={} decision={} promotable={} gate_failed={} weighted_score={} summary={}",
+                    candidate
+                        .get("candidate_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    candidate
+                        .get("run_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    candidate
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    candidate
+                        .get("decision")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    candidate
+                        .get("promotable")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    candidate
+                        .get("hard_gate_failed")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    candidate
+                        .get("weighted_score")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    candidate
+                        .get("summary")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-")
+                );
+            }
+        }
+    }
+}
+
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
     println!(
         "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} label={}",
@@ -3474,12 +3602,13 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 mod tests {
     use super::{
         AppleFmCommand, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
-        GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
-        SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
-        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
-        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
-        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
+        GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand,
+        SandboxCommand, SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg,
+        WalletCommand, buy_mode_has_failed_request, buy_mode_has_paid_request,
+        buyer_procurement_status_lines, ensure_buy_mode_budget_ack, inventory_status_lines,
+        nip90_sent_payments_report_lines, parse_local_daily_window,
+        parse_nip90_sent_payments_report, parse_report_boundary, request_has_failed,
+        request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -3799,6 +3928,14 @@ mod tests {
         assert_eq!(
             TrainingCommand::Status.action_request(),
             DesktopControlActionRequest::GetTrainingStatus
+        );
+        assert_eq!(
+            ResearchCommand::Status.action_request(),
+            DesktopControlActionRequest::GetResearchStatus
+        );
+        assert_eq!(
+            ResearchCommand::Reset.action_request(),
+            DesktopControlActionRequest::ResetResearchState
         );
         assert!(matches!(SandboxCommand::Status.action_request(), Ok(None)));
         assert!(matches!(
