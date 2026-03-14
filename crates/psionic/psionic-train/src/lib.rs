@@ -20,14 +20,15 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod artifact_storage;
 mod checkpoint_recovery;
 mod core_loop;
 mod curriculum;
 mod distributed_optimizer;
 mod model_io;
 mod orchestrator;
-mod replay_truth;
 mod reference_program;
+mod replay_truth;
 mod rl_artifacts;
 mod rollout_validation;
 mod run_graph;
@@ -36,14 +37,15 @@ mod stability;
 mod stage_program;
 mod worker_protocol;
 
+pub use artifact_storage::*;
 pub use checkpoint_recovery::*;
 pub use core_loop::*;
 pub use curriculum::*;
 pub use distributed_optimizer::*;
 pub use model_io::*;
 pub use orchestrator::*;
-pub use replay_truth::*;
 pub use reference_program::*;
+pub use replay_truth::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
 pub use run_graph::*;
@@ -53,7 +55,7 @@ pub use stage_program::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, checkpoint, recovery, and elastic membership substrate";
+pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, artifact lifecycle, checkpoint, recovery, and elastic membership substrate";
 
 /// Error returned by training-session state transitions.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]

@@ -1786,11 +1786,29 @@ artifact provenance, and untrusted-worker admission as implicit assumptions.
 
 ### 27. `Artifact Storage: define retention, garbage collection, archival, and cold-restore policy`
 
-The full train stack will generate large volumes of checkpoints, rollouts, eval
-artifacts, and logs. This issue should define retention windows, storage tiers,
-archival classes, deduplication, garbage collection, and cold-restore
-objectives for those artifacts. Storage lifecycle must become part of train
-truth rather than an operator afterthought.
+Status: implemented on 2026-03-14 via GitHub issue `#3590`.
+
+`psionic-train` now owns an explicit artifact-storage lifecycle layer in
+`src/artifact_storage.rs`.
+
+The new contract makes these storage seams explicit:
+
+- per-artifact-class retention profiles with hot and warm thresholds
+- archive classes for ephemeral, restorable, and immutable artifacts
+- digest-aware deduplication for rollout or other repeatable artifact classes
+- typed records for checkpoint, rollout, eval, and log bundle artifacts
+- explicit sweep receipts for warm migration, archival, deduplication, and
+  garbage collection
+- cold-restore request and completion receipts bound to restore objectives
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_ARTIFACT_STORAGE_REFERENCE.md`
+- `scripts/release/check-psionic-train-artifact-storage.sh`
+
+This issue makes train artifact retention part of typed Psionic truth instead
+of operator-local scripts. Scheduler budgeting, queue preemption, and broader
+economic accounting remain the next layer.
 
 ### 28. `Scheduling and Accounting: add budget, priority, preemption, and cost attribution`
 
