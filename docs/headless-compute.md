@@ -228,6 +228,17 @@ Repeatable scripted form:
 scripts/release/check-gpt-oss-nvidia-mission-control.sh
 ```
 
+Cross-stack launch validation:
+
+```bash
+scripts/release/check-compute-launch-program.sh
+```
+
+That launch-program harness writes a summary plus per-step logs for the desktop
+control plane, Psionic sandbox and cluster lanes, validator service, kernel
+authority compute flows, and optional funded/platform-specific legs. See
+`docs/COMPUTE_LAUNCH_PROGRAM_RUNBOOK.md`.
+
 Operational notes:
 
 - `local-runtime refresh` always targets the active Provider Control lane, but

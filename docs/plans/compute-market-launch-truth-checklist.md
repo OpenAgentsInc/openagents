@@ -47,6 +47,10 @@ That distinction matters operationally as much as editorially. A provider, buyer
 
 ## Operator Pre-Launch Checks
 
+- Run `scripts/release/check-compute-launch-program.sh` and inspect
+  `SUMMARY.md` plus `summary.json`.
+- Add `--soak-iterations 3` and the relevant optional platform legs before
+  widening production claims beyond the default local gate.
 - Confirm `/stats` exposes the expected `compute_rollout_gates` values for the intended environment.
 - Confirm `/stats` publishes the expected `compute_policy_bundle_id` and `compute_policy_version`.
 - Confirm `compute_truth_labels` are enabled in environments that need migration diagnostics, and intentionally disabled where operators do not want transitional labeling noise.

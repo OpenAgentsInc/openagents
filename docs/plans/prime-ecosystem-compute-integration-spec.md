@@ -1022,6 +1022,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should be available both in the GUI and through `autopilotctl`.
 
 45. **Compute Launch Program: build an end-to-end validation matrix and soak harness**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3529`.
    - Create the comprehensive validation program that proves local, clustered, sandbox, proof-bearing, and environment-bound compute lanes behave as advertised.
    - This should include desktop flows, headless flows, kernel receipts, cluster fault tests, and validator fault tests.
 
