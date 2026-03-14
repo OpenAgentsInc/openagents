@@ -46,9 +46,9 @@ use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_core::Shape;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
-    CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
-    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, KvCachePageLayout, KvCachePolicy,
-    PrefixCacheIdentity, build_gpt_oss_decode_graph,
+    BackendRuntimeResources, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
+    CompilePathTemperature, DeviceDiscovery, GptOssDecodeGraph, HealthStatus, KvCachePageLayout,
+    KvCachePolicy, PrefixCacheIdentity, build_gpt_oss_decode_graph,
 };
 use sha2::{Digest, Sha256};
 
@@ -457,6 +457,11 @@ impl CpuGgufGptOssTextGenerationService {
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
         &self.model_descriptor
+    }
+
+    #[must_use]
+    pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        self.backend.runtime_resources()
     }
 
     /// Returns the compiled plan digest for the loaded model.
@@ -945,6 +950,11 @@ impl MetalGgufGptOssTextGenerationService {
     }
 
     #[must_use]
+    pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        self.backend.runtime_resources()
+    }
+
+    #[must_use]
     pub fn backend_selection(&self) -> &psionic_runtime::BackendSelection {
         &self.backend_selection
     }
@@ -1265,6 +1275,11 @@ impl CudaGgufGptOssTextGenerationService {
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
         &self.model_descriptor
+    }
+
+    #[must_use]
+    pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        self.backend.runtime_resources()
     }
 
     #[must_use]

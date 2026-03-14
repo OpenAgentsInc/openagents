@@ -26,6 +26,8 @@ use crate::labor_orchestrator::{
 use crate::local_inference_runtime::{
     LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
     LocalInferenceExecutionSnapshot, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
+    compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
+    local_runtime_execution_posture_label, local_runtime_scheduler_posture_label,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
@@ -2562,7 +2564,105 @@ fn mission_control_local_runtime_view_model_for_policy(
                         if loaded { "loaded" } else { "unloaded" }
                     ),
                 ),
+                (
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS posture: {}",
+                        local_runtime_execution_posture_label(
+                            local_inference_runtime.diagnostics.posture
+                        )
+                    ),
+                ),
             ];
+            if let Some(scheduler_posture) =
+                local_runtime_scheduler_posture_label(&local_inference_runtime.diagnostics)
+            {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!("GPT-OSS scheduler: {scheduler_posture}"),
+                ));
+            }
+            if let Some(resources) = local_inference_runtime.diagnostics.runtime_resources.as_ref() {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS plan cache: entries={} bytes={} limit={}",
+                        resources.execution_plan_cache.state.cached_entries,
+                        resources.execution_plan_cache.state.cached_bytes,
+                        resources
+                            .execution_plan_cache
+                            .policy
+                            .max_cached_bytes
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "unbounded".to_string())
+                    ),
+                ));
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS kernel cache: entries={} bytes={} limit={}",
+                        resources.kernel_cache.state.cached_entries,
+                        resources.kernel_cache.state.cached_bytes,
+                        resources
+                            .kernel_cache
+                            .policy
+                            .max_cached_bytes
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "unbounded".to_string())
+                    ),
+                ));
+            }
+            if let Some(compile_path) = local_inference_runtime.diagnostics.last_compile_path.as_ref() {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS compile path: temperature={} plan={} kernel={}",
+                        compile_path_temperature_label(compile_path.temperature),
+                        compile_path.execution_plan_cache.detail,
+                        compile_path.kernel_cache.detail
+                    ),
+                ));
+            }
+            if let Some(duration_ns) =
+                local_inference_runtime.diagnostics.last_cold_compile_duration_ns
+            {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!("GPT-OSS last cold compile ns: {duration_ns}"),
+                ));
+            }
+            if let Some(duration_ns) =
+                local_inference_runtime.diagnostics.last_warm_refresh_duration_ns
+            {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!("GPT-OSS last warm refresh ns: {duration_ns}"),
+                ));
+            }
+            if let Some(invalidation) = local_inference_runtime
+                .diagnostics
+                .last_cache_invalidation
+                .as_ref()
+            {
+                detail_lines.push((
+                    TerminalStream::Stdout,
+                    format!(
+                        "GPT-OSS cache invalidation: reason={} at={} detail={}",
+                        local_runtime_cache_invalidation_reason_label(invalidation.reason),
+                        invalidation.observed_at_epoch_ms,
+                        invalidation.summary
+                    ),
+                ));
+            }
+            if let Some(failure) = local_inference_runtime.diagnostics.last_compile_failure.as_ref() {
+                detail_lines.push((
+                    TerminalStream::Stderr,
+                    format!(
+                        "GPT-OSS compile failure: at={} detail={}",
+                        failure.observed_at_epoch_ms, failure.summary
+                    ),
+                ));
+            }
             if let Some(ready_model) = local_inference_runtime.ready_model.as_deref() {
                 detail_lines.push((
                     TerminalStream::Stdout,

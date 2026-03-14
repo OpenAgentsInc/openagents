@@ -75,6 +75,13 @@ pub mod throughput_bench;
 #[cfg(test)]
 mod chat_regression_tests;
 
+pub use local_inference_runtime::{
+    LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason, LocalRuntimeCompileFailure,
+    LocalRuntimeDiagnostics, LocalRuntimeExecutionPosture, compile_path_temperature_label,
+    local_runtime_cache_invalidation_reason_label, local_runtime_execution_posture_label,
+    local_runtime_scheduler_posture_label,
+};
+
 pub fn run_desktop_app() -> Result<()> {
     logging::init();
     let event_loop = EventLoop::new().context("failed to create event loop")?;

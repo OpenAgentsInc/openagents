@@ -282,7 +282,17 @@ Operational notes:
 
 - `local-runtime refresh` always targets the active Provider Control lane, but
   on GPT-OSS it does not load the GGUF by itself
+- `autopilotctl local-runtime status` now surfaces seller-lane execution
+  posture (`cold`, `warming`, `warm`, `compile_failed`, `cache_invalidated`),
+  scheduler posture, last compile-path temperature, execution-plan/kernel-cache
+  occupancy, last cold-compile or warm-refresh duration, typed cache
+  invalidation reason, and the last compile-failure summary when one exists
 - `gpt-oss warm` and `gpt-oss unload` act directly on the configured GGUF model
+- `local-runtime refresh` re-reads `OPENAGENTS_GPT_OSS_BACKEND` and
+  `OPENAGENTS_GPT_OSS_MODEL_PATH`; if the backend, configured model, or local
+  artifact metadata changed, the runtime invalidates prior warm execution state
+  and reports the typed invalidation reason through desktop control and
+  `autopilotctl`
 - `provider online` will still block if the backend is not `cuda`, the GGUF is
   missing, or the configured model is not loaded
 - on retained Metal/CPU GPT-OSS hosts, Provider Control and `autopilotctl` stay
