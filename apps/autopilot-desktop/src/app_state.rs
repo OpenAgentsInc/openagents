@@ -9974,6 +9974,8 @@ pub struct RenderState {
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
     pub earn_job_lifecycle_projection: EarnJobLifecycleProjectionState,
+    pub nip90_buyer_payment_attempts:
+        crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState,
     pub nip90_payment_facts: crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState,
     pub earn_kernel_receipts: crate::state::earn_kernel_receipts::EarnKernelReceiptState,
     pub economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState,
@@ -10036,6 +10038,19 @@ impl RenderState {
         )
     }
 
+    pub fn refresh_nip90_buyer_payment_attempts(&mut self) -> bool {
+        let local_nostr_pubkey_hex = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.clone());
+        self.nip90_buyer_payment_attempts.sync_from_current_truth(
+            &self.network_requests,
+            &self.spark_wallet,
+            &self.nip90_payment_facts,
+            local_nostr_pubkey_hex.as_deref(),
+        )
+    }
+
     pub fn sync_nip90_payment_facts_background_tick(&mut self, now: std::time::Instant) -> bool {
         let local_nostr_pubkey_hex = self
             .nostr_identity
@@ -10045,6 +10060,23 @@ impl RenderState {
             &self.network_requests,
             &self.job_history,
             &self.spark_wallet,
+            local_nostr_pubkey_hex.as_deref(),
+            now,
+        )
+    }
+
+    pub fn sync_nip90_buyer_payment_attempts_background_tick(
+        &mut self,
+        now: std::time::Instant,
+    ) -> bool {
+        let local_nostr_pubkey_hex = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.clone());
+        self.nip90_buyer_payment_attempts.sync_from_background_tick(
+            &self.network_requests,
+            &self.spark_wallet,
+            &self.nip90_payment_facts,
             local_nostr_pubkey_hex.as_deref(),
             now,
         )
@@ -10583,6 +10615,7 @@ mod tests {
             observed_buyer_event_ids: Vec::new(),
             provider_observations: Vec::new(),
             provider_observation_history: Vec::new(),
+            buyer_payment_attempts: Vec::new(),
         }
     }
 

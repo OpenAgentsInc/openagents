@@ -130,6 +130,7 @@ fn reconcile_pending_buyer_payment_confirmation(
             error,
             now_epoch_seconds,
         );
+        let _ = state.refresh_nip90_buyer_payment_attempts();
         return;
     }
 
@@ -144,9 +145,11 @@ fn reconcile_pending_buyer_payment_confirmation(
     let Some(payment_pointer) = payment_pointer.as_deref() else {
         return;
     };
-    state
-        .network_requests
-        .record_auto_payment_pointer(request_id.as_str(), payment_pointer);
+    state.network_requests.record_auto_payment_pointer_at(
+        request_id.as_str(),
+        payment_pointer,
+        now_epoch_seconds,
+    );
     let Some(payment) = state
         .spark_wallet
         .recent_payments
@@ -165,6 +168,7 @@ fn reconcile_pending_buyer_payment_confirmation(
                 request_id, payment_pointer
             ));
         }
+        let _ = state.refresh_nip90_buyer_payment_attempts();
         return;
     };
 
@@ -209,6 +213,7 @@ fn reconcile_pending_buyer_payment_confirmation(
             crate::spark_wallet::wallet_payment_total_debit_sats(payment),
             crate::spark_wallet::wallet_payment_net_delta_sats(payment)
         ));
+        let _ = state.refresh_nip90_buyer_payment_attempts();
         return;
     }
 
@@ -241,6 +246,7 @@ fn reconcile_pending_buyer_payment_confirmation(
             crate::spark_wallet::wallet_payment_net_delta_sats(payment),
             detail
         ));
+        let _ = state.refresh_nip90_buyer_payment_attempts();
         return;
     }
 
@@ -273,6 +279,7 @@ fn reconcile_pending_buyer_payment_confirmation(
             .as_deref()
             .unwrap_or(payment.status.as_str())
     ));
+    let _ = state.refresh_nip90_buyer_payment_attempts();
 }
 
 fn buyer_payment_failure_detail(

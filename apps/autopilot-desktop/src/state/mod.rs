@@ -10,6 +10,7 @@ pub mod goal_conditions;
 pub mod goal_loop_executor;
 pub mod goal_skill_resolver;
 pub mod job_inbox;
+pub mod nip90_buyer_payment_attempts;
 pub mod nip90_payment_facts;
 pub mod operations;
 pub mod os_scheduler;

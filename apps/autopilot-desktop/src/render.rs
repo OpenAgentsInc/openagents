@@ -377,6 +377,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history: crate::app_state::JobHistoryState::default(),
             earn_job_lifecycle_projection:
                 crate::app_state::EarnJobLifecycleProjectionState::default(),
+            nip90_buyer_payment_attempts:
+                crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState::default(),
             nip90_payment_facts:
                 crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState::default(),
             earn_kernel_receipts:

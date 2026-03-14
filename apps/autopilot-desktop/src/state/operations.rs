@@ -543,6 +543,16 @@ pub struct NetworkRequestProviderObservationHistoryEvent {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuyerPaymentAttemptObservation {
+    pub payment_pointer: String,
+    pub first_observed_at_epoch_seconds: u64,
+    pub last_updated_at_epoch_seconds: u64,
+    pub settled_at_epoch_seconds: Option<u64>,
+    pub failed_at_epoch_seconds: Option<u64>,
+    pub failure_detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AutoPaymentBudgetRefusal {
     pub provider_pubkey: String,
     pub invoice_amount_sats: u64,
@@ -610,6 +620,7 @@ pub struct SubmittedNetworkRequest {
     pub observed_buyer_event_ids: Vec<String>,
     pub provider_observations: Vec<NetworkRequestProviderObservation>,
     pub provider_observation_history: Vec<NetworkRequestProviderObservationHistoryEvent>,
+    pub buyer_payment_attempts: Vec<BuyerPaymentAttemptObservation>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1208,6 +1219,7 @@ impl NetworkRequestsState {
                 observed_buyer_event_ids: Vec::new(),
                 provider_observations: Vec::new(),
                 provider_observation_history: Vec::new(),
+                buyer_payment_attempts: Vec::new(),
             },
         );
         self.pane_set_ready(format!(
@@ -2105,6 +2117,14 @@ impl NetworkRequestsState {
             .iter_mut()
             .find(|request| request.request_id == request_id)
         {
+            record_buyer_payment_attempt(
+                request,
+                payment_pointer,
+                now_epoch_seconds,
+                Some(now_epoch_seconds),
+                None,
+                None,
+            );
             request.last_payment_pointer = Some(payment_pointer.to_string());
             request.payment_sent_at_epoch_seconds = Some(now_epoch_seconds);
             request.payment_error = None;
@@ -2121,6 +2141,15 @@ impl NetworkRequestsState {
     }
 
     pub fn record_auto_payment_pointer(&mut self, request_id: &str, payment_pointer: &str) {
+        self.record_auto_payment_pointer_at(request_id, payment_pointer, now_epoch_seconds());
+    }
+
+    pub fn record_auto_payment_pointer_at(
+        &mut self,
+        request_id: &str,
+        payment_pointer: &str,
+        now_epoch_seconds: u64,
+    ) {
         let payment_pointer = payment_pointer.trim();
         if payment_pointer.is_empty() {
             return;
@@ -2135,6 +2164,14 @@ impl NetworkRequestsState {
         if request.last_payment_pointer.as_deref() == Some(payment_pointer) {
             return;
         }
+        record_buyer_payment_attempt(
+            request,
+            payment_pointer,
+            now_epoch_seconds,
+            None,
+            None,
+            None,
+        );
         request.last_payment_pointer = Some(payment_pointer.to_string());
         request.payment_notice = None;
         request.status = compute_request_status(request);
@@ -2195,6 +2232,16 @@ impl NetworkRequestsState {
             .iter_mut()
             .find(|request| request.request_id == request_id)
         {
+            if let Some(payment_pointer) = request.last_payment_pointer.clone() {
+                record_buyer_payment_attempt(
+                    request,
+                    payment_pointer.as_str(),
+                    now_epoch_seconds,
+                    None,
+                    Some(now_epoch_seconds),
+                    Some(error),
+                );
+            }
             request.status = NetworkRequestStatus::Failed;
             request.payment_error = Some(error.to_string());
             request.payment_notice = None;
@@ -2615,6 +2662,50 @@ fn normalize_optional_relay(relay_url: Option<&str>) -> Option<String> {
     relay_url
         .map(|relay| relay.trim().trim_end_matches('/').to_string())
         .filter(|relay| !relay.is_empty())
+}
+
+fn record_buyer_payment_attempt(
+    request: &mut SubmittedNetworkRequest,
+    payment_pointer: &str,
+    observed_at_epoch_seconds: u64,
+    settled_at_epoch_seconds: Option<u64>,
+    failed_at_epoch_seconds: Option<u64>,
+    failure_detail: Option<&str>,
+) {
+    let Some(existing) = request
+        .buyer_payment_attempts
+        .iter_mut()
+        .find(|attempt| attempt.payment_pointer == payment_pointer)
+    else {
+        request
+            .buyer_payment_attempts
+            .push(BuyerPaymentAttemptObservation {
+                payment_pointer: payment_pointer.to_string(),
+                first_observed_at_epoch_seconds: observed_at_epoch_seconds,
+                last_updated_at_epoch_seconds: observed_at_epoch_seconds,
+                settled_at_epoch_seconds,
+                failed_at_epoch_seconds,
+                failure_detail: failure_detail.map(ToString::to_string),
+            });
+        return;
+    };
+
+    existing.last_updated_at_epoch_seconds = observed_at_epoch_seconds;
+    if existing.first_observed_at_epoch_seconds == 0
+        || (observed_at_epoch_seconds > 0
+            && observed_at_epoch_seconds < existing.first_observed_at_epoch_seconds)
+    {
+        existing.first_observed_at_epoch_seconds = observed_at_epoch_seconds;
+    }
+    if let Some(settled_at_epoch_seconds) = settled_at_epoch_seconds {
+        existing.settled_at_epoch_seconds = Some(settled_at_epoch_seconds);
+        existing.failed_at_epoch_seconds = None;
+        existing.failure_detail = None;
+    }
+    if let Some(failed_at_epoch_seconds) = failed_at_epoch_seconds {
+        existing.failed_at_epoch_seconds = Some(failed_at_epoch_seconds);
+        existing.failure_detail = failure_detail.map(ToString::to_string);
+    }
 }
 
 fn now_epoch_seconds() -> u64 {
