@@ -40,6 +40,7 @@ struct Cli {
     command: Command,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 enum Command {
     Status,
@@ -159,6 +160,7 @@ enum SandboxEntrypointTypeArg {
     Command,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 enum SandboxCommand {
     Status,
@@ -2267,10 +2269,7 @@ fn print_proof_text(payload: &Value) {
             .get("available")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        payload
-            .get("source")
-            .and_then(Value::as_str)
-            .unwrap_or("-"),
+        payload.get("source").and_then(Value::as_str).unwrap_or("-"),
         payload
             .get("last_synced_at_epoch_ms")
             .and_then(Value::as_u64)
@@ -2313,80 +2312,106 @@ fn print_proof_text(payload: &Value) {
     {
         println!(
             "proof={} status={} posture={} topology={} provisioning={} env={} qty={}/{} settlement={} challenge={}",
-            proof.get("delivery_proof_id")
+            proof
+                .get("delivery_proof_id")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("proof_status").and_then(Value::as_str).unwrap_or("-"),
-            proof.get("proof_posture")
+            proof
+                .get("proof_status")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("topology_kind")
+            proof
+                .get("proof_posture")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("provisioning_kind")
+            proof
+                .get("topology_kind")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("environment_ref")
+            proof
+                .get("provisioning_kind")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("accepted_quantity")
+            proof
+                .get("environment_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof
+                .get("accepted_quantity")
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
-            proof.get("metered_quantity")
+            proof
+                .get("metered_quantity")
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
-            proof.get("settlement_summary")
+            proof
+                .get("settlement_summary")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("challenge_summary")
+            proof
+                .get("challenge_summary")
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
         println!(
             "  refs: bundle={} activation={} validator_pool={} validator_run={} runtime_manifest={} runtime_manifest_digest={} session_claims={} session_posture={} transport_posture={} config_identity={} mutable_runtime_variables={}",
-            proof.get("proof_bundle_ref")
+            proof
+                .get("proof_bundle_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("activation_fingerprint_ref")
+            proof
+                .get("activation_fingerprint_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("validator_pool_ref")
+            proof
+                .get("validator_pool_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("validator_run_ref")
+            proof
+                .get("validator_run_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("runtime_manifest_ref")
+            proof
+                .get("runtime_manifest_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("runtime_manifest_digest")
+            proof
+                .get("runtime_manifest_digest")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("session_claims_ref")
+            proof
+                .get("session_claims_ref")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("session_identity_posture")
+            proof
+                .get("session_identity_posture")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("transport_identity_posture")
+            proof
+                .get("transport_identity_posture")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("runtime_config_identity_mode")
+            proof
+                .get("runtime_config_identity_mode")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("mutable_runtime_variables_present")
+            proof
+                .get("mutable_runtime_variables_present")
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_string())
         );
         println!(
             "  review: acceptance={} command_digest={} environment_digest={}",
-            proof.get("acceptance_summary")
+            proof
+                .get("acceptance_summary")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("command_digest")
+            proof
+                .get("command_digest")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            proof.get("environment_digest")
+            proof
+                .get("environment_digest")
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
@@ -2407,7 +2432,10 @@ fn print_proof_text(payload: &Value) {
                 .get("settlement_kind")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            settlement.get("status").and_then(Value::as_str).unwrap_or("-"),
+            settlement
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
             settlement
                 .get("product_id")
                 .and_then(Value::as_str)
@@ -2415,13 +2443,21 @@ fn print_proof_text(payload: &Value) {
             settlement
                 .get("delivery_proof_ids")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| "-".to_string()),
             settlement
                 .get("challenge_ids")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| "-".to_string()),
             settlement
@@ -2463,10 +2499,7 @@ fn print_challenge_text(payload: &Value) {
             .get("available")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        payload
-            .get("source")
-            .and_then(Value::as_str)
-            .unwrap_or("-"),
+        payload.get("source").and_then(Value::as_str).unwrap_or("-"),
         payload
             .get("last_synced_at_epoch_ms")
             .and_then(Value::as_u64)
@@ -2517,8 +2550,14 @@ fn print_challenge_text(payload: &Value) {
                 .get("challenge_id")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            challenge.get("status").and_then(Value::as_str).unwrap_or("-"),
-            challenge.get("verdict").and_then(Value::as_str).unwrap_or("-"),
+            challenge
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("verdict")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
             challenge
                 .get("reason_code")
                 .and_then(Value::as_str)
@@ -2527,11 +2566,18 @@ fn print_challenge_text(payload: &Value) {
                 .get("runtime_backend")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            challenge.get("model_id").and_then(Value::as_str).unwrap_or("-"),
+            challenge
+                .get("model_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
             challenge
                 .get("delivery_proof_ids")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| "-".to_string()),
             challenge
@@ -3209,18 +3255,16 @@ mod tests {
             ChallengeCommand::Status.action_request(),
             DesktopControlActionRequest::GetChallengeStatus
         );
-        assert_eq!(SandboxCommand::Status.action_request().unwrap(), None);
-        assert_eq!(
+        assert!(matches!(SandboxCommand::Status.action_request(), Ok(None)));
+        assert!(matches!(
             SandboxCommand::Job {
                 job_id: "job-1".to_string(),
             }
-            .action_request()
-            .unwrap(),
-            Some(DesktopControlActionRequest::GetSandboxJob {
-                job_id: "job-1".to_string(),
-            })
-        );
-        assert_eq!(
+            .action_request(),
+            Ok(Some(DesktopControlActionRequest::GetSandboxJob { ref job_id }))
+                if job_id == "job-1"
+        ));
+        assert!(matches!(
             SandboxCommand::Create {
                 profile_id: "pythonexec-profile".to_string(),
                 job_id: "job-2".to_string(),
@@ -3236,46 +3280,51 @@ mod tests {
                 payout_reference: Some("payment-1".to_string()),
                 verification_posture: Some("hash_only".to_string()),
             }
-            .action_request()
-            .unwrap(),
-            Some(DesktopControlActionRequest::CreateSandboxJob {
-                profile_id: "pythonexec-profile".to_string(),
-                job_id: "job-2".to_string(),
-                workspace_root: "/tmp/openagents-sandbox".to_string(),
+            .action_request(),
+            Ok(Some(DesktopControlActionRequest::CreateSandboxJob {
+                ref profile_id,
+                ref job_id,
+                ref workspace_root,
                 entrypoint_type: ProviderSandboxEntrypointType::WorkspaceFile,
-                entrypoint: "scripts/job.py".to_string(),
+                ref entrypoint,
                 payload: None,
-                arguments: vec!["--flag".to_string()],
-                expected_outputs: vec!["result.txt".to_string()],
+                ref arguments,
+                ref expected_outputs,
                 timeout_request_s: 30,
-                network_request: "host_inherit".to_string(),
-                filesystem_request: "host_inherit".to_string(),
-                payout_reference: Some("payment-1".to_string()),
-                verification_posture: Some("hash_only".to_string()),
-            })
-        );
-        assert_eq!(
+                ref network_request,
+                ref filesystem_request,
+                payout_reference: Some(ref payout_reference),
+                verification_posture: Some(ref verification_posture),
+            })) if profile_id == "pythonexec-profile"
+                && job_id == "job-2"
+                && workspace_root == "/tmp/openagents-sandbox"
+                && entrypoint == "scripts/job.py"
+                && arguments == &vec!["--flag".to_string()]
+                && expected_outputs == &vec!["result.txt".to_string()]
+                && network_request == "host_inherit"
+                && filesystem_request == "host_inherit"
+                && payout_reference == "payment-1"
+                && verification_posture == "hash_only"
+        ));
+        assert!(matches!(
             SandboxCommand::Start {
                 job_id: "job-3".to_string(),
             }
-            .action_request()
-            .unwrap(),
-            Some(DesktopControlActionRequest::StartSandboxJob {
-                job_id: "job-3".to_string(),
-            })
-        );
-        assert_eq!(
+            .action_request(),
+            Ok(Some(DesktopControlActionRequest::StartSandboxJob { ref job_id }))
+                if job_id == "job-3"
+        ));
+        assert!(matches!(
             SandboxCommand::Wait {
                 job_id: "job-4".to_string(),
                 timeout_ms: 5_000,
             }
-            .action_request()
-            .unwrap(),
-            Some(DesktopControlActionRequest::WaitSandboxJob {
-                job_id: "job-4".to_string(),
+            .action_request(),
+            Ok(Some(DesktopControlActionRequest::WaitSandboxJob {
+                ref job_id,
                 timeout_ms: 5_000,
-            })
-        );
+            })) if job_id == "job-4"
+        ));
         assert_eq!(
             ChatCommand::Main.action_request(),
             Some(DesktopControlActionRequest::SelectNip28MainChannel)

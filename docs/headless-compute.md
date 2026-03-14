@@ -32,7 +32,9 @@ It can:
 - inspect buyer procurement truth for spot and forward RFQs, quote selection,
   accepted orders, and the topology/proof/environment posture of quoted compute
 - inspect cluster, sandbox, proof, and challenge status through the same
-  app-owned snapshot the desktop uses
+  app-owned snapshot the desktop uses, including delivery acceptance,
+  validator outcomes, and settlement history when kernel authority is
+  configured
 - list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
@@ -119,6 +121,17 @@ It also prints the app-owned buyer procurement summary for compute RFQs and
 quotes, including the active quote mode, selected quote IDs, and the quoted
 backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
+
+`autopilotctl proof status` now drills into recent delivery proofs instead of
+stopping at a count. The payload includes proof posture, topology and
+provisioning labels, linked challenge state, settlement outcomes, and review
+refs such as proof-bundle refs, activation fingerprints, validator refs, and
+runtime/session identity refs when those are present in kernel truth.
+
+`autopilotctl challenge status` now surfaces the validator history against the
+same kernel objects: linked delivery proofs, verdicts, reason codes, challenge
+result refs, and the current settlement impact summary for the challenged
+delivery.
 
 Useful MCP starting point:
 

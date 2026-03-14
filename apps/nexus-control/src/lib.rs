@@ -49,8 +49,7 @@ use openagents_kernel_core::compute::{
     ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
     ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
     ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-    ComputeValidatorChallengeVerdict, DeliveryProofStatus,
-    StructuredCapacityInstrumentStatus,
+    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
@@ -2006,29 +2005,33 @@ fn canonical_challenge_snapshot(
         },
         status: canonical_challenge_status(snapshot.status),
         attempts_used: snapshot.attempts_used,
-        active_lease: snapshot.active_lease.map(|lease| ComputeValidatorChallengeLease {
-            challenge_id: lease.challenge_id,
-            attempt: lease.attempt,
-            validator_id: lease.validator_id,
-            leased_at_ms: lease.leased_at_ms,
-            expires_at_ms: lease.expires_at_ms,
-        }),
-        final_result: snapshot.final_result.map(|result| ComputeValidatorChallengeResult {
-            challenge_id: result.challenge_id,
-            proof_bundle_digest: result.proof_bundle_digest,
-            protocol_id: result.protocol_id,
-            attempt: result.attempt,
-            status: canonical_challenge_status(result.status),
-            verdict: canonical_challenge_verdict(result.verdict),
-            reason_code: result.reason_code.map(canonical_challenge_failure_code),
-            detail: result.detail,
-            created_at_ms: result.created_at_ms,
-            finalized_at_ms: result.finalized_at_ms,
-            challenge_seed_digest: result.challenge_seed_digest,
-            verified_row_count: result.verified_row_count,
-            result_digest: result.result_digest,
-            challenge_result_ref: result.challenge_result_ref,
-        }),
+        active_lease: snapshot
+            .active_lease
+            .map(|lease| ComputeValidatorChallengeLease {
+                challenge_id: lease.challenge_id,
+                attempt: lease.attempt,
+                validator_id: lease.validator_id,
+                leased_at_ms: lease.leased_at_ms,
+                expires_at_ms: lease.expires_at_ms,
+            }),
+        final_result: snapshot
+            .final_result
+            .map(|result| ComputeValidatorChallengeResult {
+                challenge_id: result.challenge_id,
+                proof_bundle_digest: result.proof_bundle_digest,
+                protocol_id: result.protocol_id,
+                attempt: result.attempt,
+                status: canonical_challenge_status(result.status),
+                verdict: canonical_challenge_verdict(result.verdict),
+                reason_code: result.reason_code.map(canonical_challenge_failure_code),
+                detail: result.detail,
+                created_at_ms: result.created_at_ms,
+                finalized_at_ms: result.finalized_at_ms,
+                challenge_seed_digest: result.challenge_seed_digest,
+                verified_row_count: result.verified_row_count,
+                result_digest: result.result_digest,
+                challenge_result_ref: result.challenge_result_ref,
+            }),
     }
 }
 
@@ -2635,7 +2638,7 @@ async fn finalize_kernel_validator_challenge(
             reason: "kernel_validator_challenge_result_id_mismatch".to_string(),
         });
     }
-    request.lease.challenge_id = challenge_id.clone();
+    request.lease.challenge_id.clone_from(&challenge_id);
     request.result.challenge_id = challenge_id;
     let now = now_unix_ms();
     let result = {
@@ -8198,7 +8201,7 @@ mod tests {
             )
             .await?;
         assert_eq!(queued_list.status(), StatusCode::OK);
-        let queued: Vec<openagents_validator_service::ValidatorChallengeSnapshot> =
+        let queued: Vec<openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot> =
             response_json(queued_list).await?;
         assert_eq!(queued.len(), 1);
         assert_eq!(
@@ -8274,12 +8277,15 @@ mod tests {
             )
             .await?;
         assert_eq!(challenge.status(), StatusCode::OK);
-        let challenge: openagents_validator_service::ValidatorChallengeSnapshot =
+        let challenge: openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot =
             response_json(challenge).await?;
-        assert_eq!(challenge.status, ValidatorChallengeStatus::Verified);
+        assert_eq!(
+            challenge.status,
+            openagents_kernel_core::compute::ComputeValidatorChallengeStatus::Verified
+        );
         assert_eq!(
             challenge.final_result.as_ref().map(|result| result.verdict),
-            Some(ValidatorChallengeVerdict::Verified)
+            Some(openagents_kernel_core::compute::ComputeValidatorChallengeVerdict::Verified)
         );
 
         let delivery = app

@@ -15,10 +15,10 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openagents_kernel_core::authority::KernelAuthority;
 use openagents_kernel_core::compute::{
-    CapacityInstrument, CapacityInstrumentKind, ComputeCapabilityEnvelope,
-    ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
-    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    CapacityInstrument, CapacityInstrumentKind, ComputeCapabilityEnvelope, ComputeProofPosture,
+    ComputeProvisioningKind, ComputeTopologyKind, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -3207,8 +3207,8 @@ struct LoadedComputeHistory {
 fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) -> bool {
     let now_epoch_ms = current_epoch_ms();
     let provider_id = crate::kernel_control::provider_id_for_state(state);
-    let provider_changed = state.desktop_control.compute_history.provider_id.as_deref()
-        != Some(provider_id.as_str());
+    let provider_changed =
+        state.desktop_control.compute_history.provider_id.as_deref() != Some(provider_id.as_str());
     let due = force
         || provider_changed
         || state
@@ -3225,8 +3225,16 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
 
     if provider_changed {
         state.desktop_control.compute_history.provider_id = Some(provider_id.clone());
-        state.desktop_control.compute_history.delivery_proofs.clear();
-        state.desktop_control.compute_history.capacity_instruments.clear();
+        state
+            .desktop_control
+            .compute_history
+            .delivery_proofs
+            .clear();
+        state
+            .desktop_control
+            .compute_history
+            .capacity_instruments
+            .clear();
         state
             .desktop_control
             .compute_history
@@ -3246,8 +3254,8 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
         Ok(loaded) => {
             changed |= cache.delivery_proofs != loaded.delivery_proofs;
             changed |= cache.capacity_instruments != loaded.capacity_instruments;
-            changed |= cache.structured_capacity_instruments
-                != loaded.structured_capacity_instruments;
+            changed |=
+                cache.structured_capacity_instruments != loaded.structured_capacity_instruments;
             changed |= cache.validator_challenges != loaded.validator_challenges;
             changed |= cache.last_error.is_some();
             cache.delivery_proofs = loaded.delivery_proofs;
@@ -3286,7 +3294,11 @@ fn load_compute_history_from_authority(
 
         let mut delivery_proofs = Vec::new();
         for lot_id in &provider_lot_ids {
-            delivery_proofs.extend(client.list_delivery_proofs(Some(lot_id.as_str()), None).await?);
+            delivery_proofs.extend(
+                client
+                    .list_delivery_proofs(Some(lot_id.as_str()), None)
+                    .await?,
+            );
         }
         delivery_proofs.sort_by(|left, right| {
             right
@@ -3299,7 +3311,8 @@ fn load_compute_history_from_authority(
             .iter()
             .filter_map(|proof| proof.instrument_id.clone())
             .collect::<BTreeSet<_>>();
-        let proof_bundle_digests = proof_bundle_digests_by_delivery_proof(delivery_proofs.as_slice());
+        let proof_bundle_digests =
+            proof_bundle_digests_by_delivery_proof(delivery_proofs.as_slice());
 
         let mut capacity_instruments = client.list_capacity_instruments(None, None, None).await?;
         capacity_instruments.retain(|instrument| {
@@ -3313,8 +3326,9 @@ fn load_compute_history_from_authority(
                 .then_with(|| left.instrument_id.cmp(&right.instrument_id))
         });
 
-        let mut structured_capacity_instruments =
-            client.list_structured_capacity_instruments(None, None).await?;
+        let mut structured_capacity_instruments = client
+            .list_structured_capacity_instruments(None, None)
+            .await?;
         structured_capacity_instruments.retain(|instrument| {
             instrument.provider_id.as_deref() == Some(provider_id)
                 || instrument
@@ -3323,12 +3337,10 @@ fn load_compute_history_from_authority(
                     .any(|leg| proof_instrument_ids.contains(leg.instrument_id.as_str()))
         });
         structured_capacity_instruments.sort_by(|left, right| {
-            right
-                .created_at_ms
-                .cmp(&left.created_at_ms)
-                .then_with(|| {
-                    left.structured_instrument_id.cmp(&right.structured_instrument_id)
-                })
+            right.created_at_ms.cmp(&left.created_at_ms).then_with(|| {
+                left.structured_instrument_id
+                    .cmp(&right.structured_instrument_id)
+            })
         });
 
         let mut validator_challenges = client.list_validator_challenges(None).await?;
@@ -3392,7 +3404,12 @@ fn challenge_sort_epoch_ms(challenge: &ComputeValidatorChallengeSnapshot) -> u64
         .final_result
         .as_ref()
         .map(|result| result.finalized_at_ms)
-        .or_else(|| challenge.active_lease.as_ref().map(|lease| lease.leased_at_ms))
+        .or_else(|| {
+            challenge
+                .active_lease
+                .as_ref()
+                .map(|lease| lease.leased_at_ms)
+        })
         .unwrap_or(challenge.request.context.created_at_ms)
 }
 
@@ -3614,10 +3631,9 @@ fn challenges_by_delivery_proof<'a>(
     let proofs_by_bundle_digest = proof_bundle_digests_by_delivery_proof(proofs);
     let mut grouped = BTreeMap::<String, Vec<&ComputeValidatorChallengeSnapshot>>::new();
     for challenge in challenges {
-        for proof_id in delivery_proof_ids_for_challenge_with_bundle_map(
-            challenge,
-            &proofs_by_bundle_digest,
-        ) {
+        for proof_id in
+            delivery_proof_ids_for_challenge_with_bundle_map(challenge, &proofs_by_bundle_digest)
+        {
             grouped.entry(proof_id).or_default().push(challenge);
         }
     }
@@ -3690,10 +3706,18 @@ fn desktop_control_proof_history_status(
         provisioning_kind: capability_provisioning_kind_label(proof).to_string(),
         environment_ref: verification
             .and_then(|value| value.environment_ref.clone())
-            .or_else(|| environment_binding.as_ref().map(|binding| binding.0.clone())),
+            .or_else(|| {
+                environment_binding
+                    .as_ref()
+                    .map(|binding| binding.0.clone())
+            }),
         environment_version: verification
             .and_then(|value| value.environment_version.clone())
-            .or_else(|| environment_binding.as_ref().and_then(|binding| binding.1.clone())),
+            .or_else(|| {
+                environment_binding
+                    .as_ref()
+                    .and_then(|binding| binding.1.clone())
+            }),
         metered_quantity: proof.metered_quantity,
         accepted_quantity: proof.accepted_quantity,
         acceptance_summary: delivery_acceptance_summary(proof),
@@ -3708,7 +3732,11 @@ fn desktop_control_proof_history_status(
         validator_run_ref: verification.and_then(|value| value.validator_run_ref.clone()),
         runtime_manifest_ref: metadata_string(
             metadata,
-            &["runtime_manifest_ref", "runtime_manifest_id", "sharded_model_manifest_ref"],
+            &[
+                "runtime_manifest_ref",
+                "runtime_manifest_id",
+                "sharded_model_manifest_ref",
+            ],
         ),
         runtime_manifest_digest: metadata_string(
             metadata,
@@ -3736,7 +3764,10 @@ fn desktop_control_proof_history_status(
         ),
         mutable_runtime_variables_present: metadata_bool(
             metadata,
-            &["mutable_runtime_variables_present", "runtime_variables_mutable"],
+            &[
+                "mutable_runtime_variables_present",
+                "runtime_variables_mutable",
+            ],
         ),
         command_digest: proof
             .sandbox_evidence
@@ -3813,10 +3844,7 @@ fn build_settlement_history(
                 settlement_mode: compute_settlement_mode_label(instrument.settlement_mode)
                     .to_string(),
                 quantity: instrument.quantity,
-                fixed_price_sats: instrument
-                    .fixed_price
-                    .as_ref()
-                    .and_then(money_to_sats),
+                fixed_price_sats: instrument.fixed_price.as_ref().and_then(money_to_sats),
                 reference_index_id: instrument.reference_index_id.clone(),
                 created_at_epoch_ms: instrument.created_at_ms,
                 delivery_window_label: format!(
@@ -3923,27 +3951,24 @@ fn settlement_impact_summary_for_challenge(
     structured_by_instrument_id: &BTreeMap<&str, Vec<&StructuredCapacityInstrument>>,
     related_challenges: &BTreeMap<String, Vec<&ComputeValidatorChallengeSnapshot>>,
 ) -> Option<String> {
-    delivery_proof_ids
-        .iter()
-        .find_map(|delivery_proof_id| {
-            let proof = proofs_by_id.get(delivery_proof_id.as_str())?;
-            let instrument = proof
-                .instrument_id
-                .as_deref()
-                .and_then(|instrument_id| capacity_instruments.get(instrument_id).copied());
-            let structured = proof
-                .instrument_id
-                .as_deref()
-                .and_then(|instrument_id| structured_by_instrument_id.get(instrument_id))
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
-            let challenge_count = related_challenges
-                .get(delivery_proof_id.as_str())
-                .map_or(0, Vec::len);
-            settlement_summary_for_proof(instrument, structured).map(|summary| {
-                format!("{summary} // related_challenges={challenge_count}")
-            })
-        })
+    delivery_proof_ids.iter().find_map(|delivery_proof_id| {
+        let proof = proofs_by_id.get(delivery_proof_id.as_str())?;
+        let instrument = proof
+            .instrument_id
+            .as_deref()
+            .and_then(|instrument_id| capacity_instruments.get(instrument_id).copied());
+        let structured = proof
+            .instrument_id
+            .as_deref()
+            .and_then(|instrument_id| structured_by_instrument_id.get(instrument_id))
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let challenge_count = related_challenges
+            .get(delivery_proof_id.as_str())
+            .map_or(0, Vec::len);
+        settlement_summary_for_proof(instrument, structured)
+            .map(|summary| format!("{summary} // related_challenges={challenge_count}"))
+    })
 }
 
 fn delivery_acceptance_summary(proof: &DeliveryProof) -> String {
@@ -4062,13 +4087,19 @@ fn settlement_reason_code_for_instrument(instrument: &CapacityInstrument) -> Opt
     instrument
         .settlement_failure_reason
         .map(|reason| reason.label().to_string())
-        .or_else(|| instrument.non_delivery_reason.map(|reason| reason.label().to_string()))
-        .or_else(|| instrument.closure_reason.map(|reason| reason.label().to_string()))
+        .or_else(|| {
+            instrument
+                .non_delivery_reason
+                .map(|reason| reason.label().to_string())
+        })
+        .or_else(|| {
+            instrument
+                .closure_reason
+                .map(|reason| reason.label().to_string())
+        })
 }
 
-fn structured_instrument_reason_code(
-    instrument: &StructuredCapacityInstrument,
-) -> Option<String> {
+fn structured_instrument_reason_code(instrument: &StructuredCapacityInstrument) -> Option<String> {
     match instrument.status {
         StructuredCapacityInstrumentStatus::Defaulted => Some("defaulted".to_string()),
         StructuredCapacityInstrumentStatus::Cancelled => Some("cancelled".to_string()),
@@ -4107,9 +4138,7 @@ fn compute_settlement_mode_label(
     match mode {
         openagents_kernel_core::compute::ComputeSettlementMode::Physical => "physical",
         openagents_kernel_core::compute::ComputeSettlementMode::Cash => "cash",
-        openagents_kernel_core::compute::ComputeSettlementMode::BuyerElection => {
-            "buyer_election"
-        }
+        openagents_kernel_core::compute::ComputeSettlementMode::BuyerElection => "buyer_election",
     }
 }
 
@@ -5192,11 +5221,10 @@ mod tests {
         DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
         DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
         DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
-        DesktopControlWalletStatus, apply_response_snapshot_metadata,
-        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
-        command_received_event, desktop_control_challenge_history_status,
-        desktop_control_proof_history_status, snapshot_change_events,
-        snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlWalletStatus, apply_response_snapshot_metadata, build_settlement_history,
+        challenges_by_delivery_proof, command_outcome_event, command_received_event,
+        desktop_control_challenge_history_status, desktop_control_proof_history_status,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -5224,14 +5252,14 @@ mod tests {
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus,
         ComputeCapabilityEnvelope, ComputeProofPosture, ComputeProvisioningKind,
-        ComputeTopologyKind,
-        ComputeValidatorChallengeContext, ComputeValidatorChallengeProtocolKind,
-        ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
-        ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-        ComputeValidatorChallengeVerdict, DeliveryProof, DeliveryProofStatus,
-        DeliveryVerificationEvidence, StructuredCapacityInstrument,
+        ComputeTopologyKind, ComputeValidatorChallengeContext,
+        ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
+        ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
+        ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProof,
+        DeliveryProofStatus, DeliveryVerificationEvidence, StructuredCapacityInstrument,
         StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
     };
+    use openagents_kernel_core::ids::sha256_prefixed_text;
     use serde_json::{Value, json};
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::path::PathBuf;
@@ -5540,6 +5568,215 @@ mod tests {
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
             last_command: None,
         }
+    }
+
+    fn sample_history_delivery_proof() -> DeliveryProof {
+        DeliveryProof {
+            delivery_proof_id: "delivery.compute.history-1".to_string(),
+            capacity_lot_id: "lot.compute.history-1".to_string(),
+            product_id: "psionic.cluster.inference.history".to_string(),
+            instrument_id: Some("instrument.compute.history-1".to_string()),
+            contract_id: Some("contract.compute.history-1".to_string()),
+            created_at_ms: 1_762_500_000_000,
+            metered_quantity: 4,
+            accepted_quantity: 4,
+            status: DeliveryProofStatus::Accepted,
+            verification_evidence: Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:history-1".to_string()),
+                activation_fingerprint_ref: Some("toploc:history-1".to_string()),
+                validator_pool_ref: Some("validator-pool-a".to_string()),
+                validator_run_ref: Some("validator-run-a".to_string()),
+                challenge_result_refs: vec!["validator_challenge_result:history-1".to_string()],
+                environment_ref: Some("env://cluster/runtime".to_string()),
+                environment_version: Some("2026.03.13".to_string()),
+                eval_run_ref: None,
+            }),
+            observed_capability_envelope: Some(ComputeCapabilityEnvelope {
+                topology_kind: Some(ComputeTopologyKind::Replicated),
+                provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+                proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                ..ComputeCapabilityEnvelope::default()
+            }),
+            metadata: json!({
+                "runtime_manifest_ref": "manifest://cluster/runtime",
+                "runtime_manifest_digest": "sha256:runtime-history",
+                "session_claims_ref": "claims://cluster/session-1",
+                "session_identity_posture": "claim_bound",
+                "transport_identity_posture": "claim_bound",
+                "runtime_config_identity_mode": "measured_static_plus_runtime_diff",
+                "mutable_runtime_variables_present": true,
+            }),
+            ..DeliveryProof::default()
+        }
+    }
+
+    fn sample_history_capacity_instrument() -> CapacityInstrument {
+        CapacityInstrument {
+            instrument_id: "instrument.compute.history-1".to_string(),
+            product_id: "psionic.cluster.inference.history".to_string(),
+            provider_id: Some("npub1provider".to_string()),
+            quantity: 4,
+            created_at_ms: 1_762_500_000_500,
+            status: CapacityInstrumentStatus::Settled,
+            kind: CapacityInstrumentKind::Spot,
+            ..CapacityInstrument::default()
+        }
+    }
+
+    fn sample_history_structured_instrument() -> StructuredCapacityInstrument {
+        StructuredCapacityInstrument {
+            structured_instrument_id: "structured.compute.history-1".to_string(),
+            product_id: "psionic.cluster.inference.history".to_string(),
+            provider_id: Some("npub1provider".to_string()),
+            kind: StructuredCapacityInstrumentKind::Reservation,
+            created_at_ms: 1_762_500_001_000,
+            status: StructuredCapacityInstrumentStatus::Settled,
+            legs: vec![openagents_kernel_core::compute::StructuredCapacityLeg {
+                instrument_id: "instrument.compute.history-1".to_string(),
+                ..openagents_kernel_core::compute::StructuredCapacityLeg::default()
+            }],
+            lifecycle_reason_detail: Some("reservation_settled_against_delivery".to_string()),
+            ..StructuredCapacityInstrument::default()
+        }
+    }
+
+    fn sample_history_validator_challenge() -> ComputeValidatorChallengeSnapshot {
+        ComputeValidatorChallengeSnapshot {
+            request: ComputeValidatorChallengeRequest {
+                context: ComputeValidatorChallengeContext {
+                    challenge_id: "challenge.compute.history-1".to_string(),
+                    proof_bundle_digest: sha256_prefixed_text("proof_bundle:history-1"),
+                    request_digest: "sha256:request-history".to_string(),
+                    delivery_proof_id: Some("delivery.compute.history-1".to_string()),
+                    product_id: "psionic.cluster.inference.history".to_string(),
+                    runtime_backend: "gpt_oss".to_string(),
+                    model_id: Some("gpt-oss-20b".to_string()),
+                    validator_pool_ref: Some("validator-pool-a".to_string()),
+                    created_at_ms: 1_762_500_000_100,
+                    max_attempts: 3,
+                    lease_timeout_ms: 30_000,
+                },
+                protocol: ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1,
+            },
+            status: ComputeValidatorChallengeStatus::Verified,
+            attempts_used: 1,
+            final_result: Some(ComputeValidatorChallengeResult {
+                challenge_id: "challenge.compute.history-1".to_string(),
+                proof_bundle_digest: sha256_prefixed_text("proof_bundle:history-1"),
+                protocol_id: "openagents.validator.gpu_freivalds_merkle.v1".to_string(),
+                attempt: 1,
+                status: ComputeValidatorChallengeStatus::Verified,
+                verdict: ComputeValidatorChallengeVerdict::Verified,
+                reason_code: None,
+                detail: "validator verified the claimed matrix product".to_string(),
+                created_at_ms: 1_762_500_000_100,
+                finalized_at_ms: 1_762_500_000_700,
+                challenge_seed_digest: Some("sha256:challenge-seed".to_string()),
+                verified_row_count: Some(9),
+                result_digest: "sha256:result-history".to_string(),
+                challenge_result_ref: "validator_challenge_result:history-1".to_string(),
+            }),
+            ..ComputeValidatorChallengeSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn proof_history_surfaces_settlement_and_identity_review_fields() {
+        let proof = sample_history_delivery_proof();
+        let challenge = sample_history_validator_challenge();
+        let challenges = vec![challenge];
+        let proofs = vec![proof.clone()];
+        let grouped = challenges_by_delivery_proof(proofs.as_slice(), challenges.as_slice());
+        let instrument = sample_history_capacity_instrument();
+        let structured = sample_history_structured_instrument();
+
+        let status = desktop_control_proof_history_status(
+            &proof,
+            Some(&instrument),
+            &[&structured],
+            grouped
+                .get(proof.delivery_proof_id.as_str())
+                .expect("challenge group"),
+        );
+
+        assert_eq!(status.proof_status, "accepted");
+        assert_eq!(status.proof_posture, "challenge_eligible");
+        assert_eq!(status.topology_kind, "replicated");
+        assert_eq!(status.provisioning_kind, "cluster_attached");
+        assert_eq!(
+            status.runtime_manifest_ref.as_deref(),
+            Some("manifest://cluster/runtime")
+        );
+        assert_eq!(
+            status.runtime_manifest_digest.as_deref(),
+            Some("sha256:runtime-history")
+        );
+        assert_eq!(
+            status.session_claims_ref.as_deref(),
+            Some("claims://cluster/session-1")
+        );
+        assert_eq!(
+            status.session_identity_posture.as_deref(),
+            Some("claim_bound")
+        );
+        assert_eq!(
+            status.transport_identity_posture.as_deref(),
+            Some("claim_bound")
+        );
+        assert_eq!(
+            status.runtime_config_identity_mode.as_deref(),
+            Some("measured_static_plus_runtime_diff")
+        );
+        assert_eq!(status.mutable_runtime_variables_present, Some(true));
+        assert_eq!(status.settlement_status.as_deref(), Some("settled"));
+        assert!(
+            status
+                .settlement_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("reservation"))
+        );
+        assert!(
+            status
+                .challenge_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("status=verified"))
+        );
+    }
+
+    #[test]
+    fn settlement_and_challenge_history_stay_linked_to_same_delivery() {
+        let proof = sample_history_delivery_proof();
+        let instrument = sample_history_capacity_instrument();
+        let structured = sample_history_structured_instrument();
+        let challenge = sample_history_validator_challenge();
+        let proofs = vec![proof.clone()];
+        let challenges = vec![challenge.clone()];
+        let grouped = challenges_by_delivery_proof(proofs.as_slice(), challenges.as_slice());
+        let settlements =
+            build_settlement_history(&[proof.clone()], &[instrument], &[structured], &grouped);
+        let challenge_history = desktop_control_challenge_history_status(
+            &challenge,
+            vec![proof.delivery_proof_id.clone()],
+            Some("reservation settled // related_challenges=1".to_string()),
+        );
+
+        assert_eq!(settlements.len(), 2);
+        assert!(settlements.iter().any(|settlement| {
+            settlement.settlement_id == "instrument.compute.history-1"
+                && settlement.delivery_proof_ids == vec!["delivery.compute.history-1".to_string()]
+                && settlement.challenge_ids == vec!["challenge.compute.history-1".to_string()]
+        }));
+        assert_eq!(
+            challenge_history.delivery_proof_ids,
+            vec!["delivery.compute.history-1".to_string()]
+        );
+        assert_eq!(challenge_history.status, "verified");
+        assert!(
+            challenge_history
+                .settlement_impact_summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("reservation settled"))
+        );
     }
 
     #[test]
