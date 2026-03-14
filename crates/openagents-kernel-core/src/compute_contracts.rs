@@ -7,21 +7,25 @@ use crate::authority::{
     CreateComputeProductRequest, CreateComputeProductResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
-    RecordDeliveryProofResponse,
+    RecordDeliveryProofResponse, RegisterComputeEnvironmentPackageRequest,
+    RegisterComputeEnvironmentPackageResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityNonDeliveryReason, CapacityReserveState, ComputeArtifactResidency,
     ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
-    ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
-    ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
-    ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
-    ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
-    ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-    DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-    GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-    StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+    ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
+    ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+    ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+    ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason,
+    ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+    ComputeProvisioningKind, ComputeSettlementFailureReason, ComputeSettlementMode,
+    ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
+    DeliveryRejectionReason, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+    DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus, StructuredCapacityLeg,
+    StructuredCapacityLegRole,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -468,6 +472,43 @@ fn compute_product_status_from_proto(value: i32) -> ComputeProductStatus {
         proto_compute::ComputeProductStatus::Retired => ComputeProductStatus::Retired,
         proto_compute::ComputeProductStatus::Unspecified
         | proto_compute::ComputeProductStatus::Active => ComputeProductStatus::Active,
+    }
+}
+
+fn compute_environment_package_status_to_proto(value: ComputeEnvironmentPackageStatus) -> i32 {
+    match value {
+        ComputeEnvironmentPackageStatus::Draft => {
+            proto_compute::ComputeEnvironmentPackageStatus::Draft as i32
+        }
+        ComputeEnvironmentPackageStatus::Active => {
+            proto_compute::ComputeEnvironmentPackageStatus::Active as i32
+        }
+        ComputeEnvironmentPackageStatus::Deprecated => {
+            proto_compute::ComputeEnvironmentPackageStatus::Deprecated as i32
+        }
+        ComputeEnvironmentPackageStatus::Retired => {
+            proto_compute::ComputeEnvironmentPackageStatus::Retired as i32
+        }
+    }
+}
+
+fn compute_environment_package_status_from_proto(value: i32) -> ComputeEnvironmentPackageStatus {
+    match proto_compute::ComputeEnvironmentPackageStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeEnvironmentPackageStatus::Active)
+    {
+        proto_compute::ComputeEnvironmentPackageStatus::Draft => {
+            ComputeEnvironmentPackageStatus::Draft
+        }
+        proto_compute::ComputeEnvironmentPackageStatus::Deprecated => {
+            ComputeEnvironmentPackageStatus::Deprecated
+        }
+        proto_compute::ComputeEnvironmentPackageStatus::Retired => {
+            ComputeEnvironmentPackageStatus::Retired
+        }
+        proto_compute::ComputeEnvironmentPackageStatus::Unspecified
+        | proto_compute::ComputeEnvironmentPackageStatus::Active => {
+            ComputeEnvironmentPackageStatus::Active
+        }
     }
 }
 
@@ -1497,6 +1538,169 @@ pub fn compute_capability_envelope_from_proto(
     })
 }
 
+pub fn compute_environment_package_to_proto(
+    package: &ComputeEnvironmentPackage,
+) -> Result<proto_compute::ComputeEnvironmentPackage> {
+    Ok(proto_compute::ComputeEnvironmentPackage {
+        environment_ref: package.environment_ref.clone(),
+        version: package.version.clone(),
+        family: package.family.clone(),
+        display_name: package.display_name.clone(),
+        owner_id: package.owner_id.clone(),
+        created_at_ms: package.created_at_ms,
+        updated_at_ms: package.updated_at_ms,
+        status: compute_environment_package_status_to_proto(package.status),
+        description: package.description.clone(),
+        package_digest: package.package_digest.clone(),
+        dataset_bindings: package
+            .dataset_bindings
+            .iter()
+            .map(|binding| {
+                Ok(proto_compute::ComputeEnvironmentDatasetBinding {
+                    dataset_ref: binding.dataset_ref.clone(),
+                    split_ref: binding.split_ref.clone(),
+                    mount_path: binding.mount_path.clone(),
+                    integrity_ref: binding.integrity_ref.clone(),
+                    access_policy_ref: binding.access_policy_ref.clone(),
+                    required: binding.required,
+                    metadata_json: json_value_to_string(&binding.metadata)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        harness: package
+            .harness
+            .as_ref()
+            .map(|harness| {
+                Ok::<proto_compute::ComputeEnvironmentHarness, anyhow::Error>(
+                    proto_compute::ComputeEnvironmentHarness {
+                        harness_ref: harness.harness_ref.clone(),
+                        runtime_family: harness.runtime_family.clone(),
+                        entrypoint: harness.entrypoint.clone(),
+                        args: harness.args.clone(),
+                        sandbox_profile_ref: harness.sandbox_profile_ref.clone(),
+                        evaluator_policy_ref: harness.evaluator_policy_ref.clone(),
+                        time_budget_ms: harness.time_budget_ms,
+                        metadata_json: json_value_to_string(&harness.metadata)?,
+                    },
+                )
+            })
+            .transpose()?,
+        rubric_bindings: package
+            .rubric_bindings
+            .iter()
+            .map(|binding| {
+                Ok(proto_compute::ComputeEnvironmentRubricBinding {
+                    rubric_ref: binding.rubric_ref.clone(),
+                    score_type: binding.score_type.clone(),
+                    pass_threshold_bps: binding.pass_threshold_bps,
+                    metadata_json: json_value_to_string(&binding.metadata)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        expected_artifacts: package
+            .expected_artifacts
+            .iter()
+            .map(|artifact| {
+                Ok(proto_compute::ComputeEnvironmentArtifactExpectation {
+                    artifact_kind: artifact.artifact_kind.clone(),
+                    artifact_ref: artifact.artifact_ref.clone(),
+                    required: artifact.required,
+                    verification_policy_ref: artifact.verification_policy_ref.clone(),
+                    metadata_json: json_value_to_string(&artifact.metadata)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        policy_refs: package.policy_refs.clone(),
+        metadata_json: json_value_to_string(&package.metadata)?,
+    })
+}
+
+pub fn compute_environment_package_from_proto(
+    package: &proto_compute::ComputeEnvironmentPackage,
+) -> Result<ComputeEnvironmentPackage> {
+    Ok(ComputeEnvironmentPackage {
+        environment_ref: package.environment_ref.clone(),
+        version: package.version.clone(),
+        family: package.family.clone(),
+        display_name: package.display_name.clone(),
+        owner_id: package.owner_id.clone(),
+        created_at_ms: package.created_at_ms,
+        updated_at_ms: package.updated_at_ms,
+        status: compute_environment_package_status_from_proto(package.status),
+        description: optional_string_as_none(package.description.clone()),
+        package_digest: optional_string_as_none(package.package_digest.clone()),
+        dataset_bindings: package
+            .dataset_bindings
+            .iter()
+            .map(|binding| {
+                Ok(ComputeEnvironmentDatasetBinding {
+                    dataset_ref: binding.dataset_ref.clone(),
+                    split_ref: optional_string_as_none(binding.split_ref.clone()),
+                    mount_path: optional_string_as_none(binding.mount_path.clone()),
+                    integrity_ref: optional_string_as_none(binding.integrity_ref.clone()),
+                    access_policy_ref: optional_string_as_none(binding.access_policy_ref.clone()),
+                    required: binding.required,
+                    metadata: json_string_to_value(binding.metadata_json.as_str())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        harness: package
+            .harness
+            .as_ref()
+            .map(|harness| {
+                Ok::<ComputeEnvironmentHarness, anyhow::Error>(ComputeEnvironmentHarness {
+                    harness_ref: harness.harness_ref.clone(),
+                    runtime_family: harness.runtime_family.clone(),
+                    entrypoint: optional_string_as_none(harness.entrypoint.clone()),
+                    args: harness.args.clone(),
+                    sandbox_profile_ref: optional_string_as_none(
+                        harness.sandbox_profile_ref.clone(),
+                    ),
+                    evaluator_policy_ref: optional_string_as_none(
+                        harness.evaluator_policy_ref.clone(),
+                    ),
+                    time_budget_ms: harness.time_budget_ms,
+                    metadata: json_string_to_value(harness.metadata_json.as_str())?,
+                })
+            })
+            .transpose()?,
+        rubric_bindings: package
+            .rubric_bindings
+            .iter()
+            .map(|binding| {
+                Ok(ComputeEnvironmentRubricBinding {
+                    rubric_ref: binding.rubric_ref.clone(),
+                    score_type: optional_string_as_none(binding.score_type.clone()),
+                    pass_threshold_bps: binding.pass_threshold_bps,
+                    metadata: json_string_to_value(binding.metadata_json.as_str())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        expected_artifacts: package
+            .expected_artifacts
+            .iter()
+            .map(|artifact| {
+                Ok(ComputeEnvironmentArtifactExpectation {
+                    artifact_kind: artifact.artifact_kind.clone(),
+                    artifact_ref: optional_string_as_none(artifact.artifact_ref.clone()),
+                    required: artifact.required,
+                    verification_policy_ref: optional_string_as_none(
+                        artifact.verification_policy_ref.clone(),
+                    ),
+                    metadata: json_string_to_value(artifact.metadata_json.as_str())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        policy_refs: package
+            .policy_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        metadata: json_string_to_value(package.metadata_json.as_str())?,
+    })
+}
+
 pub fn compute_product_to_proto(product: &ComputeProduct) -> Result<proto_compute::ComputeProduct> {
     Ok(proto_compute::ComputeProduct {
         product_id: product.product_id.clone(),
@@ -1918,6 +2122,70 @@ pub fn create_compute_product_response_from_proto(
                 .product
                 .as_ref()
                 .ok_or_else(|| missing("product"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn register_compute_environment_package_request_to_proto(
+    request: &RegisterComputeEnvironmentPackageRequest,
+) -> Result<proto_compute::RegisterComputeEnvironmentPackageRequest> {
+    Ok(proto_compute::RegisterComputeEnvironmentPackageRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        package: Some(compute_environment_package_to_proto(&request.package)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn register_compute_environment_package_request_from_proto(
+    request: &proto_compute::RegisterComputeEnvironmentPackageRequest,
+) -> Result<RegisterComputeEnvironmentPackageRequest> {
+    Ok(RegisterComputeEnvironmentPackageRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        package: compute_environment_package_from_proto(
+            request.package.as_ref().ok_or_else(|| missing("package"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn register_compute_environment_package_response_to_proto(
+    response: &RegisterComputeEnvironmentPackageResponse,
+) -> Result<proto_compute::RegisterComputeEnvironmentPackageResponse> {
+    Ok(proto_compute::RegisterComputeEnvironmentPackageResponse {
+        package: Some(compute_environment_package_to_proto(&response.package)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn register_compute_environment_package_response_from_proto(
+    response: &proto_compute::RegisterComputeEnvironmentPackageResponse,
+) -> Result<RegisterComputeEnvironmentPackageResponse> {
+    Ok(RegisterComputeEnvironmentPackageResponse {
+        package: compute_environment_package_from_proto(
+            response
+                .package
+                .as_ref()
+                .ok_or_else(|| missing("package"))?,
         )?,
         receipt: receipt_from_proto(
             response
@@ -2645,6 +2913,46 @@ pub fn get_compute_product_response_from_proto(
     )
 }
 
+pub fn list_compute_environment_packages_response_to_proto(
+    packages: &[ComputeEnvironmentPackage],
+) -> Result<proto_compute::ListComputeEnvironmentPackagesResponse> {
+    Ok(proto_compute::ListComputeEnvironmentPackagesResponse {
+        packages: packages
+            .iter()
+            .map(compute_environment_package_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_environment_packages_response_from_proto(
+    response: &proto_compute::ListComputeEnvironmentPackagesResponse,
+) -> Result<Vec<ComputeEnvironmentPackage>> {
+    response
+        .packages
+        .iter()
+        .map(compute_environment_package_from_proto)
+        .collect()
+}
+
+pub fn get_compute_environment_package_response_to_proto(
+    package: &ComputeEnvironmentPackage,
+) -> Result<proto_compute::GetComputeEnvironmentPackageResponse> {
+    Ok(proto_compute::GetComputeEnvironmentPackageResponse {
+        package: Some(compute_environment_package_to_proto(package)?),
+    })
+}
+
+pub fn get_compute_environment_package_response_from_proto(
+    response: &proto_compute::GetComputeEnvironmentPackageResponse,
+) -> Result<ComputeEnvironmentPackage> {
+    compute_environment_package_from_proto(
+        response
+            .package
+            .as_ref()
+            .ok_or_else(|| missing("package"))?,
+    )
+}
+
 pub fn list_capacity_lots_response_to_proto(
     lots: &[CapacityLot],
 ) -> Result<proto_compute::ListCapacityLotsResponse> {
@@ -2846,6 +3154,7 @@ mod tests {
         close_structured_capacity_instrument_response_from_proto,
         close_structured_capacity_instrument_response_to_proto,
         compute_capability_envelope_from_proto, compute_capability_envelope_to_proto,
+        compute_environment_package_from_proto, compute_environment_package_to_proto,
         compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
         compute_product_to_proto, correct_compute_index_request_from_proto,
         correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
@@ -2854,13 +3163,20 @@ mod tests {
         create_structured_capacity_instrument_request_to_proto,
         create_structured_capacity_instrument_response_from_proto,
         create_structured_capacity_instrument_response_to_proto, delivery_proof_from_proto,
-        delivery_proof_to_proto, get_compute_index_response_from_proto,
+        delivery_proof_to_proto, get_compute_environment_package_response_from_proto,
+        get_compute_environment_package_response_to_proto, get_compute_index_response_from_proto,
         get_compute_index_response_to_proto,
         get_structured_capacity_instrument_response_from_proto,
         get_structured_capacity_instrument_response_to_proto,
+        list_compute_environment_packages_response_from_proto,
+        list_compute_environment_packages_response_to_proto,
         list_compute_products_response_from_proto, list_compute_products_response_to_proto,
         list_structured_capacity_instruments_response_from_proto,
         list_structured_capacity_instruments_response_to_proto,
+        register_compute_environment_package_request_from_proto,
+        register_compute_environment_package_request_to_proto,
+        register_compute_environment_package_response_from_proto,
+        register_compute_environment_package_response_to_proto,
         structured_capacity_instrument_from_proto, structured_capacity_instrument_to_proto,
     };
     use crate::authority::{
@@ -2869,20 +3185,24 @@ mod tests {
         CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
         CorrectComputeIndexRequest, CorrectComputeIndexResponse,
         CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
+        RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
     };
     use crate::compute::{
         ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
         CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
         CapacityNonDeliveryReason, CapacityReserveState, ComputeArtifactResidency,
         ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
-        ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind,
-        ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
-        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
-        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
-        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
-        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
+        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
+        ComputeSettlementMode, ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof,
+        DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
@@ -2931,6 +3251,58 @@ mod tests {
                 concurrency_limit: Some(1),
             }),
             metadata: json!({"family": "launch"}),
+        }
+    }
+
+    fn environment_package_fixture() -> ComputeEnvironmentPackage {
+        ComputeEnvironmentPackage {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            version: "2026.03.13".to_string(),
+            family: "evaluation".to_string(),
+            display_name: "OpenAgents Math Basic".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_410_000,
+            updated_at_ms: 1_762_000_411_000,
+            status: ComputeEnvironmentPackageStatus::Active,
+            description: Some("Reference environment".to_string()),
+            package_digest: Some("sha256:env.math.basic".to_string()),
+            dataset_bindings: vec![ComputeEnvironmentDatasetBinding {
+                dataset_ref: "dataset://math/basic".to_string(),
+                split_ref: Some("validation".to_string()),
+                mount_path: Some("/datasets/math/basic".to_string()),
+                integrity_ref: Some("sha256:dataset.math.basic".to_string()),
+                access_policy_ref: Some("policy://dataset/math/basic".to_string()),
+                required: true,
+                metadata: json!({"format": "jsonl"}),
+            }],
+            harness: Some(ComputeEnvironmentHarness {
+                harness_ref: "harness://openagents/math/basic".to_string(),
+                runtime_family: "rust-native".to_string(),
+                entrypoint: Some("oa-eval-harness".to_string()),
+                args: vec!["--suite".to_string(), "math-basic".to_string()],
+                sandbox_profile_ref: Some("sandbox://strict".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                time_budget_ms: Some(300_000),
+                metadata: json!({"max_concurrency": 4}),
+            }),
+            rubric_bindings: vec![ComputeEnvironmentRubricBinding {
+                rubric_ref: "rubric://math/basic".to_string(),
+                score_type: Some("accuracy".to_string()),
+                pass_threshold_bps: Some(9_000),
+                metadata: json!({"top_k": 1}),
+            }],
+            expected_artifacts: vec![ComputeEnvironmentArtifactExpectation {
+                artifact_kind: "scorecard".to_string(),
+                artifact_ref: Some("artifact://math/basic/scorecard".to_string()),
+                required: true,
+                verification_policy_ref: Some("policy://artifact/scorecard".to_string()),
+                metadata: json!({"schema": "v1"}),
+            }],
+            policy_refs: vec![
+                "policy://eval/math/basic".to_string(),
+                "policy://artifact/scorecard".to_string(),
+            ],
+            metadata: json!({"tier": "reference"}),
         }
     }
 
@@ -3690,5 +4062,69 @@ mod tests {
         )
         .expect("structured close response roundtrip");
         assert_eq!(response_roundtrip, response);
+    }
+
+    #[test]
+    fn compute_environment_package_proto_roundtrip_preserves_registry_contract() {
+        let package = environment_package_fixture();
+        let package_roundtrip = compute_environment_package_from_proto(
+            &compute_environment_package_to_proto(&package).expect("environment proto"),
+        )
+        .expect("environment roundtrip");
+        assert_eq!(package_roundtrip, package);
+
+        let request = RegisterComputeEnvironmentPackageRequest {
+            idempotency_key: "environment-register-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            package: package.clone(),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let request_roundtrip = register_compute_environment_package_request_from_proto(
+            &register_compute_environment_package_request_to_proto(&request)
+                .expect("environment request proto"),
+        )
+        .expect("environment request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = RegisterComputeEnvironmentPackageResponse {
+            package: package.clone(),
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.environment.alpha",
+                "kernel.compute.environment.register.v1",
+                1_762_000_411_000,
+                "environment-register-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.environment.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("environment receipt"),
+        };
+        let response_roundtrip = register_compute_environment_package_response_from_proto(
+            &register_compute_environment_package_response_to_proto(&response)
+                .expect("environment response proto"),
+        )
+        .expect("environment response roundtrip");
+        assert_eq!(response_roundtrip, response);
+
+        let packages = vec![package.clone()];
+        let list_roundtrip = list_compute_environment_packages_response_from_proto(
+            &list_compute_environment_packages_response_to_proto(packages.as_slice())
+                .expect("environment list proto"),
+        )
+        .expect("environment list roundtrip");
+        assert_eq!(list_roundtrip, packages);
+
+        let get_roundtrip = get_compute_environment_package_response_from_proto(
+            &get_compute_environment_package_response_to_proto(&package)
+                .expect("environment get proto"),
+        )
+        .expect("environment get roundtrip");
+        assert_eq!(get_roundtrip, package);
     }
 }

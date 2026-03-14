@@ -32,6 +32,37 @@ impl ComputeProductStatus {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum ComputeEnvironmentPackageStatus {
+    Draft,
+    #[default]
+    Active,
+    Deprecated,
+    Retired,
+}
+
+impl ComputeEnvironmentPackageStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Active => "active",
+            Self::Deprecated => "deprecated",
+            Self::Retired => "retired",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "draft" => Some(Self::Draft),
+            "active" => Some(Self::Active),
+            "deprecated" => Some(Self::Deprecated),
+            "retired" => Some(Self::Retired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum CapacityReserveState {
     #[default]
     Available,
@@ -347,6 +378,94 @@ pub struct ComputeEnvironmentBinding {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEnvironmentDatasetBinding {
+    pub dataset_ref: String,
+    #[serde(default)]
+    pub split_ref: Option<String>,
+    #[serde(default)]
+    pub mount_path: Option<String>,
+    #[serde(default)]
+    pub integrity_ref: Option<String>,
+    #[serde(default)]
+    pub access_policy_ref: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEnvironmentHarness {
+    pub harness_ref: String,
+    pub runtime_family: String,
+    #[serde(default)]
+    pub entrypoint: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub sandbox_profile_ref: Option<String>,
+    #[serde(default)]
+    pub evaluator_policy_ref: Option<String>,
+    #[serde(default)]
+    pub time_budget_ms: Option<u64>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEnvironmentRubricBinding {
+    pub rubric_ref: String,
+    #[serde(default)]
+    pub score_type: Option<String>,
+    #[serde(default)]
+    pub pass_threshold_bps: Option<u32>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEnvironmentArtifactExpectation {
+    pub artifact_kind: String,
+    #[serde(default)]
+    pub artifact_ref: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub verification_policy_ref: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeEnvironmentPackage {
+    pub environment_ref: String,
+    pub version: String,
+    pub family: String,
+    pub display_name: String,
+    pub owner_id: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default)]
+    pub status: ComputeEnvironmentPackageStatus,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub package_digest: Option<String>,
+    #[serde(default)]
+    pub dataset_bindings: Vec<ComputeEnvironmentDatasetBinding>,
+    #[serde(default)]
+    pub harness: Option<ComputeEnvironmentHarness>,
+    #[serde(default)]
+    pub rubric_bindings: Vec<ComputeEnvironmentRubricBinding>,
+    #[serde(default)]
+    pub expected_artifacts: Vec<ComputeEnvironmentArtifactExpectation>,
+    #[serde(default)]
+    pub policy_refs: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ComputeCheckpointBinding {
     #[serde(default)]
     pub checkpoint_family: String,
@@ -612,6 +731,104 @@ pub fn validate_compute_capability_envelope(
         return Err("compute_artifact_residency_digest_invalid".to_string());
     }
 
+    Ok(())
+}
+
+pub fn validate_compute_environment_package(
+    package: &ComputeEnvironmentPackage,
+) -> Result<(), String> {
+    if package.environment_ref.trim().is_empty() {
+        return Err("compute_environment_ref_missing".to_string());
+    }
+    if package.version.trim().is_empty() {
+        return Err("compute_environment_version_missing".to_string());
+    }
+    if package.family.trim().is_empty() {
+        return Err("compute_environment_family_missing".to_string());
+    }
+    if package.display_name.trim().is_empty() {
+        return Err("compute_environment_display_name_missing".to_string());
+    }
+    if package.owner_id.trim().is_empty() {
+        return Err("compute_environment_owner_id_missing".to_string());
+    }
+    if package.updated_at_ms < package.created_at_ms {
+        return Err("compute_environment_timestamps_invalid".to_string());
+    }
+    if package
+        .package_digest
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_package_digest_invalid".to_string());
+    }
+    if let Some(harness) = package.harness.as_ref() {
+        if harness.harness_ref.trim().is_empty() {
+            return Err("compute_environment_harness_ref_missing".to_string());
+        }
+        if harness.runtime_family.trim().is_empty() {
+            return Err("compute_environment_runtime_family_missing".to_string());
+        }
+        if harness
+            .entrypoint
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("compute_environment_entrypoint_invalid".to_string());
+        }
+        if harness.time_budget_ms == Some(0) {
+            return Err("compute_environment_time_budget_invalid".to_string());
+        }
+    }
+    for dataset in &package.dataset_bindings {
+        if dataset.dataset_ref.trim().is_empty() {
+            return Err("compute_environment_dataset_ref_missing".to_string());
+        }
+        if dataset
+            .mount_path
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("compute_environment_dataset_mount_invalid".to_string());
+        }
+        if dataset
+            .integrity_ref
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("compute_environment_dataset_integrity_invalid".to_string());
+        }
+    }
+    for rubric in &package.rubric_bindings {
+        if rubric.rubric_ref.trim().is_empty() {
+            return Err("compute_environment_rubric_ref_missing".to_string());
+        }
+        if rubric
+            .pass_threshold_bps
+            .is_some_and(|value| value > 10_000)
+        {
+            return Err("compute_environment_rubric_threshold_invalid".to_string());
+        }
+    }
+    for artifact in &package.expected_artifacts {
+        if artifact.artifact_kind.trim().is_empty() {
+            return Err("compute_environment_artifact_kind_missing".to_string());
+        }
+        if artifact
+            .artifact_ref
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("compute_environment_artifact_ref_invalid".to_string());
+        }
+    }
+    if package
+        .policy_refs
+        .iter()
+        .any(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_policy_ref_invalid".to_string());
+    }
     Ok(())
 }
 
@@ -1113,15 +1330,17 @@ pub fn validate_launch_compute_product(
 mod tests {
     use super::{
         COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeCheckpointBinding, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
-        ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
-        ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
+        ComputeCheckpointBinding, ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
+        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
+        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeExecutionKind,
+        ComputeFamily, ComputeHostCapability, ComputeProduct, ComputeProductStatus,
+        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
         ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
         DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
-        validate_compute_capability_envelope, validate_delivery_proof,
-        validate_launch_compute_product,
+        validate_compute_capability_envelope, validate_compute_environment_package,
+        validate_delivery_proof, validate_launch_compute_product,
     };
     use serde_json::json;
 
@@ -1173,6 +1392,58 @@ mod tests {
             metadata: json!({
                 "summary": "Launch compute product"
             }),
+        }
+    }
+
+    fn environment_package() -> ComputeEnvironmentPackage {
+        ComputeEnvironmentPackage {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            version: "2026.03.13".to_string(),
+            family: "evaluation".to_string(),
+            display_name: "OpenAgents Math Basic".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_400_000,
+            updated_at_ms: 1_762_000_401_000,
+            status: ComputeEnvironmentPackageStatus::Active,
+            description: Some("Reference math eval harness".to_string()),
+            package_digest: Some("sha256:env.math.basic".to_string()),
+            dataset_bindings: vec![ComputeEnvironmentDatasetBinding {
+                dataset_ref: "dataset://math/basic".to_string(),
+                split_ref: Some("validation".to_string()),
+                mount_path: Some("/datasets/math/basic".to_string()),
+                integrity_ref: Some("sha256:dataset.math.basic".to_string()),
+                access_policy_ref: Some("policy://dataset/math/basic".to_string()),
+                required: true,
+                metadata: json!({"format": "jsonl"}),
+            }],
+            harness: Some(ComputeEnvironmentHarness {
+                harness_ref: "harness://openagents/math/basic".to_string(),
+                runtime_family: "rust-native".to_string(),
+                entrypoint: Some("oa-eval-harness".to_string()),
+                args: vec!["--suite".to_string(), "math-basic".to_string()],
+                sandbox_profile_ref: Some("sandbox://strict".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                time_budget_ms: Some(300_000),
+                metadata: json!({"max_concurrency": 4}),
+            }),
+            rubric_bindings: vec![ComputeEnvironmentRubricBinding {
+                rubric_ref: "rubric://math/basic".to_string(),
+                score_type: Some("accuracy".to_string()),
+                pass_threshold_bps: Some(9_000),
+                metadata: json!({"top_k": 1}),
+            }],
+            expected_artifacts: vec![ComputeEnvironmentArtifactExpectation {
+                artifact_kind: "scorecard".to_string(),
+                artifact_ref: Some("artifact://math/basic/scorecard".to_string()),
+                required: true,
+                verification_policy_ref: Some("policy://artifact/scorecard".to_string()),
+                metadata: json!({"schema": "v1"}),
+            }],
+            policy_refs: vec![
+                "policy://eval/math/basic".to_string(),
+                "policy://artifact/scorecard".to_string(),
+            ],
+            metadata: json!({"tier": "reference"}),
         }
     }
 
@@ -1314,6 +1585,22 @@ mod tests {
         let err = validate_compute_capability_envelope(&envelope)
             .expect_err("environment binding should require a non-empty ref");
         assert_eq!(err, "compute_environment_binding_ref_missing");
+    }
+
+    #[test]
+    fn validates_environment_package_contract() {
+        let package = environment_package();
+        validate_compute_environment_package(&package)
+            .expect("environment package should validate");
+    }
+
+    #[test]
+    fn rejects_environment_package_with_missing_dataset_ref() {
+        let mut package = environment_package();
+        package.dataset_bindings[0].dataset_ref = "   ".to_string();
+        let err = validate_compute_environment_package(&package)
+            .expect_err("dataset ref should be required");
+        assert_eq!(err, "compute_environment_dataset_ref_missing");
     }
 
     #[test]

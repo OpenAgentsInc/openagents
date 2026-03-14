@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+
+enum ComputeEnvironmentPackageStatus {
+  COMPUTE_ENVIRONMENT_PACKAGE_STATUS_UNSPECIFIED = 0;
+  COMPUTE_ENVIRONMENT_PACKAGE_STATUS_DRAFT = 1;
+  COMPUTE_ENVIRONMENT_PACKAGE_STATUS_ACTIVE = 2;
+  COMPUTE_ENVIRONMENT_PACKAGE_STATUS_DEPRECATED = 3;
+  COMPUTE_ENVIRONMENT_PACKAGE_STATUS_RETIRED = 4;
+}
+
+message ComputeEnvironmentDatasetBinding {
+  string dataset_ref = 1;
+  optional string split_ref = 2;
+  optional string mount_path = 3;
+  optional string integrity_ref = 4;
+  optional string access_policy_ref = 5;
+  bool required = 6;
+  string metadata_json = 7;
+}
+
+message ComputeEnvironmentHarness {
+  string harness_ref = 1;
+  string runtime_family = 2;
+  optional string entrypoint = 3;
+  repeated string args = 4;
+  optional string sandbox_profile_ref = 5;
+  optional string evaluator_policy_ref = 6;
+  optional uint64 time_budget_ms = 7;
+  string metadata_json = 8;
+}
+
+message ComputeEnvironmentRubricBinding {
+  string rubric_ref = 1;
+  optional string score_type = 2;
+  optional uint32 pass_threshold_bps = 3;
+  string metadata_json = 4;
+}
+
+message ComputeEnvironmentArtifactExpectation {
+  string artifact_kind = 1;
+  optional string artifact_ref = 2;
+  bool required = 3;
+  optional string verification_policy_ref = 4;
+  string metadata_json = 5;
+}
+
+message ComputeEnvironmentPackage {
+  string environment_ref = 1;
+  string version = 2;
+  string family = 3;
+  string display_name = 4;
+  string owner_id = 5;
+  int64 created_at_ms = 6;
+  int64 updated_at_ms = 7;
+  ComputeEnvironmentPackageStatus status = 8;
+  optional string description = 9;
+  optional string package_digest = 10;
+  repeated ComputeEnvironmentDatasetBinding dataset_bindings = 11;
+  optional ComputeEnvironmentHarness harness = 12;
+  repeated ComputeEnvironmentRubricBinding rubric_bindings = 13;
+  repeated ComputeEnvironmentArtifactExpectation expected_artifacts = 14;
+  repeated string policy_refs = 15;
+  string metadata_json = 16;
+}
+
+message RegisterComputeEnvironmentPackageRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeEnvironmentPackage package = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterComputeEnvironmentPackageResponse {
+  ComputeEnvironmentPackage package = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListComputeEnvironmentPackagesRequest {
+  optional string family = 1;
+  ComputeEnvironmentPackageStatus status = 2;
+}
+
+message ListComputeEnvironmentPackagesResponse {
+  repeated ComputeEnvironmentPackage packages = 1;
+}
+
+message GetComputeEnvironmentPackageRequest {
+  string environment_ref = 1;
+  optional string version = 2;
+}
+
+message GetComputeEnvironmentPackageResponse {
+  ComputeEnvironmentPackage package = 1;
+}
