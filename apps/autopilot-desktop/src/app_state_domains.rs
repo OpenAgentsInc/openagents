@@ -1138,6 +1138,8 @@ pub struct DesktopControlComputeHistoryState {
     pub capacity_instruments: Vec<openagents_kernel_core::compute::CapacityInstrument>,
     pub structured_capacity_instruments:
         Vec<openagents_kernel_core::compute::StructuredCapacityInstrument>,
+    pub training_runs: Vec<openagents_kernel_core::compute::ComputeTrainingRun>,
+    pub accepted_outcomes: Vec<openagents_kernel_core::compute::ComputeAcceptedOutcome>,
     pub validator_challenges:
         Vec<openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot>,
     pub last_refreshed_at_epoch_ms: Option<u64>,
@@ -1152,6 +1154,8 @@ impl Default for DesktopControlComputeHistoryState {
             delivery_proofs: Vec::new(),
             capacity_instruments: Vec::new(),
             structured_capacity_instruments: Vec::new(),
+            training_runs: Vec::new(),
+            accepted_outcomes: Vec::new(),
             validator_challenges: Vec::new(),
             last_refreshed_at_epoch_ms: None,
             last_error: None,

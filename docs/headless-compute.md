@@ -31,10 +31,10 @@ It can:
   blockers
 - inspect buyer procurement truth for spot and forward RFQs, quote selection,
   accepted orders, and the topology/proof/environment posture of quoted compute
-- inspect cluster, sandbox, proof, and challenge status through the same
+- inspect cluster, sandbox, training, proof, and challenge status through the same
   app-owned snapshot the desktop uses, including delivery acceptance,
-  validator outcomes, and settlement history when kernel authority is
-  configured
+  validator outcomes, accepted training outcomes, checkpoint lineage, and
+  settlement history when kernel authority is configured
 - list, open, focus, close, and inspect panes in the running desktop shell
 - emit structured desktop perf snapshots from the app-owned `Frame Debugger`
   surface through `autopilotctl perf`
@@ -105,6 +105,7 @@ autopilotctl buy-mode status
 autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
+autopilotctl training status
 autopilotctl proof status
 autopilotctl challenge status
 autopilotctl logs --tail 50
@@ -138,6 +139,14 @@ It also prints the app-owned buyer procurement summary for compute RFQs and
 quotes, including the active quote mode, selected quote IDs, and the quoted
 backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
+
+`autopilotctl training status` now surfaces the app-owned training operator
+projection sourced from kernel authority and the current desktop runtime. The
+payload distinguishes lightweight control-plane orchestration from heavy
+artifact-plane staging and includes run counts, accepted outcomes, environment
+versions, checkpoint refs, stale-rollout and duplicate-handling counters,
+validator verdict totals, sandbox pool readiness, and the currently visible
+training runs or participants when those surfaces are available.
 
 `autopilotctl proof status` now drills into recent delivery proofs instead of
 stopping at a count. The payload includes proof posture, topology and

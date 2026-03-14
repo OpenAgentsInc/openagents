@@ -1630,11 +1630,27 @@ and `apps/nexus-control` for:
 
 ### 21. `Desktop and autopilotctl: expose training operator surfaces and diagnostics`
 
-A real train system must be operable. This issue should surface topology
-revisions, checkpoint lineage, stale-rollout drops, validator verdicts,
-environment versions, sandbox pool health, and orchestrator state in the
-existing app-owned control plane and thin CLI. The result should be operator
-inspection without dropping straight into logs or ad hoc scripts.
+Implemented on Saturday, March 14, 2026.
+
+The app-owned desktop-control surface and `autopilotctl` now expose a typed
+training operator view. The current projection is intentionally truthful about
+what is authority-backed versus what is not yet wired from a live train
+controller:
+
+- authority-backed training runs and accepted outcomes are loaded into the
+  desktop-control compute-history cache alongside proof and challenge truth
+- the snapshot now exposes a dedicated `training` domain with explicit
+  `control_plane_state` versus `artifact_plane_state`
+- operator output includes environment versions, checkpoint refs,
+  contributor-set revision hints, contributor reselection timing, stale-rollout
+  discard counts, duplicate quarantine or deweight counts, validator verdict
+  totals, sandbox pool readiness, and visible run-level diagnostics
+- `autopilotctl training status` prints the same app-owned projection directly,
+  while `autopilotctl status` includes a condensed training summary
+
+This does not claim a live Psionic train orchestrator is embedded in the
+desktop app yet. It does make the currently available training truth
+inspectable without reconstructing it from logs or ad hoc scripts.
 
 ### 22. `Reference Program: run one end-to-end agentic SFT plus RL pilot on the full stack`
 

@@ -61,6 +61,10 @@ enum Command {
         #[command(subcommand)]
         command: ChallengeCommand,
     },
+    Training {
+        #[command(subcommand)]
+        command: TrainingCommand,
+    },
     Pane {
         #[command(subcommand)]
         command: PaneCommand,
@@ -227,6 +231,11 @@ enum ProofCommand {
 
 #[derive(Subcommand, Debug)]
 enum ChallengeCommand {
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum TrainingCommand {
     Status,
 }
 
@@ -477,6 +486,14 @@ impl ChallengeCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
             Self::Status => DesktopControlActionRequest::GetChallengeStatus,
+        }
+    }
+}
+
+impl TrainingCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetTrainingStatus,
         }
     }
 }
@@ -783,6 +800,16 @@ fn main() -> Result<()> {
                 print_json(payload)?;
             } else {
                 print_challenge_text(payload);
+            }
+        }
+        Command::Training { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                print_training_text(payload);
             }
         }
         Command::Pane { command } => match command {
@@ -1805,6 +1832,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.sandbox.job_count,
         snapshot.sandbox.active_job_count
     );
+    for line in training_status_lines(snapshot) {
+        println!("{line}");
+    }
     println!(
         "proofs: available={} source={} pending={} accepted={} rejected={} challenged={} settlements_open={} settlements_terminal={}",
         snapshot.proofs.available,
@@ -2071,6 +2101,83 @@ fn buyer_procurement_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<Stri
             order.authority_status,
             order.remedy_summary.as_deref().unwrap_or("-")
         ));
+    }
+    lines
+}
+
+fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "training: available={} source={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={}",
+        snapshot.training.available,
+        snapshot.training.source,
+        snapshot.training.control_plane_state,
+        snapshot.training.artifact_plane_state,
+        snapshot.training.run_count,
+        snapshot.training.active_run_count,
+        snapshot.training.accepted_run_count,
+        snapshot.training.accepted_outcome_count,
+        if snapshot.training.environment_versions.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.training.environment_versions.join(",")
+        },
+        snapshot.training.checkpoint_refs.len(),
+        snapshot.training.contributing_participant_count,
+        snapshot.training.admitted_participant_count,
+        snapshot.training.stale_rollout_discard_count,
+        snapshot.training.duplicate_rollout_quarantine_count,
+        snapshot.training.duplicate_rollout_deweight_count,
+        snapshot.training.validator_verified_count,
+        snapshot.training.validator_rejected_count,
+        snapshot.training.validator_timed_out_count,
+        snapshot.training.sandbox_ready_profile_count,
+        snapshot.training.sandbox_active_job_count,
+        snapshot
+            .training
+            .contributor_set_revision
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .training
+            .contributor_reselection_timing
+            .as_deref()
+            .unwrap_or("-")
+    )];
+    for run in snapshot.training.runs.iter().take(3) {
+        lines.push(format!(
+            "training run: id={} status={} control={} artifact={} policy={} env={}@{} checkpoint_family={} steps={}/{} eval_runs={} benchmarks={} best_eval_bps={} final_checkpoint={} promotion_checkpoint={} accepted_outcome={}",
+            run.training_run_id,
+            run.status,
+            run.control_plane_state,
+            run.artifact_plane_state,
+            run.training_policy_ref,
+            run.environment_ref,
+            run.environment_version.as_deref().unwrap_or("-"),
+            run.checkpoint_family,
+            run.completed_step_count.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+            run.expected_step_count.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+            run.rollout_verification_eval_run_count,
+            run.benchmark_package_count,
+            run.best_eval_score_bps.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+            run.final_checkpoint_ref.as_deref().unwrap_or("-"),
+            run.promotion_checkpoint_ref.as_deref().unwrap_or("-"),
+            run.accepted_outcome_id.as_deref().unwrap_or("-")
+        ));
+    }
+    for participant in snapshot.training.participants.iter().take(4) {
+        lines.push(format!(
+            "training participant: id={} visible_reason={} admitted={} contributing={} priority={} deweight={} excluded={}",
+            participant.participant_id,
+            participant.visible_reason,
+            participant.admitted,
+            participant.contributing,
+            participant.priority_label,
+            participant.deweight_reason.as_deref().unwrap_or("-"),
+            participant.exclusion_reason.as_deref().unwrap_or("-")
+        ));
+    }
+    if let Some(error) = snapshot.training.last_error.as_deref() {
+        lines.push(format!("training last_error: {error}"));
     }
     lines
 }
@@ -2674,6 +2781,209 @@ fn print_challenge_text(payload: &Value) {
     }
 }
 
+fn print_training_text(payload: &Value) {
+    println!(
+        "training: available={} source={} last_sync={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload.get("source").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("last_synced_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("control_plane_state")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("artifact_plane_state")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("active_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("accepted_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("accepted_outcome_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("environment_versions")
+            .and_then(Value::as_array)
+            .map(|items| items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("checkpoint_refs")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("contributing_participant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("admitted_participant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("stale_rollout_discard_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("duplicate_rollout_quarantine_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("duplicate_rollout_deweight_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("validator_verified_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("validator_rejected_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("validator_timed_out_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("sandbox_ready_profile_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("sandbox_active_job_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor_set_revision")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor_reselection_timing")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    for run in payload
+        .get("runs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "training run: id={} status={} control={} artifact={} policy={} env={}@{} checkpoint_family={} steps={}/{} eval_runs={} benchmarks={} best_eval_bps={} final_checkpoint={} promotion_checkpoint={} accepted_outcome={}",
+            run.get("training_run_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("status").and_then(Value::as_str).unwrap_or("-"),
+            run.get("control_plane_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("artifact_plane_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("training_policy_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("environment_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("environment_version")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("checkpoint_family")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("completed_step_count")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("expected_step_count")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("rollout_verification_eval_run_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            run.get("benchmark_package_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            run.get("best_eval_score_bps")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("final_checkpoint_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("promotion_checkpoint_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("accepted_outcome_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+    for participant in payload
+        .get("participants")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "training participant: id={} visible_reason={} admitted={} contributing={} priority={} deweight={} excluded={}",
+            participant
+                .get("participant_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            participant
+                .get("visible_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            participant
+                .get("admitted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            participant
+                .get("contributing")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            participant
+                .get("priority_label")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            participant
+                .get("deweight_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            participant
+                .get("exclusion_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+}
+
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
     println!(
         "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} label={}",
@@ -3015,10 +3325,10 @@ mod tests {
     use super::{
         AppleFmCommand, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
-        SandboxEntrypointTypeArg, WaitCondition, WaitConditionArg, WalletCommand,
+        SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
         ensure_buy_mode_budget_ack, inventory_status_lines, request_has_failed, request_has_paid,
-        request_has_payment_required,
+        request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -3310,6 +3620,10 @@ mod tests {
             ChallengeCommand::Status.action_request(),
             DesktopControlActionRequest::GetChallengeStatus
         );
+        assert_eq!(
+            TrainingCommand::Status.action_request(),
+            DesktopControlActionRequest::GetTrainingStatus
+        );
         assert!(matches!(SandboxCommand::Status.action_request(), Ok(None)));
         assert!(matches!(
             SandboxCommand::Job {
@@ -3430,6 +3744,81 @@ mod tests {
         assert_eq!(ChatCommand::Groups.action_request(), None);
         assert_eq!(ChatCommand::Channels.action_request(), None);
         assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+    }
+
+    #[test]
+    fn training_status_lines_surface_control_and_artifact_planes() {
+        let mut snapshot = sample_snapshot();
+        snapshot.training.available = true;
+        snapshot.training.source = "kernel_authority".to_string();
+        snapshot.training.control_plane_state = "authority_projected".to_string();
+        snapshot.training.artifact_plane_state = "staging_active".to_string();
+        snapshot.training.run_count = 1;
+        snapshot.training.active_run_count = 1;
+        snapshot.training.accepted_outcome_count = 1;
+        snapshot.training.environment_versions = vec!["2026.03.13".to_string()];
+        snapshot.training.checkpoint_refs = vec!["checkpoint://decoder/base".to_string()];
+        snapshot.training.contributing_participant_count = 1;
+        snapshot.training.admitted_participant_count = 2;
+        snapshot.training.validator_verified_count = 3;
+        snapshot.training.sandbox_ready_profile_count = 1;
+        snapshot.training.sandbox_active_job_count = 1;
+        snapshot.training.contributor_set_revision = Some("contributors-7".to_string());
+        snapshot.training.runs.push(
+            autopilot_desktop::desktop_control::DesktopControlTrainingRunStatus {
+                training_run_id: "train-1".to_string(),
+                status: "running".to_string(),
+                training_policy_ref: "policy://train/weather".to_string(),
+                environment_ref: "env.openagents.weather.agent".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                checkpoint_family: "decoder".to_string(),
+                validator_policy_ref: "policy://validator/training".to_string(),
+                benchmark_package_count: 2,
+                rollout_verification_eval_run_count: 1,
+                expected_step_count: Some(64),
+                completed_step_count: Some(21),
+                final_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                promotion_checkpoint_ref: None,
+                accepted_outcome_id: None,
+                best_eval_score_bps: Some(9_200),
+                control_plane_state: "running".to_string(),
+                artifact_plane_state: "artifacts_active".to_string(),
+            },
+        );
+        snapshot.training.participants.push(
+            autopilot_desktop::desktop_control::DesktopControlTrainingParticipantStatus {
+                participant_id: "node-a".to_string(),
+                visible_reason: "cluster_member".to_string(),
+                admitted: true,
+                contributing: true,
+                priority_label: "selected".to_string(),
+                deweight_reason: None,
+                exclusion_reason: None,
+            },
+        );
+
+        let lines = training_status_lines(&snapshot);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training: available=true source=kernel_authority"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("control=authority_projected artifact=staging_active"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training run: id=train-1"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training participant: id=node-a"))
+        );
     }
 
     #[test]
