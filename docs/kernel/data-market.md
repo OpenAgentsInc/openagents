@@ -1,5 +1,7 @@
 # Data Market
 
+> Canonical market-status doc: [markets/data-market.md](./markets/data-market.md)
+
 ## Purpose
 
 The Data Market prices access to useful context under explicit permissions.

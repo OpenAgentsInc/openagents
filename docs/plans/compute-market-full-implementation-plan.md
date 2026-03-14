@@ -3,6 +3,12 @@
 Status: proposed  
 Date: 2026-03-07
 
+Companion docs:
+
+- `docs/audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md`
+- `docs/plans/prime-ecosystem-compute-integration-spec.md`
+- `docs/plans/compute-market-launch-truth-checklist.md`
+
 ## Goal
 
 Implement the OpenAgents Compute Market as a complete market surface rather than only a narrow compute-provider earn loop plus starter authority objects. "Complete" in this context means the system does not merely let a provider go online and get paid for a compute-shaped job. It means the repo exposes a coherent compute commodities stack with explicit product definitions, inventory, tradeable obligations, delivery evidence, price references, policy controls, and user-facing workflows that make those abstractions legible in Autopilot.
@@ -21,7 +27,8 @@ This is why the work must be treated as a staged program. There is no safe versi
 
 ## What "Fully Implemented" Must Mean
 
-A fully implemented compute market in OpenAgents should satisfy five separate tests at the same time.
+A fully implemented compute market in OpenAgents should satisfy eight separate
+tests at the same time.
 
 First, the market must be real at the product layer. Providers need to be able to define what compute they are offering, under what constraints, in what region or performance band, for what window, and with what delivery posture. Buyers need to be able to discover that supply, request quotes, accept offers, or later participate in standardized market structures. The desktop must expose enough of that truth that the market does not feel like invisible backend state.
 
@@ -32,6 +39,57 @@ Third, the market must be real at the protocol layer. The current thin compute p
 Fourth, the market must be real at the observability layer. `/stats`, economy snapshots, and public operator-facing surfaces must expose market health in a way that is not limited to generic revenue counts. A mature compute market needs visibility into open inventory, accepted delivery, default behavior, price references, index quality, and eventually open interest and paper-to-physical posture.
 
 Fifth, the market must be real at the policy layer. A compute market that can create obligations without clear controls over deliverability, attestation, index quality, or failure handling is not a market. It is a liability engine waiting to detonate. Full implementation therefore includes the bounded-risk side of the design, not only the happy-path trading side.
+
+Sixth, the market must be real at the execution-substrate layer. It cannot stop
+at single-node local inference. The product taxonomy, authority objects, and
+delivery semantics must be able to express at least local, clustered, and
+remote-sandbox compute supply with explicit provisioning kind, topology, proof
+posture, and environment compatibility. That is the part of the plan most
+strongly reinforced by the Prime ecosystem audit.
+
+Seventh, the market must be real at the proof and evaluation layer. Delivery
+cannot be defended only by optimistic completion state. The market needs
+environment-backed evaluation objects, proof-bearing delivery bundles,
+validator-compatible challenge hooks, and explicit settlement consequences for
+proof failure or missing evidence where the product requires them.
+
+Eighth, the market must be operable through first-class control surfaces. A
+real compute market needs operator-grade CLI, inspectability, tunnel or attach
+semantics where appropriate, and machine-consumable control APIs such as MCP
+wrappers that reuse the same market truth rather than bypassing it.
+
+## Prime Audit Incorporation Requirements
+
+This plan now treats the compute-scoped conclusions of
+`docs/audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md` and
+`docs/plans/prime-ecosystem-compute-integration-spec.md` as part of the
+compute-market program rather than as adjacent architecture notes.
+
+That means the compute market is not considered complete when it only has:
+
+- spot lots,
+- forward obligations,
+- delivery proofs,
+- and later hedging instruments.
+
+It also must absorb the Prime-derived compute architecture in the areas that
+are economically relevant to market truth:
+
+- wider-network transport, relay fallback, and cluster membership
+- collectives, shard placement, and public-network distributed serving
+- bounded sandbox execution as a first-class compute product family
+- proof, validator, and challenge-linked settlement infrastructure
+- environment, eval, synthetic-data, and benchmark substrate
+- operator control surfaces including CLI, MCP, and remote attach or tunnel
+  semantics
+- later training-class and adapterized compute families once the cluster,
+  proof, and environment layers are already credible
+
+The consequence is simple:
+
+> this plan must own both the market objects and the reusable execution,
+> proof, and evaluation substrate required to make those market objects
+> economically meaningful.
 
 ## Guardrails
 
@@ -46,6 +104,9 @@ This plan should be executed under the following guardrails.
 - Do not let Nostr or Spacetime become authoritative for money, settlement, or canonical compute obligations.
 - Do not introduce unbounded leverage, opaque book state, or hidden insolvency.
 - Do not ship derivative products before the underlying spot and forward physical layers are credible.
+- Do not treat the Prime-derived cluster, sandbox, proof, environment, or
+  operator layers as optional side quests if the goal is a full compute market;
+  they are part of the required substrate.
 - Keep wallet and payout truth explicit and authoritative in the UI.
 - Maintain replay-safe, deterministic receipt and snapshot behavior on every phase.
 
@@ -121,9 +182,16 @@ The output of phase zero should be that a completed paid compute job is no longe
 
 Phase zero deliverables:
 
+- Define a forward-compatible compute taxonomy that can later express local,
+  clustered, and `remote_sandbox` provisioning without a second namespace
+  rewrite.
 - Define the default standardized compute products that correspond to the currently supported provider capabilities.
 - Define the two initial backend families as first-class compute products: `Ollama` and `Apple Foundation Models`.
 - Define the first live compute product families at launch as `inference` and `embeddings`, with backend-specific product IDs such as `ollama.text_generation`, `ollama.embeddings`, and `apple_foundation_models.text_generation`.
+- Define adjacent fields for provisioning kind, topology posture, proof
+  posture, and optional environment binding so later clustered, sandboxed,
+  proof-sensitive, and evaluation-linked products do not have to hide in opaque
+  metadata.
 - Define a capability-envelope schema that can express accelerator-aware supply, including fields such as `backend_family`, `execution_kind`, `model_policy` or `model_family`, `host_capability.accelerator_vendor`, `host_capability.accelerator_family`, and `host_capability.memory_gb`.
 - Generate or publish canonical provider inventory records when a provider goes online, either as explicit lots or as controlled dynamic inventory projections.
 - Update acceptance flow so matched compute jobs bind to explicit spot compute instruments or allocations.
@@ -203,9 +271,15 @@ Phase three deliverables:
 - Add provider-facing compute inventory views in `apps/autopilot-desktop`.
 - Add backend-specific provider controls and visibility for `Ollama` and `Apple Foundation Models` readiness, selected model or capability envelope, and local policy restrictions.
 - Add provider controls to advertise inference capacity, embedding capacity, or both, with truthful backend-specific eligibility.
+- Keep the inventory and RFQ model generic enough that clustered and
+  `remote_sandbox` products can later use the same lot and instrument flow
+  instead of forcing separate market state machines.
 - Add accelerator-aware provider inventory fields and buyer-side filtering so offers can carry host capability constraints without turning the launch UX into a raw hardware exchange.
 - Add buyer-facing spot compute request and quote review flows.
 - Surface active products, lots, and spot instruments in the desktop with truthful source badges.
+- Surface proof posture, topology posture, and environment compatibility in the
+  product details when those fields are present, even if the initial launch path
+  only productizes local supply.
 - Add provider controls for price floor, delivery window, region constraints, and supported product classes where the runtime can honestly enforce them.
 - Add buyer controls for quantity, delivery window, quality floor, and acceptable substitution rules where supported.
 - Keep the one-button `Go Online` path as the default simple path while exposing deeper compute-market panes behind it.
@@ -366,7 +440,171 @@ Protocol deliverables:
 - Generated Rust types.
 - Updated reusable authority client methods and error types.
 - Stable lifecycle enums for product, lot, instrument, delivery proof, and index state.
+- Stable fields for provisioning kind, topology posture, proof posture,
+  validator linkage, and environment binding.
 - Stable reason codes for cancellation, variance, curtailment, non-delivery, manipulation, correction, and settlement failure.
+
+## Cross-Cutting Workstream: Psionic Network, Cluster, And Collectives
+
+The current plan cannot fully incorporate the Prime compute audit unless it
+explicitly carries the cluster and transport substrate. Prime's most valuable
+compute lesson is not just "sell more GPU products." It is that market-grade
+compute supply eventually includes public-network sessions, elastic cluster
+membership, shard placement, collectives, and topology-aware execution that the
+market can actually settle against.
+
+This workstream should rebuild the useful parts of:
+
+- `protocol`
+- `prime-iroh`
+- `pccl`
+- `prime-vllm`
+- `prime-pipeline`
+
+Market implications:
+
+- clustered supply becomes a first-class compute product family, not a hidden
+  runtime mode
+- topology and shard placement become part of deliverability truth
+- delivery proofs and substitution policy can reference explicit topology
+  posture instead of vague cluster metadata
+
+Cluster deliverables:
+
+- Add Psionic-owned peer identity, session establishment, direct-connect plus
+  relay-fallback transport, and cluster membership views.
+- Add collectives and shared-state sync suitable for cluster-backed compute
+  products.
+- Add stage placement, shard manifests, and public-network pipeline semantics
+  for clustered inference products.
+- Make clustered capability envelopes, topology evidence, and delivery linkage
+  visible to the kernel and desktop rather than trapped in runtime internals.
+
+## Cross-Cutting Workstream: Sandbox And Remote Execution Products
+
+The Prime audit also makes bounded sandbox execution a required part of the
+compute-market shape, not only a convenience feature. The repo already has seed
+material here, but the market plan needs to treat sandboxed execution as a
+first-class compute family.
+
+This workstream should rebuild the useful parts of:
+
+- `prime-sandboxes`
+- `prime-tunnel`
+- relevant operator patterns from `prime`
+
+Sandbox deliverables:
+
+- Productize `remote_sandbox` as an explicit provisioning kind and compute
+  family rather than hiding it behind app-local execution semantics.
+- Move the long-term runtime engine into `crates/psionic/*` while keeping
+  provider-substrate as the reusable descriptor layer.
+- Support background jobs, file transfer, artifact retrieval, attach or expose
+  semantics, and bounded profile digests through a canonical compute contract.
+- Expose sandbox evidence, environment compatibility, and proof posture through
+  delivery objects and provider inventory surfaces.
+
+## Cross-Cutting Workstream: Proof, Validators, And Challenge-Linked Settlement
+
+The current delivery-proof phase is necessary but not sufficient. The Prime
+audit requires proof-bearing execution artifacts, validator services, and
+challenge-linked settlement paths to become part of the compute-market program
+where economically justified.
+
+This workstream should rebuild the useful parts of:
+
+- `toploc`
+- `toploc-validator`
+- `gpu-challenge`
+
+Proof deliverables:
+
+- Define canonical execution-proof bundles for local, clustered, and sandbox
+  compute.
+- Add optional activation-fingerprint or similar compact proof adapters where a
+  product requires them.
+- Add validator-side challenge queues, challenge execution, and result receipts
+  for proof-sensitive products.
+- Widen `DeliveryProof`, market claims, and settlement logic so proof absence,
+  challenge failure, or validator rejection have explicit economic outcomes.
+
+## Cross-Cutting Workstream: Environments, Evals, Synthetic Data, And Data Plane
+
+The Prime audit also makes it clear that compute is not just generic capacity.
+Environment compatibility, evaluation output, synthetic-data generation, and
+benchmark ingestion are all part of the compute market once products need to be
+compared, verified, and sold against real workloads.
+
+This workstream should rebuild the useful parts of:
+
+- `verifiers`
+- `prime-evals`
+- `community-environments`
+- `research-environments`
+- `genesys`
+- `evalchemy`
+- `datasetstream`
+- selected patterns from `prime-rl`
+
+Environment and eval deliverables:
+
+- Treat environment packages and environment refs as first-class compute-market
+  bindings, not only side registries.
+- Bind compute products and delivery proofs to environment compatibility where
+  relevant.
+- Keep evaluation-run, synthetic-data, and benchmark-adapter lifecycles as
+  canonical compute outputs.
+- Add a Rust-owned streamed data plane for eval bundles, tokenized corpora, and
+  later training or checkpoint flows.
+
+## Cross-Cutting Workstream: Operator Control, CLI, MCP, And Attach Surfaces
+
+The Prime audit includes operator-surface lessons that the market plan should
+carry explicitly. A real compute market needs inspectability, not only backend
+objects and UI panes.
+
+This workstream should rebuild the useful parts of:
+
+- `prime`
+- `prime-mcp-server`
+- `prime-evals`
+- `prime-tunnel`
+
+Operator-surface deliverables:
+
+- Widen `autopilotctl` and the desktop control plane to inspect inventory,
+  cluster state, sandbox jobs, proof posture, validator outcomes, and compute
+  receipts.
+- Add an MCP wrapper over the same control contracts without bypassing kernel
+  authority or policy.
+- Add attach or tunnel semantics only where the product can expose them
+  truthfully and safely.
+- Keep the app-owned control plane primary so operator surfaces reuse the same
+  market truth as the desktop instead of forking it.
+
+## Cross-Cutting Workstream: Later Training-Class And Adapter Products
+
+The Prime audit goes beyond inference and sandboxes. It also identifies later
+training-class and adapterized compute families as part of the long-horizon
+compute market. Those are not phase-zero or launch blockers, but they do belong
+inside the complete market plan.
+
+This workstream should rebuild the useful parts of:
+
+- `prime-diloco`
+- `prime-rl`
+- `datasetstream`
+- `cloud-lora`
+
+Later-family deliverables:
+
+- Reserve explicit compute-family space for `evaluation`, `training`, and
+  `adapter_hosting`.
+- Add checkpoint-bearing delivery semantics and environment-linked training or
+  evaluation obligations only after the cluster, proof, and environment layers
+  are credible.
+- Add adapterized serving products only after artifact, serving, and settlement
+  truth are already strong.
 
 ## Cross-Cutting Workstream: Market Structure And Matching
 
@@ -466,18 +704,48 @@ The plan above is intentionally market-shaped. To execute it in this repo withou
 
 `crates/openagents-kernel-core` should become the place where the reusable compute-market language is made precise. That includes the domain structs that already exist, the validation helpers that should prevent malformed product or lot definitions, the authority client methods that should hide service transport details from the desktop, and the receipt-linking helpers that should let tests and operators reason about a compute trade from creation through settlement. This crate is where the implementation should centralize lifecycle invariants such as which transitions are legal for a spot instrument, what fields are required for a forward delivery window, and how delivery variance is represented consistently across clients.
 
+`crates/psionic/*` should explicitly own the reusable execution substrate the
+Prime audit calls out: transport, cluster membership, collectives, clustered
+serve paths, bounded sandbox execution, proof bundle assembly, and later
+training-class compute. The compute market plan is incomplete if it treats
+Psionic as merely a local runtime while all cluster and sandbox semantics stay
+implicit.
+
+`crates/openagents-provider-substrate` should remain the narrow reusable
+descriptor and provider-health layer. It should publish truthful provider
+inventory templates and advertisability checks for local, clustered, and
+sandbox products, but it should not become a second execution engine or proof
+system.
+
 `crates/openagents-kernel-proto` should own the generated protocol surface for the full compute market. This is more than a codegen concern. Once product, service, and tests all depend on the same generated package tree, it becomes much harder for the implementation to drift from the architecture described in the kernel docs. That is the real value of expanding the proto surface. It gives the repo a common language that is explicit enough to support multiple clients, durable enough to survive feature growth, and narrow enough to keep app code from inventing private payload shapes.
 
 `apps/nexus-control`, or the durable owned successor when that split happens, should own canonical mutation, persistence, projection, and policy enforcement for compute-market authority. This includes durable object storage, durable receipts, deterministic replay, read-model publication, breaker logic, and index or settlement governance. The service should be the place where market validity is enforced, not merely where app requests are recorded. If a spot instrument is malformed, if a forward commitment exceeds policy, if an index correction supersedes a prior publication, or if paper exposure must be capped, the service should be able to say so authoritatively and emit a receipted reason.
+
+Validator services and environment/eval services should be treated as first-
+class compute-market infrastructure in the long-horizon owner map. They should
+own challenge execution, verifier workloads, environment registry operations,
+eval orchestration, and synthetic-data or benchmark pipelines, while the kernel
+continues to own canonical economic outcomes and settlement truth.
 
 `crates/spark` and the Nostr crates should stay narrow. `crates/spark` should continue to own wallet and payment primitives, invoice confirmation, and payout truth, but it should not absorb compute-market state machines. Likewise, the Nostr crates should continue to own relay connectivity, NIP-90 transport, and protocol-specific event handling, but they should not become shadow ledgers for compute obligations. Keeping those boundaries clean is not stylistic. It is what lets the market remain auditable when the implementation grows from a simple earn loop into a layered market surface.
 
 Concrete work packages by owner:
 
 - `apps/autopilot-desktop`: inventory panes, provider pricing controls, buyer RFQ flows, compute history, delivery-proof visibility, index visibility, advanced market panes, compatibility-preserving Mission Control updates, the initial-release backend adapters for `Ollama` and `Apple Foundation Models`, and supervision of the local Apple FM bridge lifecycle if that backend is revived as a sidecar.
+- `crates/psionic/*`: transport and relay-fallback sessions, cluster membership,
+  collectives, clustered serving, sandbox execution engines, proof bundle
+  assembly, and later training-class execution substrate.
+- `crates/openagents-provider-substrate`: reusable provider descriptors, health,
+  advertisability checks, and inventory-control helpers for local, clustered,
+  and sandbox compute families.
 - `crates/openagents-kernel-core`: expanded compute domain types, state-machine validation, authority client methods, receipt-linkage helpers, and reusable filtering or projection adapters.
 - `crates/openagents-kernel-proto`: new compute proto packages, generated Rust types, service request or response contracts, and stable lifecycle enums or reason-code surfaces.
 - `apps/nexus-control`: durable persistence, queryable read models, deterministic replay, market policy enforcement, index publication, correction handling, and breaker operations.
+- validator services: proof verification, challenge execution, and challenge
+  result publication for proof-sensitive compute products.
+- environment and eval services: environment registry operations, eval-run
+  orchestration, synthetic-data pipelines, benchmark ingestion, and streamed
+  data-plane support.
 - `crates/spark`: wallet-confirmation surfaces and settlement-linkage hooks only where needed to keep payout truth connected to compute receipts.
 - `crates/nostr/*`: transport and event-ingress changes only where needed to carry richer compute references without moving market law into relay code.
 
@@ -522,6 +790,17 @@ The compute market should be considered fully implemented only when all of the f
 - Providers can publish and manage real compute inventory in a user-facing way.
 - Buyers can procure spot compute through a productized flow.
 - Physical delivery emits explicit delivery proofs with linked evidence.
+- The compute taxonomy and proto layer can express local, clustered,
+  `remote_sandbox`, proof-sensitive, and environment-bound products without
+  falling back to opaque metadata.
+- Clustered and sandbox compute can be advertised and settled through the same
+  canonical market object model as local supply.
+- Proof bundles, validator outcomes, and challenge-linked remedies are explicit
+  where the product requires them.
+- Environment and eval objects are linked into compute supply and delivery where
+  those bindings matter to the product being sold.
+- Operator surfaces can inspect cluster, sandbox, proof, and settlement state
+  without bypassing canonical market authority.
 - Forward physical capacity can be sold and later delivered with explicit remedies for failure.
 - Governed compute indices are published from explicit market observations with correction rules and quality signals.
 - Cash-settled compute hedges can settle deterministically against those indices under bounded policy.
@@ -535,13 +814,18 @@ The compute market should be considered fully implemented only when all of the f
 
 If execution starts now, the first sequence should be:
 
-1. Canonicalize the current earn loop into explicit compute-market truth.
+1. Canonicalize the current earn loop into explicit compute-market truth and widen the compute taxonomy for provisioning, topology, proof posture, and environment binding.
 2. Add durable compute authority persistence and read models.
 3. Expand the compute proto surface and generated types.
-4. Add provider inventory UX and buyer-side spot procurement UX.
-5. Automate delivery proofs and explicit compute observability.
-6. Add forward physical capacity sales.
-7. Add compute indices and index governance.
-8. Only then add cash-settled futures and later structured products.
+4. Widen `crates/psionic/*` for transport, cluster membership, collectives, and clustered-serving truth.
+5. Productize bounded sandbox execution as a first-class compute family alongside the local lane.
+6. Add proof bundles, validator or challenge services, and challenge-linked settlement hooks for proof-sensitive products.
+7. Bind environments, evals, synthetic-data, benchmark adapters, and streamed data-plane flows into canonical compute-market objects.
+8. Extend `autopilotctl`, desktop control, and MCP-facing operator surfaces to inspect and operate the widened compute substrate.
+9. Add provider inventory UX and buyer-side spot procurement UX.
+10. Automate delivery proofs and explicit compute observability.
+11. Add forward physical capacity sales.
+12. Add compute indices and index governance.
+13. Only then add cash-settled futures, later training-class products, adapterized serving products, and structured derivatives.
 
 This order preserves the product wedge that already works while turning it into the first defensible layer of a broader compute commodities stack.

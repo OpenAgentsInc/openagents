@@ -156,9 +156,11 @@ This separation is intentional:
 Planning and diagrams:
 
 * **[docs/kernel/README.md](docs/kernel/README.md)** — high-level overview of the kernel and marketplace layers
+* **[docs/kernel/markets/README.md](docs/kernel/markets/README.md)** — canonical per-market implementation status for Compute, Data, Labor, Liquidity, and Risk
 * **[docs/kernel/economy-kernel.md](docs/kernel/economy-kernel.md)** — normative spec: invariants, work, verification, liability, settlement, and control loop
 * **[docs/kernel/economy-kernel-proto.md](docs/kernel/economy-kernel-proto.md)** — proto-first design: packages, PolicyBundle, EconomySnapshot, incidents, safety, and audit
-* **[docs/kernel/prediction-markets.md](docs/kernel/prediction-markets.md)** — how prediction, coverage, and risk markets plug into the kernel
+* **[docs/kernel/markets/risk-market.md](docs/kernel/markets/risk-market.md)** — canonical risk-market implementation status
+* **[docs/kernel/prediction-markets.md](docs/kernel/prediction-markets.md)** — deeper prediction, coverage, and underwriting background
 * **[docs/kernel/diagram.md](docs/kernel/diagram.md)** — system diagrams and supporting visual framing
 
 ## Agent Install Instructions
