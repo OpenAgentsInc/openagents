@@ -273,6 +273,13 @@ fn paint_runtime_snapshot(
         paint,
         bounds.origin.x + 12.0,
         y,
+        "Provider heartbeat",
+        bool_label(snapshot.provider_online_heartbeat),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
         "Provider HUD",
         snapshot.provider_control_hud.state_summary().as_str(),
     );
@@ -298,10 +305,11 @@ fn paint_runtime_snapshot(
         y + 10.0,
         "Driver counts",
         &format!(
-            "bg {} hotbar {} provider {} chat {} debug {} text {} provider_hud {} rive {} present {}",
+            "bg {} hotbar {} provider {} provider_heartbeat {} chat {} debug {} text {} provider_hud {} rive {} present {}",
             counters.background_changed,
             counters.hotbar_flashing,
             counters.provider_animating,
+            counters.provider_online_heartbeat,
             counters.chat_pending,
             counters.debug_probe_active,
             counters.text_input_focused,
