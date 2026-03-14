@@ -980,6 +980,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Keep benchmark orchestration separate from core environment semantics so the registry does not become a benchmark junk drawer.
 
 37. **Psionic Train: implement async checkpointing, live recovery, and elastic membership**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3521`.
    - Rebuild the strongest `prime-diloco` and `prime-rl` training substrate ideas in Psionic terms.
    - This issue should stop short of a huge product surface and focus on execution truth first.
 

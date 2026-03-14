@@ -1662,6 +1662,9 @@ pub struct ClusterExecutionContext {
     /// Plain-language degraded-routing reason when the path was not the ideal placement.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
+    /// Optional training recovery posture when the clustered lane is training-class.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training_recovery: Option<TrainingRecoveryContext>,
 }
 
 impl ClusterExecutionContext {
@@ -1698,6 +1701,7 @@ impl ClusterExecutionContext {
             command_provenance: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
+            training_recovery: None,
         }
     }
 
@@ -1836,6 +1840,13 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_degraded_reason(mut self, degraded_reason: impl Into<String>) -> Self {
         self.degraded_reason = Some(degraded_reason.into());
+        self
+    }
+
+    /// Attaches training recovery posture for training-class clustered execution.
+    #[must_use]
+    pub fn with_training_recovery(mut self, training_recovery: TrainingRecoveryContext) -> Self {
+        self.training_recovery = Some(training_recovery);
         self
     }
 
@@ -2413,6 +2424,268 @@ pub enum AcceleratorDeliverabilityStatus {
     CompatibleSubstitution,
     /// Delivered execution failed to satisfy the promised accelerator offer.
     Underdelivered,
+}
+
+/// High-level recovery posture for training-class clustered execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingRecoveryPosture {
+    /// Membership, checkpoint, and worker state are steady.
+    SteadyState,
+    /// Recovery is blocked or waiting on a durable checkpoint.
+    LateJoinPending,
+    /// A recovering node is explicitly resuming state.
+    Recovering,
+    /// Membership is changing while work continues.
+    ElasticReconfiguration,
+    /// A new checkpoint is flushing asynchronously.
+    AsyncCheckpointInFlight,
+}
+
+/// Availability class for checkpoint-backed training recovery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingCheckpointAvailability {
+    /// No durable checkpoint is currently available.
+    None,
+    /// A checkpoint is being written but is not yet durable.
+    AsyncWriteInFlight,
+    /// A durable checkpoint is available for recovery or late join.
+    Durable,
+}
+
+/// Explicit elastic-membership facts used by training recovery logic.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingElasticMembershipContext {
+    /// Monotonic membership epoch derived from observed cluster truth.
+    pub membership_epoch: u64,
+    /// Stable digest of the authoritative cluster snapshot for this epoch.
+    pub cluster_state_digest: String,
+    /// Stable digest of topology-relevant facts for this epoch.
+    pub topology_digest: String,
+    /// Nodes currently considered active workers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_node_ids: Vec<String>,
+    /// Nodes currently joining and not yet trusted as active workers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joining_node_ids: Vec<String>,
+    /// Nodes currently draining and excluded from new work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub draining_node_ids: Vec<String>,
+    /// Nodes known but offline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offline_node_ids: Vec<String>,
+}
+
+impl TrainingElasticMembershipContext {
+    /// Creates training membership facts from one epoch and digest set.
+    #[must_use]
+    pub fn new(
+        membership_epoch: u64,
+        cluster_state_digest: impl Into<String>,
+        topology_digest: impl Into<String>,
+        active_node_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            membership_epoch,
+            cluster_state_digest: cluster_state_digest.into(),
+            topology_digest: topology_digest.into(),
+            active_node_ids: sorted_distinct_strings(active_node_ids),
+            joining_node_ids: Vec::new(),
+            draining_node_ids: Vec::new(),
+            offline_node_ids: Vec::new(),
+        }
+    }
+
+    /// Attaches joining-node facts.
+    #[must_use]
+    pub fn with_joining_node_ids(mut self, joining_node_ids: Vec<String>) -> Self {
+        self.joining_node_ids = sorted_distinct_strings(joining_node_ids);
+        self
+    }
+
+    /// Attaches draining-node facts.
+    #[must_use]
+    pub fn with_draining_node_ids(mut self, draining_node_ids: Vec<String>) -> Self {
+        self.draining_node_ids = sorted_distinct_strings(draining_node_ids);
+        self
+    }
+
+    /// Attaches offline-node facts.
+    #[must_use]
+    pub fn with_offline_node_ids(mut self, offline_node_ids: Vec<String>) -> Self {
+        self.offline_node_ids = sorted_distinct_strings(offline_node_ids);
+        self
+    }
+}
+
+/// Stable durable or in-flight checkpoint identity for training recovery.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingCheckpointReference {
+    /// Stable checkpoint family such as `train.decoder`.
+    pub checkpoint_family: String,
+    /// Stable stream identifier exporting the checkpoint bytes.
+    pub stream_id: String,
+    /// Stable manifest digest constraining the checkpoint stream.
+    pub manifest_digest: String,
+    /// Stable payload digest for the checkpoint object.
+    pub object_digest: String,
+    /// Writer node that emitted the checkpoint.
+    pub writer_node_id: String,
+    /// Membership epoch observed when the checkpoint started.
+    pub membership_epoch: u64,
+    /// Stable cluster snapshot digest observed when the checkpoint started.
+    pub cluster_state_digest: String,
+    /// Stable topology digest observed when the checkpoint started.
+    pub topology_digest: String,
+    /// Logical timestamp when the checkpoint write began.
+    pub started_at_ms: u64,
+    /// Optional stable checkpoint reference supplied by the producer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<String>,
+    /// Optional logical checkpoint step.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<u64>,
+    /// Logical timestamp when the checkpoint became durable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub durable_at_ms: Option<u64>,
+}
+
+impl TrainingCheckpointReference {
+    /// Creates one training checkpoint reference from explicit stable identities.
+    #[must_use]
+    pub fn new(
+        checkpoint_family: impl Into<String>,
+        stream_id: impl Into<String>,
+        manifest_digest: impl Into<String>,
+        object_digest: impl Into<String>,
+        writer_node_id: impl Into<String>,
+        membership_epoch: u64,
+        cluster_state_digest: impl Into<String>,
+        topology_digest: impl Into<String>,
+        started_at_ms: u64,
+    ) -> Self {
+        Self {
+            checkpoint_family: checkpoint_family.into(),
+            stream_id: stream_id.into(),
+            manifest_digest: manifest_digest.into(),
+            object_digest: object_digest.into(),
+            writer_node_id: writer_node_id.into(),
+            membership_epoch,
+            cluster_state_digest: cluster_state_digest.into(),
+            topology_digest: topology_digest.into(),
+            started_at_ms,
+            checkpoint_ref: None,
+            step: None,
+            durable_at_ms: None,
+        }
+    }
+
+    /// Attaches a stable checkpoint reference.
+    #[must_use]
+    pub fn with_checkpoint_ref(mut self, checkpoint_ref: impl Into<String>) -> Self {
+        self.checkpoint_ref = Some(checkpoint_ref.into());
+        self
+    }
+
+    /// Attaches a logical step.
+    #[must_use]
+    pub const fn with_step(mut self, step: u64) -> Self {
+        self.step = Some(step);
+        self
+    }
+
+    /// Marks the checkpoint durable.
+    #[must_use]
+    pub const fn with_durable_at_ms(mut self, durable_at_ms: u64) -> Self {
+        self.durable_at_ms = Some(durable_at_ms);
+        self
+    }
+}
+
+/// Runtime-visible training recovery posture attached to clustered execution evidence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingRecoveryContext {
+    /// High-level training recovery posture.
+    pub posture: TrainingRecoveryPosture,
+    /// Availability class for durable checkpoint-backed recovery.
+    pub checkpoint_availability: TrainingCheckpointAvailability,
+    /// Current elastic-membership facts.
+    pub elastic_membership: TrainingElasticMembershipContext,
+    /// Latest in-flight or durable checkpoint reference, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_checkpoint: Option<TrainingCheckpointReference>,
+    /// Nodes explicitly recovering state.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recovering_node_ids: Vec<String>,
+    /// Nodes explicitly joining the world after the current checkpoint.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub late_joiner_node_ids: Vec<String>,
+    /// Logical timestamp when recovery or reconfiguration was requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_at_ms: Option<u64>,
+    /// Plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl TrainingRecoveryContext {
+    /// Creates runtime-visible training recovery posture from explicit membership facts.
+    #[must_use]
+    pub fn new(
+        posture: TrainingRecoveryPosture,
+        checkpoint_availability: TrainingCheckpointAvailability,
+        elastic_membership: TrainingElasticMembershipContext,
+    ) -> Self {
+        Self {
+            posture,
+            checkpoint_availability,
+            elastic_membership,
+            latest_checkpoint: None,
+            recovering_node_ids: Vec::new(),
+            late_joiner_node_ids: Vec::new(),
+            requested_at_ms: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches the latest in-flight or durable checkpoint.
+    #[must_use]
+    pub fn with_latest_checkpoint(
+        mut self,
+        latest_checkpoint: TrainingCheckpointReference,
+    ) -> Self {
+        self.latest_checkpoint = Some(latest_checkpoint);
+        self
+    }
+
+    /// Attaches explicit recovering-node facts.
+    #[must_use]
+    pub fn with_recovering_node_ids(mut self, recovering_node_ids: Vec<String>) -> Self {
+        self.recovering_node_ids = sorted_distinct_strings(recovering_node_ids);
+        self
+    }
+
+    /// Attaches explicit late-joiner facts.
+    #[must_use]
+    pub fn with_late_joiner_node_ids(mut self, late_joiner_node_ids: Vec<String>) -> Self {
+        self.late_joiner_node_ids = sorted_distinct_strings(late_joiner_node_ids);
+        self
+    }
+
+    /// Attaches the logical request timestamp.
+    #[must_use]
+    pub const fn with_requested_at_ms(mut self, requested_at_ms: u64) -> Self {
+        self.requested_at_ms = Some(requested_at_ms);
+        self
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
 }
 
 /// Stable difference code for one promised-vs-delivered accelerator comparison.
@@ -7431,6 +7704,12 @@ pub struct ExecutionResult<B> {
     pub metrics: ExecutionMetrics,
 }
 
+fn sorted_distinct_strings(mut values: Vec<String>) -> Vec<String> {
+    values.sort_unstable();
+    values.dedup();
+    values
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
@@ -7491,8 +7770,10 @@ mod tests {
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
         SettlementLinkageInput, ShardedModelArtifactRef, ShardedModelLayoutKind,
         ShardedModelManifest, ShardedModelManifestError, SignedClusterEvidenceBundle,
-        ThroughputClass, TokenSampler, apply_sampling_penalties, benchmark_dispatch_plan,
-        benchmark_quantization_dispatch, default_cache_invalidation_policy, plan_model_admission,
+        ThroughputClass, TokenSampler, TrainingCheckpointAvailability, TrainingCheckpointReference,
+        TrainingElasticMembershipContext, TrainingRecoveryContext, TrainingRecoveryPosture,
+        apply_sampling_penalties, benchmark_dispatch_plan, benchmark_quantization_dispatch,
+        default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9348,6 +9629,83 @@ mod tests {
             delivered
         );
         assert_eq!(delivered.cluster_execution, Some(cluster_execution));
+        Ok(())
+    }
+
+    #[test]
+    fn delivered_execution_context_can_carry_training_recovery_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let training_recovery = TrainingRecoveryContext::new(
+            TrainingRecoveryPosture::ElasticReconfiguration,
+            TrainingCheckpointAvailability::Durable,
+            TrainingElasticMembershipContext::new(
+                4,
+                "cluster-state-digest",
+                "topology-digest",
+                vec![String::from("worker-a"), String::from("worker-b")],
+            )
+            .with_joining_node_ids(vec![String::from("worker-c")]),
+        )
+        .with_latest_checkpoint(
+            TrainingCheckpointReference::new(
+                "train.decoder",
+                "checkpoint-stream",
+                "manifest-digest",
+                "object-digest",
+                "worker-a",
+                4,
+                "cluster-state-digest",
+                "topology-digest",
+                1_000,
+            )
+            .with_checkpoint_ref("step-32")
+            .with_step(32)
+            .with_durable_at_ms(1_250),
+        )
+        .with_recovering_node_ids(vec![String::from("worker-b")])
+        .with_late_joiner_node_ids(vec![String::from("worker-c")])
+        .with_requested_at_ms(1_500)
+        .with_detail("checkpoint-backed recovery is widening the world size");
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::RemoteWholeRequest,
+        )
+        .with_training_recovery(training_recovery.clone());
+        let delivered = DeliveredExecutionContext::new("cuda", None, Vec::new())
+            .with_cluster_execution(cluster_execution.clone());
+
+        let encoded = serde_json::to_value(&delivered)?;
+        assert_eq!(
+            encoded["cluster_execution"]["training_recovery"]["posture"],
+            json!("elastic_reconfiguration")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_recovery"]["latest_checkpoint"]["checkpoint_family"],
+            json!("train.decoder")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_recovery"]["late_joiner_node_ids"][0],
+            json!("worker-c")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_recovery"]["elastic_membership"]["membership_epoch"],
+            json!(4)
+        );
+        assert_eq!(
+            serde_json::from_value::<DeliveredExecutionContext>(encoded)?,
+            delivered
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|value| value.training_recovery.clone()),
+            Some(training_recovery)
+        );
         Ok(())
     }
 
