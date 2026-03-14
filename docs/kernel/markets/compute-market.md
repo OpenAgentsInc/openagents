@@ -113,6 +113,9 @@ Those objects answer six different questions:
 - `ComputeIndex`: what market reference price or observation series the system
   has published
 
+Compute indices are used for reference pricing, structured settlement, and
+later risk-market linkage.
+
 At the broadest level, this market is intended to cover:
 
 - local inference products
@@ -508,7 +511,8 @@ The compute market only works if "machine capacity" means something specific.
 
 A real compute offer can vary along these deliverability dimensions:
 
-- `Execution structure`: execution kind, topology kind, provisioning kind
+- `Execution structure`: backend family, execution kind, topology kind,
+  provisioning kind
 - `Artifact lineage`: model family, model policy, environment binding,
   checkpoint binding
 - `Performance envelope`: latency expectation, throughput expectation,
