@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    BackendToolchainIdentity, ClusterExecutionContext, ClusterPolicyDigest, ClusterTransportClass,
-    CompilePathEvidence, DeviceInventoryQualifiers, ExecutionDeliveryProof, ExecutionTopologyKind,
-    ExecutionTopologyPlan, LocalRuntimeDiagnostic, SandboxExecutionEvidence, SandboxExecutionExit,
-    SandboxExecutionResourceSummary, ServedArtifactIdentity, SettlementLinkageInput,
-    ValidationMatrixReference,
+    ActivationFingerprintProofArtifact, BackendToolchainIdentity, ClusterExecutionContext,
+    ClusterPolicyDigest, ClusterTransportClass, CompilePathEvidence, DeviceInventoryQualifiers,
+    ExecutionDeliveryProof, ExecutionTopologyKind, ExecutionTopologyPlan, LocalRuntimeDiagnostic,
+    SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionResourceSummary,
+    ServedArtifactIdentity, SettlementLinkageInput, ValidationMatrixReference,
 };
 
 /// Current canonical execution-proof bundle schema version.
@@ -36,6 +36,18 @@ pub enum ExecutionProofBundleStatus {
     Disconnected,
     /// Execution failed before successful completion.
     Failed,
+}
+
+/// Product posture for one optional proof augmentation layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionProofAugmentationPosture {
+    /// The product family does not surface this augmentation layer.
+    Unavailable,
+    /// The product family can surface this augmentation layer when applicable.
+    Supported,
+    /// The product family requires this augmentation layer for truthful delivery.
+    Required,
 }
 
 /// Runtime identity facts that remain stable across receipt, settlement, and challenge layers.
@@ -305,6 +317,11 @@ pub struct ExecutionProofBundle {
     /// Sandbox-specific context when the path is a sandbox execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<ExecutionProofSandboxContext>,
+    /// Product posture for the activation-fingerprint proof layer.
+    pub activation_fingerprint_posture: ExecutionProofAugmentationPosture,
+    /// Activation-fingerprint proof artifact when this bundle carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activation_fingerprint: Option<ActivationFingerprintProofArtifact>,
     /// Stable activation-fingerprint proof reference when an augmentation exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activation_fingerprint_ref: Option<String>,
@@ -347,6 +364,8 @@ impl ExecutionProofBundle {
             delivery_proof: None,
             settlement_linkage: None,
             sandbox: None,
+            activation_fingerprint_posture: ExecutionProofAugmentationPosture::Unavailable,
+            activation_fingerprint: None,
             activation_fingerprint_ref: None,
             challenge_result_refs: Vec::new(),
             failure_reason: None,
@@ -446,6 +465,16 @@ impl ExecutionProofBundle {
         self
     }
 
+    /// Declares the product posture for the activation-fingerprint proof layer.
+    #[must_use]
+    pub const fn with_activation_fingerprint_posture(
+        mut self,
+        activation_fingerprint_posture: ExecutionProofAugmentationPosture,
+    ) -> Self {
+        self.activation_fingerprint_posture = activation_fingerprint_posture;
+        self
+    }
+
     /// Attaches a stable activation-fingerprint proof reference.
     #[must_use]
     pub fn with_activation_fingerprint_ref(
@@ -453,6 +482,17 @@ impl ExecutionProofBundle {
         activation_fingerprint_ref: impl Into<String>,
     ) -> Self {
         self.activation_fingerprint_ref = Some(activation_fingerprint_ref.into());
+        self
+    }
+
+    /// Attaches a concrete activation-fingerprint proof artifact.
+    #[must_use]
+    pub fn with_activation_fingerprint(
+        mut self,
+        activation_fingerprint: ActivationFingerprintProofArtifact,
+    ) -> Self {
+        self.activation_fingerprint_ref = Some(activation_fingerprint.artifact_digest.clone());
+        self.activation_fingerprint = Some(activation_fingerprint);
         self
     }
 
@@ -517,16 +557,18 @@ impl ExecutionProofArtifactResidency {
 #[cfg(test)]
 mod tests {
     use crate::{
-        BackendProbeState, BackendToolchainIdentity, CacheAction, CacheInvalidationTrigger,
-        CacheKind, CacheObservation, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterSelectedNode, ClusterTransportClass, CompilePathEvidence, CompilePathTemperature,
+        ActivationFingerprintInput, ActivationFingerprintProofAdapter,
+        ActivationFingerprintVectorSample, BackendProbeState, BackendToolchainIdentity,
+        CacheAction, CacheInvalidationTrigger, CacheKind, CacheObservation,
+        ClusterExecutionContext, ClusterExecutionDisposition, ClusterSelectedNode,
+        ClusterTransportClass, CompilePathEvidence, CompilePathTemperature,
         DeviceInventoryQualifiers, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionDeliveryProof, ExecutionProofBundle, ExecutionProofBundleKind,
-        ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity, ExecutionTopologyPlan,
-        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, SandboxExecutionEvidence,
-        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionResourceSummary,
-        ServedArtifactIdentity, SettlementLinkageInput, ValidationCoverage,
-        ValidationMatrixReference,
+        ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundle,
+        ExecutionProofBundleKind, ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity,
+        ExecutionTopologyPlan, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        QuantizedActivationFingerprintAdapter, SandboxExecutionEvidence, SandboxExecutionExit,
+        SandboxExecutionExitKind, SandboxExecutionResourceSummary, ServedArtifactIdentity,
+        SettlementLinkageInput, ValidationCoverage, ValidationMatrixReference,
     };
     use psionic_core::QuantizationMode;
 
@@ -739,6 +781,40 @@ mod tests {
         assert_eq!(
             bundle.execution_plan_digest.as_deref(),
             Some("sandbox-plan")
+        );
+    }
+
+    #[test]
+    fn activation_fingerprint_posture_and_ref_are_explicit() {
+        let artifact = QuantizedActivationFingerprintAdapter::default().generate(
+            &ActivationFingerprintInput::new(
+                "digest-3",
+                "psionic.embeddings",
+                "smoke-embed",
+                "cpu",
+            )
+            .with_sample(ActivationFingerprintVectorSample::new(
+                "embedding:0",
+                vec![0.1, 0.2, 0.3, 0.4],
+            )),
+        );
+        let bundle = ExecutionProofBundle::new(
+            ExecutionProofBundleKind::Local,
+            ExecutionProofBundleStatus::Succeeded,
+            "req-3",
+            "digest-3",
+            "psionic.embeddings",
+            runtime_identity(),
+        )
+        .with_activation_fingerprint_posture(ExecutionProofAugmentationPosture::Supported)
+        .with_activation_fingerprint(artifact.clone());
+        assert_eq!(
+            bundle.activation_fingerprint_posture,
+            ExecutionProofAugmentationPosture::Supported
+        );
+        assert_eq!(
+            bundle.activation_fingerprint_ref.as_deref(),
+            Some(artifact.artifact_digest.as_str())
         );
     }
 }
