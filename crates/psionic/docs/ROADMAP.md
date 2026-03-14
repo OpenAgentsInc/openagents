@@ -908,7 +908,15 @@ hybrid-offload posture, fallback policy, and performance class, the hardware
 validation matrix now separates positive execution rows from proxy/debug
 surfaces, and the older Apple Metal GPT-OSS chain is explicitly absorbed as
 closed history. The next dependency-ordered issue in that chain is now
-`PSI-255` / [#3560](https://github.com/OpenAgentsInc/openagents/issues/3560).
+`PSI-255` / [#3560](https://github.com/OpenAgentsInc/openagents/issues/3560),
+and it is now landed too by adding the canonical serving-topology acceptance
+matrix in `TOPOLOGY_ACCEPTANCE_MATRIX.md` plus the runnable
+`scripts/release/check-psionic-topology-acceptance-matrix.sh` harness. Topology
+claims for local PD, replica-routed DP, pipeline-sharded PP, layer-sharded,
+tensor-sharded TP, and expert-parallel non-support are now explicit, executable,
+and tied to cache, routing, artifact, and receipt truth instead of scattered
+test knowledge. The next dependency-ordered issue in that chain is now
+`PSI-256` / [#3561](https://github.com/OpenAgentsInc/openagents/issues/3561).
 
 ## Current Reality
 

@@ -4,6 +4,10 @@ This runbook is the operator entrypoint for validating the first truthful
 Psionic cluster scope: trusted-LAN connectivity, membership refusal, rejoin,
 recovery/catchup, remote scheduling, replicated serving, and sharded execution.
 
+The canonical serving-topology acceptance matrix for local plus clustered lanes
+now lives in `TOPOLOGY_ACCEPTANCE_MATRIX.md` and is runnable through
+`scripts/release/check-psionic-topology-acceptance-matrix.sh`.
+
 ## Scope
 
 This runbook validates two cluster trust postures:
@@ -32,6 +36,34 @@ This runbook validates two cluster trust postures:
 This runbook still does not claim internet-wide adversarial safety. It validates
 the current truthful cluster claims and the current homogeneous CUDA planning
 lanes.
+
+## Topology Acceptance Matrix
+
+Run this before claiming any current Psionic support for replica-routed, public-
+network pipeline-parallel, layer-sharded, tensor-sharded, or clustered PD
+execution:
+
+```bash
+scripts/release/check-psionic-topology-acceptance-matrix.sh --cluster-only
+```
+
+Use the full matrix when changing local scheduler, cache, router, or shared
+capability contracts:
+
+```bash
+scripts/release/check-psionic-topology-acceptance-matrix.sh
+```
+
+Interpretation:
+
+- matrix failure means a currently claimed topology class no longer has
+  executable evidence across planner, cache, routing, artifact, or receipt
+  truth
+- `unsupported` suite failure means an explicit refusal boundary regressed and a
+  previously refused combination may now be silently overclaimed
+- benchmark inclusion remains optional here because throughput-program
+  separation closes in `PSI-256`; the topology matrix is a correctness and
+  truthfulness gate first
 
 ## Baseline Validation Commands
 
