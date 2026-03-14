@@ -210,6 +210,7 @@ response-state continuation, route visibility, and refusal behavior.
 ### Canonical evidence hooks
 
 - `scripts/release/check-psionic-product-class-acceptance.sh --structured-agent-only`
+- `STRUCTURED_AGENT_WEATHER_PILOT.md`
 
 ## Claim Discipline Rules
 

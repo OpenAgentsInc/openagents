@@ -929,7 +929,14 @@ and it is now landed too through the first explicit non-GPT-OSS pilot:
 a dedicated generic-server Qwen end-to-end test now prove the engine is no
 longer GPT-OSS-only at the generic-server correctness layer. The next
 dependency-ordered issue in that chain is now `PSI-258` /
-[#3563](https://github.com/OpenAgentsInc/openagents/issues/3563).
+[#3563](https://github.com/OpenAgentsInc/openagents/issues/3563), and it is
+now landed too through the first integrated structured-agent workload pilot:
+`STRUCTURED_AGENT_WEATHER_PILOT.md`,
+`scripts/release/check-psionic-weather-agent-pilot.sh`, and a dedicated
+weather-agent end-to-end test now prove structured JSON output, tool calls,
+response state, router-owned tool-loop execution, and route/cache truth in one
+Psionic-owned workload. That closes the current `PSI-232` through `PSI-258`
+inference backlog chain.
 
 ## Current Reality
 

@@ -84,6 +84,9 @@ Implemented now:
   dedicated end-to-end runbook and harness proving family inventory, scheduler
   headers, and scheduler receipts survive the same Psionic-owned runtime and
   server path as GPT-OSS.
+- a first integrated structured-agent weather pilot, proving structured JSON
+  output, response-state continuation, router-owned tool loops, and cache or
+  route truth together in one Psionic-owned workload.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
 - explicit local-backend truth on the GPT-OSS server surface too, including
@@ -212,6 +215,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/NON_GPT_OSS_QWEN_PILOT.md](docs/NON_GPT_OSS_QWEN_PILOT.md)** —
   canonical first non-GPT-OSS generic-server pilot, including the Qwen runbook,
   pass criteria, expected signals, and current limitations.
+- **[docs/STRUCTURED_AGENT_WEATHER_PILOT.md](docs/STRUCTURED_AGENT_WEATHER_PILOT.md)** —
+  canonical integrated structured-agent workload pilot, including the weather
+  runbook, pass criteria, expected signals, and bounded current scope.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
