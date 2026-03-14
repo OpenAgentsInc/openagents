@@ -1,18 +1,21 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-    AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
+    AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
+    AppendComputeEvaluationSamplesResponse, BindCoverageRequest, BindCoverageResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
     CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
     CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateAccessGrantRequest,
     CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeEvaluationRunRequest,
+    CreateComputeEvaluationRunResponse, CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+    CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
-    ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+    ExecuteSettlementIntentResponse, FinalizeComputeEvaluationRunRequest,
+    FinalizeComputeEvaluationRunResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
     IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
     IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse, PublishRiskSignalRequest,
@@ -27,12 +30,16 @@ use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
     ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeEnvironmentPackage,
-    ComputeEnvironmentPackageStatus, ComputeIndex, ComputeIndexCorrectionReason,
-    ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-    DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
-    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_environment_package,
-    validate_delivery_proof, validate_launch_compute_product,
+    ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+    ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
+    ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeIndex,
+    ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+    ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    StructuredCapacityInstrumentStatus, StructuredCapacityLegRole, canonical_compute_product_id,
+    validate_compute_environment_package, validate_compute_evaluation_artifact,
+    validate_compute_evaluation_run, validate_compute_evaluation_sample, validate_delivery_proof,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -332,6 +339,8 @@ pub struct KernelState {
     claim_hooks: HashMap<String, ClaimHook>,
     compute_products: HashMap<String, ComputeProductRecord>,
     compute_environment_packages: HashMap<String, ComputeEnvironmentPackageRecord>,
+    compute_evaluation_runs: HashMap<String, ComputeEvaluationRunRecord>,
+    compute_evaluation_samples: HashMap<String, ComputeEvaluationSampleRecord>,
     capacity_lots: HashMap<String, CapacityLotRecord>,
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
     structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
@@ -386,6 +395,18 @@ struct ComputeProductRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeEnvironmentPackageRecord {
     package: ComputeEnvironmentPackage,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeEvaluationRunRecord {
+    eval_run: ComputeEvaluationRun,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeEvaluationSampleRecord {
+    sample: ComputeEvaluationSample,
     receipt_id: String,
 }
 
@@ -456,6 +477,10 @@ struct PersistedComputeAuthorityState {
     compute_products: BTreeMap<String, ComputeProductRecord>,
     #[serde(default)]
     compute_environment_packages: BTreeMap<String, ComputeEnvironmentPackageRecord>,
+    #[serde(default)]
+    compute_evaluation_runs: BTreeMap<String, ComputeEvaluationRunRecord>,
+    #[serde(default)]
+    compute_evaluation_samples: BTreeMap<String, ComputeEvaluationSampleRecord>,
     capacity_lots: BTreeMap<String, CapacityLotRecord>,
     capacity_instruments: BTreeMap<String, CapacityInstrumentRecord>,
     #[serde(default)]
@@ -1200,6 +1225,10 @@ fn compute_environment_package_key(environment_ref: &str, version: &str) -> Stri
     format!("{environment_ref}@{version}")
 }
 
+fn compute_evaluation_sample_key(eval_run_id: &str, sample_id: &str) -> String {
+    format!("{eval_run_id}::{sample_id}")
+}
+
 fn forward_remedy_profile(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
         "psionic.local.embeddings.gpt_oss.single_node" => "forward_physical.embeddings.v1",
@@ -1394,6 +1423,236 @@ impl KernelState {
         Ok(())
     }
 
+    fn hydrate_environment_binding_from_package(
+        binding: &mut ComputeEnvironmentBinding,
+        package: &ComputeEnvironmentPackage,
+    ) {
+        if binding.dataset_ref.is_none() && package.dataset_bindings.len() == 1 {
+            binding.dataset_ref = package
+                .dataset_bindings
+                .first()
+                .map(|dataset| dataset.dataset_ref.clone());
+        }
+        if binding.rubric_ref.is_none() && package.rubric_bindings.len() == 1 {
+            binding.rubric_ref = package
+                .rubric_bindings
+                .first()
+                .map(|rubric| rubric.rubric_ref.clone());
+        }
+        if binding.evaluator_policy_ref.is_none() {
+            binding.evaluator_policy_ref = package
+                .harness
+                .as_ref()
+                .and_then(|harness| harness.evaluator_policy_ref.clone());
+        }
+    }
+
+    fn normalize_compute_evaluation_metric(
+        metric: &mut ComputeEvaluationMetric,
+    ) -> Result<(), String> {
+        metric.metric_id =
+            normalize_required(metric.metric_id.as_str(), "compute_eval_metric_id_missing")?;
+        metric.unit = metric
+            .unit
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Ok(())
+    }
+
+    fn normalize_compute_evaluation_artifact(
+        artifact: &mut ComputeEvaluationArtifact,
+    ) -> Result<(), String> {
+        artifact.artifact_kind = normalize_required(
+            artifact.artifact_kind.as_str(),
+            "compute_eval_artifact_kind_missing",
+        )?;
+        artifact.artifact_ref = normalize_required(
+            artifact.artifact_ref.as_str(),
+            "compute_eval_artifact_ref_missing",
+        )?;
+        artifact.digest = artifact
+            .digest
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Ok(())
+    }
+
+    fn normalize_compute_evaluation_sample(
+        sample: &mut ComputeEvaluationSample,
+    ) -> Result<(), String> {
+        sample.sample_id =
+            normalize_required(sample.sample_id.as_str(), "compute_eval_sample_id_missing")?;
+        sample.input_ref = sample
+            .input_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        sample.output_ref = sample
+            .output_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        sample.expected_output_ref = sample
+            .expected_output_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        sample.error_reason = sample
+            .error_reason
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        for metric in &mut sample.metrics {
+            Self::normalize_compute_evaluation_metric(metric)?;
+        }
+        for artifact in &mut sample.artifacts {
+            Self::normalize_compute_evaluation_artifact(artifact)?;
+        }
+        Ok(())
+    }
+
+    fn evaluation_pass_threshold(
+        package: &ComputeEnvironmentPackage,
+        binding: &ComputeEnvironmentBinding,
+    ) -> Option<u32> {
+        binding
+            .rubric_ref
+            .as_deref()
+            .and_then(|rubric_ref| {
+                package
+                    .rubric_bindings
+                    .iter()
+                    .find(|rubric| rubric.rubric_ref == rubric_ref)
+                    .and_then(|rubric| rubric.pass_threshold_bps)
+            })
+            .or_else(|| {
+                package
+                    .rubric_bindings
+                    .iter()
+                    .find_map(|rubric| rubric.pass_threshold_bps)
+            })
+    }
+
+    fn build_compute_evaluation_summary(
+        samples: &[ComputeEvaluationSample],
+        pass_threshold_bps: Option<u32>,
+        artifacts: Vec<ComputeEvaluationArtifact>,
+    ) -> ComputeEvaluationSummary {
+        let mut metric_rollups: BTreeMap<String, (f64, u64, Option<String>, Value)> =
+            BTreeMap::new();
+        let mut total_score: u64 = 0;
+        let mut score_count: u64 = 0;
+        let mut passed_samples = 0u64;
+        let mut failed_samples = 0u64;
+        let mut errored_samples = 0u64;
+
+        for sample in samples {
+            if sample.status == ComputeEvaluationSampleStatus::Errored {
+                errored_samples = errored_samples.saturating_add(1);
+            }
+            if let Some(score_bps) = sample.score_bps {
+                total_score = total_score.saturating_add(u64::from(score_bps));
+                score_count = score_count.saturating_add(1);
+            }
+            match sample.status {
+                ComputeEvaluationSampleStatus::Passed => {
+                    passed_samples = passed_samples.saturating_add(1);
+                }
+                ComputeEvaluationSampleStatus::Failed => {
+                    failed_samples = failed_samples.saturating_add(1);
+                }
+                ComputeEvaluationSampleStatus::Errored => {}
+                _ => {
+                    if let (Some(score_bps), Some(pass_threshold_bps)) =
+                        (sample.score_bps, pass_threshold_bps)
+                    {
+                        if score_bps >= pass_threshold_bps {
+                            passed_samples = passed_samples.saturating_add(1);
+                        } else {
+                            failed_samples = failed_samples.saturating_add(1);
+                        }
+                    }
+                }
+            }
+            for metric in &sample.metrics {
+                let entry = metric_rollups.entry(metric.metric_id.clone()).or_insert((
+                    0.0,
+                    0,
+                    metric.unit.clone(),
+                    metric.metadata.clone(),
+                ));
+                entry.0 += metric.metric_value;
+                entry.1 = entry.1.saturating_add(1);
+                if entry.2.is_none() {
+                    entry.2 = metric.unit.clone();
+                }
+                if entry.3.is_null() {
+                    entry.3 = metric.metadata.clone();
+                }
+            }
+        }
+
+        let aggregate_metrics = metric_rollups
+            .into_iter()
+            .map(
+                |(metric_id, (sum, count, unit, metadata))| ComputeEvaluationMetric {
+                    metric_id,
+                    metric_value: if count == 0 { 0.0 } else { sum / count as f64 },
+                    unit,
+                    metadata,
+                },
+            )
+            .collect::<Vec<_>>();
+        let pass_denominator = passed_samples.saturating_add(failed_samples);
+        ComputeEvaluationSummary {
+            total_samples: samples.len() as u64,
+            scored_samples: score_count,
+            passed_samples,
+            failed_samples,
+            errored_samples,
+            average_score_bps: (score_count > 0)
+                .then_some((total_score / score_count).min(10_000) as u32),
+            pass_rate_bps: (pass_denominator > 0)
+                .then_some(((passed_samples.saturating_mul(10_000)) / pass_denominator) as u32),
+            aggregate_metrics,
+            artifacts,
+        }
+    }
+
+    fn attach_eval_run_to_delivery_proof(
+        &mut self,
+        eval_run: &ComputeEvaluationRun,
+    ) -> Result<(), String> {
+        let Some(delivery_proof_id) = eval_run.delivery_proof_id.as_deref() else {
+            return Ok(());
+        };
+        let Some(record) = self.delivery_proofs.get_mut(delivery_proof_id) else {
+            return Err("delivery_proof_not_found".to_string());
+        };
+        let mut proof = record.delivery_proof.clone();
+        let mut verification = proof.verification_evidence.clone().unwrap_or_default();
+        if verification.environment_ref.as_deref()
+            != Some(eval_run.environment_binding.environment_ref.as_str())
+            || verification.environment_version != eval_run.environment_binding.environment_version
+        {
+            return Err("compute_eval_run_environment_mismatch".to_string());
+        }
+        if verification
+            .eval_run_ref
+            .as_deref()
+            .is_some_and(|value| value != eval_run.eval_run_id)
+        {
+            return Err("delivery_proof_eval_run_conflict".to_string());
+        }
+        verification.eval_run_ref = Some(eval_run.eval_run_id.clone());
+        proof.verification_evidence = Some(verification);
+        validate_delivery_proof(&proof)?;
+        record.delivery_proof = proof;
+        Ok(())
+    }
+
     pub fn list_compute_products(
         &self,
         status: Option<ComputeProductStatus>,
@@ -1458,6 +1717,55 @@ impl KernelState {
                     .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
                     .then_with(|| lhs.version.cmp(&rhs.version))
             })
+    }
+
+    pub fn list_compute_evaluation_runs(
+        &self,
+        environment_ref: Option<&str>,
+        product_id: Option<&str>,
+        status: Option<ComputeEvaluationRunStatus>,
+    ) -> Vec<ComputeEvaluationRun> {
+        let mut items = self
+            .compute_evaluation_runs
+            .values()
+            .map(|record| record.eval_run.clone())
+            .filter(|run| {
+                environment_ref
+                    .is_none_or(|expected| run.environment_binding.environment_ref == expected)
+                    && product_id.is_none_or(|expected| run.product_id.as_deref() == Some(expected))
+                    && status.is_none_or(|expected| run.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.eval_run_id.cmp(&rhs.eval_run_id))
+        });
+        items
+    }
+
+    pub fn get_compute_evaluation_run(&self, eval_run_id: &str) -> Option<ComputeEvaluationRun> {
+        self.compute_evaluation_runs
+            .get(eval_run_id)
+            .map(|record| record.eval_run.clone())
+    }
+
+    pub fn list_compute_evaluation_samples(
+        &self,
+        eval_run_id: &str,
+    ) -> Vec<ComputeEvaluationSample> {
+        let mut items = self
+            .compute_evaluation_samples
+            .values()
+            .filter(|record| record.sample.eval_run_id == eval_run_id)
+            .map(|record| record.sample.clone())
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.ordinal
+                .cmp(&rhs.ordinal)
+                .then_with(|| lhs.sample_id.cmp(&rhs.sample_id))
+        });
+        items
     }
 
     pub fn list_capacity_lots(
@@ -1696,6 +2004,9 @@ impl KernelState {
         self.compute_products = persisted.compute_products.into_iter().collect();
         self.compute_environment_packages =
             persisted.compute_environment_packages.into_iter().collect();
+        self.compute_evaluation_runs = persisted.compute_evaluation_runs.into_iter().collect();
+        self.compute_evaluation_samples =
+            persisted.compute_evaluation_samples.into_iter().collect();
         self.capacity_lots = persisted.capacity_lots.into_iter().collect();
         self.capacity_instruments = persisted.capacity_instruments.into_iter().collect();
         self.structured_capacity_instruments = persisted
@@ -1720,6 +2031,12 @@ impl KernelState {
             compute_products: self.compute_products.clone().into_iter().collect(),
             compute_environment_packages: self
                 .compute_environment_packages
+                .clone()
+                .into_iter()
+                .collect(),
+            compute_evaluation_runs: self.compute_evaluation_runs.clone().into_iter().collect(),
+            compute_evaluation_samples: self
+                .compute_evaluation_samples
                 .clone()
                 .into_iter()
                 .collect(),
@@ -2367,6 +2684,584 @@ impl KernelState {
         let snapshot_event = self.refresh_snapshot_for(req.package.updated_at_ms)?;
         Ok(MutationResult {
             response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_compute_evaluation_run(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateComputeEvaluationRunRequest,
+    ) -> Result<MutationResult<CreateComputeEvaluationRunResponse>, String> {
+        let eval_run_id = normalize_required(
+            req.eval_run.eval_run_id.as_str(),
+            "compute_eval_run_id_missing",
+        )?;
+        if self
+            .compute_evaluation_runs
+            .contains_key(eval_run_id.as_str())
+        {
+            return Err("compute_eval_run_id_conflict".to_string());
+        }
+        req.eval_run.eval_run_id.clone_from(&eval_run_id);
+        req.eval_run.created_at_ms =
+            normalize_created_at_ms(req.eval_run.created_at_ms, context.now_unix_ms);
+        req.eval_run.product_id = req
+            .eval_run
+            .product_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.eval_run.capacity_lot_id = req
+            .eval_run
+            .capacity_lot_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.eval_run.instrument_id = req
+            .eval_run
+            .instrument_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.eval_run.delivery_proof_id = req
+            .eval_run
+            .delivery_proof_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.eval_run.model_ref = req
+            .eval_run
+            .model_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.eval_run.source_ref = req
+            .eval_run
+            .source_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if matches!(
+            req.eval_run.status,
+            ComputeEvaluationRunStatus::Finalized
+                | ComputeEvaluationRunStatus::Failed
+                | ComputeEvaluationRunStatus::Cancelled
+        ) {
+            return Err("compute_eval_run_create_status_invalid".to_string());
+        }
+        let (mut resolved_binding, package) =
+            self.resolve_compute_environment_binding(&req.eval_run.environment_binding)?;
+        Self::hydrate_environment_binding_from_package(&mut resolved_binding, &package);
+        req.eval_run.environment_binding = resolved_binding;
+        if req.eval_run.status == ComputeEvaluationRunStatus::Running
+            && req.eval_run.started_at_ms.is_none()
+        {
+            req.eval_run.started_at_ms = Some(req.eval_run.created_at_ms);
+        }
+        req.eval_run.finalized_at_ms = None;
+        req.eval_run.summary = None;
+        req.eval_run.run_artifacts.clear();
+
+        if let Some(product_id) = req.eval_run.product_id.as_deref()
+            && !self.compute_products.contains_key(product_id)
+        {
+            return Err("compute_product_not_found".to_string());
+        }
+        if let Some(capacity_lot_id) = req.eval_run.capacity_lot_id.as_deref() {
+            let Some(lot_record) = self.capacity_lots.get(capacity_lot_id) else {
+                return Err("capacity_lot_not_found".to_string());
+            };
+            if let Some(product_id) = req.eval_run.product_id.as_deref() {
+                if lot_record.lot.product_id != product_id {
+                    return Err("compute_eval_run_product_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.product_id = Some(lot_record.lot.product_id.clone());
+            }
+        }
+        if let Some(instrument_id) = req.eval_run.instrument_id.as_deref() {
+            let Some(instrument_record) = self.capacity_instruments.get(instrument_id) else {
+                return Err("capacity_instrument_not_found".to_string());
+            };
+            if let Some(product_id) = req.eval_run.product_id.as_deref() {
+                if instrument_record.instrument.product_id != product_id {
+                    return Err("compute_eval_run_product_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.product_id = Some(instrument_record.instrument.product_id.clone());
+            }
+            if let Some(capacity_lot_id) = req.eval_run.capacity_lot_id.as_deref() {
+                if instrument_record.instrument.capacity_lot_id.as_deref() != Some(capacity_lot_id)
+                {
+                    return Err("compute_eval_run_capacity_lot_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.capacity_lot_id = instrument_record.instrument.capacity_lot_id.clone();
+            }
+        }
+        if let Some(delivery_proof_id) = req.eval_run.delivery_proof_id.as_deref() {
+            let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id) else {
+                return Err("delivery_proof_not_found".to_string());
+            };
+            if let Some(product_id) = req.eval_run.product_id.as_deref() {
+                if delivery_record.delivery_proof.product_id != product_id {
+                    return Err("compute_eval_run_product_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.product_id = Some(delivery_record.delivery_proof.product_id.clone());
+            }
+            if let Some(capacity_lot_id) = req.eval_run.capacity_lot_id.as_deref() {
+                if delivery_record.delivery_proof.capacity_lot_id != capacity_lot_id {
+                    return Err("compute_eval_run_capacity_lot_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.capacity_lot_id =
+                    Some(delivery_record.delivery_proof.capacity_lot_id.clone());
+            }
+            if let Some(instrument_id) = req.eval_run.instrument_id.as_deref() {
+                if delivery_record.delivery_proof.instrument_id.as_deref() != Some(instrument_id) {
+                    return Err("compute_eval_run_instrument_mismatch".to_string());
+                }
+            } else {
+                req.eval_run.instrument_id = delivery_record.delivery_proof.instrument_id.clone();
+            }
+            if let Some(verification) = delivery_record
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                && ((verification.environment_ref.as_deref()
+                    != Some(req.eval_run.environment_binding.environment_ref.as_str()))
+                    || verification.environment_version
+                        != req.eval_run.environment_binding.environment_version)
+            {
+                return Err("compute_eval_run_environment_mismatch".to_string());
+            }
+        }
+        validate_compute_evaluation_run(&req.eval_run)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(product_id) = req.eval_run.product_id.as_deref()
+            && let Some(product_record) = self.compute_products.get(product_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(product_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        if let Some(delivery_proof_id) = req.eval_run.delivery_proof_id.as_deref()
+            && let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(delivery_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let eval_run_payload = serde_json::to_value(&req.eval_run)
+            .map_err(|error| format!("kernel_compute_eval_run_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.eval_run.create".to_string(),
+                created_at_ms: req.eval_run.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: eval_run_payload,
+                outputs_payload: json!({
+                    "eval_run_id": eval_run_id.clone(),
+                    "environment_binding": req.eval_run.environment_binding.clone(),
+                    "product_id": req.eval_run.product_id.clone(),
+                    "capacity_lot_id": req.eval_run.capacity_lot_id.clone(),
+                    "instrument_id": req.eval_run.instrument_id.clone(),
+                    "delivery_proof_id": req.eval_run.delivery_proof_id.clone(),
+                    "status": req.eval_run.status,
+                    "expected_sample_count": req.eval_run.expected_sample_count,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.eval_run.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateComputeEvaluationRunResponse {
+            eval_run: req.eval_run.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_evaluation_runs.insert(
+            eval_run_id,
+            ComputeEvaluationRunRecord {
+                eval_run: req.eval_run.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.eval_run.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn append_compute_evaluation_samples(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: AppendComputeEvaluationSamplesRequest,
+    ) -> Result<MutationResult<AppendComputeEvaluationSamplesResponse>, String> {
+        let eval_run_id =
+            normalize_required(req.eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+        let Some(mut eval_run_record) = self
+            .compute_evaluation_runs
+            .get(eval_run_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_eval_run_not_found".to_string());
+        };
+        if matches!(
+            eval_run_record.eval_run.status,
+            ComputeEvaluationRunStatus::Finalized
+                | ComputeEvaluationRunStatus::Failed
+                | ComputeEvaluationRunStatus::Cancelled
+        ) {
+            return Err("compute_eval_run_finalized".to_string());
+        }
+        if req.samples.is_empty() {
+            return Err("compute_eval_samples_missing".to_string());
+        }
+        req.eval_run_id.clone_from(&eval_run_id);
+        let existing_sample_count = self
+            .compute_evaluation_samples
+            .values()
+            .filter(|record| record.sample.eval_run_id == eval_run_id)
+            .count() as u64;
+        if let Some(expected_sample_count) = eval_run_record.eval_run.expected_sample_count
+            && existing_sample_count.saturating_add(req.samples.len() as u64)
+                > expected_sample_count
+        {
+            return Err("compute_eval_sample_count_exceeds_expected".to_string());
+        }
+
+        let incoming_samples = std::mem::take(&mut req.samples);
+        let mut normalized_samples = Vec::with_capacity(incoming_samples.len());
+        for mut sample in incoming_samples {
+            if sample.eval_run_id.trim().is_empty() {
+                sample.eval_run_id = eval_run_id.clone();
+            } else {
+                sample.eval_run_id =
+                    normalize_required(sample.eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+            }
+            if sample.eval_run_id != eval_run_id {
+                return Err("compute_eval_sample_run_mismatch".to_string());
+            }
+            sample.recorded_at_ms =
+                normalize_created_at_ms(sample.recorded_at_ms, context.now_unix_ms);
+            Self::normalize_compute_evaluation_sample(&mut sample)?;
+            validate_compute_evaluation_sample(&sample)?;
+            let sample_key =
+                compute_evaluation_sample_key(eval_run_id.as_str(), sample.sample_id.as_str());
+            if self
+                .compute_evaluation_samples
+                .contains_key(sample_key.as_str())
+            {
+                return Err("compute_eval_sample_already_exists".to_string());
+            }
+            normalized_samples.push(sample);
+        }
+        req.samples = normalized_samples.clone();
+
+        if eval_run_record.eval_run.status == ComputeEvaluationRunStatus::Queued {
+            eval_run_record.eval_run.status = ComputeEvaluationRunStatus::Running;
+            eval_run_record.eval_run.started_at_ms = Some(context.now_unix_ms as i64);
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(eval_run_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let sample_payload = serde_json::to_value(&normalized_samples)
+            .map_err(|error| format!("kernel_compute_eval_samples_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.eval_run.samples.append".to_string(),
+                created_at_ms: context.now_unix_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: sample_payload,
+                outputs_payload: json!({
+                    "eval_run_id": eval_run_id.clone(),
+                    "appended_sample_count": normalized_samples.len(),
+                    "sample_ids": normalized_samples.iter().map(|sample| sample.sample_id.clone()).collect::<Vec<_>>(),
+                    "status": eval_run_record.eval_run.status,
+                    "eval_run_receipt_id": eval_run_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.eval_run.samples.append",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = AppendComputeEvaluationSamplesResponse {
+            eval_run: eval_run_record.eval_run.clone(),
+            samples: normalized_samples.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_evaluation_runs
+            .insert(eval_run_id.clone(), eval_run_record.clone());
+        for sample in &normalized_samples {
+            self.compute_evaluation_samples.insert(
+                compute_evaluation_sample_key(eval_run_id.as_str(), sample.sample_id.as_str()),
+                ComputeEvaluationSampleRecord {
+                    sample: sample.clone(),
+                    receipt_id: put_result.receipt.receipt_id.clone(),
+                },
+            );
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(context.now_unix_ms as i64)?;
+        Ok(MutationResult {
+            response: AppendComputeEvaluationSamplesResponse {
+                eval_run: eval_run_record.eval_run,
+                samples: normalized_samples,
+                receipt: put_result.receipt.clone(),
+            },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn finalize_compute_evaluation_run(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: FinalizeComputeEvaluationRunRequest,
+    ) -> Result<MutationResult<FinalizeComputeEvaluationRunResponse>, String> {
+        let eval_run_id =
+            normalize_required(req.eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+        let Some(mut eval_run_record) = self
+            .compute_evaluation_runs
+            .get(eval_run_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_eval_run_not_found".to_string());
+        };
+        if matches!(
+            eval_run_record.eval_run.status,
+            ComputeEvaluationRunStatus::Finalized
+                | ComputeEvaluationRunStatus::Failed
+                | ComputeEvaluationRunStatus::Cancelled
+        ) {
+            return Err("compute_eval_run_already_finalized".to_string());
+        }
+        if !matches!(
+            req.status,
+            ComputeEvaluationRunStatus::Finalized
+                | ComputeEvaluationRunStatus::Failed
+                | ComputeEvaluationRunStatus::Cancelled
+        ) {
+            return Err("compute_eval_finalize_status_invalid".to_string());
+        }
+        req.eval_run_id.clone_from(&eval_run_id);
+        req.finalized_at_ms = normalize_created_at_ms(req.finalized_at_ms, context.now_unix_ms);
+        for artifact in &mut req.artifacts {
+            Self::normalize_compute_evaluation_artifact(artifact)?;
+            validate_compute_evaluation_artifact(artifact)?;
+        }
+        let samples = self.list_compute_evaluation_samples(eval_run_id.as_str());
+        if req.status == ComputeEvaluationRunStatus::Finalized && samples.is_empty() {
+            return Err("compute_eval_samples_missing".to_string());
+        }
+        if let Some(expected_sample_count) = eval_run_record.eval_run.expected_sample_count
+            && samples.len() as u64 != expected_sample_count
+        {
+            return Err("compute_eval_sample_count_incomplete".to_string());
+        }
+        let package = self
+            .get_compute_environment_package(
+                eval_run_record
+                    .eval_run
+                    .environment_binding
+                    .environment_ref
+                    .as_str(),
+                eval_run_record
+                    .eval_run
+                    .environment_binding
+                    .environment_version
+                    .as_deref(),
+            )
+            .ok_or_else(|| "compute_environment_package_not_found".to_string())?;
+        let summary = (!samples.is_empty()).then(|| {
+            Self::build_compute_evaluation_summary(
+                samples.as_slice(),
+                Self::evaluation_pass_threshold(
+                    &package,
+                    &eval_run_record.eval_run.environment_binding,
+                ),
+                req.artifacts.clone(),
+            )
+        });
+        if let Some(delivery_proof_id) = eval_run_record.eval_run.delivery_proof_id.as_deref()
+            && let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id)
+        {
+            let verification = delivery_record
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .ok_or_else(|| "compute_eval_run_environment_mismatch".to_string())?;
+            if verification.environment_ref.as_deref()
+                != Some(
+                    eval_run_record
+                        .eval_run
+                        .environment_binding
+                        .environment_ref
+                        .as_str(),
+                )
+                || verification.environment_version
+                    != eval_run_record
+                        .eval_run
+                        .environment_binding
+                        .environment_version
+            {
+                return Err("compute_eval_run_environment_mismatch".to_string());
+            }
+            if verification
+                .eval_run_ref
+                .as_deref()
+                .is_some_and(|value| value != eval_run_id)
+            {
+                return Err("delivery_proof_eval_run_conflict".to_string());
+            }
+        }
+
+        eval_run_record.eval_run.status = req.status;
+        eval_run_record.eval_run.finalized_at_ms = Some(req.finalized_at_ms);
+        eval_run_record.eval_run.summary = summary;
+        eval_run_record.eval_run.run_artifacts = req.artifacts.clone();
+        if !req.metadata.is_null() {
+            ensure_metadata_object(&mut eval_run_record.eval_run.metadata)?
+                .insert("finalize".to_string(), req.metadata.clone());
+        }
+        validate_compute_evaluation_run(&eval_run_record.eval_run)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(eval_run_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(delivery_proof_id) = eval_run_record.eval_run.delivery_proof_id.as_deref()
+            && let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(delivery_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let eval_run_payload = serde_json::to_value(&eval_run_record.eval_run)
+            .map_err(|error| format!("kernel_compute_eval_run_finalize_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.eval_run.finalize".to_string(),
+                created_at_ms: req.finalized_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: eval_run_payload,
+                outputs_payload: json!({
+                    "eval_run_id": eval_run_id.clone(),
+                    "status": eval_run_record.eval_run.status,
+                    "environment_binding": eval_run_record.eval_run.environment_binding.clone(),
+                    "delivery_proof_id": eval_run_record.eval_run.delivery_proof_id.clone(),
+                    "summary": eval_run_record.eval_run.summary.clone(),
+                    "run_artifact_count": eval_run_record.eval_run.run_artifacts.len(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.eval_run.finalize",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = FinalizeComputeEvaluationRunResponse {
+            eval_run: eval_run_record.eval_run.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_evaluation_runs
+            .insert(eval_run_id.clone(), eval_run_record.clone());
+        self.attach_eval_run_to_delivery_proof(&eval_run_record.eval_run)?;
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.finalized_at_ms)?;
+        Ok(MutationResult {
+            response: FinalizeComputeEvaluationRunResponse {
+                eval_run: eval_run_record.eval_run,
+                receipt: put_result.receipt.clone(),
+            },
             receipt_event: Some(receipt_event),
             snapshot_event: Some(snapshot_event),
         })
@@ -9980,10 +10875,12 @@ mod tests {
         money_amount_value,
     };
     use openagents_kernel_core::authority::{
-        BindCoverageRequest, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        AppendComputeEvaluationSamplesRequest, BindCoverageRequest,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        CreateRiskClaimRequest, CreateStructuredCapacityInstrumentRequest,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeEvaluationRunRequest, CreateComputeProductRequest, CreateRiskClaimRequest,
+        CreateStructuredCapacityInstrumentRequest, FinalizeComputeEvaluationRunRequest,
         PlaceCoverageOfferRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
         RegisterComputeEnvironmentPackageRequest, RegisterReservePartitionRequest,
         ResolveRiskClaimRequest,
@@ -9995,7 +10892,9 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
         ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
         ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
+        ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
         ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
         DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
@@ -10145,6 +11044,125 @@ mod tests {
                 ],
                 metadata: json!({"tier": "reference"}),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_evaluation_run_request(created_at_ms: i64) -> CreateComputeEvaluationRunRequest {
+        CreateComputeEvaluationRunRequest {
+            idempotency_key: "idemp.compute.eval_run.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run: ComputeEvaluationRun {
+                eval_run_id: "eval.run.alpha".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                product_id: None,
+                capacity_lot_id: None,
+                instrument_id: None,
+                delivery_proof_id: Some("delivery.compute.alpha".to_string()),
+                model_ref: Some("model://llama3.2".to_string()),
+                source_ref: Some("artifact://eval/input-bundle".to_string()),
+                created_at_ms,
+                expected_sample_count: Some(2),
+                status: ComputeEvaluationRunStatus::Queued,
+                started_at_ms: None,
+                finalized_at_ms: None,
+                summary: None,
+                run_artifacts: Vec::new(),
+                metadata: json!({"suite": "math-basic"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_evaluation_sample(
+        sample_id: &str,
+        ordinal: u64,
+        score_bps: u32,
+        status: ComputeEvaluationSampleStatus,
+        recorded_at_ms: i64,
+    ) -> ComputeEvaluationSample {
+        ComputeEvaluationSample {
+            eval_run_id: "eval.run.alpha".to_string(),
+            sample_id: sample_id.to_string(),
+            ordinal: Some(ordinal),
+            status,
+            input_ref: Some(format!("artifact://eval/input/{sample_id}")),
+            output_ref: Some(format!("artifact://eval/output/{sample_id}")),
+            expected_output_ref: Some(format!("artifact://eval/expected/{sample_id}")),
+            score_bps: Some(score_bps),
+            metrics: vec![ComputeEvaluationMetric {
+                metric_id: "accuracy".to_string(),
+                metric_value: score_bps as f64 / 10_000.0,
+                unit: Some("fraction".to_string()),
+                metadata: json!({"sample_id": sample_id}),
+            }],
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "sample_report".to_string(),
+                artifact_ref: format!("artifact://eval/sample/{sample_id}/report"),
+                digest: Some(format!("sha256:sample:{sample_id}")),
+                metadata: json!({"ordinal": ordinal}),
+            }],
+            error_reason: None,
+            recorded_at_ms,
+            metadata: json!({"prompt_tokens": 64}),
+        }
+    }
+
+    fn append_compute_evaluation_samples_request(
+        created_at_ms: i64,
+    ) -> AppendComputeEvaluationSamplesRequest {
+        AppendComputeEvaluationSamplesRequest {
+            idempotency_key: "idemp.compute.eval_run.samples.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run_id: "eval.run.alpha".to_string(),
+            samples: vec![
+                compute_evaluation_sample(
+                    "sample.alpha",
+                    1,
+                    9_500,
+                    ComputeEvaluationSampleStatus::Scored,
+                    created_at_ms,
+                ),
+                compute_evaluation_sample(
+                    "sample.beta",
+                    2,
+                    8_500,
+                    ComputeEvaluationSampleStatus::Scored,
+                    created_at_ms + 100,
+                ),
+            ],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_compute_evaluation_run_request(
+        finalized_at_ms: i64,
+    ) -> FinalizeComputeEvaluationRunRequest {
+        FinalizeComputeEvaluationRunRequest {
+            idempotency_key: "idemp.compute.eval_run.finalize.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run_id: "eval.run.alpha".to_string(),
+            status: ComputeEvaluationRunStatus::Finalized,
+            finalized_at_ms,
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "scorecard".to_string(),
+                artifact_ref: "artifact://eval/scorecard".to_string(),
+                digest: Some("sha256:scorecard".to_string()),
+                metadata: json!({"schema": "v1"}),
+            }],
+            metadata: json!({"source": "test"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -11126,6 +12144,194 @@ mod tests {
                 .status,
             CapacityInstrumentStatus::Defaulted
         );
+    }
+
+    #[test]
+    fn compute_evaluation_run_lifecycle_finalizes_summary_and_links_delivery() {
+        let created_at_ms = 1_762_000_323_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+
+        let mut product_request = compute_product_request(created_at_ms as i64 + 500);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        kernel
+            .create_compute_product(&fixture_context(created_at_ms + 500), product_request)
+            .expect("create product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery");
+
+        let create = kernel
+            .create_compute_evaluation_run(
+                &fixture_context(created_at_ms + 4_000),
+                compute_evaluation_run_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("create eval run");
+        assert_eq!(
+            create.response.eval_run.product_id.as_deref(),
+            Some("ollama.text_generation")
+        );
+        assert_eq!(
+            create
+                .response
+                .eval_run
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+
+        let append = kernel
+            .append_compute_evaluation_samples(
+                &fixture_context(created_at_ms + 5_000),
+                append_compute_evaluation_samples_request(created_at_ms as i64 + 5_000),
+            )
+            .expect("append eval samples");
+        assert_eq!(append.response.samples.len(), 2);
+        assert_eq!(
+            append.response.eval_run.status,
+            ComputeEvaluationRunStatus::Running
+        );
+
+        let finalize = kernel
+            .finalize_compute_evaluation_run(
+                &fixture_context(created_at_ms + 6_000),
+                finalize_compute_evaluation_run_request(created_at_ms as i64 + 6_000),
+            )
+            .expect("finalize eval run");
+        assert_eq!(
+            finalize.response.eval_run.status,
+            ComputeEvaluationRunStatus::Finalized
+        );
+        let summary = finalize
+            .response
+            .eval_run
+            .summary
+            .as_ref()
+            .expect("eval summary");
+        assert_eq!(summary.total_samples, 2);
+        assert_eq!(summary.scored_samples, 2);
+        assert_eq!(summary.passed_samples, 1);
+        assert_eq!(summary.failed_samples, 1);
+        assert_eq!(summary.average_score_bps, Some(9_000));
+        assert_eq!(summary.pass_rate_bps, Some(5_000));
+        assert_eq!(
+            summary
+                .aggregate_metrics
+                .first()
+                .map(|metric| metric.metric_id.as_str()),
+            Some("accuracy")
+        );
+        assert_eq!(
+            kernel
+                .get_delivery_proof("delivery.compute.alpha")
+                .and_then(|proof| proof.verification_evidence)
+                .and_then(|verification| verification.eval_run_ref),
+            Some("eval.run.alpha".to_string())
+        );
+        assert_eq!(
+            kernel.list_compute_evaluation_runs(None, None, None).len(),
+            1
+        );
+        assert_eq!(
+            kernel
+                .list_compute_evaluation_samples("eval.run.alpha")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn compute_evaluation_append_rejects_duplicate_sample_id() {
+        let created_at_ms = 1_762_000_324_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+        kernel
+            .create_compute_evaluation_run(&fixture_context(created_at_ms + 500), {
+                let mut request = compute_evaluation_run_request(created_at_ms as i64 + 500);
+                request.eval_run.delivery_proof_id = None;
+                request
+            })
+            .expect("create eval run");
+
+        kernel
+            .append_compute_evaluation_samples(
+                &fixture_context(created_at_ms + 1_000),
+                AppendComputeEvaluationSamplesRequest {
+                    samples: vec![compute_evaluation_sample(
+                        "sample.alpha",
+                        1,
+                        9_500,
+                        ComputeEvaluationSampleStatus::Scored,
+                        created_at_ms as i64 + 1_000,
+                    )],
+                    ..append_compute_evaluation_samples_request(created_at_ms as i64 + 1_000)
+                },
+            )
+            .expect("append first sample");
+
+        let error = kernel
+            .append_compute_evaluation_samples(
+                &fixture_context(created_at_ms + 2_000),
+                AppendComputeEvaluationSamplesRequest {
+                    samples: vec![compute_evaluation_sample(
+                        "sample.alpha",
+                        2,
+                        9_000,
+                        ComputeEvaluationSampleStatus::Scored,
+                        created_at_ms as i64 + 2_000,
+                    )],
+                    ..append_compute_evaluation_samples_request(created_at_ms as i64 + 2_000)
+                },
+            )
+            .expect_err("duplicate sample should conflict");
+        assert_eq!(error, "compute_eval_sample_already_exists");
     }
 
     #[test]

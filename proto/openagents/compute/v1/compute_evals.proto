@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
+
+enum ComputeEvaluationRunStatus {
+  COMPUTE_EVALUATION_RUN_STATUS_UNSPECIFIED = 0;
+  COMPUTE_EVALUATION_RUN_STATUS_QUEUED = 1;
+  COMPUTE_EVALUATION_RUN_STATUS_RUNNING = 2;
+  COMPUTE_EVALUATION_RUN_STATUS_FINALIZED = 3;
+  COMPUTE_EVALUATION_RUN_STATUS_FAILED = 4;
+  COMPUTE_EVALUATION_RUN_STATUS_CANCELLED = 5;
+}
+
+enum ComputeEvaluationSampleStatus {
+  COMPUTE_EVALUATION_SAMPLE_STATUS_UNSPECIFIED = 0;
+  COMPUTE_EVALUATION_SAMPLE_STATUS_RECORDED = 1;
+  COMPUTE_EVALUATION_SAMPLE_STATUS_SCORED = 2;
+  COMPUTE_EVALUATION_SAMPLE_STATUS_PASSED = 3;
+  COMPUTE_EVALUATION_SAMPLE_STATUS_FAILED = 4;
+  COMPUTE_EVALUATION_SAMPLE_STATUS_ERRORED = 5;
+}
+
+message ComputeEvaluationMetric {
+  string metric_id = 1;
+  double metric_value = 2;
+  optional string unit = 3;
+  string metadata_json = 4;
+}
+
+message ComputeEvaluationArtifact {
+  string artifact_kind = 1;
+  string artifact_ref = 2;
+  optional string digest = 3;
+  string metadata_json = 4;
+}
+
+message ComputeEvaluationSummary {
+  uint64 total_samples = 1;
+  uint64 scored_samples = 2;
+  uint64 passed_samples = 3;
+  uint64 failed_samples = 4;
+  uint64 errored_samples = 5;
+  optional uint32 average_score_bps = 6;
+  optional uint32 pass_rate_bps = 7;
+  repeated ComputeEvaluationMetric aggregate_metrics = 8;
+  repeated ComputeEvaluationArtifact artifacts = 9;
+}
+
+message ComputeEvaluationRun {
+  string eval_run_id = 1;
+  ComputeEnvironmentBinding environment_binding = 2;
+  optional string product_id = 3;
+  optional string capacity_lot_id = 4;
+  optional string instrument_id = 5;
+  optional string delivery_proof_id = 6;
+  optional string model_ref = 7;
+  optional string source_ref = 8;
+  int64 created_at_ms = 9;
+  optional uint64 expected_sample_count = 10;
+  ComputeEvaluationRunStatus status = 11;
+  optional int64 started_at_ms = 12;
+  optional int64 finalized_at_ms = 13;
+  optional ComputeEvaluationSummary summary = 14;
+  repeated ComputeEvaluationArtifact run_artifacts = 15;
+  string metadata_json = 16;
+}
+
+message ComputeEvaluationSample {
+  string eval_run_id = 1;
+  string sample_id = 2;
+  optional uint64 ordinal = 3;
+  ComputeEvaluationSampleStatus status = 4;
+  optional string input_ref = 5;
+  optional string output_ref = 6;
+  optional string expected_output_ref = 7;
+  optional uint32 score_bps = 8;
+  repeated ComputeEvaluationMetric metrics = 9;
+  repeated ComputeEvaluationArtifact artifacts = 10;
+  optional string error_reason = 11;
+  int64 recorded_at_ms = 12;
+  string metadata_json = 13;
+}
+
+message CreateComputeEvaluationRunRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeEvaluationRun eval_run = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateComputeEvaluationRunResponse {
+  ComputeEvaluationRun eval_run = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message AppendComputeEvaluationSamplesRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string eval_run_id = 4;
+  repeated ComputeEvaluationSample samples = 5;
+  repeated openagents.common.v1.EvidenceRef evidence = 6;
+  openagents.economy.v1.ReceiptHints hints = 7;
+}
+
+message AppendComputeEvaluationSamplesResponse {
+  ComputeEvaluationRun eval_run = 1;
+  repeated ComputeEvaluationSample samples = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}
+
+message FinalizeComputeEvaluationRunRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string eval_run_id = 4;
+  ComputeEvaluationRunStatus status = 5;
+  int64 finalized_at_ms = 6;
+  repeated ComputeEvaluationArtifact artifacts = 7;
+  string metadata_json = 8;
+  repeated openagents.common.v1.EvidenceRef evidence = 9;
+  openagents.economy.v1.ReceiptHints hints = 10;
+}
+
+message FinalizeComputeEvaluationRunResponse {
+  ComputeEvaluationRun eval_run = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListComputeEvaluationRunsRequest {
+  optional string environment_ref = 1;
+  optional string product_id = 2;
+  ComputeEvaluationRunStatus status = 3;
+}
+
+message ListComputeEvaluationRunsResponse {
+  repeated ComputeEvaluationRun eval_runs = 1;
+}
+
+message GetComputeEvaluationRunRequest {
+  string eval_run_id = 1;
+}
+
+message GetComputeEvaluationRunResponse {
+  ComputeEvaluationRun eval_run = 1;
+}
+
+message ListComputeEvaluationSamplesRequest {
+  string eval_run_id = 1;
+}
+
+message ListComputeEvaluationSamplesResponse {
+  repeated ComputeEvaluationSample samples = 1;
+}

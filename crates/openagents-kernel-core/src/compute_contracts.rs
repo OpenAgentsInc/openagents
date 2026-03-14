@@ -1,11 +1,14 @@
 use crate::authority::{
+    AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
     CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
     CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateCapacityInstrumentRequest,
     CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+    CreateComputeEvaluationRunRequest, CreateComputeEvaluationRunResponse,
     CreateComputeProductRequest, CreateComputeProductResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
+    FinalizeComputeEvaluationRunRequest, FinalizeComputeEvaluationRunResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
     RecordDeliveryProofResponse, RegisterComputeEnvironmentPackageRequest,
     RegisterComputeEnvironmentPackageResponse,
@@ -18,14 +21,16 @@ use crate::compute::{
     ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
     ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
     ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
-    ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason,
-    ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
-    ComputeProvisioningKind, ComputeSettlementFailureReason, ComputeSettlementMode,
-    ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
-    DeliveryRejectionReason, DeliverySandboxEvidence, DeliveryTopologyEvidence,
-    DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
-    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus, StructuredCapacityLeg,
-    StructuredCapacityLegRole,
+    ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
+    ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
+    ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+    ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+    ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
+    ComputeSettlementMode, ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof,
+    DeliveryProofStatus, DeliveryRejectionReason, DeliverySandboxEvidence,
+    DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -508,6 +513,86 @@ fn compute_environment_package_status_from_proto(value: i32) -> ComputeEnvironme
         proto_compute::ComputeEnvironmentPackageStatus::Unspecified
         | proto_compute::ComputeEnvironmentPackageStatus::Active => {
             ComputeEnvironmentPackageStatus::Active
+        }
+    }
+}
+
+fn compute_evaluation_run_status_to_proto(value: ComputeEvaluationRunStatus) -> i32 {
+    match value {
+        ComputeEvaluationRunStatus::Queued => {
+            proto_compute::ComputeEvaluationRunStatus::Queued as i32
+        }
+        ComputeEvaluationRunStatus::Running => {
+            proto_compute::ComputeEvaluationRunStatus::Running as i32
+        }
+        ComputeEvaluationRunStatus::Finalized => {
+            proto_compute::ComputeEvaluationRunStatus::Finalized as i32
+        }
+        ComputeEvaluationRunStatus::Failed => {
+            proto_compute::ComputeEvaluationRunStatus::Failed as i32
+        }
+        ComputeEvaluationRunStatus::Cancelled => {
+            proto_compute::ComputeEvaluationRunStatus::Cancelled as i32
+        }
+    }
+}
+
+fn compute_evaluation_run_status_from_proto(value: i32) -> ComputeEvaluationRunStatus {
+    match proto_compute::ComputeEvaluationRunStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeEvaluationRunStatus::Queued)
+    {
+        proto_compute::ComputeEvaluationRunStatus::Running => ComputeEvaluationRunStatus::Running,
+        proto_compute::ComputeEvaluationRunStatus::Finalized => {
+            ComputeEvaluationRunStatus::Finalized
+        }
+        proto_compute::ComputeEvaluationRunStatus::Failed => ComputeEvaluationRunStatus::Failed,
+        proto_compute::ComputeEvaluationRunStatus::Cancelled => {
+            ComputeEvaluationRunStatus::Cancelled
+        }
+        proto_compute::ComputeEvaluationRunStatus::Unspecified
+        | proto_compute::ComputeEvaluationRunStatus::Queued => ComputeEvaluationRunStatus::Queued,
+    }
+}
+
+fn compute_evaluation_sample_status_to_proto(value: ComputeEvaluationSampleStatus) -> i32 {
+    match value {
+        ComputeEvaluationSampleStatus::Recorded => {
+            proto_compute::ComputeEvaluationSampleStatus::Recorded as i32
+        }
+        ComputeEvaluationSampleStatus::Scored => {
+            proto_compute::ComputeEvaluationSampleStatus::Scored as i32
+        }
+        ComputeEvaluationSampleStatus::Passed => {
+            proto_compute::ComputeEvaluationSampleStatus::Passed as i32
+        }
+        ComputeEvaluationSampleStatus::Failed => {
+            proto_compute::ComputeEvaluationSampleStatus::Failed as i32
+        }
+        ComputeEvaluationSampleStatus::Errored => {
+            proto_compute::ComputeEvaluationSampleStatus::Errored as i32
+        }
+    }
+}
+
+fn compute_evaluation_sample_status_from_proto(value: i32) -> ComputeEvaluationSampleStatus {
+    match proto_compute::ComputeEvaluationSampleStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeEvaluationSampleStatus::Recorded)
+    {
+        proto_compute::ComputeEvaluationSampleStatus::Scored => {
+            ComputeEvaluationSampleStatus::Scored
+        }
+        proto_compute::ComputeEvaluationSampleStatus::Passed => {
+            ComputeEvaluationSampleStatus::Passed
+        }
+        proto_compute::ComputeEvaluationSampleStatus::Failed => {
+            ComputeEvaluationSampleStatus::Failed
+        }
+        proto_compute::ComputeEvaluationSampleStatus::Errored => {
+            ComputeEvaluationSampleStatus::Errored
+        }
+        proto_compute::ComputeEvaluationSampleStatus::Unspecified
+        | proto_compute::ComputeEvaluationSampleStatus::Recorded => {
+            ComputeEvaluationSampleStatus::Recorded
         }
     }
 }
@@ -1717,6 +1802,222 @@ pub fn compute_environment_package_from_proto(
     })
 }
 
+fn compute_evaluation_metric_to_proto(
+    metric: &ComputeEvaluationMetric,
+) -> Result<proto_compute::ComputeEvaluationMetric> {
+    Ok(proto_compute::ComputeEvaluationMetric {
+        metric_id: metric.metric_id.clone(),
+        metric_value: metric.metric_value,
+        unit: metric.unit.clone(),
+        metadata_json: json_value_to_string(&metric.metadata)?,
+    })
+}
+
+fn compute_evaluation_metric_from_proto(
+    metric: &proto_compute::ComputeEvaluationMetric,
+) -> Result<ComputeEvaluationMetric> {
+    Ok(ComputeEvaluationMetric {
+        metric_id: metric.metric_id.clone(),
+        metric_value: metric.metric_value,
+        unit: optional_string_as_none(metric.unit.clone()),
+        metadata: json_string_to_value(metric.metadata_json.as_str())?,
+    })
+}
+
+fn compute_evaluation_artifact_to_proto(
+    artifact: &ComputeEvaluationArtifact,
+) -> Result<proto_compute::ComputeEvaluationArtifact> {
+    Ok(proto_compute::ComputeEvaluationArtifact {
+        artifact_kind: artifact.artifact_kind.clone(),
+        artifact_ref: artifact.artifact_ref.clone(),
+        digest: artifact.digest.clone(),
+        metadata_json: json_value_to_string(&artifact.metadata)?,
+    })
+}
+
+fn compute_evaluation_artifact_from_proto(
+    artifact: &proto_compute::ComputeEvaluationArtifact,
+) -> Result<ComputeEvaluationArtifact> {
+    Ok(ComputeEvaluationArtifact {
+        artifact_kind: artifact.artifact_kind.clone(),
+        artifact_ref: artifact.artifact_ref.clone(),
+        digest: optional_string_as_none(artifact.digest.clone()),
+        metadata: json_string_to_value(artifact.metadata_json.as_str())?,
+    })
+}
+
+fn compute_evaluation_summary_to_proto(
+    summary: &ComputeEvaluationSummary,
+) -> Result<proto_compute::ComputeEvaluationSummary> {
+    Ok(proto_compute::ComputeEvaluationSummary {
+        total_samples: summary.total_samples,
+        scored_samples: summary.scored_samples,
+        passed_samples: summary.passed_samples,
+        failed_samples: summary.failed_samples,
+        errored_samples: summary.errored_samples,
+        average_score_bps: summary.average_score_bps,
+        pass_rate_bps: summary.pass_rate_bps,
+        aggregate_metrics: summary
+            .aggregate_metrics
+            .iter()
+            .map(compute_evaluation_metric_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: summary
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn compute_evaluation_summary_from_proto(
+    summary: &proto_compute::ComputeEvaluationSummary,
+) -> Result<ComputeEvaluationSummary> {
+    Ok(ComputeEvaluationSummary {
+        total_samples: summary.total_samples,
+        scored_samples: summary.scored_samples,
+        passed_samples: summary.passed_samples,
+        failed_samples: summary.failed_samples,
+        errored_samples: summary.errored_samples,
+        average_score_bps: summary.average_score_bps,
+        pass_rate_bps: summary.pass_rate_bps,
+        aggregate_metrics: summary
+            .aggregate_metrics
+            .iter()
+            .map(compute_evaluation_metric_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: summary
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn compute_evaluation_run_to_proto(
+    run: &ComputeEvaluationRun,
+) -> Result<proto_compute::ComputeEvaluationRun> {
+    Ok(proto_compute::ComputeEvaluationRun {
+        eval_run_id: run.eval_run_id.clone(),
+        environment_binding: Some(compute_environment_binding_to_proto(
+            &run.environment_binding,
+        )),
+        product_id: run.product_id.clone(),
+        capacity_lot_id: run.capacity_lot_id.clone(),
+        instrument_id: run.instrument_id.clone(),
+        delivery_proof_id: run.delivery_proof_id.clone(),
+        model_ref: run.model_ref.clone(),
+        source_ref: run.source_ref.clone(),
+        created_at_ms: run.created_at_ms,
+        expected_sample_count: run.expected_sample_count,
+        status: compute_evaluation_run_status_to_proto(run.status),
+        started_at_ms: run.started_at_ms,
+        finalized_at_ms: run.finalized_at_ms,
+        summary: run
+            .summary
+            .as_ref()
+            .map(compute_evaluation_summary_to_proto)
+            .transpose()?,
+        run_artifacts: run
+            .run_artifacts
+            .iter()
+            .map(compute_evaluation_artifact_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata_json: json_value_to_string(&run.metadata)?,
+    })
+}
+
+pub fn compute_evaluation_run_from_proto(
+    run: &proto_compute::ComputeEvaluationRun,
+) -> Result<ComputeEvaluationRun> {
+    Ok(ComputeEvaluationRun {
+        eval_run_id: run.eval_run_id.clone(),
+        environment_binding: compute_environment_binding_from_proto(
+            run.environment_binding
+                .as_ref()
+                .ok_or_else(|| missing("environment_binding"))?,
+        ),
+        product_id: optional_string_as_none(run.product_id.clone()),
+        capacity_lot_id: optional_string_as_none(run.capacity_lot_id.clone()),
+        instrument_id: optional_string_as_none(run.instrument_id.clone()),
+        delivery_proof_id: optional_string_as_none(run.delivery_proof_id.clone()),
+        model_ref: optional_string_as_none(run.model_ref.clone()),
+        source_ref: optional_string_as_none(run.source_ref.clone()),
+        created_at_ms: run.created_at_ms,
+        expected_sample_count: run.expected_sample_count,
+        status: compute_evaluation_run_status_from_proto(run.status),
+        started_at_ms: run.started_at_ms,
+        finalized_at_ms: run.finalized_at_ms,
+        summary: run
+            .summary
+            .as_ref()
+            .map(compute_evaluation_summary_from_proto)
+            .transpose()?,
+        run_artifacts: run
+            .run_artifacts
+            .iter()
+            .map(compute_evaluation_artifact_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata: json_string_to_value(run.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_evaluation_sample_to_proto(
+    sample: &ComputeEvaluationSample,
+) -> Result<proto_compute::ComputeEvaluationSample> {
+    Ok(proto_compute::ComputeEvaluationSample {
+        eval_run_id: sample.eval_run_id.clone(),
+        sample_id: sample.sample_id.clone(),
+        ordinal: sample.ordinal,
+        status: compute_evaluation_sample_status_to_proto(sample.status),
+        input_ref: sample.input_ref.clone(),
+        output_ref: sample.output_ref.clone(),
+        expected_output_ref: sample.expected_output_ref.clone(),
+        score_bps: sample.score_bps,
+        metrics: sample
+            .metrics
+            .iter()
+            .map(compute_evaluation_metric_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: sample
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        error_reason: sample.error_reason.clone(),
+        recorded_at_ms: sample.recorded_at_ms,
+        metadata_json: json_value_to_string(&sample.metadata)?,
+    })
+}
+
+pub fn compute_evaluation_sample_from_proto(
+    sample: &proto_compute::ComputeEvaluationSample,
+) -> Result<ComputeEvaluationSample> {
+    Ok(ComputeEvaluationSample {
+        eval_run_id: sample.eval_run_id.clone(),
+        sample_id: sample.sample_id.clone(),
+        ordinal: sample.ordinal,
+        status: compute_evaluation_sample_status_from_proto(sample.status),
+        input_ref: optional_string_as_none(sample.input_ref.clone()),
+        output_ref: optional_string_as_none(sample.output_ref.clone()),
+        expected_output_ref: optional_string_as_none(sample.expected_output_ref.clone()),
+        score_bps: sample.score_bps,
+        metrics: sample
+            .metrics
+            .iter()
+            .map(compute_evaluation_metric_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: sample
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        error_reason: optional_string_as_none(sample.error_reason.clone()),
+        recorded_at_ms: sample.recorded_at_ms,
+        metadata: json_string_to_value(sample.metadata_json.as_str())?,
+    })
+}
+
 pub fn compute_product_to_proto(product: &ComputeProduct) -> Result<proto_compute::ComputeProduct> {
     Ok(proto_compute::ComputeProduct {
         product_id: product.product_id.clone(),
@@ -2218,6 +2519,233 @@ pub fn register_compute_environment_package_response_from_proto(
                 .package
                 .as_ref()
                 .ok_or_else(|| missing("package"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn create_compute_evaluation_run_request_to_proto(
+    request: &CreateComputeEvaluationRunRequest,
+) -> Result<proto_compute::CreateComputeEvaluationRunRequest> {
+    Ok(proto_compute::CreateComputeEvaluationRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        eval_run: Some(compute_evaluation_run_to_proto(&request.eval_run)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn create_compute_evaluation_run_request_from_proto(
+    request: &proto_compute::CreateComputeEvaluationRunRequest,
+) -> Result<CreateComputeEvaluationRunRequest> {
+    Ok(CreateComputeEvaluationRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        eval_run: compute_evaluation_run_from_proto(
+            request
+                .eval_run
+                .as_ref()
+                .ok_or_else(|| missing("eval_run"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn create_compute_evaluation_run_response_to_proto(
+    response: &CreateComputeEvaluationRunResponse,
+) -> Result<proto_compute::CreateComputeEvaluationRunResponse> {
+    Ok(proto_compute::CreateComputeEvaluationRunResponse {
+        eval_run: Some(compute_evaluation_run_to_proto(&response.eval_run)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn create_compute_evaluation_run_response_from_proto(
+    response: &proto_compute::CreateComputeEvaluationRunResponse,
+) -> Result<CreateComputeEvaluationRunResponse> {
+    Ok(CreateComputeEvaluationRunResponse {
+        eval_run: compute_evaluation_run_from_proto(
+            response
+                .eval_run
+                .as_ref()
+                .ok_or_else(|| missing("eval_run"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn append_compute_evaluation_samples_request_to_proto(
+    request: &AppendComputeEvaluationSamplesRequest,
+) -> Result<proto_compute::AppendComputeEvaluationSamplesRequest> {
+    Ok(proto_compute::AppendComputeEvaluationSamplesRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        eval_run_id: request.eval_run_id.clone(),
+        samples: request
+            .samples
+            .iter()
+            .map(compute_evaluation_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn append_compute_evaluation_samples_request_from_proto(
+    request: &proto_compute::AppendComputeEvaluationSamplesRequest,
+) -> Result<AppendComputeEvaluationSamplesRequest> {
+    Ok(AppendComputeEvaluationSamplesRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        eval_run_id: request.eval_run_id.clone(),
+        samples: request
+            .samples
+            .iter()
+            .map(compute_evaluation_sample_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn append_compute_evaluation_samples_response_to_proto(
+    response: &AppendComputeEvaluationSamplesResponse,
+) -> Result<proto_compute::AppendComputeEvaluationSamplesResponse> {
+    Ok(proto_compute::AppendComputeEvaluationSamplesResponse {
+        eval_run: Some(compute_evaluation_run_to_proto(&response.eval_run)?),
+        samples: response
+            .samples
+            .iter()
+            .map(compute_evaluation_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn append_compute_evaluation_samples_response_from_proto(
+    response: &proto_compute::AppendComputeEvaluationSamplesResponse,
+) -> Result<AppendComputeEvaluationSamplesResponse> {
+    Ok(AppendComputeEvaluationSamplesResponse {
+        eval_run: compute_evaluation_run_from_proto(
+            response
+                .eval_run
+                .as_ref()
+                .ok_or_else(|| missing("eval_run"))?,
+        )?,
+        samples: response
+            .samples
+            .iter()
+            .map(compute_evaluation_sample_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn finalize_compute_evaluation_run_request_to_proto(
+    request: &FinalizeComputeEvaluationRunRequest,
+) -> Result<proto_compute::FinalizeComputeEvaluationRunRequest> {
+    Ok(proto_compute::FinalizeComputeEvaluationRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        eval_run_id: request.eval_run_id.clone(),
+        status: compute_evaluation_run_status_to_proto(request.status),
+        finalized_at_ms: request.finalized_at_ms,
+        artifacts: request
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata_json: json_value_to_string(&request.metadata)?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn finalize_compute_evaluation_run_request_from_proto(
+    request: &proto_compute::FinalizeComputeEvaluationRunRequest,
+) -> Result<FinalizeComputeEvaluationRunRequest> {
+    Ok(FinalizeComputeEvaluationRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        eval_run_id: request.eval_run_id.clone(),
+        status: compute_evaluation_run_status_from_proto(request.status),
+        finalized_at_ms: request.finalized_at_ms,
+        artifacts: request
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn finalize_compute_evaluation_run_response_to_proto(
+    response: &FinalizeComputeEvaluationRunResponse,
+) -> Result<proto_compute::FinalizeComputeEvaluationRunResponse> {
+    Ok(proto_compute::FinalizeComputeEvaluationRunResponse {
+        eval_run: Some(compute_evaluation_run_to_proto(&response.eval_run)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn finalize_compute_evaluation_run_response_from_proto(
+    response: &proto_compute::FinalizeComputeEvaluationRunResponse,
+) -> Result<FinalizeComputeEvaluationRunResponse> {
+    Ok(FinalizeComputeEvaluationRunResponse {
+        eval_run: compute_evaluation_run_from_proto(
+            response
+                .eval_run
+                .as_ref()
+                .ok_or_else(|| missing("eval_run"))?,
         )?,
         receipt: receipt_from_proto(
             response
@@ -2985,6 +3513,67 @@ pub fn get_compute_environment_package_response_from_proto(
     )
 }
 
+pub fn list_compute_evaluation_runs_response_to_proto(
+    runs: &[ComputeEvaluationRun],
+) -> Result<proto_compute::ListComputeEvaluationRunsResponse> {
+    Ok(proto_compute::ListComputeEvaluationRunsResponse {
+        eval_runs: runs
+            .iter()
+            .map(compute_evaluation_run_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_evaluation_runs_response_from_proto(
+    response: &proto_compute::ListComputeEvaluationRunsResponse,
+) -> Result<Vec<ComputeEvaluationRun>> {
+    response
+        .eval_runs
+        .iter()
+        .map(compute_evaluation_run_from_proto)
+        .collect()
+}
+
+pub fn get_compute_evaluation_run_response_to_proto(
+    run: &ComputeEvaluationRun,
+) -> Result<proto_compute::GetComputeEvaluationRunResponse> {
+    Ok(proto_compute::GetComputeEvaluationRunResponse {
+        eval_run: Some(compute_evaluation_run_to_proto(run)?),
+    })
+}
+
+pub fn get_compute_evaluation_run_response_from_proto(
+    response: &proto_compute::GetComputeEvaluationRunResponse,
+) -> Result<ComputeEvaluationRun> {
+    compute_evaluation_run_from_proto(
+        response
+            .eval_run
+            .as_ref()
+            .ok_or_else(|| missing("eval_run"))?,
+    )
+}
+
+pub fn list_compute_evaluation_samples_response_to_proto(
+    samples: &[ComputeEvaluationSample],
+) -> Result<proto_compute::ListComputeEvaluationSamplesResponse> {
+    Ok(proto_compute::ListComputeEvaluationSamplesResponse {
+        samples: samples
+            .iter()
+            .map(compute_evaluation_sample_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_evaluation_samples_response_from_proto(
+    response: &proto_compute::ListComputeEvaluationSamplesResponse,
+) -> Result<Vec<ComputeEvaluationSample>> {
+    response
+        .samples
+        .iter()
+        .map(compute_evaluation_sample_from_proto)
+        .collect()
+}
+
 pub fn list_capacity_lots_response_to_proto(
     lots: &[CapacityLot],
 ) -> Result<proto_compute::ListCapacityLotsResponse> {
@@ -3174,8 +3763,12 @@ pub fn get_compute_index_response_from_proto(
 #[cfg(test)]
 mod tests {
     use super::{
-        capacity_instrument_from_proto, capacity_instrument_to_proto, capacity_lot_from_proto,
-        capacity_lot_to_proto, cash_settle_capacity_instrument_request_from_proto,
+        append_compute_evaluation_samples_request_from_proto,
+        append_compute_evaluation_samples_request_to_proto,
+        append_compute_evaluation_samples_response_from_proto,
+        append_compute_evaluation_samples_response_to_proto, capacity_instrument_from_proto,
+        capacity_instrument_to_proto, capacity_lot_from_proto, capacity_lot_to_proto,
+        cash_settle_capacity_instrument_request_from_proto,
         cash_settle_capacity_instrument_request_to_proto,
         cash_settle_capacity_instrument_response_from_proto,
         cash_settle_capacity_instrument_response_to_proto,
@@ -3187,21 +3780,36 @@ mod tests {
         close_structured_capacity_instrument_response_to_proto,
         compute_capability_envelope_from_proto, compute_capability_envelope_to_proto,
         compute_environment_package_from_proto, compute_environment_package_to_proto,
+        compute_evaluation_run_from_proto, compute_evaluation_run_to_proto,
+        compute_evaluation_sample_from_proto, compute_evaluation_sample_to_proto,
         compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
         compute_product_to_proto, correct_compute_index_request_from_proto,
         correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
-        correct_compute_index_response_to_proto,
+        correct_compute_index_response_to_proto, create_compute_evaluation_run_request_from_proto,
+        create_compute_evaluation_run_request_to_proto,
+        create_compute_evaluation_run_response_from_proto,
+        create_compute_evaluation_run_response_to_proto,
         create_structured_capacity_instrument_request_from_proto,
         create_structured_capacity_instrument_request_to_proto,
         create_structured_capacity_instrument_response_from_proto,
         create_structured_capacity_instrument_response_to_proto, delivery_proof_from_proto,
-        delivery_proof_to_proto, get_compute_environment_package_response_from_proto,
-        get_compute_environment_package_response_to_proto, get_compute_index_response_from_proto,
+        delivery_proof_to_proto, finalize_compute_evaluation_run_request_from_proto,
+        finalize_compute_evaluation_run_request_to_proto,
+        finalize_compute_evaluation_run_response_from_proto,
+        finalize_compute_evaluation_run_response_to_proto,
+        get_compute_environment_package_response_from_proto,
+        get_compute_environment_package_response_to_proto,
+        get_compute_evaluation_run_response_from_proto,
+        get_compute_evaluation_run_response_to_proto, get_compute_index_response_from_proto,
         get_compute_index_response_to_proto,
         get_structured_capacity_instrument_response_from_proto,
         get_structured_capacity_instrument_response_to_proto,
         list_compute_environment_packages_response_from_proto,
         list_compute_environment_packages_response_to_proto,
+        list_compute_evaluation_runs_response_from_proto,
+        list_compute_evaluation_runs_response_to_proto,
+        list_compute_evaluation_samples_response_from_proto,
+        list_compute_evaluation_samples_response_to_proto,
         list_compute_products_response_from_proto, list_compute_products_response_to_proto,
         list_structured_capacity_instruments_response_from_proto,
         list_structured_capacity_instruments_response_to_proto,
@@ -3212,12 +3820,15 @@ mod tests {
         structured_capacity_instrument_from_proto, structured_capacity_instrument_to_proto,
     };
     use crate::authority::{
+        AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
         CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
         CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
         CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
-        CorrectComputeIndexRequest, CorrectComputeIndexResponse,
-        CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
-        RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
+        CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateComputeEvaluationRunRequest,
+        CreateComputeEvaluationRunResponse, CreateStructuredCapacityInstrumentRequest,
+        CreateStructuredCapacityInstrumentResponse, FinalizeComputeEvaluationRunRequest,
+        FinalizeComputeEvaluationRunResponse, RegisterComputeEnvironmentPackageRequest,
+        RegisterComputeEnvironmentPackageResponse,
     };
     use crate::compute::{
         ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
@@ -3227,19 +3838,29 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
         ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
         ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
-        ComputeSettlementMode, ComputeTopologyKind, ComputeValidatorRequirements, DeliveryProof,
-        DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
-        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
-        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-        StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
+        ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeExecutionKind,
+        ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
+        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
     use serde_json::json;
+
+    fn test_policy_context() -> PolicyContext {
+        PolicyContext {
+            policy_bundle_id: "policy.compute.test".to_string(),
+            policy_version: "1".to_string(),
+            approved_by: "test".to_string(),
+        }
+    }
 
     fn compute_product_fixture() -> ComputeProduct {
         ComputeProduct {
@@ -3335,6 +3956,86 @@ mod tests {
                 "policy://artifact/scorecard".to_string(),
             ],
             metadata: json!({"tier": "reference"}),
+        }
+    }
+
+    fn evaluation_run_fixture() -> ComputeEvaluationRun {
+        ComputeEvaluationRun {
+            eval_run_id: "eval.run.alpha".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            },
+            product_id: Some("gpt_oss.text_generation".to_string()),
+            capacity_lot_id: Some("lot.compute.alpha".to_string()),
+            instrument_id: Some("instrument.compute.alpha".to_string()),
+            delivery_proof_id: Some("delivery.compute.alpha".to_string()),
+            model_ref: Some("model://llama3.3".to_string()),
+            source_ref: Some("artifact://eval/input-bundle".to_string()),
+            created_at_ms: 1_762_000_500_000,
+            expected_sample_count: Some(2),
+            status: ComputeEvaluationRunStatus::Finalized,
+            started_at_ms: Some(1_762_000_500_100),
+            finalized_at_ms: Some(1_762_000_510_000),
+            summary: Some(ComputeEvaluationSummary {
+                total_samples: 2,
+                scored_samples: 2,
+                passed_samples: 1,
+                failed_samples: 1,
+                errored_samples: 0,
+                average_score_bps: Some(9_250),
+                pass_rate_bps: Some(5_000),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.925,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"split": "validation"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "scorecard".to_string(),
+                    artifact_ref: "artifact://eval/scorecard".to_string(),
+                    digest: Some("sha256:scorecard".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            run_artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "rollup".to_string(),
+                artifact_ref: "artifact://eval/rollup".to_string(),
+                digest: Some("sha256:rollup".to_string()),
+                metadata: json!({"scope": "run"}),
+            }],
+            metadata: json!({"suite": "math-basic"}),
+        }
+    }
+
+    fn evaluation_sample_fixture() -> ComputeEvaluationSample {
+        ComputeEvaluationSample {
+            eval_run_id: "eval.run.alpha".to_string(),
+            sample_id: "sample.alpha".to_string(),
+            ordinal: Some(1),
+            status: ComputeEvaluationSampleStatus::Passed,
+            input_ref: Some("artifact://eval/input/1".to_string()),
+            output_ref: Some("artifact://eval/output/1".to_string()),
+            expected_output_ref: Some("artifact://eval/expected/1".to_string()),
+            score_bps: Some(9_500),
+            metrics: vec![ComputeEvaluationMetric {
+                metric_id: "accuracy".to_string(),
+                metric_value: 0.95,
+                unit: Some("fraction".to_string()),
+                metadata: json!({"top_k": 1}),
+            }],
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "sample_report".to_string(),
+                artifact_ref: "artifact://eval/sample/1/report".to_string(),
+                digest: Some("sha256:sample-report".to_string()),
+                metadata: json!({"sample": 1}),
+            }],
+            error_reason: None,
+            recorded_at_ms: 1_762_000_505_000,
+            metadata: json!({"prompt_tokens": 42}),
         }
     }
 
@@ -4162,5 +4863,161 @@ mod tests {
         )
         .expect("environment get roundtrip");
         assert_eq!(get_roundtrip, package);
+    }
+
+    #[test]
+    fn compute_evaluation_proto_roundtrip_preserves_summary_and_artifacts() {
+        let run = evaluation_run_fixture();
+        let run_roundtrip = compute_evaluation_run_from_proto(
+            &compute_evaluation_run_to_proto(&run).expect("eval run proto"),
+        )
+        .expect("eval run roundtrip");
+        assert_eq!(run_roundtrip, run);
+
+        let sample = evaluation_sample_fixture();
+        let sample_roundtrip = compute_evaluation_sample_from_proto(
+            &compute_evaluation_sample_to_proto(&sample).expect("eval sample proto"),
+        )
+        .expect("eval sample roundtrip");
+        assert_eq!(sample_roundtrip, sample);
+    }
+
+    #[test]
+    fn compute_evaluation_request_response_proto_roundtrip_preserves_lifecycle() {
+        let run = evaluation_run_fixture();
+        let sample = evaluation_sample_fixture();
+
+        let create_request = CreateComputeEvaluationRunRequest {
+            idempotency_key: "eval-create-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run: run.clone(),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let create_request_roundtrip = create_compute_evaluation_run_request_from_proto(
+            &create_compute_evaluation_run_request_to_proto(&create_request)
+                .expect("eval create request proto"),
+        )
+        .expect("eval create request roundtrip");
+        assert_eq!(create_request_roundtrip, create_request);
+
+        let create_response = CreateComputeEvaluationRunResponse {
+            eval_run: run.clone(),
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.eval.create.alpha",
+                "kernel.compute.eval_run.create.v1",
+                1_762_000_500_000,
+                "eval-create-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("eval create receipt"),
+        };
+        let create_response_roundtrip = create_compute_evaluation_run_response_from_proto(
+            &create_compute_evaluation_run_response_to_proto(&create_response)
+                .expect("eval create response proto"),
+        )
+        .expect("eval create response roundtrip");
+        assert_eq!(create_response_roundtrip, create_response);
+
+        let append_request = AppendComputeEvaluationSamplesRequest {
+            idempotency_key: "eval-append-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run_id: run.eval_run_id.clone(),
+            samples: vec![sample.clone()],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let append_request_roundtrip = append_compute_evaluation_samples_request_from_proto(
+            &append_compute_evaluation_samples_request_to_proto(&append_request)
+                .expect("eval append request proto"),
+        )
+        .expect("eval append request roundtrip");
+        assert_eq!(append_request_roundtrip, append_request);
+
+        let append_response = AppendComputeEvaluationSamplesResponse {
+            eval_run: run.clone(),
+            samples: vec![sample.clone()],
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.eval.append.alpha",
+                "kernel.compute.eval_run.samples.append.v1",
+                1_762_000_505_000,
+                "eval-append-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("eval append receipt"),
+        };
+        let append_response_roundtrip = append_compute_evaluation_samples_response_from_proto(
+            &append_compute_evaluation_samples_response_to_proto(&append_response)
+                .expect("eval append response proto"),
+        )
+        .expect("eval append response roundtrip");
+        assert_eq!(append_response_roundtrip, append_response);
+
+        let finalize_request = FinalizeComputeEvaluationRunRequest {
+            idempotency_key: "eval-finalize-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            eval_run_id: run.eval_run_id.clone(),
+            status: ComputeEvaluationRunStatus::Finalized,
+            finalized_at_ms: 1_762_000_510_000,
+            artifacts: run.run_artifacts.clone(),
+            metadata: json!({"summary": "complete"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let finalize_request_roundtrip = finalize_compute_evaluation_run_request_from_proto(
+            &finalize_compute_evaluation_run_request_to_proto(&finalize_request)
+                .expect("eval finalize request proto"),
+        )
+        .expect("eval finalize request roundtrip");
+        assert_eq!(finalize_request_roundtrip, finalize_request);
+
+        let finalize_response = FinalizeComputeEvaluationRunResponse {
+            eval_run: run.clone(),
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.eval.finalize.alpha",
+                "kernel.compute.eval_run.finalize.v1",
+                1_762_000_510_000,
+                "eval-finalize-1",
+                TraceContext::default(),
+                test_policy_context(),
+            )
+            .build()
+            .expect("eval finalize receipt"),
+        };
+        let finalize_response_roundtrip = finalize_compute_evaluation_run_response_from_proto(
+            &finalize_compute_evaluation_run_response_to_proto(&finalize_response)
+                .expect("eval finalize response proto"),
+        )
+        .expect("eval finalize response roundtrip");
+        assert_eq!(finalize_response_roundtrip, finalize_response);
+
+        let runs = vec![run.clone()];
+        let runs_roundtrip = list_compute_evaluation_runs_response_from_proto(
+            &list_compute_evaluation_runs_response_to_proto(runs.as_slice())
+                .expect("eval runs proto"),
+        )
+        .expect("eval runs roundtrip");
+        assert_eq!(runs_roundtrip, runs);
+
+        let get_run_roundtrip = get_compute_evaluation_run_response_from_proto(
+            &get_compute_evaluation_run_response_to_proto(&run).expect("eval get proto"),
+        )
+        .expect("eval get roundtrip");
+        assert_eq!(get_run_roundtrip, run);
+
+        let samples = vec![sample];
+        let samples_roundtrip = list_compute_evaluation_samples_response_from_proto(
+            &list_compute_evaluation_samples_response_to_proto(samples.as_slice())
+                .expect("eval samples proto"),
+        )
+        .expect("eval samples roundtrip");
+        assert_eq!(samples_roundtrip, samples);
     }
 }

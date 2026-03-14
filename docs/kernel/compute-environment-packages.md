@@ -100,5 +100,6 @@ expectation, policy refs, digest, and metadata.
 - `#3517`: bind `environment_ref` and `environment_version` truth into compute
   products and delivery proofs against this registry
 - `#3518`: make eval runs terminate in environment-backed objects
+  - landed in `docs/kernel/compute-evaluation-runs.md`
 - later synthetic-data and training issues should reuse this package identity
   instead of inventing parallel environment descriptors

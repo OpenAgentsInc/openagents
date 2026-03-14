@@ -965,6 +965,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is how capacity becomes market-relevant to real eval and training flows.
 
 34. **Evals: add evaluation-run creation, sample ingestion, and finalize flows**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3518`.
    - Rebuild the valuable `prime-evals` lifecycle in Rust with strong read models and stable artifact references.
    - Every eval should be queryable as a first-class compute output, not just a JSON blob on disk.
 

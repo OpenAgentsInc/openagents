@@ -63,6 +63,74 @@ impl ComputeEnvironmentPackageStatus {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum ComputeEvaluationRunStatus {
+    #[default]
+    Queued,
+    Running,
+    Finalized,
+    Failed,
+    Cancelled,
+}
+
+impl ComputeEvaluationRunStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Finalized => "finalized",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "queued" => Some(Self::Queued),
+            "running" => Some(Self::Running),
+            "finalized" => Some(Self::Finalized),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeEvaluationSampleStatus {
+    #[default]
+    Recorded,
+    Scored,
+    Passed,
+    Failed,
+    Errored,
+}
+
+impl ComputeEvaluationSampleStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Recorded => "recorded",
+            Self::Scored => "scored",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::Errored => "errored",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "recorded" => Some(Self::Recorded),
+            "scored" => Some(Self::Scored),
+            "passed" => Some(Self::Passed),
+            "failed" => Some(Self::Failed),
+            "errored" => Some(Self::Errored),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum CapacityReserveState {
     #[default]
     Available,
@@ -465,6 +533,108 @@ pub struct ComputeEnvironmentPackage {
     pub metadata: Value,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeEvaluationMetric {
+    pub metric_id: String,
+    pub metric_value: f64,
+    #[serde(default)]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeEvaluationArtifact {
+    pub artifact_kind: String,
+    pub artifact_ref: String,
+    #[serde(default)]
+    pub digest: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeEvaluationSummary {
+    #[serde(default)]
+    pub total_samples: u64,
+    #[serde(default)]
+    pub scored_samples: u64,
+    #[serde(default)]
+    pub passed_samples: u64,
+    #[serde(default)]
+    pub failed_samples: u64,
+    #[serde(default)]
+    pub errored_samples: u64,
+    #[serde(default)]
+    pub average_score_bps: Option<u32>,
+    #[serde(default)]
+    pub pass_rate_bps: Option<u32>,
+    #[serde(default)]
+    pub aggregate_metrics: Vec<ComputeEvaluationMetric>,
+    #[serde(default)]
+    pub artifacts: Vec<ComputeEvaluationArtifact>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeEvaluationRun {
+    pub eval_run_id: String,
+    pub environment_binding: ComputeEnvironmentBinding,
+    #[serde(default)]
+    pub product_id: Option<String>,
+    #[serde(default)]
+    pub capacity_lot_id: Option<String>,
+    #[serde(default)]
+    pub instrument_id: Option<String>,
+    #[serde(default)]
+    pub delivery_proof_id: Option<String>,
+    #[serde(default)]
+    pub model_ref: Option<String>,
+    #[serde(default)]
+    pub source_ref: Option<String>,
+    pub created_at_ms: i64,
+    #[serde(default)]
+    pub expected_sample_count: Option<u64>,
+    #[serde(default)]
+    pub status: ComputeEvaluationRunStatus,
+    #[serde(default)]
+    pub started_at_ms: Option<i64>,
+    #[serde(default)]
+    pub finalized_at_ms: Option<i64>,
+    #[serde(default)]
+    pub summary: Option<ComputeEvaluationSummary>,
+    #[serde(default)]
+    pub run_artifacts: Vec<ComputeEvaluationArtifact>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeEvaluationSample {
+    pub eval_run_id: String,
+    pub sample_id: String,
+    #[serde(default)]
+    pub ordinal: Option<u64>,
+    #[serde(default)]
+    pub status: ComputeEvaluationSampleStatus,
+    #[serde(default)]
+    pub input_ref: Option<String>,
+    #[serde(default)]
+    pub output_ref: Option<String>,
+    #[serde(default)]
+    pub expected_output_ref: Option<String>,
+    #[serde(default)]
+    pub score_bps: Option<u32>,
+    #[serde(default)]
+    pub metrics: Vec<ComputeEvaluationMetric>,
+    #[serde(default)]
+    pub artifacts: Vec<ComputeEvaluationArtifact>,
+    #[serde(default)]
+    pub error_reason: Option<String>,
+    pub recorded_at_ms: i64,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ComputeCheckpointBinding {
     #[serde(default)]
@@ -835,6 +1005,143 @@ pub fn validate_compute_environment_package(
         .any(|value| value.trim().is_empty())
     {
         return Err("compute_environment_policy_ref_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_evaluation_metric(metric: &ComputeEvaluationMetric) -> Result<(), String> {
+    if metric.metric_id.trim().is_empty() {
+        return Err("compute_eval_metric_id_missing".to_string());
+    }
+    if !metric.metric_value.is_finite() {
+        return Err("compute_eval_metric_value_invalid".to_string());
+    }
+    if metric
+        .unit
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_eval_metric_unit_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_evaluation_artifact(
+    artifact: &ComputeEvaluationArtifact,
+) -> Result<(), String> {
+    if artifact.artifact_kind.trim().is_empty() {
+        return Err("compute_eval_artifact_kind_missing".to_string());
+    }
+    if artifact.artifact_ref.trim().is_empty() {
+        return Err("compute_eval_artifact_ref_missing".to_string());
+    }
+    if artifact
+        .digest
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_eval_artifact_digest_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_evaluation_summary(
+    summary: &ComputeEvaluationSummary,
+) -> Result<(), String> {
+    if summary.scored_samples > summary.total_samples
+        || summary.passed_samples > summary.scored_samples
+        || summary.failed_samples > summary.scored_samples
+        || summary.errored_samples > summary.total_samples
+        || summary
+            .passed_samples
+            .saturating_add(summary.failed_samples)
+            > summary.scored_samples
+    {
+        return Err("compute_eval_summary_counts_invalid".to_string());
+    }
+    if summary
+        .average_score_bps
+        .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_eval_score_invalid".to_string());
+    }
+    if summary.pass_rate_bps.is_some_and(|value| value > 10_000) {
+        return Err("compute_eval_pass_rate_invalid".to_string());
+    }
+    for metric in &summary.aggregate_metrics {
+        validate_compute_evaluation_metric(metric)?;
+    }
+    for artifact in &summary.artifacts {
+        validate_compute_evaluation_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_evaluation_run(run: &ComputeEvaluationRun) -> Result<(), String> {
+    if run.eval_run_id.trim().is_empty() {
+        return Err("compute_eval_run_id_missing".to_string());
+    }
+    if run.environment_binding.environment_ref.trim().is_empty() {
+        return Err("compute_environment_binding_ref_missing".to_string());
+    }
+    if run
+        .environment_binding
+        .environment_version
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_version_missing".to_string());
+    }
+    if run.expected_sample_count == Some(0) {
+        return Err("compute_eval_expected_sample_count_invalid".to_string());
+    }
+    if matches!(
+        run.status,
+        ComputeEvaluationRunStatus::Finalized
+            | ComputeEvaluationRunStatus::Failed
+            | ComputeEvaluationRunStatus::Cancelled
+    ) && run.finalized_at_ms.is_none()
+    {
+        return Err("compute_eval_finalized_at_missing".to_string());
+    }
+    if matches!(run.status, ComputeEvaluationRunStatus::Finalized) && run.summary.is_none() {
+        return Err("compute_eval_summary_missing".to_string());
+    }
+    if let Some(summary) = run.summary.as_ref() {
+        validate_compute_evaluation_summary(summary)?;
+    }
+    for artifact in &run.run_artifacts {
+        validate_compute_evaluation_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_evaluation_sample(sample: &ComputeEvaluationSample) -> Result<(), String> {
+    if sample.eval_run_id.trim().is_empty() {
+        return Err("compute_eval_run_id_missing".to_string());
+    }
+    if sample.sample_id.trim().is_empty() {
+        return Err("compute_eval_sample_id_missing".to_string());
+    }
+    if sample.recorded_at_ms <= 0 {
+        return Err("compute_eval_sample_recorded_at_invalid".to_string());
+    }
+    if sample.score_bps.is_some_and(|value| value > 10_000) {
+        return Err("compute_eval_score_invalid".to_string());
+    }
+    if matches!(sample.status, ComputeEvaluationSampleStatus::Errored)
+        && sample
+            .error_reason
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_eval_sample_error_reason_missing".to_string());
+    }
+    for metric in &sample.metrics {
+        validate_compute_evaluation_metric(metric)?;
+    }
+    for artifact in &sample.artifacts {
+        validate_compute_evaluation_artifact(artifact)?;
     }
     Ok(())
 }
