@@ -1017,6 +1017,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is required before any serious derivative or reservation market can be honest.
 
 44. **Desktop and control plane: surface proof, challenge, and settlement history**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3528`.
    - Providers, buyers, and operators need visibility into why compute was accepted, rejected, challenged, or settled.
    - This should be available both in the GUI and through `autopilotctl`.
 
