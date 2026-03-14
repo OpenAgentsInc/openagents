@@ -216,6 +216,10 @@ Implemented now:
   precision policy, activation checkpointing, long-run memory planning, and
   collective sync attachment machine-legible on top of the fixed-budget trainer
   core.
+- a first typed model-IO portability layer in `psionic-train`, making
+  state-dict traversal, training-group assignment, safetensors export/import,
+  torch-style JSON state artifacts, GGUF import, tokenizer version binding,
+  and adapter merge/unmerge explicit instead of ad hoc.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
@@ -305,6 +309,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical parameter-sharding, optimizer-state-sharding, precision,
   microbatch-accumulation, activation-checkpointing, and memory-budget runbook
   for the distributed optimizer layer in `psionic-train`.
+- **[docs/MODEL_IO_REFERENCE.md](docs/MODEL_IO_REFERENCE.md)** —
+  canonical state-dict traversal, tokenizer binding, safetensors export/import,
+  GGUF import, and adapter merge/unmerge runbook for the portable model-IO
+  layer in `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
