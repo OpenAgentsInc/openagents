@@ -3100,9 +3100,18 @@ pub struct AutopilotChatState {
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
     pub buy_mode_last_targeted_peer_pubkey: Option<String>,
+    autopilot_peer_presence_index_cache: RefCell<Option<AutopilotPeerPresenceIndexCacheEntry>>,
     autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
     buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+}
+
+#[derive(Clone)]
+struct AutopilotPeerPresenceIndexCacheEntry {
+    projection_revision: u64,
+    local_pubkey: Option<String>,
+    config: DefaultNip28ChannelConfig,
+    index: crate::autopilot_peer_roster::AutopilotPeerPresenceIndex,
 }
 
 #[derive(Clone)]
@@ -3221,6 +3230,7 @@ impl Default for AutopilotChatState {
             copy_notice: None,
             copy_notice_until: None,
             buy_mode_last_targeted_peer_pubkey: None,
+            autopilot_peer_presence_index_cache: RefCell::new(None),
             autopilot_peer_roster_cache: RefCell::new(None),
             buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
@@ -4861,13 +4871,45 @@ impl AutopilotChatState {
         config: &DefaultNip28ChannelConfig,
         now_epoch_seconds: u64,
     ) -> Vec<crate::autopilot_peer_roster::AutopilotPeerRosterRow> {
-        crate::autopilot_peer_roster::build_autopilot_peer_roster(
-            &self.managed_chat_projection.snapshot,
+        let index = self.autopilot_peer_presence_index_with_config(config);
+        crate::autopilot_peer_roster::autopilot_peer_roster_rows_from_index(
+            &index,
             &self.managed_chat_projection.local_state,
-            self.managed_chat_local_pubkey(),
-            config,
             now_epoch_seconds,
         )
+    }
+
+    fn autopilot_peer_presence_index_with_config(
+        &self,
+        config: &DefaultNip28ChannelConfig,
+    ) -> crate::autopilot_peer_roster::AutopilotPeerPresenceIndex {
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let local_pubkey = self.managed_chat_local_pubkey().map(str::to_string);
+        let mut cache = self.autopilot_peer_presence_index_cache.borrow_mut();
+        if let Some(cached) = cache.as_ref().filter(|cached| {
+            cached.projection_revision == projection_revision
+                && cached.local_pubkey == local_pubkey
+                && cached.config == *config
+        }) {
+            return cached.index.clone();
+        }
+
+        let index = crate::autopilot_peer_roster::build_autopilot_peer_presence_index(
+            &self.managed_chat_projection.snapshot,
+            self.managed_chat_local_pubkey(),
+            config,
+            cache.as_ref().and_then(|cached| {
+                (cached.local_pubkey == local_pubkey && cached.config == *config)
+                    .then_some(&cached.index)
+            }),
+        );
+        *cache = Some(AutopilotPeerPresenceIndexCacheEntry {
+            projection_revision,
+            local_pubkey,
+            config: config.clone(),
+            index: index.clone(),
+        });
+        index
     }
 
     pub(crate) fn select_autopilot_buy_mode_target(

@@ -70,7 +70,7 @@ pub(crate) struct AutopilotComputePresence {
     pub expires_at: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct MutableAutopilotPeerRosterRow {
     pubkey: String,
     last_chat_message_event_id: Option<String>,
@@ -83,6 +83,16 @@ struct MutableAutopilotPeerRosterRow {
     ready_model: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct AutopilotPeerPresenceIndex {
+    pub source_channel_id: String,
+    pub source_relay_url: String,
+    pub local_pubkey: Option<String>,
+    pub processed_message_count: usize,
+    pub last_processed_message_id: Option<String>,
+    peers: BTreeMap<String, MutableAutopilotPeerRosterRow>,
+}
+
 pub(crate) fn build_autopilot_peer_roster(
     snapshot: &ManagedChatProjectionSnapshot,
     local_state: &ManagedChatLocalState,
@@ -90,8 +100,18 @@ pub(crate) fn build_autopilot_peer_roster(
     config: &DefaultNip28ChannelConfig,
     now_epoch_seconds: u64,
 ) -> Vec<AutopilotPeerRosterRow> {
+    let index = build_autopilot_peer_presence_index(snapshot, local_pubkey, config, None);
+    autopilot_peer_roster_rows_from_index(&index, local_state, now_epoch_seconds)
+}
+
+pub(crate) fn build_autopilot_peer_presence_index(
+    snapshot: &ManagedChatProjectionSnapshot,
+    local_pubkey: Option<&str>,
+    config: &DefaultNip28ChannelConfig,
+    previous_index: Option<&AutopilotPeerPresenceIndex>,
+) -> AutopilotPeerPresenceIndex {
     if !config.is_valid() {
-        return Vec::new();
+        return AutopilotPeerPresenceIndex::default();
     }
 
     let Some(channel) = snapshot
@@ -99,7 +119,7 @@ pub(crate) fn build_autopilot_peer_roster(
         .iter()
         .find(|candidate| candidate.channel_id == config.channel_id)
     else {
-        return Vec::new();
+        return AutopilotPeerPresenceIndex::default();
     };
 
     let local_pubkey = local_pubkey.map(normalize_pubkey);
@@ -107,73 +127,46 @@ pub(crate) fn build_autopilot_peer_roster(
         .relay_url
         .clone()
         .unwrap_or_else(|| config.relay_url.clone());
-    let mut rows = BTreeMap::<String, MutableAutopilotPeerRosterRow>::new();
-
-    for message_id in &channel.message_ids {
+    let mut index = reusable_presence_index(
+        previous_index,
+        channel.channel_id.as_str(),
+        source_relay_url.as_str(),
+        local_pubkey.as_deref(),
+        channel.message_ids.as_slice(),
+    )
+    .unwrap_or_else(|| AutopilotPeerPresenceIndex {
+        source_channel_id: channel.channel_id.clone(),
+        source_relay_url: source_relay_url.clone(),
+        local_pubkey: local_pubkey.clone(),
+        ..AutopilotPeerPresenceIndex::default()
+    });
+    let start = index.processed_message_count.min(channel.message_ids.len());
+    for message_id in &channel.message_ids[start..] {
         let Some(message) = snapshot.messages.get(message_id) else {
             continue;
         };
-        if message.delivery_state != ManagedChatDeliveryState::Confirmed {
-            continue;
-        }
-
-        let normalized_pubkey = normalize_pubkey(message.author_pubkey.as_str());
-        if normalized_pubkey.is_empty()
-            || local_pubkey
-                .as_deref()
-                .is_some_and(|local| local == normalized_pubkey)
-        {
-            continue;
-        }
-
-        let entry = rows.entry(normalized_pubkey.clone()).or_insert_with(|| {
-            MutableAutopilotPeerRosterRow {
-                pubkey: normalized_pubkey.clone(),
-                ..MutableAutopilotPeerRosterRow::default()
-            }
-        });
-
-        if let Some(presence) = parse_autopilot_compute_presence_message(
-            message.content.as_str(),
-            normalized_pubkey.as_str(),
-        ) {
-            if is_newer_observation(
-                entry.last_presence_at,
-                entry.last_presence_event_id.as_deref(),
-                message,
-            ) {
-                entry.last_presence_event_id = Some(message.event_id.clone());
-                entry.last_presence_at = Some(message.created_at);
-                entry.presence_expires_at = Some(presence.expires_at.unwrap_or_else(|| {
-                    message
-                        .created_at
-                        .saturating_add(AUTOPILOT_MAIN_CHANNEL_PRESENCE_STALE_AFTER_SECONDS)
-                }));
-                entry.last_presence_mode = Some(presence.mode);
-                entry.supported_request_kinds = normalize_capabilities(presence.capabilities);
-                entry.ready_model = presence.ready_model;
-            }
-            continue;
-        }
-
-        if is_newer_observation(
-            entry.last_chat_message_at,
-            entry.last_chat_message_event_id.as_deref(),
-            message,
-        ) {
-            entry.last_chat_message_event_id = Some(message.event_id.clone());
-            entry.last_chat_message_at = Some(message.created_at);
-        }
+        apply_message_to_presence_index(&mut index, message, local_pubkey.as_deref());
     }
+    index.processed_message_count = channel.message_ids.len();
+    index.last_processed_message_id = channel.message_ids.last().cloned();
+    index
+}
 
-    let mut rows = rows
-        .into_values()
+pub(crate) fn autopilot_peer_roster_rows_from_index(
+    index: &AutopilotPeerPresenceIndex,
+    local_state: &ManagedChatLocalState,
+    now_epoch_seconds: u64,
+) -> Vec<AutopilotPeerRosterRow> {
+    let mut rows = index
+        .peers
+        .values()
+        .cloned()
         .map(|row| {
             finalize_roster_row(
                 row,
                 local_state,
-                config.channel_id.as_str(),
-                source_relay_url.as_str(),
+                index.source_channel_id.as_str(),
+                index.source_relay_url.as_str(),
                 now_epoch_seconds,
             )
         })
@@ -187,6 +180,88 @@ pub(crate) fn build_autopilot_peer_roster(
             .then_with(|| left.pubkey.cmp(&right.pubkey))
     });
     rows
+}
+
+fn reusable_presence_index(
+    previous_index: Option<&AutopilotPeerPresenceIndex>,
+    source_channel_id: &str,
+    source_relay_url: &str,
+    local_pubkey: Option<&str>,
+    message_ids: &[String],
+) -> Option<AutopilotPeerPresenceIndex> {
+    let previous = previous_index?;
+    if previous.source_channel_id != source_channel_id
+        || previous.source_relay_url != source_relay_url
+        || previous.local_pubkey.as_deref() != local_pubkey
+        || previous.processed_message_count > message_ids.len()
+    {
+        return None;
+    }
+    if previous.processed_message_count > 0
+        && message_ids
+            .get(previous.processed_message_count.saturating_sub(1))
+            .map(String::as_str)
+            != previous.last_processed_message_id.as_deref()
+    {
+        return None;
+    }
+    Some(previous.clone())
+}
+
+fn apply_message_to_presence_index(
+    index: &mut AutopilotPeerPresenceIndex,
+    message: &crate::app_state::ManagedChatMessageProjection,
+    local_pubkey: Option<&str>,
+) {
+    if message.delivery_state != ManagedChatDeliveryState::Confirmed {
+        return;
+    }
+
+    let normalized_pubkey = normalize_pubkey(message.author_pubkey.as_str());
+    if normalized_pubkey.is_empty() || local_pubkey.is_some_and(|local| local == normalized_pubkey)
+    {
+        return;
+    }
+
+    let entry = index
+        .peers
+        .entry(normalized_pubkey.clone())
+        .or_insert_with(|| MutableAutopilotPeerRosterRow {
+            pubkey: normalized_pubkey.clone(),
+            ..MutableAutopilotPeerRosterRow::default()
+        });
+
+    if let Some(presence) = parse_autopilot_compute_presence_message(
+        message.content.as_str(),
+        normalized_pubkey.as_str(),
+    ) {
+        if is_newer_observation(
+            entry.last_presence_at,
+            entry.last_presence_event_id.as_deref(),
+            message,
+        ) {
+            entry.last_presence_event_id = Some(message.event_id.clone());
+            entry.last_presence_at = Some(message.created_at);
+            entry.presence_expires_at = Some(presence.expires_at.unwrap_or_else(|| {
+                message
+                    .created_at
+                    .saturating_add(AUTOPILOT_MAIN_CHANNEL_PRESENCE_STALE_AFTER_SECONDS)
+            }));
+            entry.last_presence_mode = Some(presence.mode);
+            entry.supported_request_kinds = normalize_capabilities(presence.capabilities);
+            entry.ready_model = presence.ready_model;
+        }
+        return;
+    }
+
+    if is_newer_observation(
+        entry.last_chat_message_at,
+        entry.last_chat_message_event_id.as_deref(),
+        message,
+    ) {
+        entry.last_chat_message_event_id = Some(message.event_id.clone());
+        entry.last_chat_message_at = Some(message.created_at);
+    }
 }
 
 pub(crate) fn select_autopilot_buy_mode_target(
@@ -1187,5 +1262,209 @@ mod tests {
         let expected_order = [third.as_str(), second.as_str(), first.as_str()];
         let expected = expected_order[stable_peer_offset(local.as_str(), expected_order.len())];
         assert_eq!(selection.selected_peer_pubkey.as_deref(), Some(expected));
+    }
+
+    #[test]
+    fn incremental_presence_index_matches_full_replay_roster_rows() {
+        let main_channel_id = &"aa".repeat(32);
+        let local = "44".repeat(32);
+        let first = "11".repeat(32);
+        let second = "22".repeat(32);
+        let config = fixture_config(main_channel_id);
+        let initial_snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message("chat-first", main_channel_id, &first, "hello", 10),
+                fixture_message(
+                    "presence-first",
+                    main_channel_id,
+                    &first,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": first,
+                        "capabilities": ["5050"],
+                        "ready_model": "gpt-oss",
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    20,
+                ),
+            ],
+        );
+        let initial_index = build_autopilot_peer_presence_index(
+            &initial_snapshot,
+            Some(local.as_str()),
+            &config,
+            None,
+        );
+        let updated_snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message("chat-first", main_channel_id, &first, "hello", 10),
+                fixture_message(
+                    "presence-first",
+                    main_channel_id,
+                    &first,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": first,
+                        "capabilities": ["5050"],
+                        "ready_model": "gpt-oss",
+                        "expires_at": 100
+                    })
+                    .to_string(),
+                    20,
+                ),
+                fixture_message("chat-second", main_channel_id, &second, "hi there", 25),
+                fixture_message(
+                    "presence-second",
+                    main_channel_id,
+                    &second,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": second,
+                        "capabilities": ["5050"],
+                        "ready_model": "apple-fm",
+                        "expires_at": 95
+                    })
+                    .to_string(),
+                    30,
+                ),
+            ],
+        );
+        let incremental_index = build_autopilot_peer_presence_index(
+            &updated_snapshot,
+            Some(local.as_str()),
+            &config,
+            Some(&initial_index),
+        );
+
+        let replay_rows = build_autopilot_peer_roster(
+            &updated_snapshot,
+            &ManagedChatLocalState::default(),
+            Some(local.as_str()),
+            &config,
+            40,
+        );
+        let indexed_rows = autopilot_peer_roster_rows_from_index(
+            &incremental_index,
+            &ManagedChatLocalState::default(),
+            40,
+        );
+
+        assert_eq!(indexed_rows, replay_rows);
+        assert_eq!(incremental_index.processed_message_count, 4);
+        assert_eq!(
+            incremental_index.last_processed_message_id.as_deref(),
+            Some("presence-second")
+        );
+    }
+
+    #[test]
+    fn incremental_presence_index_matches_full_replay_buy_mode_selection() {
+        let main_channel_id = &"aa".repeat(32);
+        let local = "44".repeat(32);
+        let first = "11".repeat(32);
+        let second = "22".repeat(32);
+        let config = fixture_config(main_channel_id);
+        let initial_snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![fixture_message(
+                "presence-first",
+                main_channel_id,
+                &first,
+                &serde_json::json!({
+                    "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                    "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                    "pubkey": first,
+                    "capabilities": ["5050"],
+                    "expires_at": 80
+                })
+                .to_string(),
+                10,
+            )],
+        );
+        let initial_index = build_autopilot_peer_presence_index(
+            &initial_snapshot,
+            Some(local.as_str()),
+            &config,
+            None,
+        );
+        let updated_snapshot = fixture_snapshot(
+            main_channel_id,
+            Vec::new(),
+            vec![
+                fixture_message(
+                    "presence-first",
+                    main_channel_id,
+                    &first,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": first,
+                        "capabilities": ["5050"],
+                        "expires_at": 80
+                    })
+                    .to_string(),
+                    10,
+                ),
+                fixture_message(
+                    "presence-second",
+                    main_channel_id,
+                    &second,
+                    &serde_json::json!({
+                        "type": AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                        "mode": AUTOPILOT_COMPUTE_PRESENCE_ONLINE_MODE,
+                        "pubkey": second,
+                        "capabilities": ["5050"],
+                        "expires_at": 90
+                    })
+                    .to_string(),
+                    20,
+                ),
+            ],
+        );
+        let incremental_index = build_autopilot_peer_presence_index(
+            &updated_snapshot,
+            Some(local.as_str()),
+            &config,
+            Some(&initial_index),
+        );
+        let indexed_rows = autopilot_peer_roster_rows_from_index(
+            &incremental_index,
+            &ManagedChatLocalState::default(),
+            30,
+        );
+        let replay_rows = build_autopilot_peer_roster(
+            &updated_snapshot,
+            &ManagedChatLocalState::default(),
+            Some(local.as_str()),
+            &config,
+            30,
+        );
+
+        let indexed_selection = select_autopilot_buy_mode_target_from_rows(
+            &updated_snapshot,
+            Some(local.as_str()),
+            &config,
+            Some(second.as_str()),
+            indexed_rows.as_slice(),
+        );
+        let replay_selection = select_autopilot_buy_mode_target_from_rows(
+            &updated_snapshot,
+            Some(local.as_str()),
+            &config,
+            Some(second.as_str()),
+            replay_rows.as_slice(),
+        );
+
+        assert_eq!(indexed_rows, replay_rows);
+        assert_eq!(indexed_selection, replay_selection);
     }
 }
