@@ -302,10 +302,10 @@ training subsystems.
 | `DatasetManifest` | `psionic-data` | versioned dataset, tokenizer, split, and shard-lineage contract | `implemented_early` |
 | `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
-| `RuntimeManifest` | planned proof/environment layer | digest-bound package for artifact, static-config, and runtime lineage used at execution time | `planned` |
+| `RuntimeManifest` | `psionic-runtime` proof layer | digest-bound package for artifact, static-config, mutable-variable, and runtime lineage used at execution time | `implemented_early` |
 | `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |
 | `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | `implemented` |
-| `SessionClaimsBundle` | planned `psionic-net` / proof layer | signed claims that bind session identity to runtime, environment, and artifact digests | `planned` |
+| `SessionClaimsBundle` | `psionic-net` / proof layer | session-scoped claims bound into the authenticated transport payload so peer identity carries runtime-manifest and proof posture in machine-legible form | `implemented_early` |
 | `TrainingCheckpointReference` | `psionic-runtime` | stable identity for one training checkpoint | `implemented` |
 | `TrainingRecoveryContext` | `psionic-runtime` | runtime-visible recovery posture for training-class execution | `implemented` |
 | `TrainingDeviceMeshContext` | `psionic-runtime` | runtime-visible elastic device-mesh posture | `implemented` |

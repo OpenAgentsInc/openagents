@@ -11,6 +11,8 @@ use crate::{
 
 /// Current canonical execution-proof bundle schema version.
 pub const EXECUTION_PROOF_BUNDLE_SCHEMA_VERSION: u16 = 1;
+/// Current canonical runtime-manifest schema version.
+pub const RUNTIME_MANIFEST_SCHEMA_VERSION: u16 = 1;
 
 /// High-level family of execution covered by one canonical proof bundle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +100,240 @@ impl ExecutionProofRuntimeIdentity {
     ) -> Self {
         self.selected_devices = selected_devices;
         self
+    }
+}
+
+/// Artifact family referenced by one runtime manifest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeManifestArtifactKind {
+    /// Environment package or alias resolved at execution time.
+    EnvironmentPackage,
+    /// Served model or weight artifact.
+    ServedArtifact,
+    /// Checkpoint or recoverable train-state artifact.
+    Checkpoint,
+    /// Policy-weight shard or assembled policy artifact.
+    PolicyWeights,
+    /// Sandbox profile or runtime image binding.
+    SandboxProfile,
+    /// Sharded model manifest constraining clustered execution.
+    ShardedModelManifest,
+    /// Generic datastream-backed execution artifact.
+    DatastreamArtifact,
+}
+
+/// One digest-bound artifact binding carried by a runtime manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeManifestArtifactBinding {
+    /// Artifact family.
+    pub kind: RuntimeManifestArtifactKind,
+    /// Stable reference or storage key for the artifact.
+    pub reference: String,
+    /// Stable digest that binds the artifact to execution identity.
+    pub digest: String,
+}
+
+impl RuntimeManifestArtifactBinding {
+    /// Creates one digest-bound artifact binding.
+    #[must_use]
+    pub fn new(
+        kind: RuntimeManifestArtifactKind,
+        reference: impl Into<String>,
+        digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            reference: reference.into(),
+            digest: digest.into(),
+        }
+    }
+}
+
+/// One static configuration input that affects execution identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeManifestStaticConfigBinding {
+    /// Stable config key.
+    pub key: String,
+    /// Stable digest for the identity-relevant config value.
+    pub value_digest: String,
+}
+
+impl RuntimeManifestStaticConfigBinding {
+    /// Creates one identity-relevant config binding.
+    #[must_use]
+    pub fn new(key: impl Into<String>, value_digest: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value_digest: value_digest.into(),
+        }
+    }
+}
+
+/// One mutable variable surfaced for operator visibility but excluded from the identity digest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeManifestMutableVariable {
+    /// Stable variable key.
+    pub key: String,
+    /// Observed runtime value.
+    pub value: String,
+}
+
+impl RuntimeManifestMutableVariable {
+    /// Creates one mutable runtime variable entry.
+    #[must_use]
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
+/// Digest-bound runtime, environment, artifact, and static-config lineage for one execution lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeManifest {
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Stable manifest identifier.
+    pub manifest_id: String,
+    /// Runtime identity facts that define the execution lane.
+    pub runtime_identity: ExecutionProofRuntimeIdentity,
+    /// Validation-matrix claim for the lane, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation: Option<ValidationMatrixReference>,
+    /// Environment package refs or aliases resolved for the lane.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment_refs: Vec<String>,
+    /// Artifact bindings resolved for the lane.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifact_bindings: Vec<RuntimeManifestArtifactBinding>,
+    /// Static config inputs that affect execution identity.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub static_config_bindings: Vec<RuntimeManifestStaticConfigBinding>,
+    /// Mutable variables surfaced for operator truth but excluded from the identity digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mutable_variables: Vec<RuntimeManifestMutableVariable>,
+    /// Stable profile identifier higher layers can evaluate against policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claims_profile_id: Option<String>,
+    /// Digest over the identity-relevant subset of the manifest.
+    pub identity_digest: String,
+    /// Digest over the full manifest, including mutable variables.
+    pub manifest_digest: String,
+}
+
+impl RuntimeManifest {
+    /// Creates a runtime manifest from explicit runtime identity facts.
+    #[must_use]
+    pub fn new(
+        manifest_id: impl Into<String>,
+        runtime_identity: ExecutionProofRuntimeIdentity,
+    ) -> Self {
+        let manifest_id = manifest_id.into();
+        let mut manifest = Self {
+            schema_version: RUNTIME_MANIFEST_SCHEMA_VERSION,
+            manifest_id,
+            runtime_identity,
+            validation: None,
+            environment_refs: Vec::new(),
+            artifact_bindings: Vec::new(),
+            static_config_bindings: Vec::new(),
+            mutable_variables: Vec::new(),
+            claims_profile_id: None,
+            identity_digest: String::new(),
+            manifest_digest: String::new(),
+        };
+        manifest.refresh_digests();
+        manifest
+    }
+
+    /// Attaches a validation-matrix claim.
+    #[must_use]
+    pub fn with_validation(mut self, validation: ValidationMatrixReference) -> Self {
+        self.validation = Some(validation);
+        self.refresh_digests();
+        self
+    }
+
+    /// Appends one environment reference.
+    #[must_use]
+    pub fn with_environment_ref(mut self, environment_ref: impl Into<String>) -> Self {
+        self.environment_refs.push(environment_ref.into());
+        self.environment_refs.sort();
+        self.environment_refs.dedup();
+        self.refresh_digests();
+        self
+    }
+
+    /// Appends one digest-bound artifact binding.
+    #[must_use]
+    pub fn with_artifact_binding(
+        mut self,
+        artifact_binding: RuntimeManifestArtifactBinding,
+    ) -> Self {
+        self.artifact_bindings.push(artifact_binding);
+        self.artifact_bindings.sort_by(|left, right| {
+            left.reference
+                .cmp(&right.reference)
+                .then(left.digest.cmp(&right.digest))
+        });
+        self.artifact_bindings.dedup();
+        self.refresh_digests();
+        self
+    }
+
+    /// Appends one identity-relevant static config binding.
+    #[must_use]
+    pub fn with_static_config_binding(
+        mut self,
+        static_config_binding: RuntimeManifestStaticConfigBinding,
+    ) -> Self {
+        self.static_config_bindings.push(static_config_binding);
+        self.static_config_bindings
+            .sort_by(|left, right| left.key.cmp(&right.key));
+        self.static_config_bindings.dedup();
+        self.refresh_digests();
+        self
+    }
+
+    /// Appends one mutable runtime variable.
+    #[must_use]
+    pub fn with_mutable_variable(
+        mut self,
+        mutable_variable: RuntimeManifestMutableVariable,
+    ) -> Self {
+        self.mutable_variables.push(mutable_variable);
+        self.mutable_variables
+            .sort_by(|left, right| left.key.cmp(&right.key));
+        self.mutable_variables.dedup();
+        self.refresh_digests();
+        self
+    }
+
+    /// Attaches a policy-facing claims profile identifier.
+    #[must_use]
+    pub fn with_claims_profile_id(mut self, claims_profile_id: impl Into<String>) -> Self {
+        self.claims_profile_id = Some(claims_profile_id.into());
+        self.refresh_digests();
+        self
+    }
+
+    /// Recomputes the identity digest from the identity-relevant subset.
+    #[must_use]
+    pub fn stable_identity_digest(&self) -> String {
+        stable_runtime_manifest_identity_digest(self)
+    }
+
+    /// Recomputes the full manifest digest including mutable variables.
+    #[must_use]
+    pub fn stable_manifest_digest(&self) -> String {
+        stable_runtime_manifest_digest(self)
+    }
+
+    fn refresh_digests(&mut self) {
+        self.identity_digest = stable_runtime_manifest_identity_digest(self);
+        self.manifest_digest = stable_runtime_manifest_digest(self);
     }
 }
 
@@ -554,6 +790,79 @@ impl ExecutionProofArtifactResidency {
     }
 }
 
+fn stable_runtime_manifest_identity_digest(manifest: &RuntimeManifest) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"runtime_manifest_identity|");
+    hasher.update(manifest.schema_version.to_string().as_bytes());
+    hasher.update(b"|manifest_id|");
+    hasher.update(manifest.manifest_id.as_bytes());
+    hasher.update(b"|runtime_backend|");
+    hasher.update(manifest.runtime_identity.runtime_backend.as_bytes());
+    hasher.update(b"|toolchain|");
+    hasher.update(
+        serde_json::to_vec(&manifest.runtime_identity.backend_toolchain)
+            .unwrap_or_else(|_| unreachable!("backend toolchain should serialize")),
+    );
+    if let Some(selected_device_inventory) = &manifest.runtime_identity.selected_device_inventory {
+        hasher.update(b"|selected_device_inventory|");
+        hasher.update(
+            serde_json::to_vec(selected_device_inventory)
+                .unwrap_or_else(|_| unreachable!("device inventory should serialize")),
+        );
+    }
+    for selected_device in &manifest.runtime_identity.selected_devices {
+        hasher.update(b"|selected_device|");
+        hasher.update(
+            serde_json::to_vec(selected_device)
+                .unwrap_or_else(|_| unreachable!("selected device should serialize")),
+        );
+    }
+    if let Some(validation) = &manifest.validation {
+        hasher.update(b"|validation|");
+        hasher.update(
+            serde_json::to_vec(validation)
+                .unwrap_or_else(|_| unreachable!("validation should serialize")),
+        );
+    }
+    for environment_ref in &manifest.environment_refs {
+        hasher.update(b"|environment_ref|");
+        hasher.update(environment_ref.as_bytes());
+    }
+    for artifact_binding in &manifest.artifact_bindings {
+        hasher.update(b"|artifact|");
+        hasher.update(
+            serde_json::to_vec(artifact_binding)
+                .unwrap_or_else(|_| unreachable!("artifact binding should serialize")),
+        );
+    }
+    for static_config in &manifest.static_config_bindings {
+        hasher.update(b"|static_config|");
+        hasher.update(
+            serde_json::to_vec(static_config)
+                .unwrap_or_else(|_| unreachable!("static config should serialize")),
+        );
+    }
+    if let Some(claims_profile_id) = &manifest.claims_profile_id {
+        hasher.update(b"|claims_profile_id|");
+        hasher.update(claims_profile_id.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_runtime_manifest_digest(manifest: &RuntimeManifest) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"runtime_manifest|");
+    hasher.update(stable_runtime_manifest_identity_digest(manifest).as_bytes());
+    for mutable_variable in &manifest.mutable_variables {
+        hasher.update(b"|mutable_variable|");
+        hasher.update(
+            serde_json::to_vec(mutable_variable)
+                .unwrap_or_else(|_| unreachable!("mutable variable should serialize")),
+        );
+    }
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -566,7 +875,9 @@ mod tests {
         ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundle,
         ExecutionProofBundleKind, ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity,
         ExecutionTopologyPlan, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        QuantizedActivationFingerprintAdapter, SandboxExecutionEvidence, SandboxExecutionExit,
+        QuantizedActivationFingerprintAdapter, RuntimeManifest, RuntimeManifestArtifactBinding,
+        RuntimeManifestArtifactKind, RuntimeManifestMutableVariable,
+        RuntimeManifestStaticConfigBinding, SandboxExecutionEvidence, SandboxExecutionExit,
         SandboxExecutionExitKind, SandboxExecutionResourceSummary, ServedArtifactIdentity,
         SettlementLinkageInput, ValidationCoverage, ValidationMatrixReference,
     };
@@ -820,5 +1131,37 @@ mod tests {
             bundle.activation_fingerprint_ref.as_deref(),
             Some(artifact.artifact_digest.as_str())
         );
+    }
+
+    #[test]
+    fn runtime_manifest_distinguishes_identity_from_mutable_variables() {
+        let base = RuntimeManifest::new("runtime-manifest-1", runtime_identity())
+            .with_validation(ValidationMatrixReference::minimum(
+                "cuda_text_generation_positive",
+                ValidationCoverage::PositiveExecution,
+            ))
+            .with_environment_ref("env://oa.train/2026.03")
+            .with_artifact_binding(RuntimeManifestArtifactBinding::new(
+                RuntimeManifestArtifactKind::ServedArtifact,
+                "served://gpt-oss-20b",
+                "served-digest-1",
+            ))
+            .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+                "scheduler.policy",
+                "scheduler-digest-1",
+            ))
+            .with_claims_profile_id("cluster.proof.required.v1");
+        let first = base
+            .clone()
+            .with_mutable_variable(RuntimeManifestMutableVariable::new(
+                "CUDA_VISIBLE_DEVICES",
+                "0",
+            ));
+        let second = base.with_mutable_variable(RuntimeManifestMutableVariable::new(
+            "CUDA_VISIBLE_DEVICES",
+            "1",
+        ));
+        assert_eq!(first.identity_digest, second.identity_digest);
+        assert_ne!(first.manifest_digest, second.manifest_digest);
     }
 }
