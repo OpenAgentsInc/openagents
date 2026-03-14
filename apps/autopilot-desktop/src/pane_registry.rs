@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 54] = [
+const PANE_SPECS: [PaneSpec; 55] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -593,6 +593,21 @@ const PANE_SPECS: [PaneSpec; 54] = [
             id: "pane.buy_mode_payments",
             label: "Buy Mode",
             description: "Open the buyer smoke-test loop, targeting state, and payment history surface",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::Nip90SentPayments,
+        title: "NIP-90 Sent Payments",
+        default_width: 1120.0,
+        default_height: 640.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.nip90_sent_payments",
+            label: "NIP-90 Sent Payments",
+            description: "Open definitive buyer sent-payment totals and sats across the current relay scope",
             keybinding: None,
         }),
         hotbar: None,

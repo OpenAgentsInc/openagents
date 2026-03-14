@@ -13,6 +13,7 @@ pub mod frame_debugger;
 pub mod key_ledger;
 pub mod local_inference;
 pub mod log_stream;
+pub mod nip90_sent_payments;
 pub mod presentation;
 pub mod project_ops;
 pub mod provider_control;

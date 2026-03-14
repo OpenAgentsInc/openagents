@@ -112,6 +112,7 @@ pub enum PaneKind {
     JobHistory,
     LogStream,
     BuyModePayments,
+    Nip90SentPayments,
     BuyerRaceMatrix,
     SellerEarningsTimeline,
     SettlementLadder,
@@ -825,6 +826,227 @@ impl BuyModePaneState {
 }
 
 pub type BuyModePaymentsPaneState = BuyModePaneState;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Nip90SentPaymentsWindowPreset {
+    Daily,
+    Rolling24h,
+    Rolling7d,
+    Rolling30d,
+    Custom,
+}
+
+impl Nip90SentPaymentsWindowPreset {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Daily => "Daily",
+            Self::Rolling24h => "24h",
+            Self::Rolling7d => "7d",
+            Self::Rolling30d => "30d",
+            Self::Custom => "Custom",
+        }
+    }
+
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Daily => "daily",
+            Self::Rolling24h => "rolling_24h",
+            Self::Rolling7d => "rolling_7d",
+            Self::Rolling30d => "rolling_30d",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Nip90SentPaymentsResolvedWindow {
+    pub preset: Nip90SentPaymentsWindowPreset,
+    pub start_epoch_seconds: u64,
+    pub end_epoch_seconds: u64,
+}
+
+pub struct Nip90SentPaymentsPaneState {
+    pub selected_window: Nip90SentPaymentsWindowPreset,
+    pub custom_start_epoch_seconds: Option<u64>,
+    pub custom_end_epoch_seconds: Option<u64>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl Default for Nip90SentPaymentsPaneState {
+    fn default() -> Self {
+        Self {
+            selected_window: Nip90SentPaymentsWindowPreset::Daily,
+            custom_start_epoch_seconds: None,
+            custom_end_epoch_seconds: None,
+            last_action: Some("NIP-90 sent-payments report ready".to_string()),
+            last_error: None,
+        }
+    }
+}
+
+impl Nip90SentPaymentsPaneState {
+    pub fn resolve_window(
+        &self,
+        now_epoch_seconds: u64,
+    ) -> Result<Nip90SentPaymentsResolvedWindow, String> {
+        self.resolve_window_for_preset(self.selected_window, now_epoch_seconds)
+    }
+
+    pub fn resolve_window_for_preset(
+        &self,
+        preset: Nip90SentPaymentsWindowPreset,
+        now_epoch_seconds: u64,
+    ) -> Result<Nip90SentPaymentsResolvedWindow, String> {
+        let now_epoch_seconds = now_epoch_seconds.max(1);
+        let (start_epoch_seconds, end_epoch_seconds) = match preset {
+            Nip90SentPaymentsWindowPreset::Daily => {
+                let now_local = Local
+                    .timestamp_opt(now_epoch_seconds as i64, 0)
+                    .single()
+                    .ok_or_else(|| {
+                        format!(
+                            "Resolve local wall-clock timestamp for {}",
+                            now_epoch_seconds
+                        )
+                    })?;
+                let date = now_local.date_naive();
+                let next_day = date.succ_opt().ok_or_else(|| {
+                    format!("Compute next local day for {}", date.format("%Y-%m-%d"))
+                })?;
+                (
+                    local_midnight_epoch_seconds_for_pane(date)?,
+                    local_midnight_epoch_seconds_for_pane(next_day)?,
+                )
+            }
+            Nip90SentPaymentsWindowPreset::Rolling24h => (
+                now_epoch_seconds.saturating_sub(24 * 60 * 60),
+                now_epoch_seconds,
+            ),
+            Nip90SentPaymentsWindowPreset::Rolling7d => (
+                now_epoch_seconds.saturating_sub(7 * 24 * 60 * 60),
+                now_epoch_seconds,
+            ),
+            Nip90SentPaymentsWindowPreset::Rolling30d => (
+                now_epoch_seconds.saturating_sub(30 * 24 * 60 * 60),
+                now_epoch_seconds,
+            ),
+            Nip90SentPaymentsWindowPreset::Custom => {
+                let start_epoch_seconds = self.custom_start_epoch_seconds.ok_or_else(|| {
+                    "Custom NIP-90 sent-payments window start is not set".to_string()
+                })?;
+                let end_epoch_seconds = self.custom_end_epoch_seconds.ok_or_else(|| {
+                    "Custom NIP-90 sent-payments window end is not set".to_string()
+                })?;
+                if start_epoch_seconds >= end_epoch_seconds {
+                    return Err(format!(
+                        "Custom NIP-90 sent-payments window is invalid: start {} must be earlier than end {}",
+                        start_epoch_seconds, end_epoch_seconds
+                    ));
+                }
+                (start_epoch_seconds, end_epoch_seconds)
+            }
+        };
+
+        Ok(Nip90SentPaymentsResolvedWindow {
+            preset,
+            start_epoch_seconds,
+            end_epoch_seconds,
+        })
+    }
+
+    pub fn available_presets(&self) -> Vec<Nip90SentPaymentsWindowPreset> {
+        let mut presets = vec![
+            Nip90SentPaymentsWindowPreset::Daily,
+            Nip90SentPaymentsWindowPreset::Rolling24h,
+            Nip90SentPaymentsWindowPreset::Rolling7d,
+            Nip90SentPaymentsWindowPreset::Rolling30d,
+        ];
+        if self.custom_start_epoch_seconds.is_some() && self.custom_end_epoch_seconds.is_some() {
+            presets.push(Nip90SentPaymentsWindowPreset::Custom);
+        }
+        presets
+    }
+
+    pub fn select_window(
+        &mut self,
+        preset: Nip90SentPaymentsWindowPreset,
+        now_epoch_seconds: u64,
+    ) -> Result<bool, String> {
+        self.resolve_window_for_preset(preset, now_epoch_seconds)?;
+        let changed = self.selected_window != preset;
+        self.selected_window = preset;
+        self.last_action = Some(format!(
+            "NIP-90 sent-payments window set to {}",
+            preset.label()
+        ));
+        self.last_error = None;
+        Ok(changed)
+    }
+
+    pub fn cycle_window(&mut self, now_epoch_seconds: u64, delta: i8) -> Result<bool, String> {
+        let presets = self.available_presets();
+        let current_index = presets
+            .iter()
+            .position(|preset| *preset == self.selected_window)
+            .unwrap_or(0) as isize;
+        let direction = if delta >= 0 { 1 } else { -1 };
+        let next_index = (current_index + direction).rem_euclid(presets.len() as isize) as usize;
+        self.select_window(presets[next_index], now_epoch_seconds)
+    }
+
+    pub fn set_custom_start_epoch_seconds(&mut self, epoch_seconds: u64) {
+        self.custom_start_epoch_seconds = Some(epoch_seconds);
+        self.last_action = Some(format!(
+            "Updated NIP-90 sent-payments custom start to {}",
+            epoch_seconds
+        ));
+        self.last_error = None;
+    }
+
+    pub fn set_custom_end_epoch_seconds(&mut self, epoch_seconds: u64) {
+        self.custom_end_epoch_seconds = Some(epoch_seconds);
+        self.last_action = Some(format!(
+            "Updated NIP-90 sent-payments custom end to {}",
+            epoch_seconds
+        ));
+        self.last_error = None;
+    }
+
+    pub fn record_action(&mut self, action: impl Into<String>) {
+        self.last_action = Some(action.into());
+        self.last_error = None;
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.last_error = Some(error.into());
+    }
+}
+
+fn local_midnight_epoch_seconds_for_pane(date: chrono::NaiveDate) -> Result<u64, String> {
+    match Local.with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0) {
+        chrono::LocalResult::Single(timestamp) => {
+            u64::try_from(timestamp.timestamp()).map_err(|_| {
+                format!(
+                    "Local midnight timestamp should be non-negative for {}",
+                    date.format("%Y-%m-%d")
+                )
+            })
+        }
+        chrono::LocalResult::Ambiguous(earliest, _) => {
+            u64::try_from(earliest.timestamp()).map_err(|_| {
+                format!(
+                    "Local midnight timestamp should be non-negative for {}",
+                    date.format("%Y-%m-%d")
+                )
+            })
+        }
+        chrono::LocalResult::None => Err(format!(
+            "Local midnight does not exist for {}",
+            date.format("%Y-%m-%d")
+        )),
+    }
+}
 
 pub struct SparkReplayPaneState {
     pub cursor_step: usize,
@@ -9891,6 +10113,7 @@ pub struct RenderState {
     pub mission_control: MissionControlPaneState,
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
+    pub nip90_sent_payments: Nip90SentPaymentsPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,

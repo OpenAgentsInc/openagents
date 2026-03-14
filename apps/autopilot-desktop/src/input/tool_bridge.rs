@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::DateTime;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
@@ -37,10 +38,11 @@ use crate::pane_system::{
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
     EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    LocalInferencePaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
-    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    LocalInferencePaneAction, NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction,
+    PaneController, PaneHitAction, ProviderControlPaneAction, ReciprocalLoopPaneAction,
+    RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
+    SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1770,21 +1772,37 @@ fn execute_pane_set_input(
     let value = args.value.clone();
 
     let applied = match kind {
-        PaneKind::AutopilotChat => apply_chat_input(state, &field, &value),
-        PaneKind::RelayConnections => apply_relay_connections_input(state, &field, &value),
-        PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
-        PaneKind::RivePreview => false,
-        PaneKind::Presentation => false,
-        PaneKind::FrameDebugger => false,
-        PaneKind::AppleFmWorkbench => apply_apple_fm_workbench_input(state, &field, &value),
-        PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
-        PaneKind::Settings => apply_settings_input(state, &field, &value),
-        PaneKind::Credentials => apply_credentials_input(state, &field, &value),
-        PaneKind::JobHistory => apply_job_history_input(state, &field, &value),
-        PaneKind::SparkWallet => apply_spark_wallet_input(state, &field, &value),
-        PaneKind::SparkCreateInvoice => apply_create_invoice_input(state, &field, &value),
-        PaneKind::SparkPayInvoice => apply_pay_invoice_input(state, &field, &value),
-        _ => false,
+        PaneKind::AutopilotChat => Ok(apply_chat_input(state, &field, &value)),
+        PaneKind::RelayConnections => Ok(apply_relay_connections_input(state, &field, &value)),
+        PaneKind::LocalInference => Ok(apply_local_inference_input(state, &field, &value)),
+        PaneKind::RivePreview => Ok(false),
+        PaneKind::Presentation => Ok(false),
+        PaneKind::FrameDebugger => Ok(false),
+        PaneKind::AppleFmWorkbench => Ok(apply_apple_fm_workbench_input(state, &field, &value)),
+        PaneKind::NetworkRequests => Ok(apply_network_requests_input(state, &field, &value)),
+        PaneKind::Settings => Ok(apply_settings_input(state, &field, &value)),
+        PaneKind::Credentials => Ok(apply_credentials_input(state, &field, &value)),
+        PaneKind::JobHistory => Ok(apply_job_history_input(state, &field, &value)),
+        PaneKind::SparkWallet => Ok(apply_spark_wallet_input(state, &field, &value)),
+        PaneKind::SparkCreateInvoice => Ok(apply_create_invoice_input(state, &field, &value)),
+        PaneKind::SparkPayInvoice => Ok(apply_pay_invoice_input(state, &field, &value)),
+        PaneKind::Nip90SentPayments => apply_nip90_sent_payments_input(state, &field, &value),
+        _ => Ok(false),
+    };
+
+    let applied = match applied {
+        Ok(applied) => applied,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-PANE-INPUT-INVALID",
+                error,
+                json!({
+                    "pane": pane_kind_key(kind),
+                    "field": args.field,
+                    "value": args.value,
+                }),
+            );
+        }
     };
 
     if !applied {
@@ -2114,6 +2132,17 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     }),
                 );
             }
+            PaneKind::Nip90SentPayments => {
+                map.insert(
+                    "nip90_sent_payments".to_string(),
+                    crate::panes::nip90_sent_payments::snapshot_payload(
+                        &state.nip90_sent_payments,
+                        &state.nip90_buyer_payment_attempts,
+                        &state.relay_connections,
+                        current_epoch_ms() / 1_000,
+                    ),
+                );
+            }
             PaneKind::SparkWallet | PaneKind::SparkCreateInvoice | PaneKind::SparkPayInvoice => {
                 map.insert(
                     "wallet".to_string(),
@@ -2199,6 +2228,43 @@ fn pane_action_to_hit_action(
         PaneKind::LogStream => match action {
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::Nip90SentPayments => match action {
+            "daily" | "today" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::SetWindow(
+                    crate::app_state::Nip90SentPaymentsWindowPreset::Daily,
+                ),
+            )),
+            "24h" | "last_24h" | "rolling_24h" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::SetWindow(
+                    crate::app_state::Nip90SentPaymentsWindowPreset::Rolling24h,
+                ),
+            )),
+            "7d" | "last_7d" | "rolling_7d" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::SetWindow(
+                    crate::app_state::Nip90SentPaymentsWindowPreset::Rolling7d,
+                ),
+            )),
+            "30d" | "last_30d" | "rolling_30d" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::SetWindow(
+                    crate::app_state::Nip90SentPaymentsWindowPreset::Rolling30d,
+                ),
+            )),
+            "custom" | "use_custom" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::SetWindow(
+                    crate::app_state::Nip90SentPaymentsWindowPreset::Custom,
+                ),
+            )),
+            "prev" | "prev_window" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::CyclePreviousWindow,
+            )),
+            "next" | "next_window" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::CycleNextWindow,
+            )),
+            "copy" | "copy_report" => Ok(PaneHitAction::Nip90SentPayments(
+                Nip90SentPaymentsPaneAction::CopyReport,
             )),
             _ => unsupported(),
         },
@@ -3006,6 +3072,30 @@ fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &st
     true
 }
 
+fn apply_nip90_sent_payments_input(
+    state: &mut RenderState,
+    field: &str,
+    value: &str,
+) -> Result<bool, String> {
+    match field {
+        "window_start" | "start" | "custom_start" | "start_epoch_seconds" => {
+            let epoch_seconds = parse_nip90_sent_payments_boundary(value)?;
+            state
+                .nip90_sent_payments
+                .set_custom_start_epoch_seconds(epoch_seconds);
+            Ok(true)
+        }
+        "window_end" | "end" | "custom_end" | "end_epoch_seconds" => {
+            let epoch_seconds = parse_nip90_sent_payments_boundary(value)?;
+            state
+                .nip90_sent_payments
+                .set_custom_end_epoch_seconds(epoch_seconds);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 fn apply_settings_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
         "relay_url" => state.settings_inputs.relay_url.set_value(value.to_string()),
@@ -3046,6 +3136,22 @@ fn apply_job_history_input(state: &mut RenderState, field: &str, value: &str) ->
         return true;
     }
     false
+}
+
+fn parse_nip90_sent_payments_boundary(value: &str) -> Result<u64, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("NIP-90 sent-payments boundary cannot be empty".to_string());
+    }
+    if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
+        return trimmed
+            .parse::<u64>()
+            .map_err(|error| format!("Parse epoch-seconds boundary '{trimmed}': {error}"));
+    }
+    let timestamp = DateTime::parse_from_rfc3339(trimmed)
+        .map_err(|error| format!("Parse RFC3339 boundary '{trimmed}': {error}"))?;
+    u64::try_from(timestamp.timestamp())
+        .map_err(|_| format!("Boundary '{trimmed}' must be non-negative"))
 }
 
 fn apply_spark_wallet_input(state: &mut RenderState, field: &str, value: &str) -> bool {
@@ -6024,6 +6130,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "buy_payments",
             "payment_history",
         ],
+        PaneKind::Nip90SentPayments => &[
+            "nip90_sent_payments",
+            "sent_payments",
+            "buyer_sent_payments",
+            "daily_sent_report",
+        ],
         PaneKind::BuyerRaceMatrix => &[
             "buyer_race_matrix",
             "race_matrix",
@@ -6104,6 +6216,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobHistory => "job_history",
         PaneKind::LogStream => "log_stream",
         PaneKind::BuyModePayments => "buy_mode",
+        PaneKind::Nip90SentPayments => "nip90_sent_payments",
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
         PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
         PaneKind::SettlementLadder => "settlement_ladder",
@@ -6153,17 +6266,17 @@ mod tests {
         enforce_labor_evidence_uri_scope, enforce_matching_labor_contract_scope, normalize_key,
         pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
         parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
-        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset,
-        resolve_pane_kind_for_runtime, run_blink_swap_script_json,
+        parse_nip90_sent_payments_boundary, parse_swap_direction, parse_swap_unit,
+        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
         select_existing_blink_swap_script_path, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
-        PaneKind,
+        Nip90SentPaymentsWindowPreset, PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, PaneHitAction, ProviderControlPaneAction, RelayConnectionsPaneAction,
-        SettingsPaneAction,
+        CadDemoPaneAction, Nip90SentPaymentsPaneAction, PaneHitAction, ProviderControlPaneAction,
+        RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -6450,6 +6563,10 @@ mod tests {
             resolve_pane_kind_for_runtime("go_online"),
             Some(PaneKind::ProviderControl)
         );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("sent_payments"),
+            Some(PaneKind::Nip90SentPayments)
+        );
     }
 
     #[test]
@@ -6462,6 +6579,10 @@ mod tests {
         assert_eq!(pane_kind_key(PaneKind::AutopilotChat), "autopilot_chat");
         assert_eq!(pane_kind_key(PaneKind::Calculator), "calculator");
         assert_eq!(pane_kind_key(PaneKind::FrameDebugger), "frame_debugger");
+        assert_eq!(
+            pane_kind_key(PaneKind::Nip90SentPayments),
+            "nip90_sent_payments"
+        );
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
             "spark_lightning_wallet"
@@ -6525,6 +6646,18 @@ mod tests {
                 .expect("wallet refresh"),
             PaneHitAction::Spark(SparkPaneAction::Refresh)
         );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::Nip90SentPayments, "daily", None)
+                .expect("sent-payments daily"),
+            PaneHitAction::Nip90SentPayments(Nip90SentPaymentsPaneAction::SetWindow(
+                Nip90SentPaymentsWindowPreset::Daily
+            ))
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::Nip90SentPayments, "copy_report", None)
+                .expect("sent-payments copy"),
+            PaneHitAction::Nip90SentPayments(Nip90SentPaymentsPaneAction::CopyReport)
+        );
     }
 
     #[test]
@@ -6536,6 +6669,19 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RelayConnections, "select_row", Some(2))
                 .expect("with index"),
             PaneHitAction::RelayConnections(RelayConnectionsPaneAction::SelectRow(2))
+        );
+    }
+
+    #[test]
+    fn parse_nip90_sent_payments_boundary_supports_epoch_and_rfc3339() {
+        assert_eq!(
+            parse_nip90_sent_payments_boundary("1762700100").expect("epoch boundary"),
+            1_762_700_100
+        );
+        assert_eq!(
+            parse_nip90_sent_payments_boundary("2025-11-09T03:35:00+00:00")
+                .expect("rfc3339 boundary"),
+            1_762_659_300
         );
     }
 

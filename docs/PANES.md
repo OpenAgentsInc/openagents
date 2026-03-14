@@ -148,6 +148,12 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Ledger rows make amount, fees, request identity, provider Nostr pubkey, and Lightning destination pubkey legible together, with degraded source labels when only projected evidence is available.
   - `OPENAGENTS_ENABLE_BUY_MODE` now only suppresses this pane/flow when explicitly disabled; the default shell assumes Buy Mode is available.
   - Action: start/stop loop and copy ledger.
+- `NIP-90 Sent Payments`
+  - Definitive buyer-side sent-payment report pane backed by the app-owned `stream.nip90_buyer_payment_attempts.v1` ledger.
+  - Shows wallet-authoritative `payment_count`, `total_sats_sent`, `total_fee_sats`, `total_wallet_debit_sats`, selected window, connected relay count, deduped request count, degraded-binding count, and latest counted payment timestamp.
+  - Presets: `Daily` (current local calendar day), rolling `24h`, `7d`, `30d`, plus `Custom` when absolute start/end boundaries have been supplied through pane inputs or control tooling.
+  - Connected relays define the current request/result/invoice evidence scope, but definitive totals count only wallet-settled buyer sends after payment-pointer dedupe.
+  - Actions: switch report window, cycle windows from keyboard/tooling, and copy the current report.
 - `Buyer Race Matrix`
   - Visualization-first buyer pane for current NIP-90 provider competition.
   - Centers the current request and paints one vertical lane per provider pubkey with separate `SEL`, `RES`, `INV`, and `PAY` role chips when those roles split.
