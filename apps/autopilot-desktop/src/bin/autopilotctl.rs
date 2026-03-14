@@ -11,8 +11,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
     DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
-    DesktopControlManifest, DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-    control_manifest_path,
+    DesktopControlLocalRuntimeStatus, DesktopControlManifest,
+    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot, control_manifest_path,
+};
+use autopilot_desktop::{
+    compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
+    local_runtime_execution_posture_label, local_runtime_scheduler_posture_label,
 };
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -1944,9 +1948,10 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.provider.blocker_codes.len()
     );
     println!(
-        "local runtime: lane={} policy={} ready={} go_online_ready={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} model={} backend={} load={}",
+        "local runtime: lane={} policy={} posture={} ready={} go_online_ready={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} model={} backend={} load={}",
         snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
         snapshot.local_runtime.policy,
+        local_runtime_execution_posture_label(snapshot.local_runtime.diagnostics.posture),
         snapshot.local_runtime.runtime_ready,
         snapshot.local_runtime.go_online_ready,
         snapshot.local_runtime.workbench_label,
@@ -3264,9 +3269,10 @@ fn print_research_text(payload: &Value) {
 
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
     println!(
-        "local runtime: lane={} policy={} ready={} go_online_ready={} sell_compute_supported={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} label={}",
+        "local runtime: lane={} policy={} posture={} ready={} go_online_ready={} sell_compute_supported={} workbench={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={} label={}",
         snapshot.local_runtime.lane.as_deref().unwrap_or("-"),
         snapshot.local_runtime.policy,
+        local_runtime_execution_posture_label(snapshot.local_runtime.diagnostics.posture),
         snapshot.local_runtime.runtime_ready,
         snapshot.local_runtime.go_online_ready,
         snapshot.local_runtime.supports_sell_compute,
@@ -3287,6 +3293,9 @@ fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
         snapshot.local_runtime.load_label,
         snapshot.local_runtime.status_stream
     );
+    for line in local_runtime_diagnostic_lines(&snapshot.local_runtime) {
+        println!("{line}");
+    }
     println!("status: {}", snapshot.local_runtime.status_line);
     if let Some(hint) = snapshot.local_runtime.go_online_hint.as_deref() {
         println!("go_online_hint: {hint}");
@@ -3294,6 +3303,66 @@ fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
     for line in &snapshot.local_runtime.detail_lines {
         println!("detail: {line}");
     }
+}
+
+fn local_runtime_diagnostic_lines(status: &DesktopControlLocalRuntimeStatus) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(scheduler_posture) = local_runtime_scheduler_posture_label(&status.diagnostics) {
+        lines.push(format!("scheduler: {scheduler_posture}"));
+    }
+    if let Some(resources) = status.diagnostics.runtime_resources.as_ref() {
+        lines.push(format!(
+            "plan_cache: entries={} bytes={} limit={}",
+            resources.execution_plan_cache.state.cached_entries,
+            resources.execution_plan_cache.state.cached_bytes,
+            resources
+                .execution_plan_cache
+                .policy
+                .max_cached_bytes
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unbounded".to_string())
+        ));
+        lines.push(format!(
+            "kernel_cache: entries={} bytes={} limit={}",
+            resources.kernel_cache.state.cached_entries,
+            resources.kernel_cache.state.cached_bytes,
+            resources
+                .kernel_cache
+                .policy
+                .max_cached_bytes
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unbounded".to_string())
+        ));
+    }
+    if let Some(compile_path) = status.diagnostics.last_compile_path.as_ref() {
+        lines.push(format!(
+            "compile_path: temperature={} plan={} kernel={}",
+            compile_path_temperature_label(compile_path.temperature),
+            compile_path.execution_plan_cache.detail,
+            compile_path.kernel_cache.detail
+        ));
+    }
+    if let Some(duration_ns) = status.diagnostics.last_cold_compile_duration_ns {
+        lines.push(format!("last_cold_compile_ns: {duration_ns}"));
+    }
+    if let Some(duration_ns) = status.diagnostics.last_warm_refresh_duration_ns {
+        lines.push(format!("last_warm_refresh_ns: {duration_ns}"));
+    }
+    if let Some(invalidation) = status.diagnostics.last_cache_invalidation.as_ref() {
+        lines.push(format!(
+            "cache_invalidation: reason={} at={} detail={}",
+            local_runtime_cache_invalidation_reason_label(invalidation.reason),
+            invalidation.observed_at_epoch_ms,
+            invalidation.summary
+        ));
+    }
+    if let Some(failure) = status.diagnostics.last_compile_failure.as_ref() {
+        lines.push(format!(
+            "compile_failure: at={} detail={}",
+            failure.observed_at_epoch_ms, failure.summary
+        ));
+    }
+    lines
 }
 
 fn print_gpt_oss_text(snapshot: &DesktopControlSnapshot) {
@@ -3615,7 +3684,17 @@ mod tests {
         DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
         DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
     };
+    use autopilot_desktop::{
+        LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
+        LocalRuntimeCompileFailure, LocalRuntimeDiagnostics, LocalRuntimeExecutionPosture,
+    };
     use clap::Parser;
+    use psionic_runtime::{
+        AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendRuntimeResources,
+        CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
+        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, LocalRuntimeObservability,
+    };
     use psionic_sandbox::ProviderSandboxEntrypointType;
     use std::path::PathBuf;
 
@@ -3650,6 +3729,102 @@ mod tests {
             generated_at_epoch_seconds: 1_773_550_801,
             generated_at_rfc3339: "2026-03-15T05:00:01+00:00".to_string(),
         }
+    }
+
+    #[test]
+    fn local_runtime_diagnostic_lines_surface_scheduler_cache_and_failure_truth() {
+        let mut snapshot = sample_snapshot();
+        snapshot.local_runtime.diagnostics = LocalRuntimeDiagnostics {
+            posture: LocalRuntimeExecutionPosture::CompileFailed,
+            observability: Some(LocalRuntimeObservability::default()),
+            runtime_resources: Some(BackendRuntimeResources {
+                execution_plan_cache: ExecutionPlanCacheReport {
+                    policy: ExecutionPlanCachePolicy::bounded(8, Some(4096)),
+                    state: ExecutionPlanCacheState {
+                        cached_entries: 2,
+                        cached_bytes: 512,
+                    },
+                },
+                allocator_pool: AllocatorPoolReport {
+                    policy: AllocatorPoolPolicy::disabled(),
+                    state: AllocatorPoolState::default(),
+                },
+                kernel_cache: KernelCacheReport {
+                    policy: KernelCachePolicy::bounded(4, Some(2048)),
+                    state: KernelCacheState {
+                        cached_entries: 1,
+                        cached_bytes: 256,
+                    },
+                },
+                device_memory_budget: None,
+            }),
+            last_compile_path: Some(CompilePathEvidence {
+                temperature: CompilePathTemperature::WarmReuse,
+                execution_plan_cache: CacheObservation::new(
+                    CacheKind::ExecutionPlan,
+                    CacheAction::Reuse,
+                    "reused cached plan",
+                ),
+                kernel_cache: CacheObservation::new(
+                    CacheKind::KernelCache,
+                    CacheAction::Reuse,
+                    "reused cached kernels",
+                ),
+            }),
+            last_cold_compile_duration_ns: Some(42),
+            last_warm_refresh_duration_ns: Some(7),
+            last_cache_invalidation: Some(LocalRuntimeCacheInvalidation {
+                reason: LocalRuntimeCacheInvalidationReason::BackendChange,
+                summary: "backend changed".to_string(),
+                observed_at_epoch_ms: 99,
+            }),
+            last_compile_failure: Some(LocalRuntimeCompileFailure {
+                summary: "compile failed".to_string(),
+                observed_at_epoch_ms: 100,
+            }),
+            ..LocalRuntimeDiagnostics::default()
+        };
+        let lines = super::local_runtime_diagnostic_lines(&snapshot.local_runtime);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("scheduler: single_request_only/")),
+            "missing scheduler line: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("plan_cache: entries=2"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("kernel_cache: entries=1"))
+        );
+        assert!(
+            lines.iter().any(|line| {
+                line.contains("compile_path: temperature=warm_reuse")
+                    && line.contains("reused cached plan")
+            }),
+            "missing compile path line: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line == "last_cold_compile_ns: 42"),
+            "missing cold compile line: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| {
+                line.contains("cache_invalidation: reason=backend_change")
+                    && line.contains("backend changed")
+            }),
+            "missing invalidation line: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("compile_failure: at=100 detail=compile failed")),
+            "missing compile failure line: {lines:?}"
+        );
     }
 
     #[test]

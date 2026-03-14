@@ -48,7 +48,7 @@ use crate::app_state::{
     mission_control_local_runtime_view_model,
 };
 use crate::bitcoin_display::format_sats_amount;
-use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
+use crate::local_inference_runtime::{LocalInferenceRuntimeCommand, LocalRuntimeDiagnostics};
 use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
@@ -57,7 +57,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 11;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 12;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -158,6 +158,7 @@ pub struct DesktopControlLocalRuntimeStatus {
     pub status_stream: String,
     pub status_line: String,
     pub detail_lines: Vec<String>,
+    pub diagnostics: LocalRuntimeDiagnostics,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1907,9 +1908,10 @@ fn provider_status_summary(status: &DesktopControlProviderStatus) -> String {
 
 fn local_runtime_status_summary(status: &DesktopControlLocalRuntimeStatus) -> String {
     format!(
-        "local runtime lane={} policy={} ready={} go_online_ready={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={}",
+        "local runtime lane={} policy={} posture={:?} ready={} go_online_ready={} text={} streaming={} structured={} model_management={} sessions={} action={} enabled={}",
         status.lane.as_deref().unwrap_or("none"),
         status.policy,
+        status.diagnostics.posture,
         status.runtime_ready,
         status.go_online_ready,
         status.supports_run_text,
@@ -2096,6 +2098,7 @@ fn desktop_control_local_runtime_status(state: &RenderState) -> DesktopControlLo
             .into_iter()
             .map(|(_, text)| text)
             .collect(),
+        diagnostics: state.gpt_oss_execution.diagnostics.clone(),
     }
 }
 
@@ -6089,11 +6092,12 @@ mod tests {
         DesktopControlSessionStatus, DesktopControlSnapshot,
         DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
         DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, apply_response_snapshot_metadata,
-        build_nip90_sent_payments_report_payload, build_settlement_history,
-        challenges_by_delivery_proof, command_outcome_event, command_received_event,
-        desktop_control_challenge_history_status, desktop_control_proof_history_status,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
+        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -6199,6 +6203,7 @@ mod tests {
                 detail_lines: vec![
                     "Apple FM: Refreshed Apple FM bridge health; model ready.".to_string(),
                 ],
+                diagnostics: LocalRuntimeDiagnostics::default(),
             },
             gpt_oss: DesktopControlGptOssStatus {
                 detected: false,
@@ -7999,6 +8004,7 @@ mod tests {
                 "GPT-OSS backend: CUDA".to_string(),
                 "GPT-OSS load state: loaded".to_string(),
             ],
+            diagnostics: LocalRuntimeDiagnostics::default(),
         };
         snapshot.gpt_oss = DesktopControlGptOssStatus {
             detected: true,

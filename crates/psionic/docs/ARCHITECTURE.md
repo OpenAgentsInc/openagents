@@ -299,6 +299,7 @@ training subsystems.
 | --- | --- | --- | --- |
 | `RuntimeWorkItem` | `psionic-runtime` | one low-level schedulable unit of work | `implemented` |
 | `ExecutionProofBundle` | `psionic-runtime` | canonical execution evidence for runtime work | `implemented` |
+| `LocalRuntimeObservability` + `BackendRuntimeResources` + `CompilePathEvidence` | `psionic-runtime` / `psionic-serve` | machine-legible local-runtime operator truth for execution posture, queue/scheduler posture, backend health, and compile/cache state | `implemented` |
 | `DatastreamManifest` | `psionic-datastream` | full resumable manifest for one artifact stream | `implemented` |
 | `DatastreamManifestRef` | `psionic-datastream` | compact artifact reference embedded in other contracts, including explicit distributed KV spill/restore locators | `implemented` |
 | `DatastreamPolicyWeightBroadcastManifest` | `psionic-datastream` | lightweight control-plane summary for a multi-shard policy-weight artifact | `implemented_early` |

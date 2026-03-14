@@ -555,6 +555,7 @@ dependencies = [
  "pollster",
  "psionic-apple-fm",
  "psionic-research",
+ "psionic-runtime",
  "psionic-sandbox",
  "psionic-serve",
  "qrcode",

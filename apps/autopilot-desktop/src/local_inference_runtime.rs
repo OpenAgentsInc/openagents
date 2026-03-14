@@ -1,15 +1,20 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::state::job_inbox::JobExecutionParam;
 use openagents_kernel_core::ids::sha256_prefixed_text;
+use psionic_runtime::{
+    BackendRuntimeResources, BatchExecutionPosture, CacheInvalidationTrigger, CompilePathEvidence,
+    CompilePathTemperature, LocalRuntimeObservability, QueueDiscipline,
+};
 use psionic_serve::{
     CpuGgufGptOssTextGenerationService, CpuReferenceTextGenerationService,
     CudaGgufGptOssTextGenerationService, GenerationLoadState, GenerationOptions, GenerationRequest,
     ManagedTextGenerationRuntime, MetalGgufGptOssTextGenerationService, TextGenerationExecutor,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 const DEFAULT_GPT_OSS_KEEPALIVE_MILLIS: u64 = 300_000;
@@ -69,6 +74,219 @@ impl LocalInferenceExecutionProvenance {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalRuntimeExecutionPosture {
+    #[default]
+    Cold,
+    Warming,
+    Warm,
+    CompileFailed,
+    CacheInvalidated,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalRuntimeCacheInvalidationReason {
+    ExplicitReset,
+    BackendChange,
+    ModelChange,
+    ModelMetadataChange,
+    DTypeChange,
+    ShapeChange,
+    ExecutionProfileChange,
+    RuntimeBinaryUpgrade,
+    BackendToolchainUpgrade,
+    TokenizerDrift,
+    ChatTemplateDrift,
+    GenerationDefaultsDrift,
+    QuantizationChange,
+    PlanFormatUpgrade,
+    KernelFormatUpgrade,
+    PagedTensorFormatUpgrade,
+    PrefixCacheFormatUpgrade,
+    KvStateFormatUpgrade,
+    ClusterRouteChange,
+    ClusterTopologyChange,
+}
+
+impl LocalRuntimeCacheInvalidationReason {
+    fn from_trigger(trigger: CacheInvalidationTrigger) -> Self {
+        match trigger {
+            CacheInvalidationTrigger::BinaryUpgrade => Self::RuntimeBinaryUpgrade,
+            CacheInvalidationTrigger::BackendToolchainUpgrade => Self::BackendToolchainUpgrade,
+            CacheInvalidationTrigger::ModelMetadataChange => Self::ModelMetadataChange,
+            CacheInvalidationTrigger::TokenizerDrift => Self::TokenizerDrift,
+            CacheInvalidationTrigger::ChatTemplateDrift => Self::ChatTemplateDrift,
+            CacheInvalidationTrigger::GenerationDefaultsDrift => Self::GenerationDefaultsDrift,
+            CacheInvalidationTrigger::QuantizationChange => Self::QuantizationChange,
+            CacheInvalidationTrigger::PlanFormatUpgrade => Self::PlanFormatUpgrade,
+            CacheInvalidationTrigger::KernelFormatUpgrade => Self::KernelFormatUpgrade,
+            CacheInvalidationTrigger::PagedTensorFormatUpgrade => Self::PagedTensorFormatUpgrade,
+            CacheInvalidationTrigger::PrefixCacheFormatUpgrade => Self::PrefixCacheFormatUpgrade,
+            CacheInvalidationTrigger::KvStateFormatUpgrade => Self::KvStateFormatUpgrade,
+            CacheInvalidationTrigger::ClusterRouteChange => Self::ClusterRouteChange,
+            CacheInvalidationTrigger::ClusterTopologyChange => Self::ClusterTopologyChange,
+            CacheInvalidationTrigger::ExplicitReset => Self::ExplicitReset,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalRuntimeCacheInvalidation {
+    pub reason: LocalRuntimeCacheInvalidationReason,
+    pub summary: String,
+    pub observed_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalRuntimeCompileFailure {
+    pub summary: String,
+    pub observed_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalRuntimeDiagnostics {
+    pub posture: LocalRuntimeExecutionPosture,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<LocalRuntimeObservability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_resources: Option<BackendRuntimeResources>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_compile_path: Option<CompilePathEvidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_compile_path_observed_at_epoch_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_cold_compile_duration_ns: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_warm_refresh_duration_ns: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_cache_invalidation: Option<LocalRuntimeCacheInvalidation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_compile_failure: Option<LocalRuntimeCompileFailure>,
+}
+
+impl LocalRuntimeDiagnostics {
+    fn refresh_posture(&mut self, busy: bool) {
+        self.posture = if busy {
+            LocalRuntimeExecutionPosture::Warming
+        } else if self.has_active_compile_failure() {
+            LocalRuntimeExecutionPosture::CompileFailed
+        } else if self.has_active_cache_invalidation() {
+            LocalRuntimeExecutionPosture::CacheInvalidated
+        } else if self
+            .last_compile_path
+            .as_ref()
+            .is_some_and(|value| value.temperature == CompilePathTemperature::WarmReuse)
+        {
+            LocalRuntimeExecutionPosture::Warm
+        } else {
+            LocalRuntimeExecutionPosture::Cold
+        };
+    }
+
+    fn has_active_cache_invalidation(&self) -> bool {
+        match (
+            self.last_cache_invalidation.as_ref(),
+            self.last_compile_path_observed_at_epoch_ms,
+        ) {
+            (Some(invalidation), Some(compiled_at)) => {
+                invalidation.observed_at_epoch_ms >= compiled_at
+            }
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
+    }
+
+    fn has_active_compile_failure(&self) -> bool {
+        match (
+            self.last_compile_failure.as_ref(),
+            self.last_compile_path_observed_at_epoch_ms,
+        ) {
+            (Some(failure), Some(compiled_at)) => failure.observed_at_epoch_ms >= compiled_at,
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
+    }
+}
+
+pub fn local_runtime_execution_posture_label(
+    posture: LocalRuntimeExecutionPosture,
+) -> &'static str {
+    match posture {
+        LocalRuntimeExecutionPosture::Cold => "cold",
+        LocalRuntimeExecutionPosture::Warming => "warming",
+        LocalRuntimeExecutionPosture::Warm => "warm",
+        LocalRuntimeExecutionPosture::CompileFailed => "compile_failed",
+        LocalRuntimeExecutionPosture::CacheInvalidated => "cache_invalidated",
+    }
+}
+
+pub fn local_runtime_cache_invalidation_reason_label(
+    reason: LocalRuntimeCacheInvalidationReason,
+) -> &'static str {
+    match reason {
+        LocalRuntimeCacheInvalidationReason::ExplicitReset => "explicit_reset",
+        LocalRuntimeCacheInvalidationReason::BackendChange => "backend_change",
+        LocalRuntimeCacheInvalidationReason::ModelChange => "model_change",
+        LocalRuntimeCacheInvalidationReason::ModelMetadataChange => "model_metadata_change",
+        LocalRuntimeCacheInvalidationReason::DTypeChange => "dtype_change",
+        LocalRuntimeCacheInvalidationReason::ShapeChange => "shape_change",
+        LocalRuntimeCacheInvalidationReason::ExecutionProfileChange => "execution_profile_change",
+        LocalRuntimeCacheInvalidationReason::RuntimeBinaryUpgrade => "runtime_binary_upgrade",
+        LocalRuntimeCacheInvalidationReason::BackendToolchainUpgrade => "backend_toolchain_upgrade",
+        LocalRuntimeCacheInvalidationReason::TokenizerDrift => "tokenizer_drift",
+        LocalRuntimeCacheInvalidationReason::ChatTemplateDrift => "chat_template_drift",
+        LocalRuntimeCacheInvalidationReason::GenerationDefaultsDrift => "generation_defaults_drift",
+        LocalRuntimeCacheInvalidationReason::QuantizationChange => "quantization_change",
+        LocalRuntimeCacheInvalidationReason::PlanFormatUpgrade => "plan_format_upgrade",
+        LocalRuntimeCacheInvalidationReason::KernelFormatUpgrade => "kernel_format_upgrade",
+        LocalRuntimeCacheInvalidationReason::PagedTensorFormatUpgrade => {
+            "paged_tensor_format_upgrade"
+        }
+        LocalRuntimeCacheInvalidationReason::PrefixCacheFormatUpgrade => {
+            "prefix_cache_format_upgrade"
+        }
+        LocalRuntimeCacheInvalidationReason::KvStateFormatUpgrade => "kv_state_format_upgrade",
+        LocalRuntimeCacheInvalidationReason::ClusterRouteChange => "cluster_route_change",
+        LocalRuntimeCacheInvalidationReason::ClusterTopologyChange => "cluster_topology_change",
+    }
+}
+
+pub fn compile_path_temperature_label(temperature: CompilePathTemperature) -> &'static str {
+    match temperature {
+        CompilePathTemperature::ColdCompile => "cold_compile",
+        CompilePathTemperature::WarmReuse => "warm_reuse",
+    }
+}
+
+pub fn local_runtime_scheduler_posture_label(
+    diagnostics: &LocalRuntimeDiagnostics,
+) -> Option<String> {
+    let observability = diagnostics.observability.as_ref()?;
+    let batch_posture = match observability.execution_profile.batch_posture {
+        BatchExecutionPosture::SingleRequestOnly => "single_request_only",
+        BatchExecutionPosture::CallerStaticBatch => "caller_static_batch",
+        BatchExecutionPosture::SchedulerStaticBatch => "scheduler_static_batch",
+        BatchExecutionPosture::ContinuousBatch => "continuous_batch",
+    };
+    let queue = match observability.execution_profile.queue_policy.discipline {
+        QueueDiscipline::DirectCallerBackpressure => "direct_caller_backpressure",
+        QueueDiscipline::Fifo => "fifo",
+    };
+    Some(format!(
+        "{batch_posture}/{queue} active={} queued={}",
+        observability
+            .execution_profile
+            .queue_policy
+            .max_active_requests,
+        observability
+            .execution_profile
+            .queue_policy
+            .max_queued_requests
+    ))
+}
+
 /// Backend-neutral local inference snapshot kept in the app seam.
 #[derive(Clone, Debug, Default)]
 pub struct LocalInferenceRuntimeSnapshot {
@@ -86,6 +304,7 @@ pub struct LocalInferenceRuntimeSnapshot {
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,
     pub last_metrics: Option<LocalInferenceExecutionMetrics>,
+    pub diagnostics: LocalRuntimeDiagnostics,
     pub refreshed_at: Option<Instant>,
 }
 
@@ -164,6 +383,47 @@ pub(crate) fn initial_local_inference_runtime_snapshot() -> LocalInferenceExecut
     configured_runtime_snapshot(model_path.as_path(), GptOssRuntimeBackend::from_env())
 }
 
+fn current_epoch_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn elapsed_ns(started_at: Instant) -> u64 {
+    started_at
+        .elapsed()
+        .as_nanos()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn artifact_fingerprint(path: &Path) -> Option<String> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis())
+        .unwrap_or(0);
+    Some(format!(
+        "{}:{}:{}",
+        path.display(),
+        metadata.len(),
+        modified
+    ))
+}
+
+fn looks_like_compile_failure(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("compile")
+        || normalized.contains("execution plan")
+        || normalized.contains("decode-step plan")
+        || normalized.contains("kernel cache")
+}
+
 /// In-process Psionic adapter for the app-owned runtime seam.
 pub struct PsionicRuntimeAdapter {
     service: CpuReferenceTextGenerationService,
@@ -194,6 +454,7 @@ impl PsionicRuntimeAdapter {
     fn refresh_snapshot(&mut self, action: String) {
         let configured_model = self.configured_model_id();
         let loaded = self.service.loaded_models();
+        let observability = self.service.observability();
         let loaded_models = loaded
             .models
             .into_iter()
@@ -206,6 +467,10 @@ impl PsionicRuntimeAdapter {
         self.snapshot.loaded_models = loaded_models;
         self.snapshot.last_action = Some(action);
         self.snapshot.last_error = None;
+        self.snapshot.diagnostics.observability = Some(observability);
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
         self.snapshot.refreshed_at = Some(Instant::now());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Snapshot(Box::new(
@@ -218,6 +483,15 @@ impl PsionicRuntimeAdapter {
         self.snapshot.last_request_id = Some(request_id.clone());
         self.snapshot.last_error = Some(error.clone());
         self.snapshot.last_action = Some(String::from("Psionic generation failed"));
+        if looks_like_compile_failure(error.as_str()) {
+            self.snapshot.diagnostics.last_compile_failure = Some(LocalRuntimeCompileFailure {
+                summary: error.clone(),
+                observed_at_epoch_ms: current_epoch_millis(),
+            });
+        }
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
         self.snapshot.refreshed_at = Some(Instant::now());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Snapshot(Box::new(
@@ -340,6 +614,18 @@ impl PsionicRuntimeAdapter {
                 .and_then(|value| u64::try_from(value).ok()),
             eval_duration_ns: response.metrics.eval_duration_ns,
         };
+        if let Some(provenance) = response.provenance.as_ref() {
+            if let Some(compile_path) = provenance.compile_path.clone() {
+                self.snapshot.diagnostics.last_compile_path = Some(compile_path.clone());
+                self.snapshot
+                    .diagnostics
+                    .last_compile_path_observed_at_epoch_ms = Some(current_epoch_millis());
+                if compile_path.temperature == CompilePathTemperature::ColdCompile {
+                    self.snapshot.diagnostics.last_cold_compile_duration_ns =
+                        response.metrics.total_duration_ns;
+                }
+            }
+        }
         self.snapshot.last_metrics = Some(metrics.clone());
         self.snapshot.last_action = Some(format!(
             "Psionic generation completed for {}",
@@ -492,6 +778,22 @@ impl GptOssRuntimeService {
         }
     }
 
+    fn observability(&mut self) -> LocalRuntimeObservability {
+        match self {
+            Self::Cpu(service) => service.observability(),
+            Self::Cuda(service) => service.observability(),
+            Self::Metal(service) => service.observability(),
+        }
+    }
+
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        match self {
+            Self::Cpu(service) => service.runtime_resources(),
+            Self::Cuda(service) => service.runtime_resources(),
+            Self::Metal(service) => service.runtime_resources(),
+        }
+    }
+
     fn warm_model(&mut self, keep_alive_millis: u64) -> Result<(), String> {
         let model_id = self.model_id().to_string();
         match self {
@@ -592,6 +894,7 @@ impl LocalInferenceRuntime for GptOssRuntimeAdapter {
 struct GptOssRuntimeWorker {
     configured_backend: GptOssRuntimeBackend,
     configured_model_label: String,
+    configured_artifact_fingerprint: Option<String>,
     model_path: PathBuf,
     service: Option<GptOssRuntimeService>,
     snapshot: LocalInferenceRuntimeSnapshot,
@@ -609,6 +912,7 @@ impl GptOssRuntimeWorker {
         Self {
             configured_backend,
             configured_model_label,
+            configured_artifact_fingerprint: artifact_fingerprint(model_path.as_path()),
             model_path,
             service: None,
             snapshot,
@@ -619,12 +923,158 @@ impl GptOssRuntimeWorker {
     fn handle_command(&mut self, command: LocalInferenceRuntimeCommand) {
         match command {
             LocalInferenceRuntimeCommand::Refresh => {
+                self.reload_configuration();
                 self.refresh_snapshot(String::from("GPT-OSS runtime refreshed"))
             }
             LocalInferenceRuntimeCommand::WarmConfiguredModel => self.handle_load_or_warm(),
             LocalInferenceRuntimeCommand::UnloadConfiguredModel => self.handle_unload(),
             LocalInferenceRuntimeCommand::Generate(job) => self.handle_generate(job),
         }
+    }
+
+    fn update_service_diagnostics(&mut self) {
+        if let Some(service) = self.service.as_mut() {
+            self.snapshot.diagnostics.observability = Some(service.observability());
+            self.snapshot.diagnostics.runtime_resources = service.runtime_resources();
+        } else {
+            self.snapshot.diagnostics.observability = None;
+            self.snapshot.diagnostics.runtime_resources = None;
+        }
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
+    }
+
+    fn record_cache_invalidation(
+        &mut self,
+        reason: LocalRuntimeCacheInvalidationReason,
+        summary: impl Into<String>,
+    ) {
+        self.snapshot.diagnostics.last_cache_invalidation = Some(LocalRuntimeCacheInvalidation {
+            reason,
+            summary: summary.into(),
+            observed_at_epoch_ms: current_epoch_millis(),
+        });
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
+    }
+
+    fn record_compile_path(&mut self, compile_path: CompilePathEvidence, duration_ns: Option<u64>) {
+        let observed_at_epoch_ms = current_epoch_millis();
+        if compile_path.temperature == CompilePathTemperature::ColdCompile {
+            self.snapshot.diagnostics.last_cold_compile_duration_ns = duration_ns;
+        }
+        self.snapshot.diagnostics.last_compile_path = Some(compile_path);
+        self.snapshot
+            .diagnostics
+            .last_compile_path_observed_at_epoch_ms = Some(observed_at_epoch_ms);
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
+    }
+
+    fn maybe_record_compile_failure(&mut self, error: &str) {
+        if !looks_like_compile_failure(error) {
+            self.snapshot
+                .diagnostics
+                .refresh_posture(self.snapshot.busy);
+            return;
+        }
+        self.snapshot.diagnostics.last_compile_failure = Some(LocalRuntimeCompileFailure {
+            summary: error.to_string(),
+            observed_at_epoch_ms: current_epoch_millis(),
+        });
+        self.snapshot
+            .diagnostics
+            .refresh_posture(self.snapshot.busy);
+    }
+
+    fn record_cache_invalidation_from_error(&mut self, error: &str) {
+        if !looks_like_compile_failure(error) {
+            return;
+        }
+        self.record_cache_invalidation(
+            LocalRuntimeCacheInvalidationReason::ExecutionProfileChange,
+            format!("runtime reported a compile-bearing failure: {error}"),
+        );
+    }
+
+    fn record_cache_invalidation_from_provenance(
+        &mut self,
+        provenance: Option<&psionic_serve::GenerationProvenance>,
+    ) {
+        let Some(provenance) = provenance else {
+            return;
+        };
+        if let Some(observation) = provenance
+            .cache_observations
+            .iter()
+            .find(|observation| observation.trigger.is_some())
+            && let Some(trigger) = observation.trigger
+        {
+            self.record_cache_invalidation(
+                LocalRuntimeCacheInvalidationReason::from_trigger(trigger),
+                observation.detail.clone(),
+            );
+        }
+    }
+
+    fn reload_configuration(&mut self) {
+        let next_backend = GptOssRuntimeBackend::from_env();
+        let next_model_path = configured_gpt_oss_model_path();
+        let next_model_label = configured_model_label(next_model_path.as_path());
+        let next_artifact_fingerprint = artifact_fingerprint(next_model_path.as_path());
+        let backend_changed = next_backend != self.configured_backend;
+        let model_changed =
+            next_model_path != self.model_path || next_model_label != self.configured_model_label;
+        let artifact_changed =
+            !model_changed && next_artifact_fingerprint != self.configured_artifact_fingerprint;
+        let previous_backend = self.configured_backend.default_runtime_label();
+        let previous_model_path = self.model_path.display().to_string();
+
+        self.configured_backend = next_backend;
+        self.configured_model_label = next_model_label;
+        self.model_path = next_model_path;
+        self.configured_artifact_fingerprint = next_artifact_fingerprint;
+
+        if !(backend_changed || model_changed || artifact_changed) {
+            return;
+        }
+
+        self.service = None;
+        self.snapshot.ready_model = None;
+        self.snapshot.loaded_models.clear();
+        self.snapshot.last_error = None;
+
+        let (reason, summary) = if backend_changed {
+            (
+                LocalRuntimeCacheInvalidationReason::BackendChange,
+                format!(
+                    "local-runtime backend changed from {} to {} and invalidated cached execution state",
+                    previous_backend,
+                    self.configured_backend.default_runtime_label()
+                ),
+            )
+        } else if model_changed {
+            (
+                LocalRuntimeCacheInvalidationReason::ModelChange,
+                format!(
+                    "local-runtime model changed from {} to {} and invalidated cached execution state",
+                    previous_model_path,
+                    self.model_path.display()
+                ),
+            )
+        } else {
+            (
+                LocalRuntimeCacheInvalidationReason::ModelMetadataChange,
+                format!(
+                    "model artifact metadata changed for {} and invalidated cached execution state",
+                    self.model_path.display()
+                ),
+            )
+        };
+        self.record_cache_invalidation(reason, summary);
     }
 
     fn refresh_snapshot(&mut self, action: String) {
@@ -671,17 +1121,21 @@ impl GptOssRuntimeWorker {
             self.snapshot.last_error =
                 Some(missing_gpt_oss_artifact_message(self.model_path.as_path()));
         }
+        self.update_service_diagnostics();
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
     }
 
     fn handle_load_or_warm(&mut self) {
+        self.reload_configuration();
+        let started_at = Instant::now();
         self.snapshot.busy = true;
         self.snapshot.last_error = None;
         self.snapshot.last_action = Some(format!(
             "Loading GPT-OSS 20B from {}",
             self.model_path.display()
         ));
+        self.snapshot.diagnostics.refresh_posture(true);
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
 
@@ -690,6 +1144,7 @@ impl GptOssRuntimeWorker {
             self.snapshot.last_action = Some(String::from("GPT-OSS 20B load blocked"));
             self.snapshot.last_error =
                 Some(missing_gpt_oss_artifact_message(self.model_path.as_path()));
+            self.snapshot.diagnostics.refresh_posture(false);
             self.snapshot.refreshed_at = Some(Instant::now());
             self.push_snapshot();
             return;
@@ -704,6 +1159,10 @@ impl GptOssRuntimeWorker {
                     self.snapshot.busy = false;
                     self.snapshot.last_action = Some(String::from("GPT-OSS 20B load failed"));
                     self.snapshot.last_error = Some(error);
+                    if let Some(error) = self.snapshot.last_error.clone() {
+                        self.maybe_record_compile_failure(error.as_str());
+                        self.record_cache_invalidation_from_error(error.as_str());
+                    }
                     self.snapshot.refreshed_at = Some(Instant::now());
                     self.push_snapshot();
                     return;
@@ -717,12 +1176,17 @@ impl GptOssRuntimeWorker {
             self.snapshot.busy = false;
             self.snapshot.last_action = Some(String::from("GPT-OSS 20B warm failed"));
             self.snapshot.last_error = Some(error);
+            if let Some(error) = self.snapshot.last_error.clone() {
+                self.maybe_record_compile_failure(error.as_str());
+                self.record_cache_invalidation_from_error(error.as_str());
+            }
             self.snapshot.refreshed_at = Some(Instant::now());
             self.push_snapshot();
             return;
         }
 
         self.snapshot.busy = false;
+        self.snapshot.diagnostics.last_warm_refresh_duration_ns = Some(elapsed_ns(started_at));
         let backend_label = self
             .service
             .as_ref()
@@ -737,6 +1201,9 @@ impl GptOssRuntimeWorker {
         {
             self.snapshot.last_action = Some(String::from("GPT-OSS 20B unload failed"));
             self.snapshot.last_error = Some(error);
+            if let Some(error) = self.snapshot.last_error.clone() {
+                self.maybe_record_compile_failure(error.as_str());
+            }
             self.snapshot.refreshed_at = Some(Instant::now());
             self.push_snapshot();
             return;
@@ -744,6 +1211,10 @@ impl GptOssRuntimeWorker {
         self.service = None;
         self.snapshot.busy = false;
         self.snapshot.last_error = None;
+        self.record_cache_invalidation(
+            LocalRuntimeCacheInvalidationReason::ExplicitReset,
+            "operator unloaded the configured GPT-OSS runtime and invalidated warm execution state",
+        );
         self.refresh_snapshot(String::from("GPT-OSS 20B unloaded"));
     }
 
@@ -777,6 +1248,9 @@ impl GptOssRuntimeWorker {
         self.snapshot.last_error = Some(error.clone());
         self.snapshot.last_action = Some(String::from("GPT-OSS generation failed"));
         self.snapshot.busy = false;
+        self.maybe_record_compile_failure(error.as_str());
+        self.record_cache_invalidation_from_error(error.as_str());
+        self.update_service_diagnostics();
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
         let _ = self.update_tx.send(LocalInferenceRuntimeUpdate::Failed(
@@ -821,11 +1295,13 @@ impl GptOssRuntimeWorker {
         }
 
         let model = loaded_model_id;
+        let started_at = Instant::now();
         self.snapshot.last_request_id = Some(job.request_id.clone());
         self.snapshot.last_error = None;
         self.snapshot.last_action =
             Some(format!("GPT-OSS generation queued for {}", job.request_id));
         self.snapshot.busy = true;
+        self.snapshot.diagnostics.refresh_posture(true);
         self.snapshot.refreshed_at = Some(Instant::now());
         self.push_snapshot();
         let _ = self.update_tx.send(LocalInferenceRuntimeUpdate::Started(
@@ -909,6 +1385,18 @@ impl GptOssRuntimeWorker {
                 .and_then(|value| u64::try_from(value).ok()),
             eval_duration_ns: response.metrics.eval_duration_ns,
         };
+        self.record_cache_invalidation_from_provenance(response.provenance.as_ref());
+        if let Some(provenance) = response.provenance.as_ref()
+            && let Some(compile_path) = provenance.compile_path.clone()
+        {
+            self.record_compile_path(
+                compile_path,
+                response
+                    .metrics
+                    .total_duration_ns
+                    .or_else(|| Some(elapsed_ns(started_at))),
+            );
+        }
         self.snapshot.last_metrics = Some(metrics.clone());
         self.snapshot.last_action = Some(format!(
             "GPT-OSS generation completed for {}",
@@ -963,6 +1451,7 @@ fn configured_runtime_snapshot(
         last_action: Some(String::from("Mission Control local model lane ready")),
         last_request_id: None,
         last_metrics: None,
+        diagnostics: LocalRuntimeDiagnostics::default(),
         refreshed_at: Some(Instant::now()),
     };
     if !artifact_present {
@@ -1189,6 +1678,9 @@ mod tests {
         LocalInferenceRuntimeUpdate, PsionicRuntimeAdapter, default_local_inference_runtime,
     };
     use crate::state::job_inbox::JobExecutionParam;
+    use psionic_runtime::{
+        CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
+    };
     use psionic_serve::ReferenceWordDecoder;
     use std::time::Duration;
 
@@ -1311,6 +1803,70 @@ mod tests {
             Some("gpt-oss-20b-mxfp4.gguf")
         );
         assert!(snapshot.last_error.is_none());
+    }
+
+    #[test]
+    fn diagnostics_posture_tracks_compile_and_invalidation_state() {
+        let mut diagnostics = super::LocalRuntimeDiagnostics::default();
+        diagnostics.refresh_posture(false);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::Cold
+        );
+
+        diagnostics.last_compile_path = Some(CompilePathEvidence {
+            temperature: CompilePathTemperature::WarmReuse,
+            execution_plan_cache: CacheObservation::new(
+                CacheKind::ExecutionPlan,
+                CacheAction::Reuse,
+                "reused cached plan",
+            ),
+            kernel_cache: CacheObservation::new(
+                CacheKind::KernelCache,
+                CacheAction::Reuse,
+                "reused cached kernels",
+            ),
+        });
+        diagnostics.last_compile_path_observed_at_epoch_ms = Some(10);
+        diagnostics.refresh_posture(false);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::Warm
+        );
+
+        diagnostics.last_cache_invalidation = Some(super::LocalRuntimeCacheInvalidation {
+            reason: super::LocalRuntimeCacheInvalidationReason::BackendChange,
+            summary: "backend changed".to_string(),
+            observed_at_epoch_ms: 11,
+        });
+        diagnostics.refresh_posture(false);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::CacheInvalidated
+        );
+
+        diagnostics.last_compile_failure = Some(super::LocalRuntimeCompileFailure {
+            summary: "compile failed".to_string(),
+            observed_at_epoch_ms: 12,
+        });
+        diagnostics.refresh_posture(false);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::CompileFailed
+        );
+
+        diagnostics.refresh_posture(true);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::Warming
+        );
+
+        diagnostics.last_compile_path_observed_at_epoch_ms = Some(13);
+        diagnostics.refresh_posture(false);
+        assert_eq!(
+            diagnostics.posture,
+            super::LocalRuntimeExecutionPosture::Warm
+        );
     }
 
     #[test]
