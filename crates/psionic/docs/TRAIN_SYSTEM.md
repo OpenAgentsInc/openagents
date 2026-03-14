@@ -124,7 +124,7 @@ stable vocabulary for train-class execution.
 | Object | Purpose | Current Repo Status |
 | --- | --- | --- |
 | `TrainingRun` | Root identity for one training program | `implemented_early` |
-| `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
+| `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `implemented_early` |
 | `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `implemented_early` |
 | `TrainerStep` | One optimizer update over one trainer batch | `implemented_early` |
 | `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `implemented_early` |
@@ -154,8 +154,6 @@ The rest of the train object model still needs to be built explicitly.
 
 What is still missing most clearly from the current vocabulary is:
 
-- explicit `TrainingStage` identity rather than inferring stage transitions
-  from surrounding operator control flow
 - deeper checkpoint lineage policy such as checkpoint retention tiers,
   cross-window promotion rules, and cold-restore governance
 - broader `ValidatorVerdict` families for trainer-batch and eval-class artifacts
@@ -1539,12 +1537,25 @@ later layers.
 
 ### 17. `Psionic Train: add SFT trace ingestion, stage transitions, and agentic pre-RL flows`
 
-The train system should explicitly model multi-stage programs rather than
-assuming RL is the first and only stage. This issue should add SFT trace
-ingestion, general-SFT to agentic-SFT to RL transitions, checkpoint promotion
-between stages, and typed lineage for tool-call and long-context traces. The
-goal is to make stage sequencing part of the train system rather than operator
-glue.
+Status: implemented on 2026-03-14 via GitHub issue `#3580`.
+
+Added the first multi-stage train-program layer inside `psionic-train`:
+
+- typed `TrainingStageKind` identity for `general_sft`, `agentic_sft`, and `rl`
+- typed SFT trace artifacts with tool-call and long-context lineage
+- stage completion receipts, checkpoint-promotion receipts, and stage-transition
+  receipts
+- a stage-program state machine that owns `general_sft -> agentic_sft -> rl`
+  sequencing
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_STAGE_PROGRAM_REFERENCE.md`
+- `scripts/release/check-psionic-train-stage-program.sh`
+
+This issue makes stage sequencing first-class Psionic truth instead of operator
+glue. Curriculum, filtering, and instability policy remain the next train
+issues.
 
 ### 18. `Psionic Train: implement curriculum, filtering, and non-zero-advantage gates`
 
