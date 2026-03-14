@@ -21,9 +21,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 mod core_loop;
+mod checkpoint_recovery;
 mod rl_artifacts;
 mod run_graph;
 
+pub use checkpoint_recovery::*;
 pub use core_loop::*;
 pub use rl_artifacts::*;
 pub use run_graph::*;

@@ -131,10 +131,10 @@ stable vocabulary for train-class execution.
 | `RolloutArtifact` | One worker-produced trajectory or completion bundle | `implemented_early` |
 | `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `implemented_early` |
 | `EnvironmentPackage` | One versioned environment definition used by training and eval | `implemented_early` |
-| `BenchmarkPackage` | One validator-owned packaged benchmark or reference evaluation profile | `planned` |
-| `EvalRun` | One online or offline evaluation execution | `planned` |
-| `CheckpointPointer` | One stable pointer to the latest accepted checkpoint for a run, stage, or window | `planned` |
-| `CheckpointManifest` | One shard, digest, writer, and durability manifest for a checkpoint flush | `planned` |
+| `BenchmarkPackage` | One validator-owned packaged benchmark or reference evaluation profile | `implemented_early` |
+| `EvalRun` | One online or offline evaluation execution | `implemented_early` |
+| `CheckpointPointer` | One stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
+| `CheckpointManifest` | One shard, digest, writer, and durability manifest for a checkpoint flush | `implemented_early` |
 | `Checkpoint` | Recoverable training state and lineage anchor | `partial` |
 | `ValidatorVerdict` | Verification result attached to one rollout, batch, or eval artifact | `planned` |
 
@@ -147,18 +147,18 @@ Today the concrete object vocabulary is strongest around:
 - `DatastreamManifest` and `DatastreamManifestRef`
 
 Current checkpoint substrate is carried today by
-`TrainingCheckpointReference` plus checkpoint-scoped datastream manifests.
+`TrainingCheckpointReference`, explicit `CheckpointPointer` and
+`CheckpointManifest` contracts, plus checkpoint-scoped datastream manifests.
 
 The rest of the train object model still needs to be built explicitly.
 
 What is still missing most clearly from the current vocabulary is:
 
-- explicit `TrainingWindow` identity rather than inferring windows from
-  scheduler cadence
-- explicit `CheckpointPointer` and `CheckpointManifest` objects rather than
-  treating latest-checkpoint and shard metadata as loose convention
-- explicit `BenchmarkPackage` truth for validator-owned, repeatable benchmark
-  evaluation rather than folding that concept into generic eval notes
+- explicit `TrainingStage` identity rather than inferring stage transitions
+  from surrounding operator control flow
+- deeper checkpoint lineage policy such as checkpoint retention tiers,
+  cross-window promotion rules, and cold-restore governance
+- explicit `ValidatorVerdict` families for training- and rollout-class artifacts
 
 ### Current `RolloutArtifact` Shape
 
@@ -1037,7 +1037,7 @@ crate names.
 | Training steps | typed fixed-budget reference loop present | broader Rust-native trainer-step engine |
 | RL rollouts | typed rollout and trainer-batch contracts present | freshness enforcement, worker protocols, and validator-ready lineage |
 | Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
-| Eval runtime | absent | shared online/offline eval and rubric runtime |
+| Eval runtime | present in `psionic-eval` | shared online/offline eval and rubric runtime, benchmark packages, and local validator simulation |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
 | Validators for RL | absent | rollout-verification bundles and sampled adjudication |
 | Operator surfaces | absent in Psionic-local train form | inspection, diagnostics, and receipts across all train subsystems |
@@ -1243,15 +1243,32 @@ orchestrator, checkpoint-pointer, or batch-propagation policy.
 
 ### 7. `Psionic Train: extend checkpoint lineage, recovery modes, and catch-up receipts`
 
-`psionic-train` already has `begin_async_checkpoint`, `mark_checkpoint_durable`,
-and `plan_live_recovery`. This issue should build on that foundation by adding
-explicit recovery modes such as blocking catch-up, overlapped catch-up, and
-resume-from-last-stable-checkpoint, then record those decisions in durable run
-receipts. It should also add explicit `CheckpointPointer` and
-`CheckpointManifest` semantics, preferred-read hierarchy, listing fallback,
-deterministic shard-uploader assignment, and fake object-store tests for
-partial-upload and missing-pointer cases. The goal is to turn recovery policy
-from an internal heuristic into a queryable contract.
+Status: implemented on 2026-03-14 via GitHub issue `#3570`.
+
+Added checkpoint-lineage and restore-ladder contracts inside `psionic-train`
+for:
+
+- typed `CheckpointPointer` and `CheckpointManifest` objects over explicit run,
+  stage, or window scope
+- explicit durability posture on checkpoint manifests, including partial-upload
+  versus durable restore eligibility
+- declared `TrainingRecoveryMode` choices for blocking catch-up, overlapped
+  catch-up, and resume-from-last-stable-checkpoint
+- pointer-first restore planning with manifest-listing fallback when the latest
+  pointer is missing, stale, or references non-durable state
+- deterministic shard-uploader assignment over the accepted restore manifest
+- fake object-store tests covering missing pointer, stale pointer,
+  partial-upload, and listing-limit failure paths
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_CHECKPOINT_RECOVERY_REFERENCE.md`
+- `scripts/release/check-psionic-train-checkpoint-recovery.sh`
+
+This issue turns checkpoint recovery from implicit latest-checkpoint heuristics
+into typed restore receipts that can explain why one source was preferred over
+another. It does not yet land retention policy, cold-restore classes, or
+cross-window checkpoint governance.
 
 ### 8. `Psionic Collectives: add bandwidth-aware elastic sync planning and quantized policy surfaces`
 

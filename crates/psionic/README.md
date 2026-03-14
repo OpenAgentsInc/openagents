@@ -175,9 +175,10 @@ Implemented now:
 - canonical execution-proof bundles and embeddings-first activation-fingerprint
   proof posture.
 - early train substrate: checkpoint-backed recovery, elastic membership,
-  collective planning, typed fixed-budget trainer steps, checkpoint-anchored
-  restore, explicit run graphs, contributor-set revisions, window lifecycle,
-  and adapter lineage.
+  collective planning, typed fixed-budget trainer steps, explicit checkpoint
+  pointers and checkpoint manifests, restore receipts with declared recovery
+  modes, checkpoint-anchored restore, explicit run graphs, contributor-set
+  revisions, window lifecycle, and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
   digests inside `psionic-train`.
@@ -204,8 +205,7 @@ Still planned:
   productization.
 - broader distributed training completion, freshness or validator policy, and
   orchestrator layers.
-- checkpoint pointer/manifest discipline and deeper benchmark or validator
-  policy for training-class lanes.
+- deeper benchmark or validator policy for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
   session-claims discipline for clustered and sandboxed execution.
 - AMD execution support.
@@ -242,6 +242,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_RUN_GRAPH_REFERENCE.md](docs/TRAIN_RUN_GRAPH_REFERENCE.md)** —
   canonical run-graph, contributor-set, and window-lifecycle runbook for the
   first Psionic-native training run-state machine.
+- **[docs/TRAIN_CHECKPOINT_RECOVERY_REFERENCE.md](docs/TRAIN_CHECKPOINT_RECOVERY_REFERENCE.md)** —
+  canonical checkpoint-pointer, checkpoint-manifest, and restore-ladder
+  runbook for the first explicit Psionic checkpoint-recovery receipt path.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
