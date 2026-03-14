@@ -48,6 +48,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Canonical provider shell pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
   - The hotbar shell is now the default production shell; there is no Mission Control fullscreen-only production mode.
   - Owns `GO ONLINE` / `GO OFFLINE`, local runtime action, Apple FM smoke-test button when applicable, and provider inventory toggles.
+  - Embeds the packaged `simple_fui_hud` asset through the shared native `RiveSurface` path as a settled hero surface inside the production pane, with truthful provider/runtime/wallet overlays sourced from app state.
   - Shows provider/runtime truth inline: `Mode`, `Model`, `Backend`, `Load`, `Control`, `Preflight`, blockers, last action/error, and advertised inventory rows.
   - `providers_online` remains sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
@@ -70,6 +71,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Action: read-only visualization surface.
 - `Rive Preview`
   - Workbench pane for the packaged Rive asset registry using the shared native `RiveSurface` path.
+  - Remains the debug/workbench surface even after the production Provider Control pane embeds the packaged HUD asset.
   - Controls: reload, previous asset, next asset, play/pause, restart, and fit mode.
   - Shows asset identity, render-path diagnostics, redraw/settled state, pointer capture, and first-frame metrics so new packaged assets can be verified without adding per-asset pane code.
   - Action: swap packaged assets and inspect runtime diagnostics.

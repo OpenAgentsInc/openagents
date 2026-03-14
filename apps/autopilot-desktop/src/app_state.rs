@@ -9757,6 +9757,12 @@ pub struct PresentationRuntimeState {
     pub surface: Option<RiveSurface>,
 }
 
+#[derive(Default)]
+pub struct ProviderControlHudRuntimeState {
+    pub surface: Option<RiveSurface>,
+    pub last_error: Option<String>,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -9837,6 +9843,7 @@ pub struct RenderState {
     pub rive_preview_runtime: RivePreviewRuntimeState,
     pub presentation: PresentationPaneState,
     pub presentation_runtime: PresentationRuntimeState,
+    pub provider_control_hud_runtime: ProviderControlHudRuntimeState,
     pub frame_debugger: FrameDebuggerPaneState,
     pub apple_fm_workbench: AppleFmWorkbenchPaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,

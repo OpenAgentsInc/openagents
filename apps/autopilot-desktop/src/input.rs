@@ -577,6 +577,13 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     };
 
     let changed = pump_background_state(state);
+    let provider_control_hud = build_rive_cadence_snapshot(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::ProviderControl),
+        state.provider_control_hud_runtime.surface.as_ref(),
+    );
     let preview_rive = build_rive_cadence_snapshot(
         state
             .panes
@@ -595,7 +602,9 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         .panes
         .iter()
         .any(|pane| pane.kind == PaneKind::FrameDebugger);
-    let rive_needs_redraw = preview_rive.needs_redraw || presentation_rive.needs_redraw;
+    let rive_needs_redraw = provider_control_hud.needs_redraw
+        || preview_rive.needs_redraw
+        || presentation_rive.needs_redraw;
     let poll_interval = background_poll_interval(
         state.autopilot_chat.has_pending_messages(),
         rive_needs_redraw,
@@ -605,6 +614,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         state,
         changed,
         poll_interval,
+        provider_control_hud,
         preview_rive,
         presentation_rive,
         debug_probe_active,
@@ -626,6 +636,16 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
 
 fn open_rive_surface_needs_redraw(state: &crate::app_state::RenderState) -> bool {
     rive_preview_cadence_active(
+        state
+            .panes
+            .iter()
+            .any(|pane| pane.kind == PaneKind::ProviderControl),
+        state
+            .provider_control_hud_runtime
+            .surface
+            .as_ref()
+            .is_some_and(|surface| surface.needs_redraw()),
+    ) || rive_preview_cadence_active(
         state
             .panes
             .iter()
@@ -670,6 +690,7 @@ fn build_frame_redraw_pressure_snapshot(
     state: &mut crate::app_state::RenderState,
     background_changed: bool,
     poll_interval: std::time::Duration,
+    provider_control_hud: RiveCadenceSnapshot,
     rive_preview: RiveCadenceSnapshot,
     presentation: RiveCadenceSnapshot,
     debug_probe_active: bool,
@@ -688,7 +709,7 @@ fn build_frame_redraw_pressure_snapshot(
         chat_pending,
         debug_probe_active,
         text_input_focused,
-        rive_preview.needs_redraw || presentation.needs_redraw,
+        provider_control_hud.needs_redraw || rive_preview.needs_redraw || presentation.needs_redraw,
     );
     FrameRedrawPressureSnapshot {
         should_redraw,
@@ -699,6 +720,7 @@ fn build_frame_redraw_pressure_snapshot(
         debug_probe_active,
         text_input_focused,
         poll_interval_ms: poll_interval.as_millis().min(u128::from(u32::MAX)) as u32,
+        provider_control_hud,
         rive_preview,
         presentation,
     }

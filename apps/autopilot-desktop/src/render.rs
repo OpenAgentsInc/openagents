@@ -332,6 +332,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             rive_preview_runtime: crate::app_state::RivePreviewRuntimeState::default(),
             presentation: crate::app_state::PresentationPaneState::default(),
             presentation_runtime: crate::app_state::PresentationRuntimeState::default(),
+            provider_control_hud_runtime: crate::app_state::ProviderControlHudRuntimeState::default(
+            ),
             frame_debugger: crate::app_state::FrameDebuggerPaneState::default(),
             apple_fm_workbench: crate::app_state::AppleFmWorkbenchPaneState::default(),
             provider_admin_runtime,
@@ -1103,6 +1105,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.rive_preview_runtime,
             &mut state.presentation,
             &mut state.presentation_runtime,
+            &mut state.provider_control_hud_runtime,
             &state.frame_debugger,
             &mut state.apple_fm_workbench,
             provider_blockers.as_slice(),
