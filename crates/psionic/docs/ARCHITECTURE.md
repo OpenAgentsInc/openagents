@@ -136,7 +136,7 @@ Psionic is also not:
 | Clustered serving substrate | `implemented_early` | `psionic-cluster` owns ordered state, placement, catch-up, and sharded serving topology truth |
 | Datastream and artifact staging | `implemented_early` | resumable manifests, policy-weight broadcast refs, freshness enforcement, chunk transport, and delivery receipts exist in `psionic-datastream` |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, streamed iteration, and long-context packing policies |
-| Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
+| Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, warm reusable pools, staged loop inputs, and repeated agentic iteration receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
 | Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
