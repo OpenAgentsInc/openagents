@@ -1742,11 +1742,25 @@ contract instead of bespoke scripts or disconnected side files.
 
 ### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
 
-Receipts and lineage are not enough unless they support re-execution or replay
-where feasible. This issue should define seed discipline, replayable trainer
-batches, deterministic sample-selection rules, pinned environment and tool
-versions, and reproducible eval posture. The target is "same receipt, same
-recomputation rules" instead of best-effort repeatability.
+Implemented on Saturday, March 14, 2026.
+
+`psionic-train` now owns a deterministic replay-truth layer in
+`src/replay_truth.rs`.
+
+The new contract makes these reproducibility seams explicit:
+
+- assignment, trainer, and eval seed discipline
+- deterministic sample-selection rules with stable worker and attempt identity
+- replayable trainer-batch anchoring
+- pinned environment package and tool contracts
+- pinned tool-version labels
+- reproducible eval posture with deterministic scheduler enforcement
+- typed replay-verification receipts and drift signals
+
+This is still not the claim that the full train system can be re-executed from
+one receipt without more runtime work. It is the claim that replay-compatible
+inputs, pins, and verification are now explicit enough to support "same
+receipt, same recomputation rules" instead of best-effort repeatability.
 
 ### 26. `Security: harden environment packages, artifact provenance, and untrusted worker admission`
 

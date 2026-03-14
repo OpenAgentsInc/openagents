@@ -220,6 +220,10 @@ Implemented now:
   state-dict traversal, training-group assignment, safetensors export/import,
   torch-style JSON state artifacts, GGUF import, tokenizer version binding,
   and adapter merge/unmerge explicit instead of ad hoc.
+- a first deterministic replay-truth layer in `psionic-train`, making replay
+  seeds, sample-selection rules, environment and tool pins, eval posture, and
+  replay drift verification machine-legible instead of scattered across
+  receipts.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
@@ -313,6 +317,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical state-dict traversal, tokenizer binding, safetensors export/import,
   GGUF import, and adapter merge/unmerge runbook for the portable model-IO
   layer in `psionic-train`.
+- **[docs/TRAIN_REPLAY_TRUTH_REFERENCE.md](docs/TRAIN_REPLAY_TRUTH_REFERENCE.md)** —
+  canonical replay-seed, sample-selection, environment-pin, eval-posture, and
+  replay-verification runbook for `psionic-train`.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.
