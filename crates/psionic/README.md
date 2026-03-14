@@ -81,10 +81,11 @@ Implemented now:
   `/v1/responses` surface, with per-model endpoint support reported explicitly.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
-- Psionic-owned local structured-output fallback on the generic server via
-  `psionic_grammar` plus OpenAI-style `response_format` for `json_object` and a
-  useful `json_schema` subset, with explicit response headers and refusal on
-  unsupported schema features instead of hidden prompt-only conventions.
+- Psionic-owned structured-output contracts on the generic server for choice,
+  regex, grammar, `json_object`, `json_schema`, and tagged-structure cases via
+  one shared request shape, explicit per-model capability reporting, response
+  headers, and machine-readable structured values instead of hidden
+  prompt-only conventions or string re-parsing.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded

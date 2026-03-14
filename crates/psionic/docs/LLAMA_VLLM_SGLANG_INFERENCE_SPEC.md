@@ -636,6 +636,14 @@ per-model supported endpoints, model family, scheduler truth, and embeddings
 metadata explicitly through `/v1/models` and `/health` instead of implying that
 every loaded artifact supports every OpenAI-shaped surface.
 
+Implemented now: `PSI-244` is materially landed in-tree too. Psionic now owns
+one structured-output request contract across choice, regex, grammar, JSON
+schema, JSON object, and tagged-structure cases; the generic server reports
+per-model structured-output capability rows with explicit fallback vs
+unsupported truth; and successful constrained runs now surface
+machine-readable structured values through `/v1/chat/completions` and
+`/v1/responses` instead of leaving callers with only raw text plus headers.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
@@ -660,7 +668,7 @@ every loaded artifact supports every OpenAI-shaped surface.
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-243` | Psionic Serve: add `/v1/embeddings`, `/v1/responses`, and a broader generic serving surface | `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3548`. The generic server now fronts real embeddings and a first Psionic-owned responses contract, with truthful per-model endpoint support and heterogeneous decoder/embeddings model inventory. | `PSI-234` |
-| `PSI-244` | Psionic Serve: add structured outputs for choice, regex, JSON schema, grammar, and tagged structure | `psionic-serve`, `psionic-runtime` | `SGLang` plus `vLLM` plus `llama.cpp` | Treat constrained generation as a first-class capability instead of a narrow local-only fallback or ad hoc prompt convention. | `PSI-243`, `PSI-236` |
+| `PSI-244` | Psionic Serve: add structured outputs for choice, regex, JSON schema, grammar, and tagged structure | `psionic-serve`, `psionic-runtime` | `SGLang` plus `vLLM` plus `llama.cpp` | Status: implemented on 2026-03-14 via GitHub issue `#3549`. Added one Psionic-owned structured-output contract across choice, regex, grammar, JSON schema, JSON object, and tagged-structure cases, plus explicit capability reporting and machine-readable structured value surfaces on the generic server. | `PSI-243`, `PSI-236` |
 | `PSI-245` | Psionic Serve: add named, auto, required, and none tool-calling modes with parser-backed validation | `psionic-serve` | `vLLM` plus `SGLang` | Rebuild the strongest `vLLM` tool-calling contract shape while keeping the parser and runtime ownership inside Psionic. | `PSI-243`, `PSI-244` |
 | `PSI-246` | Psionic Serve: add reasoning-parser seam and explicit reasoning/content separation | `psionic-serve`, `psionic-models` | `SGLang` | Rebuild the `SGLang` lesson that reasoning-bearing models need explicit parser handling and response fields instead of stringly typed conventions. | `PSI-243`, `PSI-244` |
 | `PSI-247` | Psionic Serve: add response-state and conversation contracts for multi-turn agent loops | `psionic-serve` | `SGLang` | Move beyond stateless repeated chat-completions by giving Psionic explicit response-stateful and conversation-stateful runtime contracts. | `PSI-243`, `PSI-245`, `PSI-246` |
