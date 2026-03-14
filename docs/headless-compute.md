@@ -26,6 +26,9 @@ It can:
 
 - fetch the current desktop-control snapshot
 - stream desktop-control event batches
+- inspect advanced provider inventory truth for local, clustered, and sandbox
+  compute surfaces, including projection source, open quantities, and section
+  blockers
 - inspect cluster, sandbox, proof, and challenge status through the same
   app-owned snapshot the desktop uses
 - list, open, focus, close, and inspect panes in the running desktop shell
@@ -104,6 +107,11 @@ autopilotctl pane status provider_control
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+`autopilotctl status` now prints the same app-owned inventory projection summary
+the Provider Control pane uses, including the projection source, kernel snapshot
+ID when present, per-section product and open-quantity counts, and any current
+blocker reason for the local, cluster, or sandbox inventory sections.
 
 Useful MCP starting point:
 

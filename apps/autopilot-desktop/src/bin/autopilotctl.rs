@@ -1730,6 +1730,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.tunnels.active_service_count,
         snapshot.tunnels.open_tunnel_count
     );
+    for line in inventory_status_lines(snapshot) {
+        println!("{line}");
+    }
     println!(
         "cluster: available={} topology={} members={}",
         snapshot.cluster.available, snapshot.cluster.topology_label, snapshot.cluster.member_count
@@ -1840,6 +1843,53 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.nip28.configured_channel_id
     );
     print_active_job_text(snapshot.active_job.as_ref());
+}
+
+fn inventory_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "inventory: authority={} projection={} snapshot={} products={} lots_open={} inventory_open={} reserved={} delivering={} proofs_24h={} challenges_open={}",
+        snapshot.inventory.authority,
+        snapshot.inventory.projection.source,
+        snapshot
+            .inventory
+            .projection
+            .latest_snapshot_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.inventory.projection.compute_products_active,
+        snapshot.inventory.projection.compute_capacity_lots_open,
+        snapshot
+            .inventory
+            .projection
+            .compute_inventory_quantity_open,
+        snapshot
+            .inventory
+            .projection
+            .compute_inventory_quantity_reserved,
+        snapshot
+            .inventory
+            .projection
+            .compute_inventory_quantity_delivering,
+        snapshot.inventory.projection.compute_delivery_proofs_24h,
+        snapshot
+            .inventory
+            .projection
+            .compute_validator_challenges_open
+    )];
+    for section in &snapshot.inventory.sections {
+        lines.push(format!(
+            "inventory section: id={} available={} products={} ready={} eligible={} open_quantity={} blocker={} summary={}",
+            section.section_id,
+            section.available,
+            section.product_count,
+            section.ready_product_count,
+            section.eligible_product_count,
+            section.open_quantity,
+            section.blocker_reason.as_deref().unwrap_or("-"),
+            section.summary
+        ));
+    }
+    lines
 }
 
 fn print_tunnels_text(snapshot: &DesktopControlSnapshot) {
@@ -2463,7 +2513,7 @@ mod tests {
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
         SandboxEntrypointTypeArg, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, ensure_buy_mode_budget_ack,
-        request_has_failed, request_has_paid, request_has_payment_required,
+        inventory_status_lines, request_has_failed, request_has_paid, request_has_payment_required,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
@@ -2480,6 +2530,54 @@ mod tests {
             },
             ..DesktopControlSnapshot::default()
         }
+    }
+
+    #[test]
+    fn inventory_status_lines_surface_section_counts() {
+        let mut snapshot = sample_snapshot();
+        snapshot.inventory.authority = "kernel_projected".to_string();
+        snapshot.inventory.projection.source = "kernel_projection".to_string();
+        snapshot.inventory.projection.latest_snapshot_id = Some("snapshot.compute.1".to_string());
+        snapshot.inventory.projection.compute_products_active = 3;
+        snapshot.inventory.projection.compute_capacity_lots_open = 2;
+        snapshot
+            .inventory
+            .projection
+            .compute_inventory_quantity_open = 1088;
+        snapshot.inventory.projection.compute_delivery_proofs_24h = 8;
+        snapshot
+            .inventory
+            .projection
+            .compute_validator_challenges_open = 1;
+        snapshot.inventory.sections.push(
+            autopilot_desktop::desktop_control::DesktopControlInventorySectionStatus {
+                section_id: "sandbox".to_string(),
+                label: "Sandbox".to_string(),
+                available: true,
+                blocker_reason: None,
+                summary:
+                    "profiles=1 ready_profiles=1 products=1 ready=1 eligible=1 open_quantity=63"
+                        .to_string(),
+                product_count: 1,
+                ready_product_count: 1,
+                eligible_product_count: 1,
+                open_quantity: 63,
+                products: Vec::new(),
+            },
+        );
+
+        let lines = inventory_status_lines(&snapshot);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("inventory: authority=kernel_projected"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("inventory section: id=sandbox"))
+        );
     }
 
     #[test]

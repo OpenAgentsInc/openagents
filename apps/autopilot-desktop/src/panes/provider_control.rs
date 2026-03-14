@@ -15,6 +15,7 @@ use crate::pane_system::{
     provider_control_local_model_button_bounds, provider_control_scroll_viewport_bounds,
     provider_control_toggle_button_bounds,
 };
+use crate::provider_inventory::DesktopControlInventoryStatus;
 use crate::spark_wallet::SparkPaneState;
 
 pub fn paint_provider_control_pane(
@@ -26,6 +27,7 @@ pub fn paint_provider_control_pane(
     provider_blockers: &[ProviderBlocker],
     backend_kernel_authority: bool,
     spark_wallet: &SparkPaneState,
+    inventory_status: &DesktopControlInventoryStatus,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "runtime", paint);
@@ -171,21 +173,8 @@ pub fn paint_provider_control_pane(
             .into_iter(),
         );
     }
-    for row in provider_runtime.inventory_rows.iter().take(6) {
-        detail_lines.extend(
-            split_text_for_display(
-                &format!(
-                    "{} [{}] available={} backend_ready={} source={}",
-                    row.target.display_label(),
-                    if row.enabled { "enabled" } else { "disabled" },
-                    row.available_quantity,
-                    if row.backend_ready { "yes" } else { "no" },
-                    row.source_badge
-                ),
-                96,
-            )
-            .into_iter(),
-        );
+    for line in crate::provider_inventory::inventory_detail_lines(inventory_status) {
+        detail_lines.extend(split_text_for_display(&line, 96).into_iter());
     }
 
     let content_height = (detail_lines.len() as f32 * 16.0) + 16.0;

@@ -997,6 +997,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 7: Market Productization
 
 40. **Desktop: add advanced provider inventory surfaces for local, clustered, and sandbox products**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3524`.
    - Expose the supply truth already derived by Psionic and provider-substrate without overwhelming the MVP one-button path.
    - Mission Control stays simple; advanced panes show the full inventory truth.
 

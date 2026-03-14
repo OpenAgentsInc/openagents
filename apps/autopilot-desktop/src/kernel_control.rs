@@ -738,6 +738,7 @@ pub(crate) fn accept_spot_compute_quote(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms,
             status: CapacityInstrumentStatus::Active,
+            environment_binding: None,
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
@@ -858,6 +859,7 @@ pub(crate) fn accept_forward_compute_quote(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms,
             status: CapacityInstrumentStatus::Active,
+            environment_binding: None,
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
@@ -1666,6 +1668,7 @@ fn build_online_capacity_lot_request(
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: delivery_end_ms,
             status: CapacityLotStatus::Open,
+            environment_binding: None,
             metadata: json!({
                 "source": "desktop.go_online",
                 "compute_family": compute_family_label(binding.compute_family),
@@ -1737,6 +1740,7 @@ fn build_forward_capacity_lot_request(
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: delivery_start_ms,
             status: CapacityLotStatus::Open,
+            environment_binding: None,
             metadata: json!({
                 "source": "desktop.forward_inventory",
                 "market_phase": "forward_physical",
@@ -1798,6 +1802,7 @@ fn build_capacity_instrument_request(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: current_epoch_ms(),
             status: CapacityInstrumentStatus::Active,
+            environment_binding: None,
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
@@ -1871,6 +1876,9 @@ fn build_delivery_proof_request(
                 .map(|payment_id| format!("oa://wallet/payments/{payment_id}")),
             status: evaluation.status,
             rejection_reason: evaluation.rejection_reason,
+            topology_evidence: None,
+            sandbox_evidence: None,
+            verification_evidence: None,
             promised_capability_envelope: Some(evaluation.promised_capability_envelope.clone()),
             observed_capability_envelope: evaluation.observed_capability_envelope.clone(),
             metadata: json!({
@@ -3678,6 +3686,7 @@ mod tests {
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: i64::MAX / 4,
             status: CapacityLotStatus::Open,
+            environment_binding: None,
             metadata: json!({
                 "source_badge": "desktop.go_online",
                 "terms_label": "spot session / local best effort"
@@ -3977,6 +3986,7 @@ mod tests {
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: 0,
             status: CapacityInstrumentStatus::Active,
+            environment_binding: None,
             closure_reason: None,
             non_delivery_reason: None,
             settlement_failure_reason: None,
