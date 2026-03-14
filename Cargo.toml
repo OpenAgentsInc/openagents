@@ -26,6 +26,7 @@ members = [
     "crates/psionic/psionic-net",
     "crates/psionic/psionic-datastream",
     "crates/psionic/psionic-cluster",
+    "crates/psionic/psionic-collectives",
     "crates/psionic/psionic-train",
     "crates/psionic/psionic-models",
     "crates/psionic/psionic-apple-fm",

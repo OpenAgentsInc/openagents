@@ -32,6 +32,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
 - `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
+- `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, and elastic membership on top of ordered cluster state and datastream manifests.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
@@ -79,8 +80,10 @@ receipts and clustered evidence exports, plus embeddings-first activation-
 fingerprint proof artifacts with explicit `unavailable` vs `supported`
 posture in canonical proof bundles, plus an initial `psionic-train` substrate
 for async checkpointing, checkpoint-backed live recovery, and elastic
-membership truth on top of clustered execution evidence. AMD execution support
-is still future work.
+membership truth on top of clustered execution evidence, plus a new
+`psionic-collectives` substrate for elastic device meshes and benchmark-backed
+quantized collectives that clustered training evidence can surface explicitly.
+AMD execution support is still future work.
 
 ## Docs
 

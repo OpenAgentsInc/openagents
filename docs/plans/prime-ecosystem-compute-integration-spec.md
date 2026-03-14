@@ -985,6 +985,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This issue should stop short of a huge product surface and focus on execution truth first.
 
 38. **Psionic Train: add quantized collectives and elastic device-mesh semantics**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3522`.
    - Build the Rust-native equivalent of the most valuable training communication patterns, including quantized sync where it is truthful.
    - This is where `psionic-collectives`, `psionic-datastream`, and `psionic-checkpoint` converge.
 

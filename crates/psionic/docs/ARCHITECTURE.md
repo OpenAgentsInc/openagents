@@ -27,17 +27,20 @@ Psionic is structured as a layered engine subtree.
 7. `psionic-datastream`
    Resumable dataset/checkpoint manifests, chunk transport, and delivery
    receipts for staged artifact and training/eval data movement.
-8. `psionic-train`
+8. `psionic-collectives`
+   Elastic device-mesh and benchmark-gated collective planning for training-
+   class execution.
+9. `psionic-train`
    Training-session truth for async checkpointing, live recovery, and
    elastic-membership posture built on clustered state and datastream
    manifests.
-9. Backend crates
+10. Backend crates
    Backend-specific runtime implementations only.
-10. `psionic-models`
+11. `psionic-models`
    Model abstractions and metadata over core/runtime primitives.
-11. `psionic-serve`
+12. `psionic-serve`
    Served compute product contracts and execution interfaces.
-12. `psionic-provider`
+13. `psionic-provider`
    Capability envelopes, readiness, receipts, and provider adapter types.
 
 ## Dependency Direction
@@ -53,6 +56,8 @@ Psionic is structured as a layered engine subtree.
   authority or app behavior.
 - `psionic-datastream` may depend on reusable engine crates only and owns no
   market authority or app behavior.
+- `psionic-collectives` depends on reusable runtime-facing crates only and owns
+  no market authority or app behavior.
 - `psionic-train` depends on `psionic-cluster`, `psionic-datastream`, and
   `psionic-runtime` for checkpoint, recovery, and elastic-membership truth, and
   owns no market authority or app behavior.
