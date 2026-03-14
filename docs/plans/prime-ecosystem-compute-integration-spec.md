@@ -948,6 +948,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should surface enough state for operator, buyer, and provider UIs.
 
 31. **Risk: add compute collateral, bond draw, and challenge-linked claim flows**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3515`.
    - Connect challenge failures, proof absences, and delivery rejections to explicit economic consequences.
    - This is the point where compute stops being a best-effort marketplace and becomes an actually underwritten one.
 

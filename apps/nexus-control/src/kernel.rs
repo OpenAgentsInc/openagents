@@ -653,6 +653,50 @@ pub struct FinalizeValidatorChallengeResponse {
     pub receipt: Receipt,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+struct ComputeRiskLink {
+    #[serde(default)]
+    delivery_proof_id: Option<String>,
+    #[serde(default)]
+    instrument_id: Option<String>,
+    #[serde(default)]
+    reserve_partition_id: Option<String>,
+    #[serde(default)]
+    claimant_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct ComputeRiskTrigger {
+    reason_code: String,
+    triggered_at_ms: i64,
+    #[serde(default)]
+    delivery_proof_id: Option<String>,
+    #[serde(default)]
+    instrument_id: Option<String>,
+    #[serde(default)]
+    validator_challenge_id: Option<String>,
+    #[serde(default)]
+    challenge_result_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct ComputeBondReservation {
+    partition_id: String,
+    reserved_collateral: Money,
+    reserved_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct ComputeBondDraw {
+    partition_id: String,
+    reason_code: String,
+    reserved_collateral: Money,
+    drawn_amount: Money,
+    released_amount: Money,
+    remaining_total: Money,
+    resolved_at_ms: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RiskMarketMetrics {
     pub risk_coverage_offers_open: u64,
@@ -1067,6 +1111,66 @@ fn validator_service_reason(error: &ValidatorServiceError) -> &'static str {
         ValidatorServiceError::InvalidLease(_) => "validator_challenge_lease_invalid",
         ValidatorServiceError::InvalidMatrix(_) => "validator_challenge_witness_invalid",
     }
+}
+
+fn compute_delivery_trigger_reason(proof: &DeliveryProof) -> &'static str {
+    match proof.rejection_reason {
+        Some(DeliveryRejectionReason::RuntimeIdentityMismatch) => {
+            "compute_runtime_identity_mismatch"
+        }
+        Some(DeliveryRejectionReason::AttestationMissing) => "compute_attestation_missing",
+        Some(DeliveryRejectionReason::CostProofMissing) => "compute_cost_proof_missing",
+        Some(DeliveryRejectionReason::NonConformingDelivery) | None => "compute_delivery_rejected",
+    }
+}
+
+fn compute_challenge_trigger_reason(status: ValidatorChallengeStatus) -> &'static str {
+    match status {
+        ValidatorChallengeStatus::Rejected => "compute_validator_rejected",
+        ValidatorChallengeStatus::TimedOut => "compute_validator_timed_out",
+        ValidatorChallengeStatus::Queued
+        | ValidatorChallengeStatus::Leased
+        | ValidatorChallengeStatus::Retrying
+        | ValidatorChallengeStatus::Verified => "compute_delivery_rejected",
+    }
+}
+
+fn is_compute_claim_reason_code(reason_code: &str) -> bool {
+    matches!(
+        reason_code,
+        "compute_delivery_rejected"
+            | "compute_runtime_identity_mismatch"
+            | "compute_attestation_missing"
+            | "compute_cost_proof_missing"
+            | "compute_validator_rejected"
+            | "compute_validator_timed_out"
+    )
+}
+
+fn decode_metadata_struct<T: for<'de> Deserialize<'de>>(
+    metadata: &Value,
+    key: &str,
+) -> Result<Option<T>, String> {
+    metadata
+        .as_object()
+        .and_then(|object| object.get(key))
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| format!("compute_metadata_decode_failed:{key}:{error}"))
+}
+
+fn encode_metadata_struct<T: Serialize>(
+    metadata: &mut Value,
+    key: &str,
+    value: &T,
+) -> Result<(), String> {
+    ensure_metadata_object(metadata)?.insert(
+        key.to_string(),
+        serde_json::to_value(value)
+            .map_err(|error| format!("compute_metadata_encode_failed:{key}:{error}"))?,
+    );
+    Ok(())
 }
 
 fn forward_remedy_profile(product_id: &str) -> &'static str {
@@ -4098,6 +4202,15 @@ impl KernelState {
             lot_record.lot.reserve_state = reserve_state;
             lot_record.lot.status = status;
         }
+        if req.delivery_proof.status == DeliveryProofStatus::Rejected {
+            self.trigger_compute_coverage_bindings(
+                &req.delivery_proof,
+                compute_delivery_trigger_reason(&req.delivery_proof),
+                req.delivery_proof.created_at_ms,
+                None,
+                None,
+            )?;
+        }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.delivery_proof.created_at_ms)?;
         Ok(MutationResult {
@@ -4711,6 +4824,25 @@ impl KernelState {
             {
                 lot_record.lot.reserve_state = reserve_state;
                 lot_record.lot.status = status;
+            }
+            if matches!(
+                req.result.status,
+                ValidatorChallengeStatus::Rejected | ValidatorChallengeStatus::TimedOut
+            ) && let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+            {
+                let delivery_proof = self
+                    .delivery_proofs
+                    .get(delivery_proof_id.as_str())
+                    .map(|record| record.delivery_proof.clone());
+                if let Some(delivery_proof) = delivery_proof {
+                    self.trigger_compute_coverage_bindings(
+                        &delivery_proof,
+                        compute_challenge_trigger_reason(req.result.status),
+                        req.result.finalized_at_ms as i64,
+                        Some(challenge_id.as_str()),
+                        Some(req.result.challenge_result_ref.as_str()),
+                    )?;
+                }
             }
         }
 
@@ -7714,6 +7846,149 @@ impl KernelState {
         })
     }
 
+    fn normalize_compute_risk_link(
+        &self,
+        metadata: &Value,
+        total_coverage: &Money,
+        created_at_ms: i64,
+    ) -> Result<Option<(ComputeRiskLink, Option<ComputeBondReservation>)>, String> {
+        let Some(mut link) = decode_metadata_struct::<ComputeRiskLink>(metadata, "compute_link")?
+        else {
+            return Ok(None);
+        };
+        link.delivery_proof_id = link
+            .delivery_proof_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        link.instrument_id = link
+            .instrument_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        link.reserve_partition_id = link
+            .reserve_partition_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        link.claimant_id = link
+            .claimant_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if link.delivery_proof_id.is_none() && link.instrument_id.is_none() {
+            return Err("compute_risk_link_reference_missing".to_string());
+        }
+        if let Some(delivery_proof_id) = link.delivery_proof_id.as_deref() {
+            let Some(record) = self.delivery_proofs.get(delivery_proof_id) else {
+                return Err("delivery_proof_not_found".to_string());
+            };
+            if link.instrument_id.is_none() {
+                link.instrument_id = record.delivery_proof.instrument_id.clone();
+            }
+        }
+        if let Some(instrument_id) = link.instrument_id.as_deref()
+            && !self.capacity_instruments.contains_key(instrument_id)
+        {
+            return Err("capacity_instrument_not_found".to_string());
+        }
+        let reservation = if let Some(partition_id) = link.reserve_partition_id.as_deref() {
+            let Some(partition_record) = self.reserve_partitions.get(partition_id) else {
+                return Err("reserve_partition_not_found".to_string());
+            };
+            if !money_assets_match(
+                total_coverage,
+                &partition_record.reserve_partition.total_amount,
+            ) || !money_units_match(
+                total_coverage,
+                &partition_record.reserve_partition.total_amount,
+            ) {
+                return Err("risk_market_asset_mismatch".to_string());
+            }
+            let available_amount =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            if money_amount_value(total_coverage) > available_amount {
+                return Err("compute_bond_collateral_insufficient".to_string());
+            }
+            Some(ComputeBondReservation {
+                partition_id: partition_id.to_string(),
+                reserved_collateral: total_coverage.clone(),
+                reserved_at_ms: created_at_ms,
+            })
+        } else {
+            None
+        };
+        Ok(Some((link, reservation)))
+    }
+
+    fn trigger_compute_coverage_bindings(
+        &mut self,
+        delivery_proof: &DeliveryProof,
+        reason_code: &str,
+        triggered_at_ms: i64,
+        validator_challenge_id: Option<&str>,
+        challenge_result_ref: Option<&str>,
+    ) -> Result<(), String> {
+        let mut binding_ids = Vec::new();
+        for (binding_id, record) in &self.coverage_bindings {
+            if !matches!(
+                record.coverage_binding.status,
+                CoverageBindingStatus::Active | CoverageBindingStatus::Triggered
+            ) {
+                continue;
+            }
+            let Some(link) = decode_metadata_struct::<ComputeRiskLink>(
+                &record.coverage_binding.metadata,
+                "compute_link",
+            )?
+            else {
+                continue;
+            };
+            let matches_delivery = link.delivery_proof_id.as_deref()
+                == Some(delivery_proof.delivery_proof_id.as_str());
+            let matches_instrument =
+                link.instrument_id.as_deref() == delivery_proof.instrument_id.as_deref();
+            if matches_delivery || matches_instrument {
+                binding_ids.push(binding_id.clone());
+            }
+        }
+        for binding_id in binding_ids {
+            let Some(binding_record) = self.coverage_bindings.get_mut(binding_id.as_str()) else {
+                continue;
+            };
+            let Some(mut link) = decode_metadata_struct::<ComputeRiskLink>(
+                &binding_record.coverage_binding.metadata,
+                "compute_link",
+            )?
+            else {
+                continue;
+            };
+            if link.delivery_proof_id.is_none() {
+                link.delivery_proof_id = Some(delivery_proof.delivery_proof_id.clone());
+                encode_metadata_struct(
+                    &mut binding_record.coverage_binding.metadata,
+                    "compute_link",
+                    &link,
+                )?;
+            }
+            let trigger = ComputeRiskTrigger {
+                reason_code: reason_code.to_string(),
+                triggered_at_ms,
+                delivery_proof_id: Some(delivery_proof.delivery_proof_id.clone()),
+                instrument_id: delivery_proof.instrument_id.clone(),
+                validator_challenge_id: validator_challenge_id.map(ToOwned::to_owned),
+                challenge_result_ref: challenge_result_ref.map(ToOwned::to_owned),
+            };
+            encode_metadata_struct(
+                &mut binding_record.coverage_binding.metadata,
+                "compute_trigger",
+                &trigger,
+            )?;
+            binding_record.coverage_binding.status = CoverageBindingStatus::Triggered;
+        }
+        Ok(())
+    }
+
     pub fn bind_coverage(
         &mut self,
         context: &KernelMutationContext,
@@ -7769,6 +8044,21 @@ impl KernelState {
         req.coverage_binding.total_coverage = total_coverage;
         req.coverage_binding.premium_total = premium_total;
         req.coverage_binding.status = CoverageBindingStatus::Active;
+        let compute_risk_link = self.normalize_compute_risk_link(
+            &req.coverage_binding.metadata,
+            &req.coverage_binding.total_coverage,
+            req.coverage_binding.created_at_ms,
+        )?;
+        if let Some((link, reservation)) = compute_risk_link.as_ref() {
+            encode_metadata_struct(&mut req.coverage_binding.metadata, "compute_link", link)?;
+            if let Some(reservation) = reservation.as_ref() {
+                encode_metadata_struct(
+                    &mut req.coverage_binding.metadata,
+                    "compute_bond_reservation",
+                    reservation,
+                )?;
+            }
+        }
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
@@ -7777,6 +8067,19 @@ impl KernelState {
                 &mut evidence,
                 self.receipt_store
                     .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        if let Some((_, reservation)) = compute_risk_link.as_ref()
+            && let Some(reservation) = reservation.as_ref()
+            && let Some(partition_record) = self
+                .reserve_partitions
+                .get(reservation.partition_id.as_str())
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(partition_record.receipt_id.as_str())
                     .as_ref(),
             );
         }
@@ -7796,6 +8099,12 @@ impl KernelState {
                     "outcome_ref": outcome_ref,
                     "offer_ids": req.coverage_binding.offer_ids.clone(),
                     "status": req.coverage_binding.status,
+                    "reserve_partition_id": compute_risk_link
+                        .as_ref()
+                        .and_then(|(link, _)| link.reserve_partition_id.clone()),
+                    "reserved_collateral": compute_risk_link
+                        .as_ref()
+                        .and_then(|(_, reservation)| reservation.as_ref().map(|reservation| reservation.reserved_collateral.clone())),
                 }),
                 evidence,
                 hints: req.hints.clone(),
@@ -7831,6 +8140,33 @@ impl KernelState {
             {
                 existing_offer.coverage_offer.status = CoverageOfferStatus::Bound;
             }
+        }
+        if let Some((_, reservation)) = compute_risk_link.as_ref()
+            && let Some(reservation) = reservation.as_ref()
+            && let Some(partition_record) = self
+                .reserve_partitions
+                .get_mut(reservation.partition_id.as_str())
+        {
+            let reserved_value = money_amount_value(&reservation.reserved_collateral);
+            let available_value =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            let partition_reserved =
+                money_amount_value(&partition_record.reserve_partition.reserved_amount);
+            set_money_amount(
+                &mut partition_record.reserve_partition.available_amount,
+                available_value.saturating_sub(reserved_value),
+            );
+            set_money_amount(
+                &mut partition_record.reserve_partition.reserved_amount,
+                partition_reserved.saturating_add(reserved_value),
+            );
+            partition_record.reserve_partition.updated_at_ms = req.coverage_binding.created_at_ms;
+            partition_record.reserve_partition.status =
+                if money_amount_value(&partition_record.reserve_partition.available_amount) == 0 {
+                    ReservePartitionStatus::Exhausted
+                } else {
+                    ReservePartitionStatus::Adjusted
+                };
         }
         self.coverage_bindings.insert(
             binding_id,
@@ -7967,7 +8303,7 @@ impl KernelState {
             req.risk_claim.claimant_id.as_str(),
             "risk_claimant_id_missing",
         )?;
-        normalize_required(
+        let reason_code = normalize_required(
             req.risk_claim.reason_code.as_str(),
             "risk_claim_reason_missing",
         )?;
@@ -7992,9 +8328,39 @@ impl KernelState {
         req.risk_claim.binding_id.clone_from(&binding_id);
         req.risk_claim.outcome_ref.clone_from(&outcome_ref);
         req.risk_claim.claimant_id.clone_from(&claimant_id);
+        req.risk_claim.reason_code.clone_from(&reason_code);
         req.risk_claim.created_at_ms =
             normalize_created_at_ms(req.risk_claim.created_at_ms, context.now_unix_ms);
         req.risk_claim.status = RiskClaimStatus::Open;
+        let compute_risk_link = decode_metadata_struct::<ComputeRiskLink>(
+            &binding_record.coverage_binding.metadata,
+            "compute_link",
+        )?;
+        let compute_trigger = decode_metadata_struct::<ComputeRiskTrigger>(
+            &binding_record.coverage_binding.metadata,
+            "compute_trigger",
+        )?;
+        if is_compute_claim_reason_code(reason_code.as_str()) && compute_risk_link.is_none() {
+            return Err("compute_risk_claim_binding_missing_compute_link".to_string());
+        }
+        if let Some(link) = compute_risk_link.as_ref() {
+            if binding_record.coverage_binding.status != CoverageBindingStatus::Triggered {
+                return Err("compute_risk_claim_binding_not_triggered".to_string());
+            }
+            let Some(trigger) = compute_trigger.as_ref() else {
+                return Err("compute_risk_claim_trigger_missing".to_string());
+            };
+            if reason_code != trigger.reason_code {
+                return Err("compute_risk_claim_reason_mismatch".to_string());
+            }
+            if let Some(expected_claimant_id) = link.claimant_id.as_deref()
+                && expected_claimant_id != claimant_id
+            {
+                return Err("compute_risk_claim_claimant_mismatch".to_string());
+            }
+            encode_metadata_struct(&mut req.risk_claim.metadata, "compute_link", link)?;
+            encode_metadata_struct(&mut req.risk_claim.metadata, "compute_trigger", trigger)?;
+        }
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
@@ -8004,6 +8370,37 @@ impl KernelState {
                 .get_receipt(binding_record.receipt_id.as_str())
                 .as_ref(),
         );
+        if let Some(link) = compute_risk_link.as_ref() {
+            if let Some(delivery_proof_id) = link.delivery_proof_id.as_deref()
+                && let Some(delivery_record) = self.delivery_proofs.get(delivery_proof_id)
+            {
+                push_receipt_evidence(
+                    &mut evidence,
+                    self.receipt_store
+                        .get_receipt(delivery_record.receipt_id.as_str())
+                        .as_ref(),
+                );
+            }
+            if let Some(instrument_id) = link.instrument_id.as_deref()
+                && let Some(instrument_record) = self.capacity_instruments.get(instrument_id)
+            {
+                push_receipt_evidence(
+                    &mut evidence,
+                    self.receipt_store
+                        .get_receipt(instrument_record.receipt_id.as_str())
+                        .as_ref(),
+                );
+            }
+        }
+        if let Some(trigger) = compute_trigger.as_ref()
+            && let Some(challenge_result_ref) = trigger.challenge_result_ref.as_deref()
+        {
+            evidence.push(EvidenceRef::new(
+                "compute_risk_claim_challenge_result",
+                challenge_result_ref.to_string(),
+                sha256_prefixed_text(challenge_result_ref),
+            ));
+        }
         let claim_payload = serde_json::to_value(&req.risk_claim)
             .map_err(|error| format!("kernel_risk_claim_encode_failed: {error}"))?;
         let receipt = build_receipt(
@@ -8019,6 +8416,7 @@ impl KernelState {
                     "claim_id": claim_id.clone(),
                     "binding_id": binding_id,
                     "outcome_ref": outcome_ref,
+                    "reason_code": req.risk_claim.reason_code.clone(),
                     "status": req.risk_claim.status,
                 }),
                 evidence,
@@ -8077,6 +8475,56 @@ impl KernelState {
             return Err("risk_claim_not_found".to_string());
         };
         let mut risk_claim = existing_record.risk_claim.clone();
+        let binding_record = self
+            .coverage_bindings
+            .get(risk_claim.binding_id.as_str())
+            .cloned();
+        let compute_risk_link = binding_record
+            .as_ref()
+            .map(|record| {
+                decode_metadata_struct::<ComputeRiskLink>(
+                    &record.coverage_binding.metadata,
+                    "compute_link",
+                )
+            })
+            .transpose()?
+            .flatten();
+        let compute_trigger = binding_record
+            .as_ref()
+            .map(|record| {
+                decode_metadata_struct::<ComputeRiskTrigger>(
+                    &record.coverage_binding.metadata,
+                    "compute_trigger",
+                )
+            })
+            .transpose()?
+            .flatten();
+        let compute_bond_reservation = binding_record
+            .as_ref()
+            .map(|record| {
+                decode_metadata_struct::<ComputeBondReservation>(
+                    &record.coverage_binding.metadata,
+                    "compute_bond_reservation",
+                )
+            })
+            .transpose()?
+            .flatten();
+        let resolution_reason_code = req
+            .metadata
+            .as_object()
+            .and_then(|object| object.get("resolution_reason_code"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                compute_risk_link.as_ref().map(|_| match req.status {
+                    RiskClaimStatus::Approved => "compute_claim_approved".to_string(),
+                    RiskClaimStatus::Denied => "compute_claim_denied".to_string(),
+                    RiskClaimStatus::Paid => "compute_claim_paid".to_string(),
+                    RiskClaimStatus::Open => "compute_claim_reopened".to_string(),
+                })
+            });
         if matches!(
             req.status,
             RiskClaimStatus::Approved | RiskClaimStatus::Paid
@@ -8102,6 +8550,105 @@ impl KernelState {
         if !req.metadata.is_null() {
             risk_claim.metadata = req.metadata.clone();
         }
+        if let Some(link) = compute_risk_link.as_ref() {
+            encode_metadata_struct(&mut risk_claim.metadata, "compute_link", link)?;
+        }
+        if let Some(trigger) = compute_trigger.as_ref() {
+            encode_metadata_struct(&mut risk_claim.metadata, "compute_trigger", trigger)?;
+        }
+        if let Some(resolution_reason_code) = resolution_reason_code.as_ref() {
+            ensure_metadata_object(&mut risk_claim.metadata)?.insert(
+                "resolution_reason_code".to_string(),
+                Value::String(resolution_reason_code.clone()),
+            );
+        }
+        let compute_bond_draw = if let (Some(link), Some(reservation)) = (
+            compute_risk_link.as_ref(),
+            compute_bond_reservation.as_ref(),
+        ) {
+            let partition_id = link
+                .reserve_partition_id
+                .as_deref()
+                .ok_or_else(|| "compute_bond_partition_missing".to_string())?;
+            let Some(partition_record) = self.reserve_partitions.get(partition_id) else {
+                return Err("reserve_partition_not_found".to_string());
+            };
+            if !money_assets_match(
+                &partition_record.reserve_partition.total_amount,
+                &reservation.reserved_collateral,
+            ) || !money_units_match(
+                &partition_record.reserve_partition.total_amount,
+                &reservation.reserved_collateral,
+            ) {
+                return Err("risk_market_asset_mismatch".to_string());
+            }
+            let reserved_value = money_amount_value(&reservation.reserved_collateral);
+            let partition_reserved =
+                money_amount_value(&partition_record.reserve_partition.reserved_amount);
+            if reserved_value > partition_reserved {
+                return Err("compute_bond_reservation_state_invalid".to_string());
+            }
+            match req.status {
+                RiskClaimStatus::Paid => {
+                    let approved_payout = risk_claim
+                        .approved_payout
+                        .as_ref()
+                        .ok_or_else(|| "risk_claim_approved_payout_missing".to_string())?;
+                    let approved_value = money_amount_value(approved_payout);
+                    if approved_value > reserved_value {
+                        return Err("risk_claim_payout_exceeds_reserved_collateral".to_string());
+                    }
+                    let mut released_amount = reservation.reserved_collateral.clone();
+                    set_money_amount(
+                        &mut released_amount,
+                        reserved_value.saturating_sub(approved_value),
+                    );
+                    let mut remaining_total =
+                        partition_record.reserve_partition.total_amount.clone();
+                    set_money_amount(
+                        &mut remaining_total,
+                        money_amount_value(&partition_record.reserve_partition.total_amount)
+                            .saturating_sub(approved_value),
+                    );
+                    Some(ComputeBondDraw {
+                        partition_id: partition_id.to_string(),
+                        reason_code: resolution_reason_code
+                            .clone()
+                            .unwrap_or_else(|| "compute_claim_paid".to_string()),
+                        reserved_collateral: reservation.reserved_collateral.clone(),
+                        drawn_amount: approved_payout.clone(),
+                        released_amount,
+                        remaining_total,
+                        resolved_at_ms,
+                    })
+                }
+                RiskClaimStatus::Denied => {
+                    let mut drawn_amount = reservation.reserved_collateral.clone();
+                    set_money_amount(&mut drawn_amount, 0);
+                    Some(ComputeBondDraw {
+                        partition_id: partition_id.to_string(),
+                        reason_code: resolution_reason_code
+                            .clone()
+                            .unwrap_or_else(|| "compute_claim_denied".to_string()),
+                        reserved_collateral: reservation.reserved_collateral.clone(),
+                        drawn_amount,
+                        released_amount: reservation.reserved_collateral.clone(),
+                        remaining_total: partition_record.reserve_partition.total_amount.clone(),
+                        resolved_at_ms,
+                    })
+                }
+                RiskClaimStatus::Approved | RiskClaimStatus::Open => None,
+            }
+        } else {
+            None
+        };
+        if let Some(compute_bond_draw) = compute_bond_draw.as_ref() {
+            encode_metadata_struct(
+                &mut risk_claim.metadata,
+                "compute_bond_draw",
+                compute_bond_draw,
+            )?;
+        }
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
         push_receipt_evidence(
@@ -8110,13 +8657,33 @@ impl KernelState {
                 .get_receipt(existing_record.receipt_id.as_str())
                 .as_ref(),
         );
-        if let Some(binding_record) = self.coverage_bindings.get(risk_claim.binding_id.as_str()) {
+        if let Some(binding_record) = binding_record.as_ref() {
             push_receipt_evidence(
                 &mut evidence,
                 self.receipt_store
                     .get_receipt(binding_record.receipt_id.as_str())
                     .as_ref(),
             );
+        }
+        if let Some(link) = compute_risk_link.as_ref()
+            && let Some(partition_id) = link.reserve_partition_id.as_deref()
+            && let Some(partition_record) = self.reserve_partitions.get(partition_id)
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(partition_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        if let Some(trigger) = compute_trigger.as_ref()
+            && let Some(challenge_result_ref) = trigger.challenge_result_ref.as_deref()
+        {
+            evidence.push(EvidenceRef::new(
+                "compute_risk_claim_challenge_result",
+                challenge_result_ref.to_string(),
+                sha256_prefixed_text(challenge_result_ref),
+            ));
         }
         let receipt = build_receipt(
             context,
@@ -8139,6 +8706,8 @@ impl KernelState {
                     "binding_id": risk_claim.binding_id.clone(),
                     "status": risk_claim.status,
                     "resolution_ref": risk_claim.resolution_ref.clone(),
+                    "resolution_reason_code": resolution_reason_code.clone(),
+                    "compute_bond_draw": compute_bond_draw.clone(),
                 }),
                 evidence,
                 hints: req.hints.clone(),
@@ -8177,6 +8746,70 @@ impl KernelState {
                 RiskClaimStatus::Denied => CoverageBindingStatus::Active,
                 RiskClaimStatus::Open => binding_record.coverage_binding.status,
             };
+            if let Some(compute_bond_draw) = compute_bond_draw.as_ref() {
+                encode_metadata_struct(
+                    &mut binding_record.coverage_binding.metadata,
+                    "compute_bond_draw",
+                    compute_bond_draw,
+                )?;
+            }
+        }
+        if let Some(link) = compute_risk_link.as_ref()
+            && let Some(partition_id) = link.reserve_partition_id.as_deref()
+            && let Some(reservation) = compute_bond_reservation.as_ref()
+            && let Some(partition_record) = self.reserve_partitions.get_mut(partition_id)
+        {
+            let reserved_value = money_amount_value(&reservation.reserved_collateral);
+            let partition_reserved =
+                money_amount_value(&partition_record.reserve_partition.reserved_amount);
+            let partition_available =
+                money_amount_value(&partition_record.reserve_partition.available_amount);
+            let partition_total =
+                money_amount_value(&partition_record.reserve_partition.total_amount);
+            match risk_claim.status {
+                RiskClaimStatus::Paid => {
+                    let approved_payout = risk_claim
+                        .approved_payout
+                        .as_ref()
+                        .ok_or_else(|| "risk_claim_approved_payout_missing".to_string())?;
+                    let approved_value = money_amount_value(approved_payout);
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.reserved_amount,
+                        partition_reserved.saturating_sub(reserved_value),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.available_amount,
+                        partition_available
+                            .saturating_add(reserved_value.saturating_sub(approved_value)),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.total_amount,
+                        partition_total.saturating_sub(approved_value),
+                    );
+                    partition_record.reserve_partition.status =
+                        if money_amount_value(&partition_record.reserve_partition.available_amount)
+                            == 0
+                        {
+                            ReservePartitionStatus::Exhausted
+                        } else {
+                            ReservePartitionStatus::Adjusted
+                        };
+                    partition_record.reserve_partition.updated_at_ms = resolved_at_ms;
+                }
+                RiskClaimStatus::Denied => {
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.reserved_amount,
+                        partition_reserved.saturating_sub(reserved_value),
+                    );
+                    set_money_amount(
+                        &mut partition_record.reserve_partition.available_amount,
+                        partition_available.saturating_add(reserved_value),
+                    );
+                    partition_record.reserve_partition.status = ReservePartitionStatus::Adjusted;
+                    partition_record.reserve_partition.updated_at_ms = resolved_at_ms;
+                }
+                RiskClaimStatus::Approved | RiskClaimStatus::Open => {}
+            }
         }
         self.risk_claims.insert(
             claim_id,
@@ -8945,16 +9578,18 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
-        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, floor_to_minute_utc,
+        ComputeBondDraw, ComputeRiskTrigger, FinalizeValidatorChallengeRequest,
+        KernelMutationContext, KernelState, LeaseValidatorChallengeRequest,
+        ScheduleValidatorChallengeRequest, decode_metadata_struct, floor_to_minute_utc,
         money_amount_value,
     };
     use openagents_kernel_core::authority::{
-        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        BindCoverageRequest, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
         CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        CreateStructuredCapacityInstrumentRequest, PublishComputeIndexRequest,
-        RecordDeliveryProofRequest,
+        CreateRiskClaimRequest, CreateStructuredCapacityInstrumentRequest,
+        PlaceCoverageOfferRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
+        RegisterReservePartitionRequest, ResolveRiskClaimRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
@@ -8968,8 +9603,13 @@ mod tests {
         StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
         StructuredCapacityLeg, StructuredCapacityLegRole,
     };
+    use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
+    };
+    use openagents_kernel_core::risk::{
+        CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus, RiskClaim,
+        RiskClaimStatus,
     };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeProtocolKind,
@@ -9290,6 +9930,177 @@ mod tests {
             challenge_result_ref: format!(
                 "validator_challenge_result:{challenge_id}:{attempt}:{finalized_at_ms}"
             ),
+        }
+    }
+
+    fn reserve_partition_request(
+        partition_id: &str,
+        created_at_ms: i64,
+    ) -> RegisterReservePartitionRequest {
+        RegisterReservePartitionRequest {
+            idempotency_key: format!("idemp.reserve_partition.{partition_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            reserve_partition: ReservePartition {
+                partition_id: partition_id.to_string(),
+                owner_id: "treasury-router.alpha".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms,
+                total_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(10_000),
+                },
+                available_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(10_000),
+                },
+                reserved_amount: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                status: ReservePartitionStatus::Active,
+                metadata: json!({"rail": "lightning"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn coverage_offer_request(
+        offer_id: &str,
+        outcome_ref: &str,
+        created_at_ms: i64,
+    ) -> PlaceCoverageOfferRequest {
+        PlaceCoverageOfferRequest {
+            idempotency_key: format!("idemp.coverage_offer.{offer_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            coverage_offer: CoverageOffer {
+                offer_id: offer_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                contract_id: Some("contract.alpha".to_string()),
+                underwriter_id: "underwriter.alpha".to_string(),
+                created_at_ms,
+                expires_at_ms: created_at_ms + 60_000,
+                coverage_cap: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1_500),
+                },
+                premium: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(120),
+                },
+                deductible: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(50),
+                }),
+                status: CoverageOfferStatus::Open,
+                metadata: json!({"lane": "compute"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_coverage_binding_request(
+        binding_id: &str,
+        outcome_ref: &str,
+        offer_ids: Vec<String>,
+        partition_id: &str,
+        instrument_id: &str,
+        claimant_id: &str,
+        created_at_ms: i64,
+    ) -> BindCoverageRequest {
+        BindCoverageRequest {
+            idempotency_key: format!("idemp.coverage_binding.{binding_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            coverage_binding: CoverageBinding {
+                binding_id: binding_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                contract_id: Some("contract.alpha".to_string()),
+                offer_ids,
+                created_at_ms,
+                warranty_window_end_ms: Some(created_at_ms + 600_000),
+                total_coverage: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                premium_total: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                },
+                status: CoverageBindingStatus::Active,
+                metadata: json!({
+                    "compute_link": {
+                        "instrument_id": instrument_id,
+                        "reserve_partition_id": partition_id,
+                        "claimant_id": claimant_id,
+                    }
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn risk_claim_request(
+        claim_id: &str,
+        binding_id: &str,
+        outcome_ref: &str,
+        claimant_id: &str,
+        reason_code: &str,
+        created_at_ms: i64,
+    ) -> CreateRiskClaimRequest {
+        CreateRiskClaimRequest {
+            idempotency_key: format!("idemp.risk_claim.{claim_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            risk_claim: RiskClaim {
+                claim_id: claim_id.to_string(),
+                binding_id: binding_id.to_string(),
+                outcome_ref: outcome_ref.to_string(),
+                claimant_id: claimant_id.to_string(),
+                created_at_ms,
+                requested_payout: Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(900),
+                },
+                approved_payout: None,
+                resolution_ref: None,
+                reason_code: reason_code.to_string(),
+                status: RiskClaimStatus::Open,
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn resolve_risk_claim_request(
+        claim_id: &str,
+        status: RiskClaimStatus,
+        resolved_at_ms: i64,
+        resolution_reason_code: &str,
+    ) -> ResolveRiskClaimRequest {
+        ResolveRiskClaimRequest {
+            idempotency_key: format!("idemp.risk_claim.resolve.{claim_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            claim_id: claim_id.to_string(),
+            resolved_at_ms,
+            status,
+            approved_payout: matches!(status, RiskClaimStatus::Approved | RiskClaimStatus::Paid)
+                .then_some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(900),
+                }),
+            resolution_ref: format!("oa://claims/{claim_id}/resolution"),
+            metadata: json!({
+                "resolution_reason_code": resolution_reason_code,
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
         }
     }
 
@@ -10921,6 +11732,307 @@ mod tests {
         assert_eq!(metrics.compute_validator_challenges_verified_24h, 1);
         assert_eq!(metrics.compute_validator_challenges_rejected_24h, 1);
         assert_eq!(metrics.compute_validator_challenges_timed_out_24h, 1);
+    }
+
+    #[test]
+    fn compute_coverage_binding_reserves_collateral_and_paid_claim_draws_bond() {
+        let created_at_ms = 1_762_000_355_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+        kernel
+            .register_reserve_partition(
+                &fixture_context(created_at_ms + 3_000),
+                reserve_partition_request("reserve.compute.alpha", created_at_ms as i64 + 3_000),
+            )
+            .expect("reserve partition");
+        kernel
+            .place_coverage_offer(
+                &fixture_context(created_at_ms + 4_000),
+                coverage_offer_request(
+                    "coverage_offer.compute.alpha",
+                    "outcome.compute.alpha",
+                    created_at_ms as i64 + 4_000,
+                ),
+            )
+            .expect("coverage offer");
+        kernel
+            .bind_coverage(
+                &fixture_context(created_at_ms + 5_000),
+                compute_coverage_binding_request(
+                    "coverage_binding.compute.alpha",
+                    "outcome.compute.alpha",
+                    vec!["coverage_offer.compute.alpha".to_string()],
+                    "reserve.compute.alpha",
+                    "instrument.compute.alpha",
+                    "buyer.compute.alpha",
+                    created_at_ms as i64 + 5_000,
+                ),
+            )
+            .expect("coverage binding");
+        let partition = &kernel
+            .reserve_partitions
+            .get("reserve.compute.alpha")
+            .expect("partition")
+            .reserve_partition;
+        assert_eq!(money_amount_value(&partition.available_amount), 8_500);
+        assert_eq!(money_amount_value(&partition.reserved_amount), 1_500);
+
+        let mut delivery_request = delivery_proof_request(created_at_ms as i64 + 6_000);
+        delivery_request.delivery_proof.delivery_proof_id = "delivery.compute.risk".to_string();
+        delivery_request.delivery_proof.metered_quantity = 0;
+        delivery_request.delivery_proof.accepted_quantity = 0;
+        kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 6_000), delivery_request)
+            .expect("rejected delivery");
+
+        let binding = &kernel
+            .coverage_bindings
+            .get("coverage_binding.compute.alpha")
+            .expect("binding")
+            .coverage_binding;
+        assert_eq!(binding.status, CoverageBindingStatus::Triggered);
+        let trigger =
+            decode_metadata_struct::<ComputeRiskTrigger>(&binding.metadata, "compute_trigger")
+                .expect("decode trigger")
+                .expect("trigger");
+        assert_eq!(trigger.reason_code, "compute_delivery_rejected");
+        assert_eq!(
+            trigger.delivery_proof_id.as_deref(),
+            Some("delivery.compute.risk")
+        );
+
+        kernel
+            .create_risk_claim(
+                &fixture_context(created_at_ms + 7_000),
+                risk_claim_request(
+                    "claim.compute.alpha",
+                    "coverage_binding.compute.alpha",
+                    "outcome.compute.alpha",
+                    "buyer.compute.alpha",
+                    "compute_delivery_rejected",
+                    created_at_ms as i64 + 7_000,
+                ),
+            )
+            .expect("risk claim");
+        kernel
+            .resolve_risk_claim(
+                &fixture_context(created_at_ms + 8_000),
+                resolve_risk_claim_request(
+                    "claim.compute.alpha",
+                    RiskClaimStatus::Paid,
+                    created_at_ms as i64 + 8_000,
+                    "compute_claim_paid",
+                ),
+            )
+            .expect("resolve claim");
+
+        let binding = &kernel
+            .coverage_bindings
+            .get("coverage_binding.compute.alpha")
+            .expect("binding")
+            .coverage_binding;
+        assert_eq!(binding.status, CoverageBindingStatus::Settled);
+        let bond_draw =
+            decode_metadata_struct::<ComputeBondDraw>(&binding.metadata, "compute_bond_draw")
+                .expect("decode bond draw")
+                .expect("bond draw");
+        assert_eq!(bond_draw.reason_code, "compute_claim_paid");
+        assert_eq!(money_amount_value(&bond_draw.drawn_amount), 900);
+
+        let partition = &kernel
+            .reserve_partitions
+            .get("reserve.compute.alpha")
+            .expect("partition")
+            .reserve_partition;
+        assert_eq!(money_amount_value(&partition.total_amount), 9_100);
+        assert_eq!(money_amount_value(&partition.available_amount), 9_100);
+        assert_eq!(money_amount_value(&partition.reserved_amount), 0);
+
+        let claim = &kernel
+            .risk_claims
+            .get("claim.compute.alpha")
+            .expect("claim")
+            .risk_claim;
+        let claim_bond_draw =
+            decode_metadata_struct::<ComputeBondDraw>(&claim.metadata, "compute_bond_draw")
+                .expect("decode claim bond draw")
+                .expect("claim bond draw");
+        assert_eq!(claim_bond_draw.partition_id, "reserve.compute.alpha");
+    }
+
+    #[test]
+    fn validator_challenge_triggered_binding_requires_matching_compute_claim_reason() {
+        let created_at_ms = 1_762_000_360_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+        kernel
+            .register_reserve_partition(
+                &fixture_context(created_at_ms + 3_000),
+                reserve_partition_request("reserve.compute.beta", created_at_ms as i64 + 3_000),
+            )
+            .expect("reserve partition");
+        kernel
+            .place_coverage_offer(
+                &fixture_context(created_at_ms + 4_000),
+                coverage_offer_request(
+                    "coverage_offer.compute.beta",
+                    "outcome.compute.beta",
+                    created_at_ms as i64 + 4_000,
+                ),
+            )
+            .expect("coverage offer");
+        kernel
+            .bind_coverage(
+                &fixture_context(created_at_ms + 5_000),
+                compute_coverage_binding_request(
+                    "coverage_binding.compute.beta",
+                    "outcome.compute.beta",
+                    vec!["coverage_offer.compute.beta".to_string()],
+                    "reserve.compute.beta",
+                    "instrument.compute.alpha",
+                    "buyer.compute.alpha",
+                    created_at_ms as i64 + 5_000,
+                ),
+            )
+            .expect("coverage binding");
+
+        let mut delivery_request = delivery_proof_request(created_at_ms as i64 + 6_000);
+        delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            });
+        delivery_request.delivery_proof.delivery_proof_id = "delivery.compute.beta".to_string();
+        kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 6_000), delivery_request)
+            .expect("delivery");
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms + 7_000),
+                validator_challenge_request(
+                    "challenge.compute.beta",
+                    Some("delivery.compute.beta"),
+                    created_at_ms + 7_000,
+                ),
+            )
+            .expect("schedule");
+        let lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 8_000),
+                validator_lease_request(
+                    "challenge.compute.beta",
+                    "validator.beta",
+                    created_at_ms + 8_000,
+                    "idemp.compute.validator.lease.beta",
+                ),
+            )
+            .expect("lease");
+        let result = validator_result(
+            "challenge.compute.beta",
+            created_at_ms + 9_000,
+            lease.response.lease.attempt,
+            ValidatorChallengeStatus::Rejected,
+            ValidatorChallengeVerdict::Rejected,
+            "validator rejected the claimed matrix product",
+        );
+        kernel
+            .finalize_validator_challenge(
+                &fixture_context(created_at_ms + 9_000),
+                FinalizeValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.finalize.beta".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: lease.response.lease,
+                    result: result.clone(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("finalize");
+
+        let binding = &kernel
+            .coverage_bindings
+            .get("coverage_binding.compute.beta")
+            .expect("binding")
+            .coverage_binding;
+        assert_eq!(binding.status, CoverageBindingStatus::Triggered);
+        let trigger =
+            decode_metadata_struct::<ComputeRiskTrigger>(&binding.metadata, "compute_trigger")
+                .expect("decode trigger")
+                .expect("trigger");
+        assert_eq!(trigger.reason_code, "compute_validator_rejected");
+        assert_eq!(
+            trigger.challenge_result_ref.as_deref(),
+            Some(result.challenge_result_ref.as_str())
+        );
+
+        let err = kernel
+            .create_risk_claim(
+                &fixture_context(created_at_ms + 10_000),
+                risk_claim_request(
+                    "claim.compute.beta.bad",
+                    "coverage_binding.compute.beta",
+                    "outcome.compute.beta",
+                    "buyer.compute.alpha",
+                    "compute_delivery_rejected",
+                    created_at_ms as i64 + 10_000,
+                ),
+            )
+            .expect_err("mismatched reason should fail");
+        assert_eq!(err, "compute_risk_claim_reason_mismatch");
+
+        let claim = kernel
+            .create_risk_claim(
+                &fixture_context(created_at_ms + 11_000),
+                risk_claim_request(
+                    "claim.compute.beta",
+                    "coverage_binding.compute.beta",
+                    "outcome.compute.beta",
+                    "buyer.compute.alpha",
+                    "compute_validator_rejected",
+                    created_at_ms as i64 + 11_000,
+                ),
+            )
+            .expect("risk claim");
+        let claim_trigger = decode_metadata_struct::<ComputeRiskTrigger>(
+            &claim.response.risk_claim.metadata,
+            "compute_trigger",
+        )
+        .expect("decode claim trigger")
+        .expect("claim trigger");
+        assert_eq!(
+            claim_trigger.challenge_result_ref.as_deref(),
+            Some(result.challenge_result_ref.as_str())
+        );
     }
 
     #[test]
