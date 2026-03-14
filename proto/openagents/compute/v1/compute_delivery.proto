@@ -30,6 +30,34 @@ enum DeliveryRejectionReason {
   DELIVERY_REJECTION_REASON_NON_CONFORMING_DELIVERY = 4;
 }
 
+message DeliveryTopologyEvidence {
+  ComputeTopologyKind topology_kind = 1;
+  optional string topology_digest = 2;
+  optional string scheduler_node_ref = 3;
+  optional string transport_class = 4;
+  repeated string selected_node_refs = 5;
+  repeated string replica_node_refs = 6;
+}
+
+message DeliverySandboxEvidence {
+  optional string sandbox_profile_ref = 1;
+  optional string sandbox_execution_ref = 2;
+  optional string command_digest = 3;
+  optional string environment_digest = 4;
+  repeated string input_artifact_refs = 5;
+  repeated string output_artifact_refs = 6;
+}
+
+message DeliveryVerificationEvidence {
+  optional string proof_bundle_ref = 1;
+  optional string activation_fingerprint_ref = 2;
+  optional string validator_pool_ref = 3;
+  optional string validator_run_ref = 4;
+  repeated string challenge_result_refs = 5;
+  optional string environment_ref = 6;
+  optional string eval_run_ref = 7;
+}
+
 message DeliveryProof {
   string delivery_proof_id = 1;
   string capacity_lot_id = 2;
@@ -46,9 +74,12 @@ message DeliveryProof {
   optional string cost_attestation_ref = 13;
   DeliveryProofStatus status = 14;
   DeliveryRejectionReason rejection_reason = 15;
-  optional ComputeCapabilityEnvelope promised_capability_envelope = 16;
-  optional ComputeCapabilityEnvelope observed_capability_envelope = 17;
-  string metadata_json = 18;
+  optional DeliveryTopologyEvidence topology_evidence = 16;
+  optional DeliverySandboxEvidence sandbox_evidence = 17;
+  optional DeliveryVerificationEvidence verification_evidence = 18;
+  optional ComputeCapabilityEnvelope promised_capability_envelope = 19;
+  optional ComputeCapabilityEnvelope observed_capability_envelope = 20;
+  string metadata_json = 21;
 }
 
 message RecordDeliveryProofRequest {

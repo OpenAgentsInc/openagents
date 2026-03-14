@@ -19,6 +19,7 @@ use crate::compute::{
     ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
     ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
     ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
     GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
@@ -41,6 +42,10 @@ fn missing(field: &str) -> anyhow::Error {
 fn empty_string_as_none(value: String) -> Option<String> {
     let value = value.trim().to_string();
     if value.is_empty() { None } else { Some(value) }
+}
+
+fn optional_string_as_none(value: Option<String>) -> Option<String> {
+    value.and_then(empty_string_as_none)
 }
 
 fn json_value_to_string(value: &Value) -> Result<String> {
@@ -1084,6 +1089,94 @@ fn delivery_proof_status_from_proto(value: i32) -> DeliveryProofStatus {
     }
 }
 
+fn delivery_topology_evidence_to_proto(
+    value: &DeliveryTopologyEvidence,
+) -> Result<proto_compute::DeliveryTopologyEvidence> {
+    Ok(proto_compute::DeliveryTopologyEvidence {
+        topology_kind: value
+            .topology_kind
+            .map(compute_topology_kind_to_proto)
+            .unwrap_or(proto_compute::ComputeTopologyKind::Unspecified as i32),
+        topology_digest: value.topology_digest.clone(),
+        scheduler_node_ref: value.scheduler_node_ref.clone(),
+        transport_class: value.transport_class.clone(),
+        selected_node_refs: value.selected_node_refs.clone(),
+        replica_node_refs: value.replica_node_refs.clone(),
+    })
+}
+
+fn delivery_topology_evidence_from_proto(
+    value: &proto_compute::DeliveryTopologyEvidence,
+) -> Result<DeliveryTopologyEvidence> {
+    Ok(DeliveryTopologyEvidence {
+        topology_kind: (value.topology_kind
+            != proto_compute::ComputeTopologyKind::Unspecified as i32)
+            .then(|| compute_topology_kind_from_proto(value.topology_kind))
+            .transpose()?,
+        topology_digest: optional_string_as_none(value.topology_digest.clone()),
+        scheduler_node_ref: optional_string_as_none(value.scheduler_node_ref.clone()),
+        transport_class: optional_string_as_none(value.transport_class.clone()),
+        selected_node_refs: value.selected_node_refs.clone(),
+        replica_node_refs: value.replica_node_refs.clone(),
+    })
+}
+
+fn delivery_sandbox_evidence_to_proto(
+    value: &DeliverySandboxEvidence,
+) -> proto_compute::DeliverySandboxEvidence {
+    proto_compute::DeliverySandboxEvidence {
+        sandbox_profile_ref: value.sandbox_profile_ref.clone(),
+        sandbox_execution_ref: value.sandbox_execution_ref.clone(),
+        command_digest: value.command_digest.clone(),
+        environment_digest: value.environment_digest.clone(),
+        input_artifact_refs: value.input_artifact_refs.clone(),
+        output_artifact_refs: value.output_artifact_refs.clone(),
+    }
+}
+
+fn delivery_sandbox_evidence_from_proto(
+    value: &proto_compute::DeliverySandboxEvidence,
+) -> DeliverySandboxEvidence {
+    DeliverySandboxEvidence {
+        sandbox_profile_ref: optional_string_as_none(value.sandbox_profile_ref.clone()),
+        sandbox_execution_ref: optional_string_as_none(value.sandbox_execution_ref.clone()),
+        command_digest: optional_string_as_none(value.command_digest.clone()),
+        environment_digest: optional_string_as_none(value.environment_digest.clone()),
+        input_artifact_refs: value.input_artifact_refs.clone(),
+        output_artifact_refs: value.output_artifact_refs.clone(),
+    }
+}
+
+fn delivery_verification_evidence_to_proto(
+    value: &DeliveryVerificationEvidence,
+) -> proto_compute::DeliveryVerificationEvidence {
+    proto_compute::DeliveryVerificationEvidence {
+        proof_bundle_ref: value.proof_bundle_ref.clone(),
+        activation_fingerprint_ref: value.activation_fingerprint_ref.clone(),
+        validator_pool_ref: value.validator_pool_ref.clone(),
+        validator_run_ref: value.validator_run_ref.clone(),
+        challenge_result_refs: value.challenge_result_refs.clone(),
+        environment_ref: value.environment_ref.clone(),
+        eval_run_ref: value.eval_run_ref.clone(),
+    }
+}
+
+fn delivery_verification_evidence_from_proto(
+    value: &proto_compute::DeliveryVerificationEvidence,
+) -> DeliveryVerificationEvidence {
+    DeliveryVerificationEvidence {
+        proof_bundle_ref: optional_string_as_none(value.proof_bundle_ref.clone()),
+        activation_fingerprint_ref: optional_string_as_none(
+            value.activation_fingerprint_ref.clone(),
+        ),
+        validator_pool_ref: optional_string_as_none(value.validator_pool_ref.clone()),
+        validator_run_ref: optional_string_as_none(value.validator_run_ref.clone()),
+        challenge_result_refs: value.challenge_result_refs.clone(),
+        environment_ref: optional_string_as_none(value.environment_ref.clone()),
+        eval_run_ref: optional_string_as_none(value.eval_run_ref.clone()),
+    }
+}
+
 fn delivery_variance_reason_to_proto(value: ComputeDeliveryVarianceReason) -> i32 {
     match value {
         ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch => {
@@ -1657,6 +1750,19 @@ pub fn delivery_proof_to_proto(proof: &DeliveryProof) -> Result<proto_compute::D
             .rejection_reason
             .map(delivery_rejection_reason_to_proto)
             .unwrap_or(proto_compute::DeliveryRejectionReason::Unspecified as i32),
+        topology_evidence: proof
+            .topology_evidence
+            .as_ref()
+            .map(delivery_topology_evidence_to_proto)
+            .transpose()?,
+        sandbox_evidence: proof
+            .sandbox_evidence
+            .as_ref()
+            .map(delivery_sandbox_evidence_to_proto),
+        verification_evidence: proof
+            .verification_evidence
+            .as_ref()
+            .map(delivery_verification_evidence_to_proto),
         promised_capability_envelope: proof
             .promised_capability_envelope
             .as_ref()
@@ -1688,6 +1794,19 @@ pub fn delivery_proof_from_proto(proof: &proto_compute::DeliveryProof) -> Result
         cost_attestation_ref: proof.cost_attestation_ref.clone(),
         status: delivery_proof_status_from_proto(proof.status),
         rejection_reason: delivery_rejection_reason_from_proto(proof.rejection_reason),
+        topology_evidence: proof
+            .topology_evidence
+            .as_ref()
+            .map(delivery_topology_evidence_from_proto)
+            .transpose()?,
+        sandbox_evidence: proof
+            .sandbox_evidence
+            .as_ref()
+            .map(delivery_sandbox_evidence_from_proto),
+        verification_evidence: proof
+            .verification_evidence
+            .as_ref()
+            .map(delivery_verification_evidence_from_proto),
         promised_capability_envelope: proof
             .promised_capability_envelope
             .as_ref()
@@ -2760,7 +2879,8 @@ mod tests {
         ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
         ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
         ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, GptOssRuntimeCapability,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
+        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
@@ -2873,6 +2993,9 @@ mod tests {
             cost_attestation_ref: Some("cost:test".to_string()),
             status: DeliveryProofStatus::Accepted,
             rejection_reason: None,
+            topology_evidence: None,
+            sandbox_evidence: None,
+            verification_evidence: None,
             promised_capability_envelope: Some(ComputeCapabilityEnvelope {
                 backend_family: Some(ComputeBackendFamily::GptOss),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
@@ -3157,6 +3280,82 @@ mod tests {
         )
         .expect("structured roundtrip");
         assert_eq!(structured_roundtrip, structured);
+    }
+
+    #[test]
+    fn delivery_proof_proto_roundtrip_preserves_clustered_evidence() {
+        let mut proof = delivery_proof_fixture();
+        proof.topology_evidence = Some(DeliveryTopologyEvidence {
+            topology_kind: Some(ComputeTopologyKind::Replicated),
+            topology_digest: Some("topology:replicated".to_string()),
+            scheduler_node_ref: Some("node://scheduler/a".to_string()),
+            transport_class: Some("wider_network_stream".to_string()),
+            selected_node_refs: vec!["node://worker/a".to_string()],
+            replica_node_refs: vec!["node://worker/b".to_string()],
+        });
+        proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+            activation_fingerprint_ref: None,
+            validator_pool_ref: Some("validators.alpha".to_string()),
+            validator_run_ref: Some("validator_run:cluster".to_string()),
+            challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
+            environment_ref: None,
+            eval_run_ref: None,
+        });
+
+        let roundtrip =
+            delivery_proof_from_proto(&delivery_proof_to_proto(&proof).expect("proof proto"))
+                .expect("proof roundtrip");
+        assert_eq!(roundtrip, proof);
+    }
+
+    #[test]
+    fn delivery_proof_proto_roundtrip_preserves_sandbox_evidence() {
+        let mut proof = delivery_proof_fixture();
+        proof.product_id = "psionic.sandbox_execution".to_string();
+        proof.promised_capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+            compute_family: Some(ComputeFamily::SandboxExecution),
+            topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+            provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+            proof_posture: Some(ComputeProofPosture::TopologyAndDelivery),
+            validator_requirements: None,
+            artifact_residency: None,
+            environment_binding: None,
+            checkpoint_binding: None,
+            model_policy: Some("sandbox.exec".to_string()),
+            model_family: None,
+            host_capability: None,
+            apple_platform: None,
+            gpt_oss_runtime: None,
+            latency_ms_p50: None,
+            throughput_per_minute: None,
+            concurrency_limit: Some(1),
+        });
+        proof.observed_capability_envelope = proof.promised_capability_envelope.clone();
+        proof.sandbox_evidence = Some(DeliverySandboxEvidence {
+            sandbox_profile_ref: Some("sandbox_profile:bounded_cpu".to_string()),
+            sandbox_execution_ref: Some("sandbox_job:alpha".to_string()),
+            command_digest: Some("command:alpha".to_string()),
+            environment_digest: Some("environment:alpha".to_string()),
+            input_artifact_refs: vec!["artifact://input/a".to_string()],
+            output_artifact_refs: vec!["artifact://output/a".to_string()],
+        });
+        proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: Some("proof_bundle:sandbox".to_string()),
+            activation_fingerprint_ref: None,
+            validator_pool_ref: None,
+            validator_run_ref: None,
+            challenge_result_refs: Vec::new(),
+            environment_ref: Some("env://sandbox/base".to_string()),
+            eval_run_ref: None,
+        });
+
+        let roundtrip =
+            delivery_proof_from_proto(&delivery_proof_to_proto(&proof).expect("proof proto"))
+                .expect("proof roundtrip");
+        assert_eq!(roundtrip, proof);
     }
 
     #[test]

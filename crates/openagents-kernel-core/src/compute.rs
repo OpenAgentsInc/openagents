@@ -696,11 +696,216 @@ pub struct DeliveryProof {
     #[serde(default)]
     pub rejection_reason: Option<DeliveryRejectionReason>,
     #[serde(default)]
+    pub topology_evidence: Option<DeliveryTopologyEvidence>,
+    #[serde(default)]
+    pub sandbox_evidence: Option<DeliverySandboxEvidence>,
+    #[serde(default)]
+    pub verification_evidence: Option<DeliveryVerificationEvidence>,
+    #[serde(default)]
     pub promised_capability_envelope: Option<ComputeCapabilityEnvelope>,
     #[serde(default)]
     pub observed_capability_envelope: Option<ComputeCapabilityEnvelope>,
     #[serde(default)]
     pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DeliveryTopologyEvidence {
+    #[serde(default)]
+    pub topology_kind: Option<ComputeTopologyKind>,
+    #[serde(default)]
+    pub topology_digest: Option<String>,
+    #[serde(default)]
+    pub scheduler_node_ref: Option<String>,
+    #[serde(default)]
+    pub transport_class: Option<String>,
+    #[serde(default)]
+    pub selected_node_refs: Vec<String>,
+    #[serde(default)]
+    pub replica_node_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DeliverySandboxEvidence {
+    #[serde(default)]
+    pub sandbox_profile_ref: Option<String>,
+    #[serde(default)]
+    pub sandbox_execution_ref: Option<String>,
+    #[serde(default)]
+    pub command_digest: Option<String>,
+    #[serde(default)]
+    pub environment_digest: Option<String>,
+    #[serde(default)]
+    pub input_artifact_refs: Vec<String>,
+    #[serde(default)]
+    pub output_artifact_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DeliveryVerificationEvidence {
+    #[serde(default)]
+    pub proof_bundle_ref: Option<String>,
+    #[serde(default)]
+    pub activation_fingerprint_ref: Option<String>,
+    #[serde(default)]
+    pub validator_pool_ref: Option<String>,
+    #[serde(default)]
+    pub validator_run_ref: Option<String>,
+    #[serde(default)]
+    pub challenge_result_refs: Vec<String>,
+    #[serde(default)]
+    pub environment_ref: Option<String>,
+    #[serde(default)]
+    pub eval_run_ref: Option<String>,
+}
+
+pub fn validate_delivery_proof(proof: &DeliveryProof) -> Result<(), String> {
+    if proof.accepted_quantity > proof.metered_quantity {
+        return Err("delivery_proof_quantity_invalid".to_string());
+    }
+    if proof.status == DeliveryProofStatus::Rejected && proof.rejection_reason.is_none() {
+        return Err("delivery_proof_rejection_reason_missing".to_string());
+    }
+    if proof.status != DeliveryProofStatus::Rejected && proof.rejection_reason.is_some() {
+        return Err("delivery_proof_rejection_reason_unexpected".to_string());
+    }
+    if let Some(topology_evidence) = proof.topology_evidence.as_ref() {
+        if topology_evidence
+            .topology_digest
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("delivery_proof_topology_digest_invalid".to_string());
+        }
+    }
+    if let Some(verification_evidence) = proof.verification_evidence.as_ref() {
+        if !verification_evidence.challenge_result_refs.is_empty()
+            && verification_evidence.proof_bundle_ref.is_none()
+        {
+            return Err("delivery_proof_challenge_requires_proof_bundle".to_string());
+        }
+        if verification_evidence.eval_run_ref.is_some()
+            && verification_evidence.environment_ref.is_none()
+        {
+            return Err("delivery_proof_eval_requires_environment_ref".to_string());
+        }
+    }
+    let topology_kind = proof
+        .topology_evidence
+        .as_ref()
+        .and_then(|value| value.topology_kind)
+        .or_else(|| {
+            proof
+                .promised_capability_envelope
+                .as_ref()
+                .and_then(|value| value.topology_kind)
+        })
+        .or_else(|| {
+            proof
+                .observed_capability_envelope
+                .as_ref()
+                .and_then(|value| value.topology_kind)
+        });
+    if topology_kind.is_some_and(is_cluster_topology) {
+        let Some(topology_evidence) = proof.topology_evidence.as_ref() else {
+            return Err("delivery_proof_topology_evidence_missing".to_string());
+        };
+        if topology_evidence
+            .topology_digest
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("delivery_proof_topology_digest_missing".to_string());
+        }
+        if topology_evidence.selected_node_refs.is_empty() {
+            return Err("delivery_proof_selected_node_refs_missing".to_string());
+        }
+    }
+    let execution_kind = proof
+        .promised_capability_envelope
+        .as_ref()
+        .and_then(|value| value.execution_kind)
+        .or_else(|| {
+            proof
+                .observed_capability_envelope
+                .as_ref()
+                .and_then(|value| value.execution_kind)
+        });
+    if execution_kind == Some(ComputeExecutionKind::SandboxExecution) {
+        let Some(sandbox_evidence) = proof.sandbox_evidence.as_ref() else {
+            return Err("delivery_proof_sandbox_evidence_missing".to_string());
+        };
+        if sandbox_evidence
+            .sandbox_profile_ref
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("delivery_proof_sandbox_profile_ref_missing".to_string());
+        }
+        if sandbox_evidence
+            .sandbox_execution_ref
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("delivery_proof_sandbox_execution_ref_missing".to_string());
+        }
+    }
+    let proof_posture = proof
+        .promised_capability_envelope
+        .as_ref()
+        .and_then(|value| value.proof_posture)
+        .or_else(|| {
+            proof
+                .observed_capability_envelope
+                .as_ref()
+                .and_then(|value| value.proof_posture)
+        });
+    if matches!(
+        proof_posture,
+        Some(
+            ComputeProofPosture::TopologyAndDelivery
+                | ComputeProofPosture::ToplocAugmented
+                | ComputeProofPosture::ChallengeEligible
+        )
+    ) && proof
+        .verification_evidence
+        .as_ref()
+        .and_then(|value| value.proof_bundle_ref.as_deref())
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("delivery_proof_bundle_ref_missing".to_string());
+    }
+    if proof_posture == Some(ComputeProofPosture::ToplocAugmented)
+        && proof
+            .verification_evidence
+            .as_ref()
+            .and_then(|value| value.activation_fingerprint_ref.as_deref())
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("delivery_proof_activation_fingerprint_ref_missing".to_string());
+    }
+    if proof_posture == Some(ComputeProofPosture::ChallengeEligible)
+        && proof
+            .verification_evidence
+            .as_ref()
+            .and_then(|value| value.validator_pool_ref.as_deref())
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("delivery_proof_validator_pool_ref_missing".to_string());
+    }
+    Ok(())
+}
+
+fn is_cluster_topology(topology_kind: ComputeTopologyKind) -> bool {
+    matches!(
+        topology_kind,
+        ComputeTopologyKind::RemoteWholeRequest
+            | ComputeTopologyKind::Replicated
+            | ComputeTopologyKind::PipelineSharded
+            | ComputeTopologyKind::LayerSharded
+            | ComputeTopologyKind::TensorSharded
+            | ComputeTopologyKind::TrainingElastic
+    )
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -911,11 +1116,12 @@ mod tests {
         ComputeCheckpointBinding, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
         ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
         ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
-        ComputeValidatorRequirements, GptOssRuntimeCapability,
-        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
-        PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
+        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
-        validate_compute_capability_envelope, validate_launch_compute_product,
+        validate_compute_capability_envelope, validate_delivery_proof,
+        validate_launch_compute_product,
     };
     use serde_json::json;
 
@@ -1124,5 +1330,193 @@ mod tests {
         let err = validate_compute_capability_envelope(&envelope)
             .expect_err("validator count must be positive");
         assert_eq!(err, "compute_validator_count_invalid");
+    }
+
+    #[test]
+    fn validates_clustered_delivery_proof_with_topology_and_validator_refs() {
+        let proof = DeliveryProof {
+            delivery_proof_id: "delivery.cluster.alpha".to_string(),
+            capacity_lot_id: "lot.cluster.alpha".to_string(),
+            product_id: "psionic.cluster.inference".to_string(),
+            instrument_id: Some("instrument.cluster.alpha".to_string()),
+            contract_id: None,
+            created_at_ms: 1_700_000_000_500,
+            metered_quantity: 128,
+            accepted_quantity: 128,
+            performance_band_observed: Some("clustered".to_string()),
+            variance_reason: None,
+            variance_reason_detail: None,
+            attestation_digest: Some("sha256:cluster".to_string()),
+            cost_attestation_ref: Some("cost:cluster".to_string()),
+            status: DeliveryProofStatus::Accepted,
+            rejection_reason: None,
+            topology_evidence: Some(DeliveryTopologyEvidence {
+                topology_kind: Some(ComputeTopologyKind::Replicated),
+                topology_digest: Some("topology:replicated".to_string()),
+                scheduler_node_ref: Some("node://scheduler/a".to_string()),
+                transport_class: Some("wider_network_stream".to_string()),
+                selected_node_refs: vec!["node://worker/a".to_string()],
+                replica_node_refs: vec!["node://worker/b".to_string()],
+            }),
+            sandbox_evidence: None,
+            verification_evidence: Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: Some("validator_run:cluster".to_string()),
+                challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
+                environment_ref: None,
+                eval_run_ref: None,
+            }),
+            promised_capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::ClusteredInference),
+                compute_family: Some(ComputeFamily::Inference),
+                topology_kind: Some(ComputeTopologyKind::Replicated),
+                provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+                proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                validator_requirements: Some(ComputeValidatorRequirements {
+                    validator_pool_ref: Some("validators.alpha".to_string()),
+                    policy_ref: Some("policy.validators.alpha".to_string()),
+                    minimum_validator_count: Some(2),
+                    challenge_window_ms: Some(30_000),
+                }),
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
+                model_policy: Some("cluster.inference".to_string()),
+                model_family: Some("gpt-oss".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("gpt-oss".to_string()),
+                    quantization: Some("q4".to_string()),
+                }),
+                latency_ms_p50: Some(80),
+                throughput_per_minute: Some(4_800),
+                concurrency_limit: Some(8),
+            }),
+            observed_capability_envelope: None,
+            metadata: json!({}),
+        };
+        validate_delivery_proof(&proof).expect("cluster delivery proof should validate");
+    }
+
+    #[test]
+    fn rejects_toploc_delivery_without_activation_fingerprint_ref() {
+        let proof = DeliveryProof {
+            delivery_proof_id: "delivery.toploc.alpha".to_string(),
+            capacity_lot_id: "lot.toploc.alpha".to_string(),
+            product_id: "psionic.embeddings".to_string(),
+            instrument_id: None,
+            contract_id: None,
+            created_at_ms: 1_700_000_000_600,
+            metered_quantity: 32,
+            accepted_quantity: 32,
+            performance_band_observed: None,
+            variance_reason: None,
+            variance_reason_detail: None,
+            attestation_digest: None,
+            cost_attestation_ref: None,
+            status: DeliveryProofStatus::Accepted,
+            rejection_reason: None,
+            topology_evidence: None,
+            sandbox_evidence: None,
+            verification_evidence: Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:embed".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: None,
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                eval_run_ref: None,
+            }),
+            promised_capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(ComputeFamily::Embeddings),
+                topology_kind: Some(ComputeTopologyKind::SingleNode),
+                provisioning_kind: Some(ComputeProvisioningKind::DesktopLocal),
+                proof_posture: Some(ComputeProofPosture::ToplocAugmented),
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
+                model_policy: Some("embeddings".to_string()),
+                model_family: Some("nomic-embed".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("nomic-embed".to_string()),
+                    quantization: Some("q4".to_string()),
+                }),
+                latency_ms_p50: Some(20),
+                throughput_per_minute: Some(2_400),
+                concurrency_limit: Some(4),
+            }),
+            observed_capability_envelope: None,
+            metadata: json!({}),
+        };
+        let err = validate_delivery_proof(&proof)
+            .expect_err("toploc delivery should require an activation fingerprint ref");
+        assert_eq!(err, "delivery_proof_activation_fingerprint_ref_missing");
+    }
+
+    #[test]
+    fn rejects_sandbox_delivery_without_sandbox_refs() {
+        let proof = DeliveryProof {
+            delivery_proof_id: "delivery.sandbox.alpha".to_string(),
+            capacity_lot_id: "lot.sandbox.alpha".to_string(),
+            product_id: "psionic.sandbox_execution".to_string(),
+            instrument_id: None,
+            contract_id: None,
+            created_at_ms: 1_700_000_000_700,
+            metered_quantity: 4,
+            accepted_quantity: 4,
+            performance_band_observed: None,
+            variance_reason: None,
+            variance_reason_detail: None,
+            attestation_digest: None,
+            cost_attestation_ref: None,
+            status: DeliveryProofStatus::Accepted,
+            rejection_reason: None,
+            topology_evidence: None,
+            sandbox_evidence: Some(DeliverySandboxEvidence {
+                sandbox_profile_ref: None,
+                sandbox_execution_ref: None,
+                command_digest: Some("command:digest".to_string()),
+                environment_digest: Some("env:digest".to_string()),
+                input_artifact_refs: vec!["artifact://input/a".to_string()],
+                output_artifact_refs: vec!["artifact://output/a".to_string()],
+            }),
+            verification_evidence: None,
+            promised_capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::GptOss),
+                execution_kind: Some(ComputeExecutionKind::SandboxExecution),
+                compute_family: Some(ComputeFamily::SandboxExecution),
+                topology_kind: Some(ComputeTopologyKind::SandboxIsolated),
+                provisioning_kind: Some(ComputeProvisioningKind::RemoteSandbox),
+                proof_posture: Some(ComputeProofPosture::TopologyAndDelivery),
+                validator_requirements: None,
+                artifact_residency: None,
+                environment_binding: None,
+                checkpoint_binding: None,
+                model_policy: Some("sandbox.exec".to_string()),
+                model_family: None,
+                host_capability: None,
+                apple_platform: None,
+                gpt_oss_runtime: None,
+                latency_ms_p50: None,
+                throughput_per_minute: None,
+                concurrency_limit: Some(1),
+            }),
+            observed_capability_envelope: None,
+            metadata: json!({}),
+        };
+        let err = validate_delivery_proof(&proof)
+            .expect_err("sandbox delivery should require explicit sandbox refs");
+        assert_eq!(err, "delivery_proof_sandbox_profile_ref_missing");
     }
 }
