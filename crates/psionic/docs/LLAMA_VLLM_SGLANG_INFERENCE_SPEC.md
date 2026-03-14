@@ -607,6 +607,13 @@ refuse-on-fallback posture, and explicit non-implemented warm/unload and
 memory-pressure controls instead of implying a broader backend lane than what
 is actually shipped.
 
+Implemented now: `PSI-236` is materially landed in-tree too. The generic
+`psionic-openai-server` can now enforce a Psionic-owned local structured-output
+fallback through `psionic_grammar` plus `response_format.type = json_object` and
+a useful `json_schema` subset, with machine-checkable response headers and
+explicit refusal for unsupported schema features instead of hiding structure in
+prompt-only conventions.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |

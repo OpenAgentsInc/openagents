@@ -1635,7 +1635,7 @@ fn run_cuda_generation_request(
         let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
         let prompt_cuda_cache = should_record_prompt_prefix.then(|| cuda_cache.clone());
 
-        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
         let mut pending_token = if exact_prompt_cache_hit
             && can_use_cached_prompt_argmax(&request.options)
@@ -1643,9 +1643,17 @@ fn run_cuda_generation_request(
             exact_prompt_token.ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?
         } else {
             let sampling_start = Instant::now();
-            let token = sampler
-                .select_next_token_from_history(&last_logits, &token_history)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            let token = match sampler.select_next_token_from_history(
+                loaded_model.tokenizer(),
+                &last_logits,
+                &token_history,
+                generated_tokens.as_slice(),
+            )? {
+                super::GenerationSelection::Token(token) => token,
+                super::GenerationSelection::Terminate => {
+                    loaded_model.tokenizer().vocabulary().eos_id()
+                }
+            };
             let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
             perf.stage_timings.sampling_ns = perf
                 .stage_timings
@@ -1727,9 +1735,17 @@ fn run_cuda_generation_request(
             } else {
                 last_logits = step.logits;
                 let sampling_start = Instant::now();
-                pending_token = sampler
-                    .select_next_token_from_history(&last_logits, &token_history)
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+                pending_token = match sampler.select_next_token_from_history(
+                    loaded_model.tokenizer(),
+                    &last_logits,
+                    &token_history,
+                    generated_tokens.as_slice(),
+                )? {
+                    super::GenerationSelection::Token(token) => token,
+                    super::GenerationSelection::Terminate => {
+                        loaded_model.tokenizer().vocabulary().eos_id()
+                    }
+                };
                 let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
                 perf.stage_timings.sampling_ns = perf
                     .stage_timings
@@ -1842,6 +1858,7 @@ fn run_cuda_generation_request(
                 &previous_kv_state,
                 prefix_state,
             ),
+            structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
             request,
@@ -2028,12 +2045,18 @@ fn run_cuda_hybrid_generation_request(
             shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
         let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
 
-        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
         let sampling_start = Instant::now();
-        let mut pending_token = sampler
-            .select_next_token_from_history(&last_logits, &token_history)
-            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+        let mut pending_token = match sampler.select_next_token_from_history(
+            loaded_model.tokenizer(),
+            &last_logits,
+            &token_history,
+            generated_tokens.as_slice(),
+        )? {
+            super::GenerationSelection::Token(token) => token,
+            super::GenerationSelection::Terminate => loaded_model.tokenizer().vocabulary().eos_id(),
+        };
         let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
         perf.stage_timings.sampling_ns = perf
             .stage_timings
@@ -2111,9 +2134,17 @@ fn run_cuda_hybrid_generation_request(
             } else {
                 last_logits = step.logits;
                 let sampling_start = Instant::now();
-                pending_token = sampler
-                    .select_next_token_from_history(&last_logits, &token_history)
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+                pending_token = match sampler.select_next_token_from_history(
+                    loaded_model.tokenizer(),
+                    &last_logits,
+                    &token_history,
+                    generated_tokens.as_slice(),
+                )? {
+                    super::GenerationSelection::Token(token) => token,
+                    super::GenerationSelection::Terminate => {
+                        loaded_model.tokenizer().vocabulary().eos_id()
+                    }
+                };
                 let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
                 perf.stage_timings.sampling_ns = perf
                     .stage_timings
@@ -2218,6 +2249,7 @@ fn run_cuda_hybrid_generation_request(
                 &previous_kv_state,
                 prefix_state,
             ),
+            structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
             request,
@@ -2553,7 +2585,7 @@ fn run_metal_generation_request(
             shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
         let prompt_layer_caches = should_record_prompt_prefix.then(|| layer_caches.clone());
 
-        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
         let mut pending_token =
             if exact_prompt_cache_hit && can_use_cached_prompt_argmax(&request.options) {
@@ -2563,9 +2595,17 @@ fn run_metal_generation_request(
                 )
             } else {
                 Some(
-                    sampler
-                        .select_next_token_from_history(&last_logits, &token_history)
-                        .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+                    match sampler.select_next_token_from_history(
+                        loaded_model.tokenizer(),
+                        &last_logits,
+                        &token_history,
+                        generated_tokens.as_slice(),
+                    )? {
+                        super::GenerationSelection::Token(token) => token,
+                        super::GenerationSelection::Terminate => {
+                            loaded_model.tokenizer().vocabulary().eos_id()
+                        }
+                    },
                 )
             };
         let termination = loop {
@@ -2582,9 +2622,17 @@ fn run_metal_generation_request(
             let next_token = if let Some(token) = pending_token.take() {
                 token
             } else {
-                sampler
-                    .select_next_token_from_history(&last_logits, &token_history)
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?
+                match sampler.select_next_token_from_history(
+                    loaded_model.tokenizer(),
+                    &last_logits,
+                    &token_history,
+                    generated_tokens.as_slice(),
+                )? {
+                    super::GenerationSelection::Token(token) => token,
+                    super::GenerationSelection::Terminate => {
+                        loaded_model.tokenizer().vocabulary().eos_id()
+                    }
+                }
             };
             if loaded_model.is_end_of_sequence(next_token) {
                 break super::TerminationReason::EndOfSequence;
@@ -2653,9 +2701,17 @@ fn run_metal_generation_request(
             } else {
                 last_logits = step.logits;
                 pending_token = Some(
-                    sampler
-                        .select_next_token_from_history(&last_logits, &token_history)
-                        .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+                    match sampler.select_next_token_from_history(
+                        loaded_model.tokenizer(),
+                        &last_logits,
+                        &token_history,
+                        generated_tokens.as_slice(),
+                    )? {
+                        super::GenerationSelection::Token(token) => token,
+                        super::GenerationSelection::Terminate => {
+                            loaded_model.tokenizer().vocabulary().eos_id()
+                        }
+                    },
                 );
             }
         };
@@ -2810,6 +2866,7 @@ fn run_metal_generation_request(
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
             ),
             cache_observations,
+            structured_output: sampler.structured_output_report(),
         };
         Ok(GenerationResponse::new(
             request,
