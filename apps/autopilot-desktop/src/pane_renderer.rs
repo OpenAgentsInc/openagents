@@ -10,9 +10,9 @@ use crate::app_state::{
     EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
     JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
     LogStreamPaneState, MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs,
-    NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState, PanePaintTimingSample,
-    PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState,
-    ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
+    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
+    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
+    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
     SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
@@ -63,11 +63,11 @@ use crate::panes::{
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
     key_ledger as key_ledger_pane, local_inference as local_inference_pane,
-    log_stream as log_stream_pane, presentation as presentation_pane,
-    project_ops as project_ops_pane, provider_control as provider_control_pane,
-    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane,
-    seller_earnings_timeline as seller_earnings_timeline_pane,
+    log_stream as log_stream_pane, nip90_sent_payments as nip90_sent_payments_pane,
+    presentation as presentation_pane, project_ops as project_ops_pane,
+    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
+    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
+    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, wallet as wallet_pane,
 };
@@ -147,6 +147,7 @@ impl PaneRenderer {
         relay_connections: &RelayConnectionsState,
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
+        nip90_buyer_payment_attempts: &crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState,
         nip90_payment_facts: &Nip90PaymentFactLedgerState,
         starter_jobs: &StarterJobsState,
         reciprocal_loop: &ReciprocalLoopState,
@@ -186,6 +187,7 @@ impl PaneRenderer {
         log_stream_last_error: Option<&str>,
         log_stream: &mut LogStreamPaneState,
         buy_mode_payments: &mut BuyModePaymentsPaneState,
+        nip90_sent_payments: &mut Nip90SentPaymentsPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
     ) -> PanePaintReport {
@@ -264,8 +266,10 @@ impl PaneRenderer {
                     log_stream,
                     buy_mode_payments,
                     network_requests,
+                    nip90_buyer_payment_attempts,
                     nip90_payment_facts,
                     relay_connections,
+                    nip90_sent_payments,
                     spark_replay,
                     spark_wallet,
                     frame_debugger,
@@ -490,6 +494,15 @@ impl PaneRenderer {
                         network_requests,
                         nip90_payment_facts,
                         spark_wallet,
+                        paint,
+                    );
+                }
+                PaneKind::Nip90SentPayments => {
+                    nip90_sent_payments_pane::paint(
+                        content_bounds,
+                        nip90_sent_payments,
+                        nip90_buyer_payment_attempts,
+                        relay_connections,
                         paint,
                     );
                 }
@@ -737,6 +750,7 @@ fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
         | PaneKind::FrameDebugger
         | PaneKind::LogStream
         | PaneKind::BuyModePayments
+        | PaneKind::Nip90SentPayments
         | PaneKind::BuyerRaceMatrix
         | PaneKind::SellerEarningsTimeline
         | PaneKind::SettlementLadder
@@ -769,8 +783,10 @@ fn paint_inactive_pane_preview_if_needed(
     log_stream: &LogStreamPaneState,
     buy_mode_payments: &BuyModePaymentsPaneState,
     network_requests: &NetworkRequestsState,
+    nip90_buyer_payment_attempts: &crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState,
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
+    nip90_sent_payments: &Nip90SentPaymentsPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
     frame_debugger: &FrameDebuggerPaneState,
@@ -793,8 +809,10 @@ fn paint_inactive_pane_preview_if_needed(
         log_stream,
         buy_mode_payments,
         network_requests,
+        nip90_buyer_payment_attempts,
         nip90_payment_facts,
         relay_connections,
+        nip90_sent_payments,
         spark_replay,
         spark_wallet,
         frame_debugger,
@@ -824,8 +842,10 @@ fn inactive_pane_preview_state(
     log_stream: &LogStreamPaneState,
     buy_mode_payments: &BuyModePaymentsPaneState,
     network_requests: &NetworkRequestsState,
+    nip90_buyer_payment_attempts: &crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState,
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
+    nip90_sent_payments: &Nip90SentPaymentsPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
     frame_debugger: &FrameDebuggerPaneState,
@@ -855,6 +875,11 @@ fn inactive_pane_preview_state(
             network_requests,
             nip90_payment_facts,
             spark_wallet,
+        )),
+        PaneKind::Nip90SentPayments => Some(nip90_sent_payments_inactive_preview_state(
+            nip90_sent_payments,
+            nip90_buyer_payment_attempts,
+            relay_connections,
         )),
         PaneKind::BuyerRaceMatrix => Some(buyer_race_matrix_inactive_preview_state(
             network_requests,
@@ -1252,6 +1277,52 @@ fn buy_mode_payments_inactive_preview_state(
         last_action: buy_mode_payments.last_action.clone(),
         last_error: buy_mode_payments.last_error.clone(),
         detail_lines,
+    }
+}
+
+fn nip90_sent_payments_inactive_preview_state(
+    pane_state: &Nip90SentPaymentsPaneState,
+    buyer_payment_attempts: &crate::state::nip90_buyer_payment_attempts::Nip90BuyerPaymentAttemptLedgerState,
+    relay_connections: &RelayConnectionsState,
+) -> InactivePanePreviewState {
+    match crate::panes::nip90_sent_payments::build_view(
+        pane_state,
+        buyer_payment_attempts,
+        relay_connections,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0),
+    ) {
+        Ok(view) => InactivePanePreviewState {
+            source_badge: "inactive sent-payments".to_string(),
+            load_state: if pane_state.last_error.is_some() {
+                PaneLoadState::Error
+            } else {
+                PaneLoadState::Ready
+            },
+            summary: format!(
+                "{} // {} sats // relays {}",
+                view.report.payment_count,
+                format_sats_amount(view.report.total_sats_sent),
+                view.connected_relay_count
+            ),
+            last_action: pane_state.last_action.clone(),
+            last_error: pane_state.last_error.clone(),
+            detail_lines: vec![
+                format!("window {}", view.window_label),
+                format!("requests {}", view.report.deduped_request_count),
+                format!("degraded {}", view.report.degraded_binding_count),
+            ],
+        },
+        Err(error) => InactivePanePreviewState {
+            source_badge: "inactive sent-payments".to_string(),
+            load_state: PaneLoadState::Error,
+            summary: "window configuration error".to_string(),
+            last_action: pane_state.last_action.clone(),
+            last_error: Some(error),
+            detail_lines: vec![format!("selected {}", pane_state.selected_window.label())],
+        },
     }
 }
 

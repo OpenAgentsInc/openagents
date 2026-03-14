@@ -12,8 +12,8 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_system::{
     AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
-    LocalInferencePaneAction, LogStreamPaneAction, ProviderControlPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction,
+    LocalInferencePaneAction, LogStreamPaneAction, Nip90SentPaymentsPaneAction,
+    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9437,6 +9437,75 @@ pub(super) fn run_buy_mode_payments_action(
             } else {
                 state.buy_mode_payments.record_action(notice.clone());
                 state.mission_control.record_action(notice);
+            }
+            true
+        }
+    }
+}
+
+pub(super) fn run_nip90_sent_payments_action(
+    state: &mut crate::app_state::RenderState,
+    action: Nip90SentPaymentsPaneAction,
+) -> bool {
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    match action {
+        Nip90SentPaymentsPaneAction::SetWindow(preset) => {
+            match state
+                .nip90_sent_payments
+                .select_window(preset, now_epoch_seconds)
+            {
+                Ok(_) => true,
+                Err(error) => {
+                    state.nip90_sent_payments.record_error(error);
+                    true
+                }
+            }
+        }
+        Nip90SentPaymentsPaneAction::CyclePreviousWindow => {
+            match state
+                .nip90_sent_payments
+                .cycle_window(now_epoch_seconds, -1)
+            {
+                Ok(_) => true,
+                Err(error) => {
+                    state.nip90_sent_payments.record_error(error);
+                    true
+                }
+            }
+        }
+        Nip90SentPaymentsPaneAction::CycleNextWindow => {
+            match state.nip90_sent_payments.cycle_window(now_epoch_seconds, 1) {
+                Ok(_) => true,
+                Err(error) => {
+                    state.nip90_sent_payments.record_error(error);
+                    true
+                }
+            }
+        }
+        Nip90SentPaymentsPaneAction::CopyReport => {
+            let output = match crate::panes::nip90_sent_payments::clipboard_text(
+                &state.nip90_sent_payments,
+                &state.nip90_buyer_payment_attempts,
+                &state.relay_connections,
+                now_epoch_seconds,
+            ) {
+                Ok(output) => output,
+                Err(error) => {
+                    state.nip90_sent_payments.record_error(error);
+                    return true;
+                }
+            };
+            let notice = match copy_to_clipboard(&output) {
+                Ok(()) => "Copied NIP-90 sent-payments report to clipboard".to_string(),
+                Err(error) => format!("Failed to copy NIP-90 sent-payments report: {error}"),
+            };
+            if notice.starts_with("Failed") {
+                state.nip90_sent_payments.record_error(notice);
+            } else {
+                state.nip90_sent_payments.record_action(notice);
             }
             true
         }

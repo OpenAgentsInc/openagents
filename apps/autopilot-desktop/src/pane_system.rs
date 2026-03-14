@@ -347,6 +347,14 @@ pub enum BuyModePaymentsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Nip90SentPaymentsPaneAction {
+    SetWindow(crate::app_state::Nip90SentPaymentsWindowPreset),
+    CyclePreviousWindow,
+    CycleNextWindow,
+    CopyReport,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SparkReplayPaneAction {
     PrevStep,
     ToggleAuto,
@@ -882,6 +890,7 @@ pub enum PaneHitAction {
     ProviderControl(ProviderControlPaneAction),
     LogStream(LogStreamPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
+    Nip90SentPayments(Nip90SentPaymentsPaneAction),
     SparkReplay(SparkReplayPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
@@ -1576,6 +1585,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::AlertsRecovery
             | PaneKind::LogStream
             | PaneKind::BuyModePayments
+            | PaneKind::Nip90SentPayments
             | PaneKind::BuyerRaceMatrix
             | PaneKind::SellerEarningsTimeline
             | PaneKind::SettlementLadder
@@ -2134,6 +2144,36 @@ pub fn log_stream_terminal_bounds(content_bounds: Bounds) -> Bounds {
 pub fn buy_mode_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
     let toggle = buy_mode_payments_toggle_button_bounds(content_bounds);
     Bounds::new(toggle.origin.x - 116.0, toggle.origin.y, 108.0, 22.0)
+}
+
+pub fn nip90_sent_payments_window_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let width = match index.min(4) {
+        0 => 76.0,
+        1 => 60.0,
+        2 => 54.0,
+        3 => 60.0,
+        _ => 84.0,
+    };
+    let mut x = content_bounds.origin.x + 12.0;
+    for previous in 0..index.min(4) {
+        x += match previous {
+            0 => 76.0,
+            1 => 60.0,
+            2 => 54.0,
+            3 => 60.0,
+            _ => 84.0,
+        } + 8.0;
+    }
+    Bounds::new(x, content_bounds.origin.y + 8.0, width, 22.0)
+}
+
+pub fn nip90_sent_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - 120.0,
+        content_bounds.origin.y + 8.0,
+        108.0,
+        22.0,
+    )
 }
 
 pub fn spark_replay_prev_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -5950,6 +5990,45 @@ fn pane_hit_action_for_pane(
             } else if buy_mode_payments_copy_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::BuyModePayments(
                     BuyModePaymentsPaneAction::CopyAll,
+                ))
+            } else {
+                None
+            }
+        }
+        PaneKind::Nip90SentPayments => {
+            if nip90_sent_payments_window_button_bounds(content_bounds, 0).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::SetWindow(
+                        crate::app_state::Nip90SentPaymentsWindowPreset::Daily,
+                    ),
+                ))
+            } else if nip90_sent_payments_window_button_bounds(content_bounds, 1).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::SetWindow(
+                        crate::app_state::Nip90SentPaymentsWindowPreset::Rolling24h,
+                    ),
+                ))
+            } else if nip90_sent_payments_window_button_bounds(content_bounds, 2).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::SetWindow(
+                        crate::app_state::Nip90SentPaymentsWindowPreset::Rolling7d,
+                    ),
+                ))
+            } else if nip90_sent_payments_window_button_bounds(content_bounds, 3).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::SetWindow(
+                        crate::app_state::Nip90SentPaymentsWindowPreset::Rolling30d,
+                    ),
+                ))
+            } else if nip90_sent_payments_window_button_bounds(content_bounds, 4).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::SetWindow(
+                        crate::app_state::Nip90SentPaymentsWindowPreset::Custom,
+                    ),
+                ))
+            } else if nip90_sent_payments_copy_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::Nip90SentPayments(
+                    Nip90SentPaymentsPaneAction::CopyReport,
                 ))
             } else {
                 None

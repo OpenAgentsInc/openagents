@@ -54,11 +54,11 @@ use crate::pane_system::{
     ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
-    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    clamp_all_panes_to_window, dispatch_active_job_scroll_event,
+    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction,
+    PaneController, PaneHitAction, PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_fm_workbench_input_event,
     dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
@@ -459,6 +459,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
 
             if dispatch_keyboard_submit_actions(state, &event.logical_key)
+                || handle_nip90_sent_payments_keyboard_input(state, &event.logical_key)
                 || handle_activity_feed_keyboard_input(state, &event.logical_key)
                 || handle_alerts_recovery_keyboard_input(state, &event.logical_key)
             {
@@ -3361,6 +3362,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
         PaneHitAction::LogStream(action) => run_log_stream_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
+        PaneHitAction::Nip90SentPayments(action) => run_nip90_sent_payments_action(state, action),
         PaneHitAction::SparkReplay(action) => run_spark_replay_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
@@ -3869,6 +3871,39 @@ fn handle_apple_fm_workbench_keyboard_input(
         dispatch_apple_fm_workbench_input_event,
         |_s| false,
     )
+}
+
+fn handle_nip90_sent_payments_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::Nip90SentPayments);
+    if !is_active {
+        return false;
+    }
+
+    match key {
+        Key::Named(NamedKey::ArrowLeft) => {
+            run_nip90_sent_payments_action(state, Nip90SentPaymentsPaneAction::CyclePreviousWindow)
+        }
+        Key::Named(NamedKey::ArrowRight) => {
+            run_nip90_sent_payments_action(state, Nip90SentPaymentsPaneAction::CycleNextWindow)
+        }
+        Key::Character(ref value) if value.eq_ignore_ascii_case("c") => {
+            run_nip90_sent_payments_action(state, Nip90SentPaymentsPaneAction::CopyReport)
+        }
+        _ => false,
+    }
 }
 
 fn handle_activity_feed_keyboard_input(

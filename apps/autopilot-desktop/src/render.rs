@@ -292,6 +292,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             mission_control: crate::app_state::MissionControlPaneState::default(),
             log_stream: crate::app_state::LogStreamPaneState::default(),
             buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
+            nip90_sent_payments: crate::app_state::Nip90SentPaymentsPaneState::default(),
             spark_replay: crate::app_state::SparkReplayPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
@@ -1118,6 +1119,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.relay_connections,
             &state.sync_health,
             &state.network_requests,
+            &state.nip90_buyer_payment_attempts,
             &state.nip90_payment_facts,
             &state.starter_jobs,
             &state.reciprocal_loop,
@@ -1157,6 +1159,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             state.mission_control.last_error.as_deref(),
             &mut state.log_stream,
             &mut state.buy_mode_payments,
+            &mut state.nip90_sent_payments,
             &mut state.spark_replay,
             &mut paint,
         );
