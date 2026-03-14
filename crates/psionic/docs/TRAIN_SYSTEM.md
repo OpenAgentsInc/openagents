@@ -1840,12 +1840,29 @@ train program.
 
 ### 29. `Reliability: add chaos and failure-injection suites for topology, checkpoint, and validator flows`
 
-The train system is explicitly elastic and partially untrusted, so it needs a
-failure-testing program rather than only unit tests. This issue should add
-topology churn simulation, network degradation drills, stale-weight flood
-tests, checkpoint corruption drills, validator-sampling stress tests, and
-orchestrator restart and recovery tests. It is the main acceptance layer for
-reliability claims.
+Status: implemented on 2026-03-14 via GitHub issue `#3592`.
+
+`psionic-train` now owns an explicit reliability suite in
+`src/reliability.rs` that runs typed chaos scenarios over existing checkpoint,
+collective, orchestrator, and validator contracts.
+
+The new contract makes these reliability seams explicit:
+
+- topology churn drills over elastic membership and checkpoint-backed recovery
+- network degradation drills over collective cadence fallback
+- stale-weight flood containment over rollout admission
+- checkpoint corruption drills over stale-pointer fallback
+- validator sampling stress over accepted, normalized, and rejected verdicts
+- orchestrator restart roundtrips that resume window control after state restore
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_RELIABILITY_REFERENCE.md`
+- `scripts/release/check-psionic-train-reliability.sh`
+
+This issue makes reliability claims a machine-checkable suite instead of a
+collection of unrelated unit tests. Quantitative benchmark thresholds remain
+the final train-program gap.
 
 ### 30. `Benchmarking: define performance acceptance thresholds for trainer, sandbox, datastream, and validation`
 
