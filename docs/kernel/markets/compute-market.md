@@ -125,6 +125,26 @@ At the broadest level, this market is intended to cover:
 The active MVP only productizes a subset of that. The market definition is
 broader than the current user-facing release.
 
+## Core Market Objects At A Glance
+
+| Object | Role | Economic meaning |
+| --- | --- | --- |
+| `ComputeProduct` | Product definition | Defines admissible compute family, settlement mode, and market-level rules |
+| `CapacityLot` | Inventory | Provider supply exposed to the market |
+| `CapacityInstrument` | Economic claim | The claim buyers actually hold, track, and settle |
+| `StructuredCapacityInstrument` | Aggregated exposure | Grouped claims such as reservations, swaps, or strips |
+| `DeliveryProof` | Execution evidence | Evidence supporting delivery and conformance |
+| `ComputeIndex` | Market reference | Reference observation series used for price discovery, structured settlement, and risk integration |
+
+One distinction matters immediately:
+
+- `ComputeProduct` defines admissibility and settlement rules
+- `ComputeCapabilityEnvelope` defines the measurable execution and performance
+  envelope under which that product is being offered
+
+The product is not the same thing as the capability description. The product is
+the market category. The capability envelope is the measurable machine promise.
+
 ## What The Compute Market Is Not
 
 The Compute Market is not:
@@ -269,8 +289,13 @@ Examples:
 
 The canonical rule is:
 
-> runtime truth explains what happened, but authority truth decides what the
-> market counts.
+> runtime truth explains what happened, but authority truth determines the
+> market outcome.
+
+Runtime identity should also be read as a first-class concept here. Runtime
+identity means the verified runtime context responsible for execution, such as a
+provider node identity, sandbox instance identity, or cluster member set. Proof
+attribution, validator handling, and settlement disputes depend on that link.
 
 ## Settlement Boundary And Economic Closure
 
@@ -483,21 +508,13 @@ The compute market only works if "machine capacity" means something specific.
 
 A real compute offer can vary along these deliverability dimensions:
 
-- product family
-- backend family
-- execution kind
-- topology kind
-- provisioning kind
-- model policy or model family
-- environment binding
-- artifact or checkpoint binding
-- region and delivery window
-- proof posture
-- validator requirements
-- latency expectation
-- throughput expectation
-- concurrency limit
-- performance band
+- `Execution structure`: execution kind, topology kind, provisioning kind
+- `Artifact lineage`: model family, model policy, environment binding,
+  checkpoint binding
+- `Performance envelope`: latency expectation, throughput expectation,
+  concurrency limit, performance band
+- `Verification posture`: proof posture, validator requirements
+- `Market window terms`: region, delivery window, and related timing posture
 
 Several of these already exist explicitly in the code through
 `ComputeCapabilityEnvelope`, `ComputeEnvironmentBinding`, product fields, and
@@ -505,6 +522,43 @@ lot fields.
 
 That means a buyer is not just procuring "compute." They are procuring a
 machine promise under a bounded deliverability contract.
+
+## Time Semantics
+
+Time is a first-class part of the compute-market contract.
+
+The main time boundaries are:
+
+- delivery window: when capacity is supposed to be delivered
+- offer expiry: when a lot is no longer procureable on the current terms
+- challenge window: how long challenge-eligible delivery remains exposed to
+  validator challenge
+- settlement window: how long the market has to reach economic closure on the
+  relevant claim
+- correction window: when later evidence may still supersede a previous market
+  interpretation
+
+Some of these are already explicit in the code today through delivery windows,
+offer expiry, and validator challenge timing. Others are still more policy and
+market-semantics concepts than first-class standalone fields, but they are part
+of the contract either way.
+
+## Economic Risk Surfaces
+
+The Compute Market feeds the Risk Market because it carries its own economic
+risk surfaces.
+
+Those include:
+
+- delivery failure risk
+- capability misrepresentation risk
+- proof insufficiency risk
+- validator disagreement risk
+- settlement failure risk
+- index manipulation or bad-reference risk
+
+That is the main reason compute and risk remain separate markets while staying
+deeply linked.
 
 ## Trust Classes, Proof Postures, And Admissibility
 
@@ -658,6 +712,15 @@ And the current leg roles already encode meanings such as:
 The UI does not yet fully explain these instruments to ordinary users, but the
 kernel already treats them as more than theoretical placeholders.
 
+For reservation-style or forward-style claims, exercise semantics also matter:
+
+- exercise conditions define when the holder may claim or bind the capacity
+- expiry conditions define what happens if that right is not exercised inside
+  the allowed window
+
+Those rules are part of the economic meaning even where the current product
+surface does not yet expose them as richly as the underlying model can.
+
 ## Comparability And Inventory Normalization
 
 One of the hardest unsolved problems in the compute market is not just creating
@@ -699,9 +762,9 @@ an afterthought in UX.
 
 The short rule is:
 
-> two compute offers are only comparable when their product descriptors, proof
-> posture, environment compatibility, deliverability terms, and settlement
-> semantics have been normalized enough to compare honestly.
+> two compute offers are only economically comparable when their product
+> descriptors, proof posture, environment compatibility, deliverability terms,
+> and settlement semantics have been normalized enough to compare honestly.
 
 ## Artifact Lineage As Market Truth
 
@@ -729,6 +792,9 @@ This is already visible in the current data model through:
 - sandbox evidence refs
 - verification evidence refs
 - promised versus observed capability envelopes
+
+Artifact lineage affects price, admissibility, and comparability, which makes it
+part of the market claim rather than runtime metadata.
 
 That is why the compute market is broader than "CPU/GPU time." It is really a
 market in machine execution under a specific artifact lineage.
@@ -781,8 +847,11 @@ That is what "operator truth" means in compute-market terms.
 
 ## All-Rust And Psionic-Native Implications
 
-The Prime/Psionic widening also changes what "implemented" must mean for future
-compute families.
+The Prime/Psionic audit implies that execution substrate truth must live inside
+the same Rust-native system that owns market authority.
+
+That widening also changes what "implemented" must mean for future compute
+families.
 
 For clustered, sandboxed, environment-linked, eval-linked, and later
 training-class products, mature implementation increasingly means:
