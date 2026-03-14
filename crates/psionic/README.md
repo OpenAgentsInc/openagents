@@ -41,7 +41,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
 - `psionic-data`: versioned dataset manifests, tokenizer digests, split declarations, streamed iteration contracts, and long-context packing policies.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
-- `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
+- `psionic-collectives`: elastic device-mesh, bandwidth-aware local/global sync planning, and benchmark-gated collective policy for training-class lanes.
 - `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
 - `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, and window lifecycle on top of ordered cluster state and datastream manifests.
@@ -175,10 +175,11 @@ Implemented now:
 - canonical execution-proof bundles and embeddings-first activation-fingerprint
   proof posture.
 - early train substrate: checkpoint-backed recovery, elastic membership,
-  collective planning, typed fixed-budget trainer steps, explicit checkpoint
-  pointers and checkpoint manifests, restore receipts with declared recovery
-  modes, checkpoint-anchored restore, explicit run graphs, contributor-set
-  revisions, window lifecycle, and adapter lineage.
+  bandwidth-aware local/global sync planning, typed fixed-budget trainer
+  steps, explicit checkpoint pointers and checkpoint manifests, restore
+  receipts with declared recovery modes, checkpoint-anchored restore, explicit
+  run graphs, contributor-set revisions, window lifecycle, and adapter
+  lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
   digests inside `psionic-train`.
@@ -245,6 +246,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_CHECKPOINT_RECOVERY_REFERENCE.md](docs/TRAIN_CHECKPOINT_RECOVERY_REFERENCE.md)** —
   canonical checkpoint-pointer, checkpoint-manifest, and restore-ladder
   runbook for the first explicit Psionic checkpoint-recovery receipt path.
+- **[docs/COLLECTIVE_SYNC_POLICY_REFERENCE.md](docs/COLLECTIVE_SYNC_POLICY_REFERENCE.md)** —
+  canonical local/global sync cadence, transport-feedback, and replanning
+  runbook for the first explicit Psionic collective sync planner.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

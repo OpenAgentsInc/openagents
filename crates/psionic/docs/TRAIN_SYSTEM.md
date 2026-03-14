@@ -182,7 +182,7 @@ shape already includes at least:
 | --- | --- | --- |
 | Runtime training truth | `implemented_early` | `TrainingRecoveryContext`, checkpoint refs, elastic-membership context, device-mesh context, collective context |
 | Datastream | `implemented_early` | resumable manifests, checkpoint bindings, dataset bindings, delivery receipts |
-| Collectives | `implemented_early` | elastic mesh observation, benchmark-gated quantized collective planning |
+| Collectives | `implemented_early` | elastic mesh observation, bandwidth-aware local/global sync planning, transport-feedback replanning, and benchmark-gated quantized collective policy |
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
@@ -210,7 +210,8 @@ The current train-relevant ownership split in Psionic is:
   - versioned dataset manifests, tokenizer digests, split declarations,
     streamed iteration contracts, and long-context packing rules
 - `psionic-collectives`
-  - elastic mesh observation and benchmark-gated collective planning
+  - elastic mesh observation, local/global sync planning, transport-feedback
+    replanning, and benchmark-gated collective policy
 - `psionic-environments`
   - environment package ABI, execution entrypoints, tool and rubric hooks,
     artifact expectations, versioned dataset bindings, and deterministic
@@ -336,9 +337,13 @@ The important current pieces are:
 - `ElasticCollectivePlanner`
 - `CollectiveMeshMember`
 - `QuantizedCollectiveBenchmark`
+- `CollectiveTransportFeedback`
+- `CollectiveSyncCadencePolicy`
 - `observe_mesh`
 - `record_benchmark`
 - `plan_collective`
+- `observe_transport_feedback`
+- `plan_sync`
 
 The current planner already does several important things honestly:
 
@@ -346,10 +351,20 @@ The current planner already does several important things honestly:
 - ensures mesh members are actually active in the current membership set
 - increments mesh revision only when mesh truth changes
 - requires explicit benchmark approval before planning a quantized collective
+- records transport feedback and surfaces typed replan triggers when bandwidth,
+  latency, stream pressure, or mesh revision cross policy boundaries
+- plans local subgroup sync separately from full-mesh sync when degraded
+  transport and explicit subgroup topology justify it
 - emits a `CollectiveExecutionPlan` with:
   - runtime-visible collective posture
   - explicit ring handoffs
   - a low-level `RuntimeWorkItem`
+- emits a `CollectiveSyncCadenceReceipt` with:
+  - cadence class
+  - next global sync step
+  - selected quantization
+  - transport degradation posture
+  - typed replan triggers
 
 This is already enough to say Psionic has training-class collective truth.
 
@@ -812,7 +827,8 @@ controllers are allowed to tune.
 
 Current repo truth only covers a small piece of this policy surface directly:
 
-- collective quantization approval and benchmark posture
+- collective quantization approval, benchmark posture, sync cadence, and
+  transport thresholds
 - cluster admission and readiness posture
 - checkpoint durability posture
 - sandbox profile realization
@@ -1272,11 +1288,32 @@ cross-window checkpoint governance.
 
 ### 8. `Psionic Collectives: add bandwidth-aware elastic sync planning and quantized policy surfaces`
 
-`psionic-collectives` already observes meshes and plans benchmark-approved
-quantized collectives. This issue should extend it with explicit local-versus-
-global sync planning, transport-observation feedback, replan triggers, and
-receipt-bearing sync cadence policy. It should become the systems truth for how
-elastic training synchronization actually happens.
+Status: implemented on 2026-03-14 via GitHub issue `#3571`.
+
+Added sync-planning and cadence-policy contracts inside `psionic-collectives`
+for:
+
+- mesh-wide `CollectiveTransportFeedback` observations with stable digests and
+  explicit bandwidth, latency, and stream-pressure metrics
+- `CollectiveSyncCadencePolicy` over healthy and degraded global-sync
+  intervals, transport thresholds, and local/global quantization posture
+- `CollectiveSyncExecutionPlan` and `CollectiveSyncStage` so local subgroup
+  sync and full-mesh sync are planned as explicit ordered stages
+- `CollectiveSyncCadenceReceipt` and `CollectiveReplanTrigger` so cadence,
+  transport degradation, quantization fallback, and interval-elapse decisions
+  stay machine-legible
+- planner-owned local-group selection, interval-based deferred global sync, and
+  mesh-revision replanning over the existing benchmark-gated quantized
+  collective substrate
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/COLLECTIVE_SYNC_POLICY_REFERENCE.md`
+- `scripts/release/check-psionic-collective-sync.sh`
+
+This issue makes collective sync cadence explicit Psionic truth instead of a
+hidden optimizer-side heuristic. It does not yet land distributed optimizer
+state integration or parameter-shard accounting.
 
 ### 9. `Psionic Datastream: add sharded policy-weight broadcast and freshness control`
 

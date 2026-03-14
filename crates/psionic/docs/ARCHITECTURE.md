@@ -138,7 +138,7 @@ Psionic is also not:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, streamed iteration, and long-context packing policies |
 | Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, and receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
-| Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
+| Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
@@ -212,7 +212,8 @@ Applications / Operators / Authority
    - ordered state, cluster admission, catch-up, scheduling, topology and
      placement truth
 11. `psionic-collectives`
-   - elastic device-mesh and quantized collective planning
+   - elastic device-mesh, local/global sync planning, transport-feedback
+     replanning, and quantized collective policy
 12. `psionic-train`
    - training-session truth for checkpointing, live recovery,
      elastic-membership posture, checkpoint pointers/manifests, and restore
@@ -310,6 +311,7 @@ training subsystems.
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
 | `TrainingRun` | `psionic-train` | root identity, participant graph, and lifecycle state for one training program | `implemented_early` |
 | `TrainingWindow` | `psionic-train` | one synchronized contribution or trainer interval with contributor-set and transition state | `implemented_early` |
+| `CollectiveSyncCadenceReceipt` | `psionic-collectives` | typed cadence, transport-feedback, and replan-trace receipt for one sync step | `implemented_early` |
 | `CheckpointPointer` | `psionic-train` | stable pointer to the latest accepted checkpoint for a run, stage, or window | `implemented_early` |
 | `CheckpointManifest` | `psionic-train` | typed shard, digest, writer, and durability description for one checkpoint flush | `implemented_early` |
 | `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
