@@ -923,7 +923,13 @@ and it is now landed too by adding the canonical product-class split in
 claims are now explicitly separated across local portability, high-throughput
 serving, and structured-agent serving so one benchmark class can no longer
 pretend to close the others. The next dependency-ordered issue in that chain is
-now `PSI-257` / [#3562](https://github.com/OpenAgentsInc/openagents/issues/3562).
+now `PSI-257` / [#3562](https://github.com/OpenAgentsInc/openagents/issues/3562),
+and it is now landed too through the first explicit non-GPT-OSS pilot:
+`NON_GPT_OSS_QWEN_PILOT.md`, `scripts/release/check-psionic-qwen-pilot.sh`, and
+a dedicated generic-server Qwen end-to-end test now prove the engine is no
+longer GPT-OSS-only at the generic-server correctness layer. The next
+dependency-ordered issue in that chain is now `PSI-258` /
+[#3563](https://github.com/OpenAgentsInc/openagents/issues/3563).
 
 ## Current Reality
 

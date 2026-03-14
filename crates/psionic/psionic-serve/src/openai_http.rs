@@ -5480,6 +5480,98 @@ mod tests {
     }
 
     #[test]
+    fn generic_server_qwen_pilot_is_end_to_end_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let qwen_path = temp.path().join("tiny-qwen-pilot.gguf");
+        write_test_gguf(
+            &qwen_path,
+            dense_qwen_metadata("tiny pilot qwen").as_slice(),
+            dense_decoder_tensors(true, 2, 3).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&qwen_path))?;
+
+        let health = tokio::runtime::Runtime::new()?
+            .block_on(generic_health(State(std::sync::Arc::clone(&server.state))));
+        let pilot_model_id = health.0.default_model.clone();
+        assert_eq!(
+            health.0.default_model_supported_endpoints,
+            vec!["/v1/chat/completions", "/v1/responses"]
+        );
+        assert_eq!(
+            health.0.execution_profile.batch_posture,
+            BatchExecutionPosture::ContinuousBatch
+        );
+        assert!(health.0.scheduler_policy.is_some());
+
+        let models = tokio::runtime::Runtime::new()?.block_on(generic_list_models(State(
+            std::sync::Arc::clone(&server.state),
+        )));
+        let model = models
+            .0
+            .data
+            .iter()
+            .find(|model| model.id == pilot_model_id)
+            .expect("pilot qwen model should be listed");
+        assert_eq!(model.psionic_model_family, "qwen");
+        assert_eq!(
+            model.psionic_supported_endpoints,
+            vec!["/v1/chat/completions", "/v1/responses"]
+        );
+        assert_eq!(model.psionic_residency_mode, Some(CPU_SERVER_RESIDENCY_MODE));
+        assert_eq!(
+            model.psionic_execution_profile.as_ref().map(|profile| profile.batch_posture),
+            Some(BatchExecutionPosture::ContinuousBatch)
+        );
+        assert!(model.psionic_scheduler_policy.is_some());
+
+        let response = tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+            std::sync::Arc::clone(&server.state),
+            ChatCompletionRequest {
+                model: Some(pilot_model_id.clone()),
+                messages: vec![ChatCompletionMessage {
+                    role: String::from("user"),
+                    content: String::from("hello"),
+                    name: None,
+                }],
+                temperature: Some(0.0),
+                max_tokens: Some(1),
+                stop: None,
+                stream: false,
+                tools: Vec::new(),
+                tool_choice: None,
+                response_format: None,
+                psionic_grammar: None,
+                psionic_structured_output: None,
+                psionic_reasoning: None,
+                psionic_prefix_cache: None,
+            },
+        ))?;
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-batch-posture"),
+            Some(String::from("continuous_batch"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-scheduling-class"),
+            Some(String::from("mixed_prefill_decode"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-prefill-decode-mode"),
+            Some(String::from("disaggregated_colocated"))
+        );
+
+        let payload = tokio::runtime::Runtime::new()?.block_on(response_json(response))?;
+        assert_eq!(payload["model"], serde_json::json!(pilot_model_id));
+        assert_eq!(payload["choices"][0]["message"]["content"], serde_json::json!("world"));
+        assert_eq!(
+            payload["usage"]["completion_tokens"],
+            serde_json::json!(1)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn generic_server_boots_and_generates_for_gpt_oss() -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("tiny-gpt-oss.gguf");
