@@ -104,6 +104,10 @@ Implemented now:
   datastream-backed distributed tiers, with spill/prefetch/write-back movement
   truth, refusal surfaces, and cluster cache-capability reporting that only
   claims the tiers the lane can actually surface.
+- one canonical serving-semantics model shared across local and clustered
+  serving, with execution-profile, cache, and warm-route truth surfaced on
+  whole-request, replica-routed, pipeline-sharded, layer-sharded, and
+  tensor-sharded evidence paths.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded
@@ -126,8 +130,8 @@ Implemented now:
 
 Still planned:
 
-- full inference-engine maturity across model families, shared scheduling, and
-  serving semantics.
+- full inference-engine maturity across model families and broader serving
+  surfaces.
 - Psionic-native environment and eval runtime crates.
 - full Rust-native training core, rollout artifacts, and orchestrator layers.
 - training-window protocol, checkpoint pointer/manifest discipline, and

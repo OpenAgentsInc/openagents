@@ -2745,8 +2745,9 @@ mod tests {
         ClusterComputeMarketTrustRefusalReason, ClusterExecutionCapabilityProfile,
         ClusterExecutionContext, ClusterExecutionDisposition, ClusterExecutionLane,
         ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage, ClusterPipelineStageRole,
-        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
-        DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
+        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterServingSemantics,
+        ClusterTransportClass, ClusterWarmRoutePosture, DeviceDescriptor, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionCapabilityProfile,
         ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundleKind,
         ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, KvResidencyAccounting,
@@ -4022,6 +4023,10 @@ mod tests {
             encoded["cluster_execution"]["fallback_history"][0]["reason"],
             json!("node_unavailable")
         );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("ready_node_selection")
+        );
         assert_eq!(envelope.cluster_execution, Some(cluster_execution));
         Ok(())
     }
@@ -4130,6 +4135,11 @@ mod tests {
             encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
             json!(["remote_dispatch"])
         );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["serving_semantics_capabilities"]
+                [0]["warm_route_posture"],
+            json!("ready_node_selection")
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -4218,6 +4228,11 @@ mod tests {
                 [0]["prefix_scope"],
             json!("replica_local")
         );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["serving_semantics_capabilities"]
+                [0]["warm_route_posture"],
+            json!("route_pinned")
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -4258,6 +4273,11 @@ mod tests {
             encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
                 [0]["kv_scope"],
             json!("stage_local")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["serving_semantics_capabilities"]
+                [0]["warm_route_posture"],
+            json!("topology_pinned")
         );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
@@ -4304,6 +4324,11 @@ mod tests {
                 [0]["invalidates_on_topology_change"],
             json!(true)
         );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["serving_semantics_capabilities"]
+                [0]["warm_route_posture"],
+            json!("topology_pinned")
+        );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
     }
@@ -4343,6 +4368,11 @@ mod tests {
             encoded["backend_selection"]["cluster_execution_capability_profile"]["clustered_cache_capabilities"]
                 [0]["prefix_scope"],
             json!("stage_local")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["serving_semantics_capabilities"]
+                [0]["warm_route_posture"],
+            json!("topology_pinned")
         );
         assert!(envelope.cluster_execution.is_none());
         Ok(())
@@ -4384,6 +4414,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["replica_nodes"][0]["routing"],
             json!("selected")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("route_pinned")
         );
         Ok(())
     }
@@ -5593,6 +5627,10 @@ mod tests {
             json!("reuse")
         );
         assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("route_pinned")
+        );
+        assert_eq!(
             encoded["selected_devices"][1]["stable_device_id"],
             json!(second.stable_device_id)
         );
@@ -5704,6 +5742,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["clustered_cache_usage"]["kv_scope"],
             json!("stage_local")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("topology_pinned")
         );
         assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
@@ -5828,6 +5870,10 @@ mod tests {
             json!("bypass")
         );
         assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("topology_pinned")
+        );
+        assert_eq!(
             encoded["selected_devices"][0]["stable_device_id"],
             json!(first.stable_device_id)
         );
@@ -5936,6 +5982,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["clustered_cache_usage"]["prefix_scope"],
             json!("stage_local")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("topology_pinned")
         );
         assert_eq!(
             encoded["cluster_execution"]["shard_handoffs"][0]["kind"],
@@ -6775,6 +6825,16 @@ mod tests {
     fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
         ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::RemoteWholeRequest,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::ReadyNodeSelection,
+                )
+                .with_detail(
+                    "remote whole-request serving keeps canonical local single-request semantics while only requiring selection of one ready node",
+                ),
+            )
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             )
@@ -6786,6 +6846,16 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::ReplicaRouted,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::RoutePinned,
+                )
+                .with_detail(
+                    "replica-routed serving keeps canonical local single-request semantics while requiring the same warm replica identity for truthful reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::ReplicaRouted,
@@ -6809,6 +6879,16 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::LayerSharded,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::LayerSharded,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::TopologyPinned,
+                )
+                .with_detail(
+                    "layer-sharded serving keeps single-request execution semantics while requiring the same shard topology for truthful warm reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::LayerSharded,
@@ -6832,6 +6912,16 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::PipelineSharded,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::PipelineSharded,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::TopologyPinned,
+                )
+                .with_detail(
+                    "pipeline-sharded serving keeps single-request execution semantics while requiring the same stage topology for truthful warm reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::PipelineSharded,
@@ -6855,6 +6945,16 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::TensorSharded,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::TensorSharded,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::TopologyPinned,
+                )
+                .with_detail(
+                    "tensor-sharded serving keeps single-request execution semantics while requiring the same collective topology for truthful warm reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::TensorSharded,
@@ -6902,6 +7002,12 @@ mod tests {
             ClusterPolicyDigestKind::Placement,
             "placement-policy-digest",
         ))
+        .with_serving_semantics(
+            capability_profile
+                .serving_semantics_capability(ClusterExecutionLane::RemoteWholeRequest)
+                .cloned()
+                .expect("fixture remote whole-request profile should declare serving semantics"),
+        )
         .with_command_provenance(sample_cluster_command_provenance(&["worker-a"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
@@ -6949,6 +7055,12 @@ mod tests {
             ClusterPolicyDigestKind::Admission,
             "admission-policy-digest",
         ))
+        .with_serving_semantics(
+            capability_profile
+                .serving_semantics_capability(ClusterExecutionLane::ReplicaRouted)
+                .cloned()
+                .expect("fixture replica-routed profile should declare serving semantics"),
+        )
         .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
@@ -7028,6 +7140,12 @@ mod tests {
             ClusterPolicyDigestKind::Sharding,
             "sharding-policy-digest",
         ))
+        .with_serving_semantics(
+            capability_profile
+                .serving_semantics_capability(ClusterExecutionLane::LayerSharded)
+                .cloned()
+                .expect("fixture layer-sharded profile should declare serving semantics"),
+        )
         .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
@@ -7106,6 +7224,12 @@ mod tests {
             ClusterPolicyDigestKind::Sharding,
             "pipeline-policy-digest",
         ))
+        .with_serving_semantics(
+            capability_profile
+                .serving_semantics_capability(ClusterExecutionLane::PipelineSharded)
+                .cloned()
+                .expect("fixture pipeline-sharded profile should declare serving semantics"),
+        )
         .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
@@ -7213,6 +7337,12 @@ mod tests {
             ClusterPolicyDigestKind::Sharding,
             "tensor-sharding-policy-digest",
         ))
+        .with_serving_semantics(
+            capability_profile
+                .serving_semantics_capability(ClusterExecutionLane::TensorSharded)
+                .cloned()
+                .expect("fixture tensor-sharded profile should declare serving semantics"),
+        )
         .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")

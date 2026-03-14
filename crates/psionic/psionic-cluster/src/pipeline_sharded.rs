@@ -6,10 +6,11 @@ use psionic_runtime::{
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPipelineStage, ClusterPipelineStageRole, ClusterPolicyDigest,
     ClusterPolicyDigestKind, ClusterPrefillDecodeCapability,
-    ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
-    ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
-    ExecutionTopologyPlan, KvResidencyTier, PrefillDecodeCapability, ShardedModelManifest,
-    ShardedModelManifestError,
+    ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterServingSemantics,
+    ClusterShardHandoff, ClusterShardHandoffKind,
+    ClusterTransportClass as RuntimeClusterTransportClass, ClusterWarmRoutePosture,
+    ExecutionCapabilityProfile, ExecutionTopologyPlan, KvResidencyTier, PrefillDecodeCapability,
+    ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -111,6 +112,16 @@ fn default_pipeline_sharded_capability_profile() -> ClusterExecutionCapabilityPr
                 "pipeline-sharded execution crosses explicit stage handoff links, so prefill/decode separation is only truthful through a cluster KV-transfer seam",
             ),
         ))
+        .with_serving_semantics_capability(
+            ClusterServingSemantics::new(
+                ClusterExecutionLane::PipelineSharded,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::TopologyPinned,
+            )
+            .with_detail(
+                "pipeline-sharded serving keeps single-request execution semantics while requiring the same stage topology for truthful warm reuse",
+            ),
+        )
         .with_clustered_cache_capability(
             ClusterCacheCapability::new(
                 ClusterExecutionLane::PipelineSharded,
@@ -644,6 +655,13 @@ pub fn schedule_pipeline_sharded_execution(
     .with_selected_nodes(selected_nodes)
     .with_shard_handoffs(shard_handoffs.clone())
     .with_pipeline_stages(pipeline_stages.clone());
+    if let Some(serving_semantics) = request
+        .capability_profile
+        .serving_semantics_capability(ClusterExecutionLane::PipelineSharded)
+        .cloned()
+    {
+        cluster_execution = cluster_execution.with_serving_semantics(serving_semantics);
+    }
     if let Some(artifact_residency_digest) = artifact_residency_digest.clone() {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
@@ -1136,9 +1154,9 @@ mod tests {
     use std::io::Error;
 
     use psionic_runtime::{
-        ClusterCommunicationClass, ClusterPipelineStageRole, ExecutionPartition,
-        ExecutionTopologyKind, ShardedModelArtifactRef, ShardedModelLayoutKind,
-        ShardedModelManifest,
+        ClusterCommunicationClass, ClusterExecutionLane, ClusterPipelineStageRole,
+        ClusterWarmRoutePosture, ExecutionPartition, ExecutionTopologyKind,
+        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
     };
 
     use crate::{
@@ -1381,6 +1399,22 @@ mod tests {
                 .as_ref()
                 .map(|eligibility| eligibility.required_class),
             Some(ClusterCommunicationClass::PipelineStageHandoff)
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.lane),
+            Some(ClusterExecutionLane::PipelineSharded)
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.warm_route_posture),
+            Some(ClusterWarmRoutePosture::TopologyPinned)
         );
         let expected_manifest_digest = sample_manifest("artifact-1").stable_digest();
         assert_eq!(

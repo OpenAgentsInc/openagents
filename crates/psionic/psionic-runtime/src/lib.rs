@@ -987,6 +987,9 @@ pub struct ClusterExecutionCapabilityProfile {
     /// Declared clustered execution lanes supported by the backend today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_lanes: Vec<ClusterExecutionLane>,
+    /// Declared serving-semantics contracts for supported clustered lanes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serving_semantics_capabilities: Vec<ClusterServingSemantics>,
     /// Declared clustered cache-compatibility truth for supported lanes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clustered_cache_capabilities: Vec<ClusterCacheCapability>,
@@ -1008,6 +1011,7 @@ impl ClusterExecutionCapabilityProfile {
         Self {
             runtime_backend: runtime_backend.into(),
             supported_lanes: Vec::new(),
+            serving_semantics_capabilities: Vec::new(),
             clustered_cache_capabilities: Vec::new(),
             prefill_decode_capabilities: Vec::new(),
             supported_communication_classes: Vec::new(),
@@ -1035,6 +1039,33 @@ impl ClusterExecutionCapabilityProfile {
         supported_communication_classes.dedup();
         self.supported_communication_classes = supported_communication_classes;
         self.normalize_supported_communication_classes();
+        self
+    }
+
+    /// Replaces declared serving-semantics contracts and normalizes by lane.
+    #[must_use]
+    pub fn with_serving_semantics_capabilities(
+        mut self,
+        mut serving_semantics_capabilities: Vec<ClusterServingSemantics>,
+    ) -> Self {
+        serving_semantics_capabilities.sort_by_key(|capability| capability.lane);
+        serving_semantics_capabilities.dedup_by_key(|capability| capability.lane);
+        self.serving_semantics_capabilities = serving_semantics_capabilities;
+        self
+    }
+
+    /// Appends one serving-semantics capability declaration.
+    #[must_use]
+    pub fn with_serving_semantics_capability(
+        mut self,
+        serving_semantics_capability: ClusterServingSemantics,
+    ) -> Self {
+        self.serving_semantics_capabilities
+            .push(serving_semantics_capability);
+        self.serving_semantics_capabilities
+            .sort_by_key(|capability| capability.lane);
+        self.serving_semantics_capabilities
+            .dedup_by_key(|capability| capability.lane);
         self
     }
 
@@ -1112,6 +1143,17 @@ impl ClusterExecutionCapabilityProfile {
         lane: ClusterExecutionLane,
     ) -> Option<&ClusterCacheCapability> {
         self.clustered_cache_capabilities
+            .iter()
+            .find(|capability| capability.lane == lane)
+    }
+
+    /// Returns declared serving-semantics truth for one supported lane, when present.
+    #[must_use]
+    pub fn serving_semantics_capability(
+        &self,
+        lane: ClusterExecutionLane,
+    ) -> Option<&ClusterServingSemantics> {
+        self.serving_semantics_capabilities
             .iter()
             .find(|capability| capability.lane == lane)
     }
@@ -1228,6 +1270,10 @@ impl ClusterExecutionCapabilityProfile {
                 hasher.update(b"|detail|");
                 hasher.update(detail.as_bytes());
             }
+        }
+        for serving_semantics in &self.serving_semantics_capabilities {
+            hasher.update(b"|serving_semantics|");
+            hasher.update(serving_semantics.stable_digest().as_bytes());
         }
         for prefill_decode_capability in &self.prefill_decode_capabilities {
             hasher.update(b"|prefill_decode|");
@@ -1917,6 +1963,85 @@ impl ClusterCacheUsage {
     }
 }
 
+/// Warm-route posture that constrains truthful clustered cache or route reuse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterWarmRoutePosture {
+    /// The lane only requires selection of one ready node; warm-route pinning is not promised.
+    ReadyNodeSelection,
+    /// The lane requires the same warm route identity to preserve truthful reuse.
+    RoutePinned,
+    /// The lane requires the same shard/stage topology to preserve truthful reuse.
+    TopologyPinned,
+}
+
+impl ClusterWarmRoutePosture {
+    /// Returns a stable machine-checkable label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadyNodeSelection => "ready_node_selection",
+            Self::RoutePinned => "route_pinned",
+            Self::TopologyPinned => "topology_pinned",
+        }
+    }
+}
+
+/// Canonical serving-semantics contract shared by local and clustered execution surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterServingSemantics {
+    /// Clustered lane this serving contract applies to.
+    pub lane: ClusterExecutionLane,
+    /// Canonical execution-profile contract reused from local serving.
+    pub execution_profile: ExecutionCapabilityProfile,
+    /// Warm-route posture that constrains truthful reuse for the lane.
+    pub warm_route_posture: ClusterWarmRoutePosture,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterServingSemantics {
+    /// Creates a lane-scoped serving-semantics contract.
+    #[must_use]
+    pub fn new(
+        lane: ClusterExecutionLane,
+        execution_profile: ExecutionCapabilityProfile,
+        warm_route_posture: ClusterWarmRoutePosture,
+    ) -> Self {
+        Self {
+            lane,
+            execution_profile,
+            warm_route_posture,
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// Returns a stable digest for the serving-semantics contract.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_serving_semantics|");
+        hasher.update(self.lane.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.execution_profile.stable_digest().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.warm_route_posture.as_str().as_bytes());
+        if let Some(detail) = &self.detail {
+            hasher.update(b"|detail|");
+            hasher.update(detail.as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
 /// Runtime-owned clustered execution evidence shared by capability, provenance, and receipt types.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterExecutionContext {
@@ -1971,6 +2096,9 @@ pub struct ClusterExecutionContext {
     /// Explicit prefill/decode split seam for the realized clustered path, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefill_decode_handoff: Option<PrefillDecodeHandoff>,
+    /// Canonical serving-semantics contract for the realized clustered lane, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serving_semantics: Option<ClusterServingSemantics>,
     /// Realized clustered cache-compatibility and invalidation truth for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clustered_cache_usage: Option<ClusterCacheUsage>,
@@ -2022,6 +2150,7 @@ impl ClusterExecutionContext {
             shard_handoffs: Vec::new(),
             pipeline_stages: Vec::new(),
             prefill_decode_handoff: None,
+            serving_semantics: None,
             clustered_cache_usage: None,
             command_provenance: Vec::new(),
             fallback_history: Vec::new(),
@@ -2135,6 +2264,13 @@ impl ClusterExecutionContext {
         prefill_decode_handoff: PrefillDecodeHandoff,
     ) -> Self {
         self.prefill_decode_handoff = Some(prefill_decode_handoff);
+        self
+    }
+
+    /// Attaches canonical serving-semantics truth for the realized clustered lane.
+    #[must_use]
+    pub fn with_serving_semantics(mut self, serving_semantics: ClusterServingSemantics) -> Self {
+        self.serving_semantics = Some(serving_semantics);
         self
     }
 
@@ -5965,6 +6101,61 @@ impl ExecutionCapabilityProfile {
         self.prefill_decode_capability = Some(prefill_decode_capability);
         self
     }
+
+    /// Returns a stable digest for the execution profile.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"execution_capability_profile|");
+        hasher.update(match self.batch_posture {
+            BatchExecutionPosture::SingleRequestOnly => b"single_request_only".as_slice(),
+            BatchExecutionPosture::CallerStaticBatch => b"caller_static_batch".as_slice(),
+            BatchExecutionPosture::SchedulerStaticBatch => b"scheduler_static_batch".as_slice(),
+            BatchExecutionPosture::ContinuousBatch => b"continuous_batch".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.queue_policy.discipline {
+            QueueDiscipline::DirectCallerBackpressure => b"direct_caller_backpressure".as_slice(),
+            QueueDiscipline::Fifo => b"fifo".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(self.queue_policy.max_active_requests.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.queue_policy.max_queued_requests.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(if self.queue_policy.per_model_serialization {
+            b"per_model_serialization".as_slice()
+        } else {
+            b"cross_model_parallel".as_slice()
+        });
+        hasher.update(b"|");
+        hasher.update(match self.throughput_class {
+            ThroughputClass::LatencyOptimized => b"latency_optimized".as_slice(),
+            ThroughputClass::Balanced => b"balanced".as_slice(),
+            ThroughputClass::ThroughputOptimized => b"throughput_optimized".as_slice(),
+        });
+        if let Some(prefill_decode_capability) = &self.prefill_decode_capability {
+            for mode in &prefill_decode_capability.supported_modes {
+                hasher.update(b"|prefill_decode_mode|");
+                hasher.update(mode.as_str().as_bytes());
+            }
+            for transport in &prefill_decode_capability.supported_transports {
+                hasher.update(b"|prefill_decode_transport|");
+                hasher.update(transport.as_str().as_bytes());
+            }
+            hasher.update(b"|");
+            hasher.update(if prefill_decode_capability.exposes_split_metrics {
+                b"split_metrics".as_slice()
+            } else {
+                b"no_split_metrics".as_slice()
+            });
+            if let Some(detail) = &prefill_decode_capability.detail {
+                hasher.update(b"|detail|");
+                hasher.update(detail.as_bytes());
+            }
+        }
+        hex::encode(hasher.finalize())
+    }
 }
 
 impl Default for ExecutionCapabilityProfile {
@@ -9072,13 +9263,14 @@ mod tests {
         ClusterEvidenceBundleVerificationError, ClusterExecutionCapabilityProfile,
         ClusterExecutionContext, ClusterExecutionDisposition, ClusterExecutionLane,
         ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ClusterSelectedNode, ClusterSettlementProvenanceInput, ClusterTransportClass,
-        ClusterTrustPosture, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor,
-        DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
-        DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
-        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPartition, ExecutionPlanCachePolicy,
-        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
-        ExecutionTopologyPlan, GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
+        ClusterSelectedNode, ClusterServingSemantics, ClusterSettlementProvenanceInput,
+        ClusterTransportClass, ClusterTrustPosture, ClusterWarmRoutePosture,
+        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery,
+        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
+        ExecutionBackend, ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
+        ExecutionPartition, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
+        ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan,
+        GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
         GenerationSchedulerMetrics, GenerationSchedulerPolicy, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
         KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, KvResidencyAccounting,
@@ -10945,6 +11137,16 @@ mod tests {
                 ClusterExecutionLane::RemoteWholeRequest,
                 ClusterExecutionLane::ReplicaRouted,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::RoutePinned,
+                )
+                .with_detail(
+                    "replica-routed serving keeps canonical local single-request semantics while requiring the same warm replica identity for truthful reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::ReplicaRouted,
@@ -11011,6 +11213,16 @@ mod tests {
                 .with_served_artifact_digest("served-artifact-digest")
                 .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
         ])
+        .with_serving_semantics(
+            ClusterServingSemantics::new(
+                ClusterExecutionLane::ReplicaRouted,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::RoutePinned,
+            )
+            .with_detail(
+                "replica-routed serving kept the request pinned to one warm replica identity",
+            ),
+        )
         .with_clustered_cache_usage(
             ClusterCacheUsage::new(
                 ClusterExecutionLane::ReplicaRouted,
@@ -11059,6 +11271,14 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["clustered_cache_usage"]["invalidation_trigger"],
             json!("cluster_route_change")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["lane"],
+            json!("replica_routed")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
+            json!("route_pinned")
         );
         assert!(
             encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
@@ -11242,6 +11462,16 @@ mod tests {
                 ClusterExecutionLane::LayerSharded,
                 ClusterExecutionLane::TensorSharded,
             ])
+            .with_serving_semantics_capability(
+                ClusterServingSemantics::new(
+                    ClusterExecutionLane::ReplicaRouted,
+                    ExecutionCapabilityProfile::single_request_latency_optimized(),
+                    ClusterWarmRoutePosture::RoutePinned,
+                )
+                .with_detail(
+                    "replica-routed serving keeps canonical local single-request semantics while requiring the same warm replica identity for truthful reuse",
+                ),
+            )
             .with_clustered_cache_capability(
                 ClusterCacheCapability::new(
                     ClusterExecutionLane::ReplicaRouted,
@@ -11273,6 +11503,12 @@ mod tests {
                 .clustered_cache_capability(ClusterExecutionLane::ReplicaRouted)
                 .map(|capability| capability.prefix_scope),
             Some(ClusterCacheScope::ReplicaLocal)
+        );
+        assert_eq!(
+            profile
+                .serving_semantics_capability(ClusterExecutionLane::ReplicaRouted)
+                .map(|capability| capability.warm_route_posture),
+            Some(ClusterWarmRoutePosture::RoutePinned)
         );
         assert!(profile.supports_communication_class(ClusterCommunicationClass::LayerShardHandoff));
         assert!(
@@ -11326,6 +11562,29 @@ mod tests {
         assert_ne!(
             replica_local.stable_digest(),
             route_invalidating.stable_digest()
+        );
+    }
+
+    #[test]
+    fn cluster_execution_capability_profile_digest_changes_when_serving_semantics_change() {
+        let ready_node_selection = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_serving_semantics_capability(ClusterServingSemantics::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::ReadyNodeSelection,
+            ));
+        let route_pinned = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_serving_semantics_capability(ClusterServingSemantics::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::RoutePinned,
+            ));
+
+        assert_ne!(
+            ready_node_selection.stable_digest(),
+            route_pinned.stable_digest()
         );
     }
 

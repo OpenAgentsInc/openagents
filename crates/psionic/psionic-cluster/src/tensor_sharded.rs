@@ -6,9 +6,10 @@ use psionic_runtime::{
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterPrefillDecodeCapability, ClusterSelectedNode as RuntimeClusterSelectedNode,
-    ClusterShardHandoff, ClusterShardHandoffKind,
-    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan, KvResidencyTier,
-    PrefillDecodeCapability, ShardedModelManifest, ShardedModelManifestError,
+    ClusterServingSemantics, ClusterShardHandoff, ClusterShardHandoffKind,
+    ClusterTransportClass as RuntimeClusterTransportClass, ClusterWarmRoutePosture,
+    ExecutionCapabilityProfile, ExecutionTopologyPlan, KvResidencyTier, PrefillDecodeCapability,
+    ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -148,6 +149,16 @@ fn default_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProf
                 "remote whole-request fallback keeps prefill and decode split on one selected runtime",
             ),
         ))
+        .with_serving_semantics_capability(
+            ClusterServingSemantics::new(
+                ClusterExecutionLane::TensorSharded,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::TopologyPinned,
+            )
+            .with_detail(
+                "tensor-sharded serving keeps single-request execution semantics while requiring the same collective topology for truthful warm reuse",
+            ),
+        )
         .with_clustered_cache_capability(
             ClusterCacheCapability::new(
                 ClusterExecutionLane::TensorSharded,
@@ -648,6 +659,13 @@ pub fn schedule_tensor_sharded_execution(
     .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(selected_nodes)
     .with_shard_handoffs(shard_handoffs.clone());
+    if let Some(serving_semantics) = request
+        .capability_profile
+        .serving_semantics_capability(ClusterExecutionLane::TensorSharded)
+        .cloned()
+    {
+        cluster_execution = cluster_execution.with_serving_semantics(serving_semantics);
+    }
     if let Some(artifact_residency_digest) = artifact_residency_digest.clone() {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
@@ -1053,8 +1071,9 @@ mod tests {
 
     use psionic_runtime::{
         ClusterCommunicationClass, ClusterExecutionCapabilityProfile, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ExecutionPartition, ExecutionTopologyKind, ServedArtifactIdentity,
-        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
+        ClusterPolicyDigestKind, ClusterWarmRoutePosture, ExecutionPartition,
+        ExecutionTopologyKind, ServedArtifactIdentity, ShardedModelArtifactRef,
+        ShardedModelLayoutKind, ShardedModelManifest,
     };
 
     use crate::{
@@ -1341,6 +1360,14 @@ mod tests {
                 .sharded_model_manifest_digest
                 .as_deref(),
             Some(expected_manifest_digest.as_str())
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .serving_semantics
+                .as_ref()
+                .map(|semantics| semantics.warm_route_posture),
+            Some(ClusterWarmRoutePosture::TopologyPinned)
         );
         Ok(())
     }

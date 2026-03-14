@@ -6,9 +6,10 @@ use psionic_runtime::{
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterPrefillDecodeCapability, ClusterSelectedNode as RuntimeClusterSelectedNode,
-    ClusterShardHandoff, ClusterShardHandoffKind,
-    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan, KvResidencyTier,
-    PrefillDecodeCapability, ShardedModelManifest, ShardedModelManifestError,
+    ClusterServingSemantics, ClusterShardHandoff, ClusterShardHandoffKind,
+    ClusterTransportClass as RuntimeClusterTransportClass, ClusterWarmRoutePosture,
+    ExecutionCapabilityProfile, ExecutionTopologyPlan, KvResidencyTier, PrefillDecodeCapability,
+    ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -93,6 +94,16 @@ fn default_layer_sharded_capability_profile() -> ClusterExecutionCapabilityProfi
                 "layer-sharded execution crosses explicit shard handoff links, so prefill/decode separation is only truthful through a cluster KV-transfer seam",
             ),
         ))
+        .with_serving_semantics_capability(
+            ClusterServingSemantics::new(
+                ClusterExecutionLane::LayerSharded,
+                ExecutionCapabilityProfile::single_request_latency_optimized(),
+                ClusterWarmRoutePosture::TopologyPinned,
+            )
+            .with_detail(
+                "layer-sharded serving keeps single-request execution semantics while requiring the same shard topology for truthful warm reuse",
+            ),
+        )
         .with_clustered_cache_capability(
             ClusterCacheCapability::new(
                 ClusterExecutionLane::LayerSharded,
@@ -584,6 +595,13 @@ pub fn schedule_layer_sharded_execution(
     .with_execution_topology(execution_topology.clone())
     .with_selected_nodes(selected_nodes)
     .with_shard_handoffs(shard_handoffs.clone());
+    if let Some(serving_semantics) = request
+        .capability_profile
+        .serving_semantics_capability(ClusterExecutionLane::LayerSharded)
+        .cloned()
+    {
+        cluster_execution = cluster_execution.with_serving_semantics(serving_semantics);
+    }
     if let Some(artifact_residency_digest) = artifact_residency_digest.clone() {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
