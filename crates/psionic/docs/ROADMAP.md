@@ -811,9 +811,13 @@ on the generic server. `PSI-237` /
 [#3542](https://github.com/OpenAgentsInc/openagents/issues/3542) is now landed
 too through a first Psionic-owned continuous-batching scheduler for CPU text
 generation, mixed prefill/decode queueing, FIFO queue truth on the generic
-server, and per-request scheduling receipts. The next dependency-ordered issue
-in that chain is `PSI-238` /
-[#3543](https://github.com/OpenAgentsInc/openagents/issues/3543).
+server, and per-request scheduling receipts. `PSI-238` /
+[#3543](https://github.com/OpenAgentsInc/openagents/issues/3543) is now landed
+too through a real block/paged KV manager with request/session/shared-prefix
+owner bindings, deterministic page allocation and reclaim, eviction-aware
+accounting, scheduler KV peak metrics, and per-response KV ownership receipts.
+The next dependency-ordered issue in that chain is `PSI-239` /
+[#3544](https://github.com/OpenAgentsInc/openagents/issues/3544).
 
 ## Current Reality
 
@@ -843,6 +847,10 @@ baseline on `main` is:
 - that generic server now also owns a first continuous-batching CPU scheduler
   with mixed prefill/decode admission, FIFO queue truth, and machine-checkable
   scheduling receipts instead of hard-coding `single_request_only` execution
+- that scheduler and the single-request GPT-OSS paths now also sit on a real
+  block/paged KV manager with explicit request/session/shared-prefix ownership,
+  deterministic page reclaim and oldest-page eviction, backend-visible KV page
+  peaks, and response provenance that surfaces KV ownership directly
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
