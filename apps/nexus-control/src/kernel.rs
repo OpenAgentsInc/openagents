@@ -29,7 +29,8 @@ use openagents_kernel_core::compute::{
     ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
     StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, canonical_compute_product_id, validate_launch_compute_product,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_delivery_proof,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -706,6 +707,63 @@ fn append_delivery_proof_evidence(evidence: &mut Vec<EvidenceRef>, proof: &Deliv
             format!("oa://kernel/compute/observed/{}", proof.delivery_proof_id),
             sha256_prefixed_text(serialized.as_str()),
         ));
+    }
+    if let Some(topology_evidence) = proof.topology_evidence.as_ref() {
+        if let Some(topology_digest) = topology_evidence.topology_digest.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_topology",
+                format!("oa://kernel/compute/topology/{}", proof.delivery_proof_id),
+                sha256_prefixed_text(topology_digest),
+            ));
+        }
+        for node_ref in &topology_evidence.selected_node_refs {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_selected_node",
+                node_ref.clone(),
+                sha256_prefixed_text(node_ref),
+            ));
+        }
+    }
+    if let Some(sandbox_evidence) = proof.sandbox_evidence.as_ref() {
+        if let Some(sandbox_execution_ref) = sandbox_evidence.sandbox_execution_ref.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_sandbox_execution",
+                sandbox_execution_ref.to_string(),
+                sha256_prefixed_text(sandbox_execution_ref),
+            ));
+        }
+        if let Some(sandbox_profile_ref) = sandbox_evidence.sandbox_profile_ref.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_sandbox_profile",
+                sandbox_profile_ref.to_string(),
+                sha256_prefixed_text(sandbox_profile_ref),
+            ));
+        }
+    }
+    if let Some(verification_evidence) = proof.verification_evidence.as_ref() {
+        if let Some(proof_bundle_ref) = verification_evidence.proof_bundle_ref.as_deref() {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_proof_bundle",
+                proof_bundle_ref.to_string(),
+                sha256_prefixed_text(proof_bundle_ref),
+            ));
+        }
+        if let Some(activation_fingerprint_ref) =
+            verification_evidence.activation_fingerprint_ref.as_deref()
+        {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_activation_fingerprint",
+                activation_fingerprint_ref.to_string(),
+                sha256_prefixed_text(activation_fingerprint_ref),
+            ));
+        }
+        for challenge_result_ref in &verification_evidence.challenge_result_refs {
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_challenge_result",
+                challenge_result_ref.clone(),
+                sha256_prefixed_text(challenge_result_ref),
+            ));
+        }
     }
     if let Some(variance_reason) = proof.variance_reason {
         evidence.push(EvidenceRef::new(
@@ -3471,17 +3529,16 @@ impl KernelState {
             .transpose()?
             .or_else(|| product.capability_envelope.clone())
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
-        let metering_rule_id =
-            match canonical_compute_product_id(product.product_id.as_str())
-                .unwrap_or(product.product_id.as_str())
-            {
-                "psionic.local.inference.gpt_oss.single_node" => "meter.ollama.inference.v1",
-                "psionic.local.embeddings.gpt_oss.single_node" => "meter.ollama.embeddings.v1",
-                "psionic.local.inference.apple_foundation_models.single_node" => {
-                    "meter.apple_fm.inference.v1"
-                }
-                _ => "meter.compute.unknown",
-            };
+        let metering_rule_id = match canonical_compute_product_id(product.product_id.as_str())
+            .unwrap_or(product.product_id.as_str())
+        {
+            "psionic.local.inference.gpt_oss.single_node" => "meter.ollama.inference.v1",
+            "psionic.local.embeddings.gpt_oss.single_node" => "meter.ollama.embeddings.v1",
+            "psionic.local.inference.apple_foundation_models.single_node" => {
+                "meter.apple_fm.inference.v1"
+            }
+            _ => "meter.compute.unknown",
+        };
         let settlement_class = match spec.compute_family {
             openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
             openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
@@ -3616,6 +3673,18 @@ impl KernelState {
                             .to_string(),
                     );
                 }
+            }
+        }
+
+        if let Err(reason) = validate_delivery_proof(proof) {
+            if proof.status == DeliveryProofStatus::Rejected {
+                proof.variance_reason_detail = Some(reason);
+            } else {
+                reject_delivery_proof(
+                    proof,
+                    DeliveryRejectionReason::NonConformingDelivery,
+                    reason.as_str(),
+                );
             }
         }
 
@@ -3831,6 +3900,9 @@ impl KernelState {
                     "variance_reason_detail": req.delivery_proof.variance_reason_detail.clone(),
                     "rejection_reason": req.delivery_proof.rejection_reason.map(|reason| reason.label().to_string()),
                     "rejection_reason_detail": if req.delivery_proof.rejection_reason.is_some() { req.delivery_proof.variance_reason_detail.clone() } else { None },
+                    "topology_evidence": req.delivery_proof.topology_evidence.clone(),
+                    "sandbox_evidence": req.delivery_proof.sandbox_evidence.clone(),
+                    "verification_evidence": req.delivery_proof.verification_evidence.clone(),
                     "promised_capability_envelope": req.delivery_proof.promised_capability_envelope.clone(),
                     "observed_capability_envelope": req.delivery_proof.observed_capability_envelope.clone(),
                     "metering_rule_id": req
@@ -8095,8 +8167,9 @@ mod tests {
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        DeliveryRejectionReason, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
+        DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
         StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
         StructuredCapacityLeg, StructuredCapacityLegRole,
     };
@@ -8254,6 +8327,9 @@ mod tests {
                 cost_attestation_ref: None,
                 status: DeliveryProofStatus::Accepted,
                 rejection_reason: None,
+                topology_evidence: None,
+                sandbox_evidence: None,
+                verification_evidence: None,
                 promised_capability_envelope: None,
                 observed_capability_envelope: Some(ComputeCapabilityEnvelope {
                     backend_family: Some(ComputeBackendFamily::GptOss),
@@ -9365,6 +9441,116 @@ mod tests {
         assert_eq!(metrics.compute_delivery_proofs_24h, 1);
         assert_eq!(metrics.compute_delivery_variances_24h, 1);
         assert_eq!(metrics.compute_delivery_rejections_24h, 0);
+    }
+
+    #[test]
+    fn delivery_proof_missing_cluster_topology_digest_rejects() {
+        let created_at_ms = 1_762_000_325_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        request.delivery_proof.topology_evidence = Some(DeliveryTopologyEvidence {
+            topology_kind: Some(ComputeTopologyKind::Replicated),
+            topology_digest: None,
+            scheduler_node_ref: Some("node://scheduler/a".to_string()),
+            transport_class: Some("wider_network_stream".to_string()),
+            selected_node_refs: vec!["node://worker/a".to_string()],
+            replica_node_refs: vec!["node://worker/b".to_string()],
+        });
+        request.delivery_proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+            activation_fingerprint_ref: None,
+            validator_pool_ref: Some("validators.alpha".to_string()),
+            validator_run_ref: None,
+            challenge_result_refs: Vec::new(),
+            environment_ref: None,
+            eval_run_ref: None,
+        });
+
+        let result = kernel
+            .record_delivery_proof(&context, request)
+            .expect("record delivery proof");
+        assert_eq!(
+            result.response.delivery_proof.status,
+            DeliveryProofStatus::Rejected
+        );
+        assert_eq!(
+            result.response.delivery_proof.rejection_reason,
+            Some(DeliveryRejectionReason::NonConformingDelivery)
+        );
+        assert_eq!(
+            result
+                .response
+                .delivery_proof
+                .variance_reason_detail
+                .as_deref(),
+            Some("delivery_proof_topology_digest_missing")
+        );
+    }
+
+    #[test]
+    fn delivery_proof_receipt_carries_proof_bundle_and_topology_evidence() {
+        let created_at_ms = 1_762_000_330_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        request.delivery_proof.topology_evidence = Some(DeliveryTopologyEvidence {
+            topology_kind: Some(ComputeTopologyKind::Replicated),
+            topology_digest: Some("topology:replicated".to_string()),
+            scheduler_node_ref: Some("node://scheduler/a".to_string()),
+            transport_class: Some("wider_network_stream".to_string()),
+            selected_node_refs: vec!["node://worker/a".to_string()],
+            replica_node_refs: vec!["node://worker/b".to_string()],
+        });
+        request.delivery_proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: Some("proof_bundle:cluster".to_string()),
+            activation_fingerprint_ref: None,
+            validator_pool_ref: Some("validators.alpha".to_string()),
+            validator_run_ref: None,
+            challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
+            environment_ref: None,
+            eval_run_ref: None,
+        });
+
+        let result = kernel
+            .record_delivery_proof(&context, request)
+            .expect("record delivery proof");
+        let receipt_event = result.receipt_event.expect("receipt event");
+        let evidence_kinds = receipt_event
+            .receipt
+            .evidence
+            .iter()
+            .map(|evidence| evidence.kind.clone())
+            .collect::<Vec<_>>();
+        assert!(evidence_kinds.contains(&"compute_delivery_topology".to_string()));
+        assert!(evidence_kinds.contains(&"compute_delivery_proof_bundle".to_string()));
+        assert!(evidence_kinds.contains(&"compute_delivery_challenge_result".to_string()));
     }
 
     #[test]

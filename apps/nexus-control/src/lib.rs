@@ -4505,6 +4505,9 @@ mod tests {
                 cost_attestation_ref: Some("oa://attestations/compute-cost-alpha".to_string()),
                 status: DeliveryProofStatus::Accepted,
                 rejection_reason: None,
+                topology_evidence: None,
+                sandbox_evidence: None,
+                verification_evidence: None,
                 promised_capability_envelope: None,
                 observed_capability_envelope: Some(ComputeCapabilityEnvelope {
                     backend_family: Some(ComputeBackendFamily::GptOss),

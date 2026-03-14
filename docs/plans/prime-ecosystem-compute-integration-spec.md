@@ -938,6 +938,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The output should be usable by settlement and risk systems, not just a benchmark script.
 
 29. **Kernel: widen `DeliveryProof` to carry topology, sandbox, and validator references**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3513`.
    - Extend kernel delivery objects to hold the evidence that clustered and sandboxed execution actually need.
    - This is the main bridge between Psionic proof bundles and economic truth.
 
