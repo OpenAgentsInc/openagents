@@ -880,6 +880,7 @@ This is the recommended issue order for fully implementing the stack above.
    - Expose that in capability envelopes so the market is not pretending all clustered inference has the same performance profile.
 
 19. **Psionic Datastream: add streamed dataset and checkpoint delivery**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3503`.
    - Build the equivalent of `datasetstream` as a Rust data plane for tokenized corpora, eval bundles, and checkpoints.
    - This is required for future training lanes and for serious environment/eval execution.
 

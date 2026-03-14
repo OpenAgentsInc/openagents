@@ -26,6 +26,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-compiler`: lowering and scheduling boundaries over IR.
 - `psionic-runtime`: runtime traits for devices, allocation, and execution.
 - `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
+- `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
@@ -60,8 +61,10 @@ clustered serving with explicit collective evidence, and artifact
 residency/staging truth for clustered placement, plus sharded-model manifest
 and pre-shard artifact support across runtime, serve, and clustered execution
 evidence, plus truthful clustered prefix/KV cache compatibility and invalidation
-posture surfaced through capability envelopes and execution receipts. AMD
-execution support is still future work.
+posture surfaced through capability envelopes and execution receipts, plus a
+new Psionic datastream substrate for resumable dataset and checkpoint delivery
+that cluster artifact staging can consume directly. AMD execution support is
+still future work.
 
 ## Docs
 

@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use psionic_datastream::DatastreamManifestRef;
 use psionic_runtime::{
     ClusterAdmissionFactKind,
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
@@ -353,6 +354,8 @@ pub enum WholeRequestSchedulingSelectionCode {
     ArtifactCopyRequired,
     /// The winning node requires a pull before execution.
     ArtifactPullRequired,
+    /// The winning node exposes an explicit Psionic datastream for staging.
+    ArtifactDatastreamAvailable,
     /// The winning node's requested backend is degraded.
     BackendDegraded,
     /// The winning node is reachable only over a degraded link.
@@ -734,6 +737,18 @@ pub fn schedule_remote_whole_request(
             }
             None => None,
         };
+        let artifact_datastream =
+            request
+                .served_artifact_digest
+                .as_deref()
+                .and_then(|served_artifact_digest| {
+                    let key =
+                        ClusterArtifactResidencyKey::new(node_id.clone(), served_artifact_digest);
+                    state
+                        .artifact_residency()
+                        .get(&key)
+                        .and_then(|record| record.datastream_offer.as_ref())
+                });
 
         let link_key = ClusterLinkKey::new(request.scheduler_node_id.clone(), node_id.clone());
         let Some(link) = state.links().get(&link_key) else {
@@ -768,6 +783,7 @@ pub fn schedule_remote_whole_request(
             link,
             backend_readiness,
             artifact_status,
+            artifact_datastream,
             exo_hint_match: exo_hint_matches(&exo_placement_hint, node_id),
         });
     }
@@ -824,6 +840,7 @@ pub fn schedule_remote_whole_request(
                 WholeRequestSchedulingSelectionCode::SelectedBestCandidate
                     | WholeRequestSchedulingSelectionCode::ExoPlacementHintAccepted
                     | WholeRequestSchedulingSelectionCode::ExoPlacementHintIgnored
+                    | WholeRequestSchedulingSelectionCode::ArtifactDatastreamAvailable
             )
         })
         .map(|note| note.detail.as_str())
@@ -878,6 +895,16 @@ pub fn schedule_remote_whole_request(
         cluster_execution =
             cluster_execution.with_placement_diagnostic(exo_selection_note.detail.clone());
     }
+    if let Some(datastream_offer) = best.artifact_datastream
+        && matches!(
+            best.artifact_status,
+            Some(ClusterArtifactResidencyStatus::CopyRequired)
+                | Some(ClusterArtifactResidencyStatus::PullRequired)
+        )
+    {
+        cluster_execution = cluster_execution
+            .with_placement_diagnostic(artifact_datastream_detail(&best.node_id, datastream_offer));
+    }
     if !degraded_reason.is_empty() {
         cluster_execution = cluster_execution.with_degraded_reason(degraded_reason);
     }
@@ -902,6 +929,7 @@ struct SchedulerCandidate<'a> {
     link: &'a ClusterLink,
     backend_readiness: ClusterBackendReadinessStatus,
     artifact_status: Option<ClusterArtifactResidencyStatus>,
+    artifact_datastream: Option<&'a DatastreamManifestRef>,
     exo_hint_match: bool,
 }
 
@@ -914,6 +942,13 @@ fn candidate_order(
         .then(
             candidate_artifact_rank(left.artifact_status)
                 .cmp(&candidate_artifact_rank(right.artifact_status)),
+        )
+        .then(
+            candidate_datastream_rank(left.artifact_status, left.artifact_datastream.is_some())
+                .cmp(&candidate_datastream_rank(
+                    right.artifact_status,
+                    right.artifact_datastream.is_some(),
+                )),
         )
         .then(candidate_link_rank(left.link.status).cmp(&candidate_link_rank(right.link.status)))
         .then(
@@ -1059,6 +1094,23 @@ const fn candidate_artifact_rank(status: Option<ClusterArtifactResidencyStatus>)
     }
 }
 
+const fn candidate_datastream_rank(
+    status: Option<ClusterArtifactResidencyStatus>,
+    has_datastream: bool,
+) -> u8 {
+    match status {
+        Some(ClusterArtifactResidencyStatus::CopyRequired)
+        | Some(ClusterArtifactResidencyStatus::PullRequired) => {
+            if has_datastream {
+                0
+            } else {
+                1
+            }
+        }
+        _ => 0,
+    }
+}
+
 const fn candidate_link_rank(status: ClusterLinkStatus) -> u8 {
     match status {
         ClusterLinkStatus::Healthy => 0,
@@ -1199,6 +1251,18 @@ fn selection_notes_for_candidate(
         )
         | None => {}
     }
+    if let Some(datastream_offer) = candidate.artifact_datastream
+        && matches!(
+            candidate.artifact_status,
+            Some(ClusterArtifactResidencyStatus::CopyRequired)
+                | Some(ClusterArtifactResidencyStatus::PullRequired)
+        )
+    {
+        notes.push(WholeRequestSchedulingSelectionNote::new(
+            WholeRequestSchedulingSelectionCode::ArtifactDatastreamAvailable,
+            artifact_datastream_detail(&candidate.node_id, datastream_offer),
+        ));
+    }
     if candidate.backend_readiness == ClusterBackendReadinessStatus::Degraded {
         notes.push(WholeRequestSchedulingSelectionNote::new(
             WholeRequestSchedulingSelectionCode::BackendDegraded,
@@ -1227,6 +1291,29 @@ fn selection_notes_for_candidate(
         ));
     }
     notes
+}
+
+fn artifact_datastream_detail(
+    node_id: &NodeId,
+    datastream_offer: &DatastreamManifestRef,
+) -> String {
+    let binding = if let Some(checkpoint_binding) = &datastream_offer.checkpoint_binding {
+        format!(
+            "checkpoint family `{}`",
+            checkpoint_binding.checkpoint_family
+        )
+    } else if let Some(dataset_binding) = &datastream_offer.dataset_binding {
+        format!("dataset `{}`", dataset_binding.dataset_id)
+    } else {
+        format!("artifact digest `{}`", datastream_offer.object_digest)
+    };
+    format!(
+        "selected node `{}` can stage {binding} via datastream `{}` ({} bytes across {} chunks)",
+        node_id.as_str(),
+        datastream_offer.stream_id,
+        datastream_offer.total_bytes,
+        datastream_offer.chunk_count
+    )
 }
 
 #[derive(Clone, Debug)]
@@ -1362,6 +1449,9 @@ const fn link_status_name(status: ClusterLinkStatus) -> &'static str {
 mod tests {
     use std::io::Error;
 
+    use psionic_datastream::{
+        DatastreamCheckpointBinding, DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind,
+    };
     use psionic_runtime::{
         ClusterAdmissionFactKind, ClusterCommunicationClass, ClusterExecutionCapabilityProfile,
         ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind, ExecutionTopologyKind,
@@ -2035,6 +2125,69 @@ mod tests {
             Some(
                 "selected node `worker-a` requires peer-copy artifact staging before execution; selected node `worker-a` is only backend-ready in degraded posture; selected node `worker-a` is reachable only over a degraded transport path; selected node `worker-a` is only marked flaky rather than stable"
             )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_prefers_datastream_enabled_copy_candidate()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("checkpoint-17", "artifact-1"),
+                ClusterArtifactResidencyStatus::CopyRequired,
+            )
+            .with_transfer_method(crate::ClusterArtifactTransferMethod::PeerCopy),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-b"),
+                ClusterArtifactReference::new("checkpoint-17", "artifact-1"),
+                ClusterArtifactResidencyStatus::CopyRequired,
+            )
+            .with_transfer_method(crate::ClusterArtifactTransferMethod::Datastream)
+            .with_datastream_offer(
+                DatastreamManifest::from_bytes(
+                    "checkpoint-stream-17",
+                    DatastreamSubjectKind::Checkpoint,
+                    b"checkpoint-payload",
+                    8,
+                    DatastreamEncoding::Safetensors,
+                )
+                .with_checkpoint_binding(
+                    DatastreamCheckpointBinding::new("serve.tensor")
+                        .with_checkpoint_ref("checkpoint://cluster/17")
+                        .with_step(17),
+                )
+                .manifest_ref(),
+            ),
+        );
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_capability_profile(cuda_remote_dispatch_capability_profile())
+            .with_served_artifact_digest("artifact-1")
+            .with_staging_policy(true, true)
+            .requiring_accelerator();
+
+        let schedule = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
+
+        assert_eq!(schedule.selected_node_id, crate::NodeId::new("worker-b"));
+        assert!(schedule.selection_notes.iter().any(|note| {
+            note.code == super::WholeRequestSchedulingSelectionCode::ArtifactDatastreamAvailable
+                && note.detail.contains("checkpoint-stream-17")
+        }));
+        assert!(
+            schedule
+                .cluster_execution
+                .placement_diagnostics
+                .iter()
+                .any(|detail| detail.contains("checkpoint-stream-17"))
         );
         Ok(())
     }

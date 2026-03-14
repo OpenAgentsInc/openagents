@@ -6456,6 +6456,7 @@ version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
+ "psionic-datastream",
  "psionic-net",
  "psionic-runtime",
  "rand 0.9.2",
@@ -6483,6 +6484,16 @@ name = "psionic-core"
 version = "0.1.1"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "psionic-datastream"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

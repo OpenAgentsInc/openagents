@@ -16,13 +16,16 @@ Psionic is structured as a layered engine subtree.
    Peer identity, direct/NAT/relay session lifecycle, relay-backed rendezvous,
    durable trust/candidate state, logical-stream reservation, bounded HTTP
    service tunnels, and transport observations.
-6. Backend crates
+6. `psionic-datastream`
+   Resumable dataset/checkpoint manifests, chunk transport, and delivery
+   receipts for staged artifact and training/eval data movement.
+7. Backend crates
    Backend-specific runtime implementations only.
-7. `psionic-models`
+8. `psionic-models`
    Model abstractions and metadata over core/runtime primitives.
-8. `psionic-serve`
+9. `psionic-serve`
    Served compute product contracts and execution interfaces.
-9. `psionic-provider`
+10. `psionic-provider`
    Capability envelopes, readiness, receipts, and provider adapter types.
 
 ## Dependency Direction
@@ -34,13 +37,16 @@ Psionic is structured as a layered engine subtree.
   `psionic-compiler`.
 - `psionic-net` may depend on reusable runtime-facing crates but owns no market
   authority or app behavior.
-- `psionic-cluster` depends on `psionic-net` for transport/session truth and
+- `psionic-datastream` may depend on reusable engine crates only and owns no
+  market authority or app behavior.
+- `psionic-cluster` depends on `psionic-net` and `psionic-datastream` for
+  transport/session truth plus staged artifact/data delivery contracts, and
   owns durable ordered-state, admission/revocation policy, compaction/catch-up,
   remote whole-request scheduling, replica-routed serving placement,
   public-network pipeline stage planning, layer-sharded handoff planning,
   tensor-collective planning, artifact residency/staging truth,
   sharded-manifest intake, clustered prefix/KV cache compatibility truth,
-  and topology planning on top of it.
+  streamed staging offers, and topology planning on top of it.
 - backend crates may depend on runtime/core/IR/compiler as needed.
 - `psionic-models` depends on reusable engine crates only.
 - `psionic-serve` depends on models/runtime/core.
