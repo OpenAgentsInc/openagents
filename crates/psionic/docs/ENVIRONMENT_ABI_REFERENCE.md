@@ -66,12 +66,13 @@ The current harness should prove:
 
 This issue intentionally does not claim:
 
-- environment registry install or composition flows
 - eval runtime implementation
 - rollout worker or sandbox pooling protocols
 - broader benchmark adjudication beyond the package contract itself
 
 Package-shape metadata for workload classes, policy refs, difficulty metadata,
-and benchmark profiles now live in the follow-on record
-`ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md`. This issue makes the reusable ABI
-and runtime session contract real first.
+and benchmark profiles now live in
+`ENVIRONMENT_PACKAGE_CONTRACT_REFERENCE.md`. Registry install, pinning,
+composition, and train/eval parity now live in
+`ENVIRONMENT_REGISTRY_REFERENCE.md`. This issue makes the reusable ABI and
+runtime session contract real first.

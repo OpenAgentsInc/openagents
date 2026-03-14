@@ -1497,6 +1497,719 @@ fn default_workloads_for_family(family: EnvironmentPackageFamily) -> Vec<Environ
     }
 }
 
+/// Installation source for one environment package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentPackageInstallSource {
+    /// Package was materialized from a registry mirror or package feed.
+    RegistryMirror {
+        /// Stable mirror or registry reference.
+        registry_ref: String,
+        /// Optional artifact or bundle reference.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        artifact_ref: Option<String>,
+    },
+    /// Package came from a datastream-delivered manifest.
+    DatastreamManifest {
+        /// Stable datastream manifest or bundle reference.
+        manifest_ref: String,
+    },
+    /// Package was loaded from a local path during development or operator staging.
+    LocalPath {
+        /// Local absolute or repo-relative path.
+        path: String,
+    },
+    /// Package is compiled into the operator or test harness.
+    BuiltIn {
+        /// Human-readable owner or bundle label.
+        owner: String,
+    },
+}
+
+/// Installation state for one package version inside the registry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentInstallStatus {
+    /// Package is installed and eligible for resolution.
+    Installed,
+    /// Package was retired and must not be newly resolved.
+    Retired,
+}
+
+/// Train or eval surface that may consume one environment member.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentUsageSurface {
+    /// Training loops, including SFT and RL.
+    Train,
+    /// Evaluation loops, online or offline.
+    Eval,
+    /// Benchmark or validator simulation flows.
+    Benchmark,
+}
+
+/// Install request for one environment package.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EnvironmentInstallRequest {
+    /// Fully typed package contract.
+    pub package: EnvironmentPackageContract,
+    /// Installation source.
+    pub source: EnvironmentPackageInstallSource,
+    /// Other packages that must already be installed first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<EnvironmentPackageKey>,
+}
+
+/// Durable install record for one environment package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentInstallRecord {
+    /// Immutable package key.
+    pub package_key: EnvironmentPackageKey,
+    /// Stable package digest recorded at install time.
+    pub package_digest: String,
+    /// Installation source.
+    pub source: EnvironmentPackageInstallSource,
+    /// Dependency package keys that were validated during install.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<EnvironmentPackageKey>,
+    /// Current installation status.
+    pub status: EnvironmentInstallStatus,
+    /// Stable receipt digest over the install record.
+    pub install_digest: String,
+}
+
+/// Digest-pinned alias that other systems resolve instead of hard-coding versions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentPackagePin {
+    /// Stable alias used by train/eval/orchestrator code.
+    pub alias: String,
+    /// Pinned package version.
+    pub package_key: EnvironmentPackageKey,
+    /// Stable package digest that the alias expects.
+    pub package_digest: String,
+    /// Workload classes this alias promises.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_workloads: Vec<EnvironmentWorkloadClass>,
+}
+
+/// Resolved package behind one pin.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedEnvironmentPackage {
+    /// Resolved pin alias.
+    pub alias: String,
+    /// Immutable package key.
+    pub package_key: EnvironmentPackageKey,
+    /// Stable package digest.
+    pub package_digest: String,
+    /// Dependency keys that must travel with this package.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<EnvironmentPackageKey>,
+    /// Workload classes satisfied by the package.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_workloads: Vec<EnvironmentWorkloadClass>,
+}
+
+/// One member inside a mixed environment group.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentCompositionMember {
+    /// Stable member reference within the group.
+    pub member_ref: String,
+    /// Alias to a digest-pinned package.
+    pub pin_alias: String,
+    /// Surfaces that should resolve this member.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<EnvironmentUsageSurface>,
+    /// Workload classes required for the member.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_workloads: Vec<EnvironmentWorkloadClass>,
+    /// Benchmark profiles that must exist when this member participates in benchmark mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_benchmark_profiles: Vec<String>,
+}
+
+/// Reusable composition group spanning train/eval/benchmark surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentCompositionGroup {
+    /// Stable group reference.
+    pub group_ref: String,
+    /// Human-readable display label.
+    pub display_name: String,
+    /// Members inside the group.
+    pub members: Vec<EnvironmentCompositionMember>,
+}
+
+/// One resolved group member ready for a train/eval surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedEnvironmentGroupMember {
+    /// Stable member reference.
+    pub member_ref: String,
+    /// Surface that selected the member.
+    pub surface: EnvironmentUsageSurface,
+    /// Resolved package data.
+    pub package: ResolvedEnvironmentPackage,
+    /// Benchmark profiles selected for this member when any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub benchmark_profiles: Vec<String>,
+}
+
+/// Fully resolved environment group for one surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentGroupResolution {
+    /// Stable group reference.
+    pub group_ref: String,
+    /// Selected surface.
+    pub surface: EnvironmentUsageSurface,
+    /// Resolved members.
+    pub members: Vec<ResolvedEnvironmentGroupMember>,
+    /// Stable digest proving the selected package mix.
+    pub resolution_digest: String,
+}
+
+/// Parity receipt proving train/eval reuse the same pinned environment packages.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentEvalParityReceipt {
+    /// Group reference checked for parity.
+    pub group_ref: String,
+    /// Train surface used during the check.
+    pub train_surface: EnvironmentUsageSurface,
+    /// Eval surface used during the check.
+    pub eval_surface: EnvironmentUsageSurface,
+    /// Member refs that resolved to the exact same package and digest.
+    pub reused_member_refs: Vec<String>,
+    /// Stable digest over the parity result.
+    pub parity_digest: String,
+}
+
+/// Environment registry failure for package install, pinning, or group resolution.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum EnvironmentRegistryError {
+    /// The package contract itself is invalid.
+    #[error("environment package `{package_key}` is invalid: {source}")]
+    InvalidPackage {
+        /// Package key being installed.
+        package_key: String,
+        /// Validation failure.
+        source: EnvironmentContractError,
+    },
+    /// One dependency package is missing.
+    #[error("environment dependency `{package_key}` is not installed")]
+    MissingDependency {
+        /// Missing dependency key.
+        package_key: String,
+    },
+    /// The same package version was already installed.
+    #[error("environment package `{package_key}` is already installed")]
+    PackageAlreadyInstalled {
+        /// Repeated package key.
+        package_key: String,
+    },
+    /// A requested package version is missing.
+    #[error("environment package `{package_key}` is not installed")]
+    PackageNotInstalled {
+        /// Missing package key.
+        package_key: String,
+    },
+    /// The package exists but is retired.
+    #[error("environment package `{package_key}` is retired and cannot be resolved")]
+    PackageRetired {
+        /// Retired package key.
+        package_key: String,
+    },
+    /// A pin alias was missing.
+    #[error("environment pin alias `{alias}` is not defined")]
+    UnknownPinAlias {
+        /// Missing alias.
+        alias: String,
+    },
+    /// A pin alias was repeated.
+    #[error("environment pin alias `{alias}` is already defined")]
+    DuplicatePinAlias {
+        /// Repeated alias.
+        alias: String,
+    },
+    /// One requested workload is not supported by the pinned package.
+    #[error(
+        "environment pin `{alias}` requires workload `{workload}` but package `{package_key}` does not declare it"
+    )]
+    PinWorkloadMismatch {
+        /// Pin alias.
+        alias: String,
+        /// Pinned package key.
+        package_key: String,
+        /// Missing workload class.
+        workload: EnvironmentWorkloadClass,
+    },
+    /// One member ref was repeated inside a composition group.
+    #[error("environment group `{group_ref}` defines member `{member_ref}` more than once")]
+    DuplicateGroupMember {
+        /// Group ref with duplicate.
+        group_ref: String,
+        /// Repeated member ref.
+        member_ref: String,
+    },
+    /// A composition group was missing.
+    #[error("environment group `{group_ref}` is not defined")]
+    UnknownGroup {
+        /// Missing group ref.
+        group_ref: String,
+    },
+    /// A composition group was repeated.
+    #[error("environment group `{group_ref}` is already defined")]
+    DuplicateGroup {
+        /// Repeated group ref.
+        group_ref: String,
+    },
+    /// One group member does not participate in the requested surface.
+    #[error("environment group `{group_ref}` has no members for surface `{surface:?}`")]
+    EmptySurfaceResolution {
+        /// Group ref with no members.
+        group_ref: String,
+        /// Surface that resolved empty.
+        surface: EnvironmentUsageSurface,
+    },
+    /// One benchmark profile required by a group member is missing from the package.
+    #[error(
+        "environment member `{member_ref}` requires benchmark profile `{benchmark_profile_ref}` but package `{package_key}` does not declare it"
+    )]
+    MissingBenchmarkProfile {
+        /// Member ref that requested the benchmark profile.
+        member_ref: String,
+        /// Missing benchmark profile ref.
+        benchmark_profile_ref: String,
+        /// Package key that lacked the profile.
+        package_key: String,
+    },
+    /// Train and eval surfaces resolved to different packages for a reused member.
+    #[error(
+        "environment group `{group_ref}` resolved member `{member_ref}` differently between train and eval"
+    )]
+    EvalParityMismatch {
+        /// Group ref with parity failure.
+        group_ref: String,
+        /// Member ref that drifted.
+        member_ref: String,
+    },
+    /// The composition group requires a pin alias that does not exist.
+    #[error(
+        "environment group `{group_ref}` references unknown pin alias `{alias}` for member `{member_ref}`"
+    )]
+    GroupPinMissing {
+        /// Group ref with bad pin reference.
+        group_ref: String,
+        /// Missing pin alias.
+        alias: String,
+        /// Member ref that references the alias.
+        member_ref: String,
+    },
+}
+
+/// In-memory typed environment registry for install, pinning, composition, and parity checks.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EnvironmentRegistry {
+    packages: BTreeMap<EnvironmentPackageKey, EnvironmentPackageContract>,
+    installs: BTreeMap<EnvironmentPackageKey, EnvironmentInstallRecord>,
+    pins: BTreeMap<String, EnvironmentPackagePin>,
+    groups: BTreeMap<String, EnvironmentCompositionGroup>,
+}
+
+impl EnvironmentRegistry {
+    /// Installs one validated package into the registry.
+    pub fn install_package(
+        &mut self,
+        request: EnvironmentInstallRequest,
+    ) -> Result<EnvironmentInstallRecord, EnvironmentRegistryError> {
+        request
+            .package
+            .validate()
+            .map_err(|source| EnvironmentRegistryError::InvalidPackage {
+                package_key: request.package.storage_key(),
+                source,
+            })?;
+        if self.packages.contains_key(&request.package.key) {
+            return Err(EnvironmentRegistryError::PackageAlreadyInstalled {
+                package_key: request.package.storage_key(),
+            });
+        }
+        for dependency in &request.dependencies {
+            let Some(install) = self.installs.get(dependency) else {
+                return Err(EnvironmentRegistryError::MissingDependency {
+                    package_key: dependency.storage_key(),
+                });
+            };
+            if install.status != EnvironmentInstallStatus::Installed {
+                return Err(EnvironmentRegistryError::MissingDependency {
+                    package_key: dependency.storage_key(),
+                });
+            }
+        }
+        let package = request.package;
+        let package_digest = package.stable_digest();
+        let install_digest = stable_environment_install_digest(
+            &package.key,
+            package_digest.as_str(),
+            &request.source,
+            request.dependencies.as_slice(),
+            EnvironmentInstallStatus::Installed,
+        );
+        let record = EnvironmentInstallRecord {
+            package_key: package.key.clone(),
+            package_digest,
+            source: request.source,
+            dependencies: request.dependencies,
+            status: EnvironmentInstallStatus::Installed,
+            install_digest,
+        };
+        self.installs.insert(package.key.clone(), record.clone());
+        self.packages.insert(package.key.clone(), package);
+        Ok(record)
+    }
+
+    /// Pins one alias to an installed immutable package version and digest.
+    pub fn pin_package(
+        &mut self,
+        alias: impl Into<String>,
+        package_key: EnvironmentPackageKey,
+        required_workloads: Vec<EnvironmentWorkloadClass>,
+    ) -> Result<EnvironmentPackagePin, EnvironmentRegistryError> {
+        let alias = alias.into();
+        if self.pins.contains_key(alias.as_str()) {
+            return Err(EnvironmentRegistryError::DuplicatePinAlias { alias });
+        }
+        let package = self.require_installed_package(&package_key)?;
+        for workload in &required_workloads {
+            if !package.supported_workloads.contains(workload) {
+                return Err(EnvironmentRegistryError::PinWorkloadMismatch {
+                    alias,
+                    package_key: package_key.storage_key(),
+                    workload: *workload,
+                });
+            }
+        }
+        let pin = EnvironmentPackagePin {
+            alias: alias.clone(),
+            package_key: package_key.clone(),
+            package_digest: package.stable_digest(),
+            required_workloads,
+        };
+        self.pins.insert(alias, pin.clone());
+        Ok(pin)
+    }
+
+    /// Retires an installed package so new resolutions refuse it.
+    pub fn retire_package(
+        &mut self,
+        package_key: &EnvironmentPackageKey,
+    ) -> Result<EnvironmentInstallRecord, EnvironmentRegistryError> {
+        let Some(record) = self.installs.get_mut(package_key) else {
+            return Err(EnvironmentRegistryError::PackageNotInstalled {
+                package_key: package_key.storage_key(),
+            });
+        };
+        record.status = EnvironmentInstallStatus::Retired;
+        record.install_digest = stable_environment_install_digest(
+            &record.package_key,
+            record.package_digest.as_str(),
+            &record.source,
+            record.dependencies.as_slice(),
+            record.status,
+        );
+        Ok(record.clone())
+    }
+
+    /// Registers one reusable mixed-surface environment group.
+    pub fn define_group(
+        &mut self,
+        group: EnvironmentCompositionGroup,
+    ) -> Result<EnvironmentCompositionGroup, EnvironmentRegistryError> {
+        if self.groups.contains_key(group.group_ref.as_str()) {
+            return Err(EnvironmentRegistryError::DuplicateGroup {
+                group_ref: group.group_ref,
+            });
+        }
+        let mut member_refs = BTreeSet::new();
+        for member in &group.members {
+            if !member_refs.insert(member.member_ref.clone()) {
+                return Err(EnvironmentRegistryError::DuplicateGroupMember {
+                    group_ref: group.group_ref.clone(),
+                    member_ref: member.member_ref.clone(),
+                });
+            }
+            let Some(pin) = self.pins.get(member.pin_alias.as_str()) else {
+                return Err(EnvironmentRegistryError::GroupPinMissing {
+                    group_ref: group.group_ref.clone(),
+                    alias: member.pin_alias.clone(),
+                    member_ref: member.member_ref.clone(),
+                });
+            };
+            let package = self.require_installed_package(&pin.package_key)?;
+            for workload in &member.required_workloads {
+                if !package.supported_workloads.contains(workload) {
+                    return Err(EnvironmentRegistryError::PinWorkloadMismatch {
+                        alias: pin.alias.clone(),
+                        package_key: package.storage_key(),
+                        workload: *workload,
+                    });
+                }
+            }
+            for profile_ref in &member.required_benchmark_profiles {
+                if !package
+                    .benchmark_profiles
+                    .iter()
+                    .any(|profile| &profile.benchmark_profile_ref == profile_ref)
+                {
+                    return Err(EnvironmentRegistryError::MissingBenchmarkProfile {
+                        member_ref: member.member_ref.clone(),
+                        benchmark_profile_ref: profile_ref.clone(),
+                        package_key: package.storage_key(),
+                    });
+                }
+            }
+        }
+        self.groups.insert(group.group_ref.clone(), group.clone());
+        Ok(group)
+    }
+
+    /// Resolves one pinned alias to an installed package.
+    pub fn resolve_pin(
+        &self,
+        alias: &str,
+    ) -> Result<ResolvedEnvironmentPackage, EnvironmentRegistryError> {
+        let Some(pin) = self.pins.get(alias) else {
+            return Err(EnvironmentRegistryError::UnknownPinAlias {
+                alias: String::from(alias),
+            });
+        };
+        let package = self.require_installed_package(&pin.package_key)?;
+        for workload in &pin.required_workloads {
+            if !package.supported_workloads.contains(workload) {
+                return Err(EnvironmentRegistryError::PinWorkloadMismatch {
+                    alias: pin.alias.clone(),
+                    package_key: package.storage_key(),
+                    workload: *workload,
+                });
+            }
+        }
+        Ok(ResolvedEnvironmentPackage {
+            alias: pin.alias.clone(),
+            package_key: package.key.clone(),
+            package_digest: pin.package_digest.clone(),
+            dependencies: self
+                .installs
+                .get(&package.key)
+                .map(|record| record.dependencies.clone())
+                .unwrap_or_default(),
+            supported_workloads: package.supported_workloads.clone(),
+        })
+    }
+
+    /// Resolves one composition group for the selected surface.
+    pub fn resolve_group(
+        &self,
+        group_ref: &str,
+        surface: EnvironmentUsageSurface,
+    ) -> Result<EnvironmentGroupResolution, EnvironmentRegistryError> {
+        let Some(group) = self.groups.get(group_ref) else {
+            return Err(EnvironmentRegistryError::UnknownGroup {
+                group_ref: String::from(group_ref),
+            });
+        };
+
+        let mut members = Vec::new();
+        for member in &group.members {
+            if !member.surfaces.contains(&surface) {
+                continue;
+            }
+            let package = self.resolve_pin(member.pin_alias.as_str())?;
+            members.push(ResolvedEnvironmentGroupMember {
+                member_ref: member.member_ref.clone(),
+                surface,
+                package,
+                benchmark_profiles: member.required_benchmark_profiles.clone(),
+            });
+        }
+        if members.is_empty() {
+            return Err(EnvironmentRegistryError::EmptySurfaceResolution {
+                group_ref: String::from(group_ref),
+                surface,
+            });
+        }
+        let resolution_digest =
+            stable_environment_group_resolution_digest(group_ref, surface, members.as_slice());
+        Ok(EnvironmentGroupResolution {
+            group_ref: String::from(group_ref),
+            surface,
+            members,
+            resolution_digest,
+        })
+    }
+
+    /// Verifies strict environment reuse between the train and eval surfaces.
+    pub fn verify_eval_parity(
+        &self,
+        group_ref: &str,
+    ) -> Result<EnvironmentEvalParityReceipt, EnvironmentRegistryError> {
+        let train = self.resolve_group(group_ref, EnvironmentUsageSurface::Train)?;
+        let eval = self.resolve_group(group_ref, EnvironmentUsageSurface::Eval)?;
+        let eval_by_ref = eval
+            .members
+            .iter()
+            .map(|member| (member.member_ref.as_str(), member))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut reused_member_refs = Vec::new();
+        for train_member in &train.members {
+            let Some(eval_member) = eval_by_ref.get(train_member.member_ref.as_str()) else {
+                continue;
+            };
+            if train_member.package.package_key != eval_member.package.package_key
+                || train_member.package.package_digest != eval_member.package.package_digest
+            {
+                return Err(EnvironmentRegistryError::EvalParityMismatch {
+                    group_ref: String::from(group_ref),
+                    member_ref: train_member.member_ref.clone(),
+                });
+            }
+            reused_member_refs.push(train_member.member_ref.clone());
+        }
+        let parity_digest = stable_environment_eval_parity_digest(
+            group_ref,
+            EnvironmentUsageSurface::Train,
+            EnvironmentUsageSurface::Eval,
+            reused_member_refs.as_slice(),
+            train.resolution_digest.as_str(),
+            eval.resolution_digest.as_str(),
+        );
+        Ok(EnvironmentEvalParityReceipt {
+            group_ref: String::from(group_ref),
+            train_surface: EnvironmentUsageSurface::Train,
+            eval_surface: EnvironmentUsageSurface::Eval,
+            reused_member_refs,
+            parity_digest,
+        })
+    }
+
+    fn require_installed_package(
+        &self,
+        package_key: &EnvironmentPackageKey,
+    ) -> Result<&EnvironmentPackageContract, EnvironmentRegistryError> {
+        let Some(record) = self.installs.get(package_key) else {
+            return Err(EnvironmentRegistryError::PackageNotInstalled {
+                package_key: package_key.storage_key(),
+            });
+        };
+        if record.status != EnvironmentInstallStatus::Installed {
+            return Err(EnvironmentRegistryError::PackageRetired {
+                package_key: package_key.storage_key(),
+            });
+        }
+        self.packages.get(package_key).ok_or_else(|| {
+            EnvironmentRegistryError::PackageNotInstalled {
+                package_key: package_key.storage_key(),
+            }
+        })
+    }
+}
+
+fn stable_environment_install_digest(
+    package_key: &EnvironmentPackageKey,
+    package_digest: &str,
+    source: &EnvironmentPackageInstallSource,
+    dependencies: &[EnvironmentPackageKey],
+    status: EnvironmentInstallStatus,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_environment_install|");
+    hasher.update(package_key.storage_key().as_bytes());
+    hasher.update(b"|");
+    hasher.update(package_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(environment_install_source_label(source));
+    hasher.update(b"|");
+    hasher.update(environment_install_status_label(status));
+    for dependency in dependencies {
+        hasher.update(b"|dependency|");
+        hasher.update(dependency.storage_key().as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_environment_group_resolution_digest(
+    group_ref: &str,
+    surface: EnvironmentUsageSurface,
+    members: &[ResolvedEnvironmentGroupMember],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_environment_group_resolution|");
+    hasher.update(group_ref.as_bytes());
+    hasher.update(b"|");
+    hasher.update(environment_usage_surface_label(surface));
+    for member in members {
+        hasher.update(b"|member|");
+        hasher.update(member.member_ref.as_bytes());
+        hasher.update(b"|alias|");
+        hasher.update(member.package.alias.as_bytes());
+        hasher.update(b"|");
+        hasher.update(member.package.package_key.storage_key().as_bytes());
+        hasher.update(b"|");
+        hasher.update(member.package.package_digest.as_bytes());
+        for benchmark_profile in &member.benchmark_profiles {
+            hasher.update(b"|benchmark|");
+            hasher.update(benchmark_profile.as_bytes());
+        }
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_environment_eval_parity_digest(
+    group_ref: &str,
+    train_surface: EnvironmentUsageSurface,
+    eval_surface: EnvironmentUsageSurface,
+    reused_member_refs: &[String],
+    train_resolution_digest: &str,
+    eval_resolution_digest: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_environment_eval_parity|");
+    hasher.update(group_ref.as_bytes());
+    hasher.update(b"|");
+    hasher.update(environment_usage_surface_label(train_surface));
+    hasher.update(b"|");
+    hasher.update(environment_usage_surface_label(eval_surface));
+    hasher.update(b"|");
+    hasher.update(train_resolution_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(eval_resolution_digest.as_bytes());
+    for member_ref in reused_member_refs {
+        hasher.update(b"|member|");
+        hasher.update(member_ref.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn environment_install_source_label(source: &EnvironmentPackageInstallSource) -> &'static [u8] {
+    match source {
+        EnvironmentPackageInstallSource::RegistryMirror { .. } => b"registry_mirror",
+        EnvironmentPackageInstallSource::DatastreamManifest { .. } => b"datastream_manifest",
+        EnvironmentPackageInstallSource::LocalPath { .. } => b"local_path",
+        EnvironmentPackageInstallSource::BuiltIn { .. } => b"built_in",
+    }
+}
+
+fn environment_install_status_label(status: EnvironmentInstallStatus) -> &'static [u8] {
+    match status {
+        EnvironmentInstallStatus::Installed => b"installed",
+        EnvironmentInstallStatus::Retired => b"retired",
+    }
+}
+
+fn environment_usage_surface_label(surface: EnvironmentUsageSurface) -> &'static [u8] {
+    match surface {
+        EnvironmentUsageSurface::Train => b"train",
+        EnvironmentUsageSurface::Eval => b"eval",
+        EnvironmentUsageSurface::Benchmark => b"benchmark",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use psionic_data::DatasetKey;
@@ -1504,14 +2217,16 @@ mod tests {
 
     use super::{
         EnvironmentArtifactExpectation, EnvironmentArtifactOutput, EnvironmentBenchmarkProfile,
-        EnvironmentContractError, EnvironmentDatasetBinding, EnvironmentDifficultyMetadata,
-        EnvironmentExecutionEntrypoint, EnvironmentPackageContract, EnvironmentPackageFamily,
-        EnvironmentPackageKey, EnvironmentPolicyKind, EnvironmentPolicyReference,
+        EnvironmentCompositionGroup, EnvironmentCompositionMember, EnvironmentContractError,
+        EnvironmentDatasetBinding, EnvironmentDifficultyMetadata, EnvironmentExecutionEntrypoint,
+        EnvironmentInstallRequest, EnvironmentPackageContract, EnvironmentPackageFamily,
+        EnvironmentPackageInstallSource, EnvironmentPackageKey, EnvironmentPolicyKind,
+        EnvironmentPolicyReference, EnvironmentRegistry, EnvironmentRegistryError,
         EnvironmentRubricHook, EnvironmentRubricOutcome, EnvironmentRubricScoreKind,
         EnvironmentRuntimeError, EnvironmentRuntimeFamily, EnvironmentStateMode,
         EnvironmentToolContract, EnvironmentToolInterface, EnvironmentToolResult,
-        EnvironmentTurnInput, EnvironmentVerificationPosture, EnvironmentWorkloadClass,
-        ENVIRONMENT_ABI_VERSION,
+        EnvironmentTurnInput, EnvironmentUsageSurface, EnvironmentVerificationPosture,
+        EnvironmentWorkloadClass, ENVIRONMENT_ABI_VERSION,
     };
 
     fn weather_package() -> EnvironmentPackageContract {
@@ -1595,6 +2310,38 @@ mod tests {
             runtime_profile_ref: String::from("runtime://weather/dialog"),
             verification_posture: EnvironmentVerificationPosture::ValidatorRequired,
             expected_execution_strategy: Some(String::from("single_node")),
+        }])
+    }
+
+    fn benchmark_package() -> EnvironmentPackageContract {
+        EnvironmentPackageContract::new(
+            EnvironmentPackageKey::new("env.openagents.weather.benchmark", "2026.03.14"),
+            EnvironmentPackageFamily::Evaluation,
+            "Weather Benchmark",
+            EnvironmentExecutionEntrypoint {
+                runtime_family: EnvironmentRuntimeFamily::Evaluator,
+                entrypoint: String::from("weather_benchmark::run"),
+                args: Vec::new(),
+                sandbox_profile_ref: Some(String::from("sandbox.profile.weather.benchmark")),
+                max_turns: 1,
+                state_mode: EnvironmentStateMode::TurnScoped,
+                time_budget_ms: Some(10_000),
+            },
+        )
+        .with_supported_workloads(vec![
+            EnvironmentWorkloadClass::OfflineEval,
+            EnvironmentWorkloadClass::ValidatorBenchmark,
+        ])
+        .with_policy_references(vec![EnvironmentPolicyReference {
+            kind: EnvironmentPolicyKind::Benchmark,
+            policy_ref: String::from("policy://weather/benchmark"),
+            required: true,
+        }])
+        .with_benchmark_profiles(vec![EnvironmentBenchmarkProfile {
+            benchmark_profile_ref: String::from("benchmark://weather/default"),
+            runtime_profile_ref: String::from("runtime://weather/benchmark"),
+            verification_posture: EnvironmentVerificationPosture::ValidatorRequired,
+            expected_execution_strategy: Some(String::from("single_process")),
         }])
     }
 
@@ -1738,6 +2485,194 @@ mod tests {
             EnvironmentRuntimeError::MissingRequiredArtifact {
                 session_id: String::from("session-missing"),
                 artifact_kind: String::from("trace.json"),
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn environment_registry_pins_versions_and_reuses_the_same_member_for_train_and_eval(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut registry = EnvironmentRegistry::default();
+        let weather_v1 = weather_package();
+        let weather_v2 = EnvironmentPackageContract::new(
+            EnvironmentPackageKey::new("env.openagents.weather.agent", "2026.03.15"),
+            EnvironmentPackageFamily::Agentic,
+            "Weather Agent v2",
+            weather_v1.execution.clone(),
+        )
+        .with_supported_workloads(weather_v1.supported_workloads.clone())
+        .with_datasets(vec![EnvironmentDatasetBinding {
+            dataset: DatasetKey::new("dataset://openagents/weather-dialog", "2026.03.15"),
+            split: Some(String::from("train")),
+            mount_path: String::from("/datasets/weather"),
+            required: true,
+        }])
+        .with_tools(weather_v1.tools.clone())
+        .with_rubric_hooks(weather_v1.rubric_hooks.clone())
+        .with_expected_artifacts(weather_v1.expected_artifacts.clone())
+        .with_policy_references(vec![
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Training,
+                policy_ref: String::from("policy://weather/train.v2"),
+                required: true,
+            },
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Benchmark,
+                policy_ref: String::from("policy://weather/benchmark.v2"),
+                required: true,
+            },
+        ])
+        .with_difficulty(EnvironmentDifficultyMetadata {
+            difficulty_tier: String::from("advanced"),
+            min_agent_level: Some(4),
+            tags: vec![String::from("weather"), String::from("v2")],
+        })
+        .with_benchmark_profiles(vec![EnvironmentBenchmarkProfile {
+            benchmark_profile_ref: String::from("benchmark://weather/default"),
+            runtime_profile_ref: String::from("runtime://weather/dialog.v2"),
+            verification_posture: EnvironmentVerificationPosture::ValidatorRequired,
+            expected_execution_strategy: Some(String::from("single_node")),
+        }]);
+
+        registry.install_package(EnvironmentInstallRequest {
+            package: weather_v1.clone(),
+            source: EnvironmentPackageInstallSource::BuiltIn {
+                owner: String::from("tests"),
+            },
+            dependencies: Vec::new(),
+        })?;
+        registry.install_package(EnvironmentInstallRequest {
+            package: weather_v2,
+            source: EnvironmentPackageInstallSource::RegistryMirror {
+                registry_ref: String::from("registry://openagents/environments"),
+                artifact_ref: Some(String::from("artifact://weather-agent-v2")),
+            },
+            dependencies: Vec::new(),
+        })?;
+        registry.install_package(EnvironmentInstallRequest {
+            package: benchmark_package(),
+            source: EnvironmentPackageInstallSource::BuiltIn {
+                owner: String::from("tests"),
+            },
+            dependencies: vec![weather_v1.key.clone()],
+        })?;
+
+        let pin = registry.pin_package(
+            "weather_main",
+            weather_v1.key.clone(),
+            vec![
+                EnvironmentWorkloadClass::Rl,
+                EnvironmentWorkloadClass::OnlineEval,
+                EnvironmentWorkloadClass::OfflineEval,
+            ],
+        )?;
+        assert_eq!(pin.package_key, weather_v1.key);
+        registry.pin_package(
+            "weather_benchmark",
+            EnvironmentPackageKey::new("env.openagents.weather.benchmark", "2026.03.14"),
+            vec![EnvironmentWorkloadClass::ValidatorBenchmark],
+        )?;
+
+        registry.define_group(EnvironmentCompositionGroup {
+            group_ref: String::from("group.weather.full"),
+            display_name: String::from("Weather Train+Eval"),
+            members: vec![
+                EnvironmentCompositionMember {
+                    member_ref: String::from("weather_core"),
+                    pin_alias: String::from("weather_main"),
+                    surfaces: vec![
+                        EnvironmentUsageSurface::Train,
+                        EnvironmentUsageSurface::Eval,
+                    ],
+                    required_workloads: vec![
+                        EnvironmentWorkloadClass::Rl,
+                        EnvironmentWorkloadClass::OfflineEval,
+                    ],
+                    required_benchmark_profiles: Vec::new(),
+                },
+                EnvironmentCompositionMember {
+                    member_ref: String::from("weather_benchmark"),
+                    pin_alias: String::from("weather_benchmark"),
+                    surfaces: vec![EnvironmentUsageSurface::Benchmark],
+                    required_workloads: vec![EnvironmentWorkloadClass::ValidatorBenchmark],
+                    required_benchmark_profiles: vec![String::from("benchmark://weather/default")],
+                },
+            ],
+        })?;
+
+        let train_resolution =
+            registry.resolve_group("group.weather.full", EnvironmentUsageSurface::Train)?;
+        let eval_resolution =
+            registry.resolve_group("group.weather.full", EnvironmentUsageSurface::Eval)?;
+        assert_eq!(train_resolution.members.len(), 1);
+        assert_eq!(eval_resolution.members.len(), 1);
+        assert_eq!(
+            train_resolution.members[0].package.package_key,
+            eval_resolution.members[0].package.package_key
+        );
+        assert_eq!(
+            train_resolution.members[0].package.package_digest,
+            eval_resolution.members[0].package.package_digest
+        );
+
+        let parity = registry.verify_eval_parity("group.weather.full")?;
+        assert_eq!(
+            parity.reused_member_refs,
+            vec![String::from("weather_core")]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn environment_registry_refuses_missing_benchmark_profile_and_retired_packages(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut registry = EnvironmentRegistry::default();
+        let weather = weather_package();
+        registry.install_package(EnvironmentInstallRequest {
+            package: weather.clone(),
+            source: EnvironmentPackageInstallSource::BuiltIn {
+                owner: String::from("tests"),
+            },
+            dependencies: Vec::new(),
+        })?;
+        registry.pin_package(
+            "weather_main",
+            weather.key.clone(),
+            vec![EnvironmentWorkloadClass::Rl],
+        )?;
+
+        let error = registry
+            .define_group(EnvironmentCompositionGroup {
+                group_ref: String::from("group.weather.bad-benchmark"),
+                display_name: String::from("Bad Benchmark"),
+                members: vec![EnvironmentCompositionMember {
+                    member_ref: String::from("weather_core"),
+                    pin_alias: String::from("weather_main"),
+                    surfaces: vec![EnvironmentUsageSurface::Benchmark],
+                    required_workloads: vec![EnvironmentWorkloadClass::ValidatorBenchmark],
+                    required_benchmark_profiles: vec![String::from("benchmark://weather/missing")],
+                }],
+            })
+            .expect_err("missing benchmark profile should fail");
+        assert_eq!(
+            error,
+            EnvironmentRegistryError::MissingBenchmarkProfile {
+                member_ref: String::from("weather_core"),
+                benchmark_profile_ref: String::from("benchmark://weather/missing"),
+                package_key: weather.storage_key(),
+            }
+        );
+
+        let retired = registry.retire_package(&weather.key)?;
+        assert_eq!(retired.package_key, weather.key);
+        let error = registry
+            .resolve_pin("weather_main")
+            .expect_err("retired packages should refuse resolution");
+        assert_eq!(
+            error,
+            EnvironmentRegistryError::PackageRetired {
+                package_key: weather.storage_key(),
             }
         );
         Ok(())
