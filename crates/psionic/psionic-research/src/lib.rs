@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod runner;
+
+pub use runner::*;
+
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str =
     "typed experiment specs, bounded run results, and promotion records for psionic research loops";
@@ -904,6 +908,17 @@ pub enum ExperimentRunStatus {
     SandboxMismatch,
 }
 
+/// Typed execution failure reason for bounded runner outcomes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentFailureReason {
+    MissingExecutionProfile,
+    BudgetTooSmall,
+    UnsupportedFamily,
+    InvalidInvocation,
+    InternalRunnerFailure,
+}
+
 /// One produced artifact from a bounded experiment run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExperimentArtifactOutput {
@@ -954,6 +969,12 @@ pub struct ExperimentResult {
     pub finished_at_ms: u64,
     /// Final bounded status.
     pub status: ExperimentRunStatus,
+    /// Typed failure reason when the run did not succeed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<ExperimentFailureReason>,
+    /// Human-readable failure detail when the run did not succeed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_detail: Option<String>,
     /// Typed score outputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scores: Vec<ExperimentScore>,
@@ -1011,6 +1032,8 @@ impl ExperimentResult {
             started_at_ms,
             finished_at_ms,
             status,
+            None,
+            None,
             scores.as_slice(),
             metrics.as_slice(),
             receipt_refs.as_slice(),
@@ -1029,10 +1052,71 @@ impl ExperimentResult {
             started_at_ms,
             finished_at_ms,
             status,
+            failure_reason: None,
+            failure_detail: None,
             scores,
             metrics,
             receipt_refs,
             artifact_outputs,
+            stdout_sha256,
+            stderr_sha256,
+            result_digest,
+        }
+    }
+
+    /// Creates a typed failure result for a bounded run.
+    #[must_use]
+    pub fn new_failure(
+        run_id: impl Into<String>,
+        spec: &ExperimentSpec,
+        started_at_ms: u64,
+        finished_at_ms: u64,
+        status: ExperimentRunStatus,
+        failure_reason: ExperimentFailureReason,
+        failure_detail: impl Into<String>,
+        receipt_refs: Vec<ExperimentReceiptRef>,
+        stdout_sha256: impl Into<String>,
+        stderr_sha256: impl Into<String>,
+    ) -> Self {
+        let run_id = run_id.into();
+        let failure_detail = failure_detail.into();
+        let stdout_sha256 = stdout_sha256.into();
+        let stderr_sha256 = stderr_sha256.into();
+        let mut receipt_refs = receipt_refs;
+        receipt_refs.sort_by(|left, right| left.reference.cmp(&right.reference));
+        receipt_refs.dedup_by(|left, right| left.reference == right.reference);
+        let result_digest = stable_experiment_result_digest(
+            run_id.as_str(),
+            spec,
+            started_at_ms,
+            finished_at_ms,
+            status,
+            Some(failure_reason),
+            Some(failure_detail.as_str()),
+            &[],
+            &[],
+            receipt_refs.as_slice(),
+            &[],
+            stdout_sha256.as_str(),
+            stderr_sha256.as_str(),
+        );
+        Self {
+            schema_version: EXPERIMENT_RESULT_SCHEMA_VERSION,
+            run_id,
+            experiment_id: spec.experiment_id.clone(),
+            candidate_id: spec.candidate_id.clone(),
+            family: spec.family.kind(),
+            spec_digest: spec.spec_digest.clone(),
+            mutation_digest: spec.mutation.mutation_digest.clone(),
+            started_at_ms,
+            finished_at_ms,
+            status,
+            failure_reason: Some(failure_reason),
+            failure_detail: Some(failure_detail),
+            scores: Vec::new(),
+            metrics: Vec::new(),
+            receipt_refs,
+            artifact_outputs: Vec::new(),
             stdout_sha256,
             stderr_sha256,
             result_digest,
@@ -1301,6 +1385,8 @@ fn stable_experiment_result_digest(
     started_at_ms: u64,
     finished_at_ms: u64,
     status: ExperimentRunStatus,
+    failure_reason: Option<ExperimentFailureReason>,
+    failure_detail: Option<&str>,
     scores: &[ExperimentScore],
     metrics: &[ExperimentMetric],
     receipt_refs: &[ExperimentReceiptRef],
@@ -1321,6 +1407,17 @@ fn stable_experiment_result_digest(
     hasher.update(
         serde_json::to_vec(&status).unwrap_or_else(|_| unreachable!("status should serialize")),
     );
+    if let Some(failure_reason) = failure_reason {
+        hasher.update(b"|failure_reason|");
+        hasher.update(
+            serde_json::to_vec(&failure_reason)
+                .unwrap_or_else(|_| unreachable!("failure reason should serialize")),
+        );
+    }
+    if let Some(failure_detail) = failure_detail {
+        hasher.update(b"|failure_detail|");
+        hasher.update(failure_detail.as_bytes());
+    }
     for score in scores {
         hasher.update(b"|score|");
         hasher.update(
@@ -1394,12 +1491,12 @@ fn stable_promotion_record_digest(
 mod tests {
     use super::{
         CandidateMutation, EnvironmentMixPolicy, ExperimentArtifactKind, ExperimentArtifactOutput,
-        ExperimentArtifactRef, ExperimentBudget, ExperimentComparisonError, ExperimentFamily,
-        ExperimentFamilyKind, ExperimentReceiptKind, ExperimentReceiptRef, ExperimentResult,
-        ExperimentRunStatus, ExperimentScore, ExperimentScoreContract, ExperimentThreshold,
-        PromotionDecision, PromotionReasonCode, PromotionRecord, SandboxWarmPoolPolicy,
-        ScoreDirection, ScoreMetricSpec, ServingSchedulerPolicy, TrainingPolicySpec,
-        WeightedEnvironmentRef,
+        ExperimentArtifactRef, ExperimentBudget, ExperimentComparisonError,
+        ExperimentFailureReason, ExperimentFamily, ExperimentFamilyKind, ExperimentReceiptKind,
+        ExperimentReceiptRef, ExperimentResult, ExperimentRunStatus, ExperimentScore,
+        ExperimentScoreContract, ExperimentThreshold, PromotionDecision, PromotionReasonCode,
+        PromotionRecord, SandboxWarmPoolPolicy, ScoreDirection, ScoreMetricSpec,
+        ServingSchedulerPolicy, TrainingPolicySpec, WeightedEnvironmentRef,
     };
 
     fn sample_serving_contract() -> ExperimentScoreContract {
@@ -1725,5 +1822,32 @@ mod tests {
         };
         assert_eq!(sandbox.kind(), ExperimentFamilyKind::SandboxWarmPool);
         assert_eq!(environment_mix.kind(), ExperimentFamilyKind::EnvironmentMix);
+    }
+
+    #[test]
+    fn failure_results_surface_reason_codes() {
+        let spec = sample_serving_spec();
+        let failure = ExperimentResult::new_failure(
+            "run-failure",
+            &spec,
+            1_000,
+            1_200,
+            ExperimentRunStatus::SandboxMismatch,
+            ExperimentFailureReason::MissingExecutionProfile,
+            "sandbox profile ref missing",
+            vec![ExperimentReceiptRef::new(
+                ExperimentReceiptKind::SandboxExecution,
+                "receipt://research/run-failure",
+                "receipt-failure",
+            )],
+            "stdout-failure",
+            "stderr-failure",
+        );
+        assert_eq!(
+            failure.failure_reason,
+            Some(ExperimentFailureReason::MissingExecutionProfile)
+        );
+        assert_eq!(failure.status, ExperimentRunStatus::SandboxMismatch);
+        assert!(failure.scores.is_empty());
     }
 }

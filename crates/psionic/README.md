@@ -356,6 +356,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/RESEARCH_EXPERIMENT_REFERENCE.md](docs/RESEARCH_EXPERIMENT_REFERENCE.md)** —
   canonical experiment-spec, bounded result-manifest, score-contract, and
   promotion-record reference for Psionic hillclimb loops.
+- **[docs/RESEARCH_RUNNER_REFERENCE.md](docs/RESEARCH_RUNNER_REFERENCE.md)** —
+  canonical invocation, result-manifest, and failure-semantics reference for
+  the compiled `psionic-research-runner` boundary.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
