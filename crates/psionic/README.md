@@ -41,6 +41,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
+- `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
 - `psionic-train`: training-session truth for async checkpointing, live recovery, and elastic membership on top of ordered cluster state and datastream manifests.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
@@ -177,6 +178,10 @@ Implemented now:
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
   digests inside `psionic-train`.
+- early environment substrate: a Psionic-native package ABI, tool interfaces,
+  rubric hooks, expected artifact contracts, and reference runtime sessions in
+  `psionic-environments`, keyed to the same `environment_ref@version` identity
+  used by kernel authority.
 - broader-stack authority flows for environment packages, eval runs, and
   synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
 
@@ -184,7 +189,8 @@ Still planned:
 
 - full inference-engine maturity across model families and broader serving
   surfaces.
-- Psionic-native environment and eval runtime crates.
+- Psionic-native eval runtime crate and broader environment registry/composition
+  integration.
 - broader distributed training completion, freshness or validator policy, and
   orchestrator layers.
 - training-window protocol, checkpoint pointer/manifest discipline, and
@@ -212,6 +218,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md](docs/ROLLOUT_ARTIFACT_POLICY_LINEAGE_REFERENCE.md)** —
   canonical rollout-artifact, trainer-batch, and policy-lineage runbook for
   the first reusable RL-facing contracts in `psionic-train`.
+- **[docs/ENVIRONMENT_ABI_REFERENCE.md](docs/ENVIRONMENT_ABI_REFERENCE.md)** —
+  canonical package ABI, runtime-session runbook, and acceptance criteria for
+  the first Psionic-native environment contract.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

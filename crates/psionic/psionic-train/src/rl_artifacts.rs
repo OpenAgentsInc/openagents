@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use psionic_environments::EnvironmentPackageKey;
 use psionic_runtime::TrainingCheckpointReference;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -195,8 +196,8 @@ pub struct RolloutArtifact {
     pub artifact_id: String,
     /// Stable worker identifier.
     pub worker_id: String,
-    /// Stable environment version or package identifier.
-    pub environment_id: String,
+    /// Stable environment package identity.
+    pub environment: EnvironmentPackageKey,
     /// Stable task identifier or task digest.
     pub task_id: String,
     /// Policy revision used to generate the rollout.
@@ -219,7 +220,7 @@ impl RolloutArtifact {
     pub fn new(
         artifact_id: impl Into<String>,
         worker_id: impl Into<String>,
-        environment_id: impl Into<String>,
+        environment: EnvironmentPackageKey,
         task_id: impl Into<String>,
         source_policy_revision: PolicyRevision,
         samples: Vec<RolloutSample>,
@@ -229,7 +230,6 @@ impl RolloutArtifact {
     ) -> Result<Self, RolloutContractError> {
         let artifact_id = artifact_id.into();
         let worker_id = worker_id.into();
-        let environment_id = environment_id.into();
         let task_id = task_id.into();
         if samples.is_empty() {
             return Err(RolloutContractError::EmptyRolloutSamples { artifact_id });
@@ -246,7 +246,7 @@ impl RolloutArtifact {
         let artifact_digest = stable_rollout_artifact_digest(
             artifact_id.as_str(),
             worker_id.as_str(),
-            environment_id.as_str(),
+            environment.storage_key().as_str(),
             task_id.as_str(),
             &source_policy_revision,
             samples.as_slice(),
@@ -257,7 +257,7 @@ impl RolloutArtifact {
         Ok(Self {
             artifact_id,
             worker_id,
-            environment_id,
+            environment,
             task_id,
             source_policy_revision,
             samples,
@@ -555,6 +555,7 @@ mod tests {
         net::{IpAddr, Ipv4Addr, SocketAddr},
     };
 
+    use psionic_environments::EnvironmentPackageKey;
     use psionic_cluster::{
         AdmissionToken, ClusterId, ClusterMembershipRecord, ClusterMembershipStatus,
         ClusterNamespace, ClusterNodeIdentity, ClusterSnapshot, ClusterState, NodeEpoch, NodeId,
@@ -660,7 +661,7 @@ mod tests {
         let rollout_a = RolloutArtifact::new(
             "rollout-a",
             "worker-a",
-            "env.weather@1",
+            EnvironmentPackageKey::new("env.weather", "1"),
             "task-paris",
             source_a,
             vec![
@@ -678,7 +679,7 @@ mod tests {
         let rollout_b = RolloutArtifact::new(
             "rollout-b",
             "worker-b",
-            "env.weather@1",
+            EnvironmentPackageKey::new("env.weather", "1"),
             "task-berlin",
             source_b,
             vec![
@@ -721,7 +722,7 @@ mod tests {
         let rollout = RolloutArtifact::new(
             "rollout-cross",
             "worker-a",
-            "env.weather@1",
+            EnvironmentPackageKey::new("env.weather", "1"),
             "task-cross",
             PolicyRevision::new("other.family", "policy-r1", "digest-r1", 100),
             vec![RolloutSample::new(1, -0.2, 0.5, 0.4)],
@@ -755,7 +756,7 @@ mod tests {
         let artifact = RolloutArtifact::new(
             "rollout-empty",
             "worker-a",
-            "env.weather@1",
+            EnvironmentPackageKey::new("env.weather", "1"),
             "task-empty",
             PolicyRevision::new("train.decoder", "policy-r1", "digest-r1", 100),
             Vec::new(),

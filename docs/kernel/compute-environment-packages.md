@@ -97,6 +97,9 @@ expectation, policy refs, digest, and metadata.
 
 ## Next Integration Path
 
+- `#3566`: `psionic-environments` now reuses `environment_ref@version` as the
+  canonical Psionic-side runtime key and owns the Rust-native environment ABI
+  plus deterministic session contract
 - `#3517`: bind `environment_ref` and `environment_version` truth into compute
   products and delivery proofs against this registry
 - `#3518`: make eval runs terminate in environment-backed objects

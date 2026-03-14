@@ -92,6 +92,7 @@ It already has real substrate for:
 - machine-legible step telemetry and checkpoint-anchored restore lineage
 - checkpoint-aware policy revisions
 - proof-bearing rollout artifacts and trainer-batch assembly
+- environment package ABI and deterministic runtime sessions
 - adapter lineage
 
 It does not yet implement the full distributed trainer-orchestrator-RL runtime.
@@ -125,7 +126,7 @@ stable vocabulary for train-class execution.
 | `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `implemented_early` |
 | `RolloutArtifact` | One worker-produced trajectory or completion bundle | `implemented_early` |
 | `TrainerBatch` | One accepted batch of rollout or corpus inputs for a trainer step | `implemented_early` |
-| `EnvironmentPackage` | One versioned environment definition used by training and eval | `planned` |
+| `EnvironmentPackage` | One versioned environment definition used by training and eval | `implemented_early` |
 | `BenchmarkPackage` | One validator-owned packaged benchmark or reference evaluation profile | `planned` |
 | `EvalRun` | One online or offline evaluation execution | `planned` |
 | `CheckpointPointer` | One stable pointer to the latest accepted checkpoint for a run, stage, or window | `planned` |
@@ -162,7 +163,7 @@ shape already includes at least:
 
 - `worker_id`
 - `policy_revision`
-- `environment_version`
+- `environment_ref@version`
 - `task_id` or task digest
 - `token_ids`
 - `logprobs`
@@ -183,7 +184,7 @@ shape already includes at least:
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
 | Orchestrator | `planned` | no first-class rollout scheduler, batch assembler, or policy propagation engine |
-| Environment ABI | `partial_outside_psionic` | environment package, registry, and binding flows exist in kernel/Nexus, but no Psionic-native multi-turn or tool-using environment runtime exists yet |
+| Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `partial_outside_psionic` | compute evaluation-run creation, sample ingestion, and finalize flows exist in kernel/Nexus, but no `psionic-eval` crate or shared Psionic-native rubric runtime exists yet |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, and deterministic trainer-batch assembly with policy-lineage digests |
@@ -201,6 +202,9 @@ The current train-relevant ownership split in Psionic is:
     adapter packages
 - `psionic-collectives`
   - elastic mesh observation and benchmark-gated collective planning
+- `psionic-environments`
+  - environment package ABI, execution entrypoints, tool and rubric hooks,
+    artifact expectations, and deterministic runtime sessions
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
     elastic-membership posture, the fixed-budget training-core reference loop,
@@ -995,8 +999,8 @@ The most likely mature crate shape is:
   - shared online and offline evaluation runtime
 - `psionic-data` or `psionic-datasets`
   - dataset manifests, tokenizer state, splits, packing, and curriculum facts
-- `psionic-environments` or equivalent
-  - environment ABI, package registry contracts, and runtime loading
+- `psionic-environments`
+  - environment ABI, runtime sessions, and package-loading contracts
 - `psionic-sandbox`
   - pooled execution substrate for environment-bound agentic workloads
 - `psionic-adapters`
@@ -1016,9 +1020,9 @@ crate names.
 | Elastic membership | present in `psionic-runtime` and `psionic-train` | full participant lifecycle with heartbeats, rejoin, eviction, and topology history |
 | Collective planning | present in `psionic-collectives` | full local/global sync planning with distributed optimizer integration |
 | Weight broadcast | datastream substrate exists | staged policy-weight broadcast with freshness cutoffs and relay policy |
-| Training steps | absent | full Rust-native trainer-step engine |
-| RL rollouts | absent | typed rollout records, rewards, advantages, and validator-ready lineage |
-| Environment ABI | absent | packageable multi-turn and tool-using environment system |
+| Training steps | typed fixed-budget reference loop present | broader Rust-native trainer-step engine |
+| RL rollouts | typed rollout and trainer-batch contracts present | freshness enforcement, worker protocols, and validator-ready lineage |
+| Environment ABI | typed runtime ABI present | broader package loading, composition, and environment system |
 | Eval runtime | absent | shared online/offline eval and rubric runtime |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
 | Validators for RL | absent | rollout-verification bundles and sampled adjudication |
@@ -1132,11 +1136,23 @@ protocols, validator adjudication, or full orchestration.
 
 ### 3. `Environments: define a Rust-native environment ABI and runtime contract`
 
-Psionic still lacks the actual environment contract needed for multi-turn,
-tool-using, or sandbox-backed tasks. This issue should define the package ABI,
-execution entrypoints, tool interfaces, rubric hooks, and versioning rules for
-Rust-native environment packages. The goal is to make environments first-class
-products rather than trainer-local folders or Python plugins.
+Status: implemented on 2026-03-14 via GitHub issue `#3566`.
+
+Added the `psionic-environments` crate for:
+
+- canonical `environment_ref@version` package identity
+- Rust-native environment package ABI
+- execution entrypoints, tool interfaces, rubric hooks, and artifact
+  expectations
+- deterministic runtime sessions with turn, tool, artifact, and rubric receipts
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/ENVIRONMENT_ABI_REFERENCE.md`
+- `scripts/release/check-psionic-environment-abi.sh`
+
+Kernel and Nexus still own registry and authority truth. This issue lands the
+Psionic-side runtime and contract layer only.
 
 ### 4. `Psionic Data: add Rust-native dataset, tokenizer, split, and packing contracts`
 
