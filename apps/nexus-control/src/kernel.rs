@@ -1,31 +1,37 @@
 use openagents_kernel_core::authority::{
-    AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-    AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
-    AppendComputeEvaluationSamplesResponse, AppendComputeSyntheticDataSamplesRequest,
-    AppendComputeSyntheticDataSamplesResponse, BindCoverageRequest, BindCoverageResponse,
-    CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
-    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
-    CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
-    CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateAccessGrantRequest,
-    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeEvaluationRunRequest,
+    AcceptAccessGrantRequest, AcceptAccessGrantResponse, AcceptComputeOutcomeRequest,
+    AcceptComputeOutcomeResponse, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
+    AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
+    AppendComputeSyntheticDataSamplesRequest, AppendComputeSyntheticDataSamplesResponse,
+    BindCoverageRequest, BindCoverageResponse, CashSettleCapacityInstrumentRequest,
+    CashSettleCapacityInstrumentResponse, CloseCapacityInstrumentRequest,
+    CloseCapacityInstrumentResponse, CloseStructuredCapacityInstrumentRequest,
+    CloseStructuredCapacityInstrumentResponse, CorrectComputeIndexRequest,
+    CorrectComputeIndexResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeEvaluationRunRequest,
     CreateComputeEvaluationRunResponse, CreateComputeProductRequest, CreateComputeProductResponse,
     CreateComputeSyntheticDataJobRequest, CreateComputeSyntheticDataJobResponse,
-    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-    CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
-    CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
-    CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
-    CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
-    ExecuteSettlementIntentResponse, FinalizeComputeEvaluationRunRequest,
-    FinalizeComputeEvaluationRunResponse, FinalizeComputeSyntheticDataGenerationRequest,
-    FinalizeComputeSyntheticDataGenerationResponse, FinalizeVerdictRequest,
+    CreateComputeTrainingRunRequest, CreateComputeTrainingRunResponse, CreateContractRequest,
+    CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+    CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
+    CreateRiskClaimResponse, CreateStructuredCapacityInstrumentRequest,
+    CreateStructuredCapacityInstrumentResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
+    FinalizeComputeEvaluationRunRequest, FinalizeComputeEvaluationRunResponse,
+    FinalizeComputeSyntheticDataGenerationRequest, FinalizeComputeSyntheticDataGenerationResponse,
+    FinalizeComputeTrainingRunRequest, FinalizeComputeTrainingRunResponse, FinalizeVerdictRequest,
     FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
     IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
     PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
     PublishRiskSignalRequest, PublishRiskSignalResponse,
     RecordComputeSyntheticDataVerificationRequest, RecordComputeSyntheticDataVerificationResponse,
     RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    RegisterComputeBenchmarkPackageRequest, RegisterComputeBenchmarkPackageResponse,
+    RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeCheckpointFamilyPolicyResponse,
     RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
+    RegisterComputeTrainingPolicyRequest, RegisterComputeTrainingPolicyResponse,
+    RegisterComputeValidatorPolicyRequest, RegisterComputeValidatorPolicyResponse,
     RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
     RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
     RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
@@ -33,21 +39,26 @@ use openagents_kernel_core::authority::{
 };
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
-    CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
-    ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeEnvironmentPackage,
-    ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
-    ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
-    ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeIndex,
+    CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeAcceptedOutcome,
+    ComputeAcceptedOutcomeKind, ComputeBenchmarkPackage, ComputeCapabilityEnvelope,
+    ComputeCheckpointFamilyPolicy, ComputeDeliveryVarianceReason, ComputeEnvironmentBinding,
+    ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact,
+    ComputeEvaluationMetric, ComputeEvaluationRun, ComputeEvaluationRunStatus,
+    ComputeEvaluationSample, ComputeEvaluationSampleStatus, ComputeEvaluationSummary, ComputeIndex,
     ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementFailureReason, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
-    ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
+    ComputeRegistryStatus, ComputeSettlementFailureReason, ComputeSyntheticDataJob,
+    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus,
+    ComputeTrainingPolicy, ComputeTrainingRun, ComputeTrainingRunStatus, ComputeValidatorPolicy,
+    DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
     StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_capability_envelope,
-    validate_compute_environment_package, validate_compute_evaluation_artifact,
-    validate_compute_evaluation_run, validate_compute_evaluation_sample,
-    validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
-    validate_delivery_proof, validate_launch_compute_product,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_accepted_outcome,
+    validate_compute_benchmark_package, validate_compute_capability_envelope,
+    validate_compute_checkpoint_family_policy, validate_compute_environment_package,
+    validate_compute_evaluation_artifact, validate_compute_evaluation_run,
+    validate_compute_evaluation_sample, validate_compute_synthetic_data_job,
+    validate_compute_synthetic_data_sample, validate_compute_training_policy,
+    validate_compute_training_run, validate_compute_validator_policy, validate_delivery_proof,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -347,8 +358,14 @@ pub struct KernelState {
     claim_hooks: HashMap<String, ClaimHook>,
     compute_products: HashMap<String, ComputeProductRecord>,
     compute_environment_packages: HashMap<String, ComputeEnvironmentPackageRecord>,
+    compute_checkpoint_family_policies: HashMap<String, ComputeCheckpointFamilyPolicyRecord>,
+    compute_validator_policies: HashMap<String, ComputeValidatorPolicyRecord>,
+    compute_benchmark_packages: HashMap<String, ComputeBenchmarkPackageRecord>,
+    compute_training_policies: HashMap<String, ComputeTrainingPolicyRecord>,
     compute_evaluation_runs: HashMap<String, ComputeEvaluationRunRecord>,
     compute_evaluation_samples: HashMap<String, ComputeEvaluationSampleRecord>,
+    compute_training_runs: HashMap<String, ComputeTrainingRunRecord>,
+    compute_accepted_outcomes: HashMap<String, ComputeAcceptedOutcomeRecord>,
     compute_synthetic_jobs: HashMap<String, ComputeSyntheticDataJobRecord>,
     compute_synthetic_samples: HashMap<String, ComputeSyntheticDataSampleRecord>,
     capacity_lots: HashMap<String, CapacityLotRecord>,
@@ -409,6 +426,30 @@ struct ComputeEnvironmentPackageRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeCheckpointFamilyPolicyRecord {
+    policy_record: ComputeCheckpointFamilyPolicy,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeValidatorPolicyRecord {
+    policy_record: ComputeValidatorPolicy,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeBenchmarkPackageRecord {
+    benchmark_package: ComputeBenchmarkPackage,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeTrainingPolicyRecord {
+    training_policy: ComputeTrainingPolicy,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeEvaluationRunRecord {
     eval_run: ComputeEvaluationRun,
     receipt_id: String,
@@ -417,6 +458,18 @@ struct ComputeEvaluationRunRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeEvaluationSampleRecord {
     sample: ComputeEvaluationSample,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeTrainingRunRecord {
+    training_run: ComputeTrainingRun,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeAcceptedOutcomeRecord {
+    outcome: ComputeAcceptedOutcome,
     receipt_id: String,
 }
 
@@ -517,9 +570,21 @@ struct PersistedComputeAuthorityState {
     #[serde(default)]
     compute_environment_packages: BTreeMap<String, ComputeEnvironmentPackageRecord>,
     #[serde(default)]
+    compute_checkpoint_family_policies: BTreeMap<String, ComputeCheckpointFamilyPolicyRecord>,
+    #[serde(default)]
+    compute_validator_policies: BTreeMap<String, ComputeValidatorPolicyRecord>,
+    #[serde(default)]
+    compute_benchmark_packages: BTreeMap<String, ComputeBenchmarkPackageRecord>,
+    #[serde(default)]
+    compute_training_policies: BTreeMap<String, ComputeTrainingPolicyRecord>,
+    #[serde(default)]
     compute_evaluation_runs: BTreeMap<String, ComputeEvaluationRunRecord>,
     #[serde(default)]
     compute_evaluation_samples: BTreeMap<String, ComputeEvaluationSampleRecord>,
+    #[serde(default)]
+    compute_training_runs: BTreeMap<String, ComputeTrainingRunRecord>,
+    #[serde(default)]
+    compute_accepted_outcomes: BTreeMap<String, ComputeAcceptedOutcomeRecord>,
     #[serde(default)]
     compute_synthetic_jobs: BTreeMap<String, ComputeSyntheticDataJobRecord>,
     #[serde(default)]
@@ -1266,6 +1331,22 @@ fn encode_metadata_struct<T: Serialize>(
 
 fn compute_environment_package_key(environment_ref: &str, version: &str) -> String {
     format!("{environment_ref}@{version}")
+}
+
+fn compute_checkpoint_family_policy_key(checkpoint_family: &str, version: &str) -> String {
+    format!("{checkpoint_family}@{version}")
+}
+
+fn compute_validator_policy_key(policy_ref: &str, version: &str) -> String {
+    format!("{policy_ref}@{version}")
+}
+
+fn compute_benchmark_package_key(benchmark_package_ref: &str, version: &str) -> String {
+    format!("{benchmark_package_ref}@{version}")
+}
+
+fn compute_training_policy_key(training_policy_ref: &str, version: &str) -> String {
+    format!("{training_policy_ref}@{version}")
 }
 
 fn compute_evaluation_sample_key(eval_run_id: &str, sample_id: &str) -> String {
@@ -2068,6 +2149,194 @@ impl KernelState {
             })
     }
 
+    pub fn list_compute_checkpoint_family_policies(
+        &self,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Vec<ComputeCheckpointFamilyPolicy> {
+        let mut items = self
+            .compute_checkpoint_family_policies
+            .values()
+            .map(|record| record.policy_record.clone())
+            .filter(|policy| status.is_none_or(|expected| policy.status == expected))
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.checkpoint_family
+                .cmp(&rhs.checkpoint_family)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| lhs.version.cmp(&rhs.version))
+        });
+        items
+    }
+
+    pub fn get_compute_checkpoint_family_policy(
+        &self,
+        checkpoint_family: &str,
+        version: Option<&str>,
+    ) -> Option<ComputeCheckpointFamilyPolicy> {
+        if let Some(version) = version {
+            return self
+                .compute_checkpoint_family_policies
+                .get(compute_checkpoint_family_policy_key(checkpoint_family, version).as_str())
+                .map(|record| record.policy_record.clone());
+        }
+        self.compute_checkpoint_family_policies
+            .values()
+            .filter(|record| record.policy_record.checkpoint_family == checkpoint_family)
+            .map(|record| record.policy_record.clone())
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_ms
+                    .cmp(&rhs.updated_at_ms)
+                    .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                    .then_with(|| lhs.version.cmp(&rhs.version))
+            })
+    }
+
+    pub fn list_compute_validator_policies(
+        &self,
+        validator_pool_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Vec<ComputeValidatorPolicy> {
+        let mut items = self
+            .compute_validator_policies
+            .values()
+            .map(|record| record.policy_record.clone())
+            .filter(|policy| {
+                validator_pool_ref.is_none_or(|expected| policy.validator_pool_ref == expected)
+                    && status.is_none_or(|expected| policy.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.policy_ref
+                .cmp(&rhs.policy_ref)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| lhs.version.cmp(&rhs.version))
+        });
+        items
+    }
+
+    pub fn get_compute_validator_policy(
+        &self,
+        policy_ref: &str,
+        version: Option<&str>,
+    ) -> Option<ComputeValidatorPolicy> {
+        if let Some(version) = version {
+            return self
+                .compute_validator_policies
+                .get(compute_validator_policy_key(policy_ref, version).as_str())
+                .map(|record| record.policy_record.clone());
+        }
+        self.compute_validator_policies
+            .values()
+            .filter(|record| record.policy_record.policy_ref == policy_ref)
+            .map(|record| record.policy_record.clone())
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_ms
+                    .cmp(&rhs.updated_at_ms)
+                    .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                    .then_with(|| lhs.version.cmp(&rhs.version))
+            })
+    }
+
+    pub fn list_compute_benchmark_packages(
+        &self,
+        family: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Vec<ComputeBenchmarkPackage> {
+        let mut items = self
+            .compute_benchmark_packages
+            .values()
+            .map(|record| record.benchmark_package.clone())
+            .filter(|package| {
+                family.is_none_or(|expected| package.family == expected)
+                    && environment_ref.is_none_or(|expected| package.environment_ref == expected)
+                    && status.is_none_or(|expected| package.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.benchmark_package_ref
+                .cmp(&rhs.benchmark_package_ref)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| lhs.version.cmp(&rhs.version))
+        });
+        items
+    }
+
+    pub fn get_compute_benchmark_package(
+        &self,
+        benchmark_package_ref: &str,
+        version: Option<&str>,
+    ) -> Option<ComputeBenchmarkPackage> {
+        if let Some(version) = version {
+            return self
+                .compute_benchmark_packages
+                .get(compute_benchmark_package_key(benchmark_package_ref, version).as_str())
+                .map(|record| record.benchmark_package.clone());
+        }
+        self.compute_benchmark_packages
+            .values()
+            .filter(|record| {
+                record.benchmark_package.benchmark_package_ref == benchmark_package_ref
+            })
+            .map(|record| record.benchmark_package.clone())
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_ms
+                    .cmp(&rhs.updated_at_ms)
+                    .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                    .then_with(|| lhs.version.cmp(&rhs.version))
+            })
+    }
+
+    pub fn list_compute_training_policies(
+        &self,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Vec<ComputeTrainingPolicy> {
+        let mut items = self
+            .compute_training_policies
+            .values()
+            .map(|record| record.training_policy.clone())
+            .filter(|policy| {
+                environment_ref.is_none_or(|expected| {
+                    policy
+                        .environment_refs
+                        .iter()
+                        .any(|value| value == expected)
+                }) && status.is_none_or(|expected| policy.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.training_policy_ref
+                .cmp(&rhs.training_policy_ref)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| lhs.version.cmp(&rhs.version))
+        });
+        items
+    }
+
+    pub fn get_compute_training_policy(
+        &self,
+        training_policy_ref: &str,
+        version: Option<&str>,
+    ) -> Option<ComputeTrainingPolicy> {
+        if let Some(version) = version {
+            return self
+                .compute_training_policies
+                .get(compute_training_policy_key(training_policy_ref, version).as_str())
+                .map(|record| record.training_policy.clone());
+        }
+        self.compute_training_policies
+            .values()
+            .filter(|record| record.training_policy.training_policy_ref == training_policy_ref)
+            .map(|record| record.training_policy.clone())
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_ms
+                    .cmp(&rhs.updated_at_ms)
+                    .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                    .then_with(|| lhs.version.cmp(&rhs.version))
+            })
+    }
+
     pub fn list_compute_evaluation_runs(
         &self,
         environment_ref: Option<&str>,
@@ -2115,6 +2384,67 @@ impl KernelState {
                 .then_with(|| lhs.sample_id.cmp(&rhs.sample_id))
         });
         items
+    }
+
+    pub fn list_compute_training_runs(
+        &self,
+        training_policy_ref: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeTrainingRunStatus>,
+    ) -> Vec<ComputeTrainingRun> {
+        let mut items = self
+            .compute_training_runs
+            .values()
+            .map(|record| record.training_run.clone())
+            .filter(|run| {
+                training_policy_ref.is_none_or(|expected| run.training_policy_ref == expected)
+                    && environment_ref
+                        .is_none_or(|expected| run.environment_binding.environment_ref == expected)
+                    && status.is_none_or(|expected| run.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+        });
+        items
+    }
+
+    pub fn get_compute_training_run(&self, training_run_id: &str) -> Option<ComputeTrainingRun> {
+        self.compute_training_runs
+            .get(training_run_id)
+            .map(|record| record.training_run.clone())
+    }
+
+    pub fn list_compute_accepted_outcomes(
+        &self,
+        outcome_kind: Option<ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+    ) -> Vec<ComputeAcceptedOutcome> {
+        let mut items = self
+            .compute_accepted_outcomes
+            .values()
+            .map(|record| record.outcome.clone())
+            .filter(|outcome| {
+                outcome_kind.is_none_or(|expected| outcome.outcome_kind == expected)
+                    && environment_ref.is_none_or(|expected| {
+                        outcome.environment_binding.environment_ref == expected
+                    })
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.accepted_at_ms
+                .cmp(&rhs.accepted_at_ms)
+                .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+        });
+        items
+    }
+
+    pub fn get_compute_accepted_outcome(&self, outcome_id: &str) -> Option<ComputeAcceptedOutcome> {
+        self.compute_accepted_outcomes
+            .get(outcome_id)
+            .map(|record| record.outcome.clone())
     }
 
     pub fn list_compute_synthetic_data_jobs(
@@ -2427,9 +2757,20 @@ impl KernelState {
         self.compute_products = persisted.compute_products.into_iter().collect();
         self.compute_environment_packages =
             persisted.compute_environment_packages.into_iter().collect();
+        self.compute_checkpoint_family_policies = persisted
+            .compute_checkpoint_family_policies
+            .into_iter()
+            .collect();
+        self.compute_validator_policies =
+            persisted.compute_validator_policies.into_iter().collect();
+        self.compute_benchmark_packages =
+            persisted.compute_benchmark_packages.into_iter().collect();
+        self.compute_training_policies = persisted.compute_training_policies.into_iter().collect();
         self.compute_evaluation_runs = persisted.compute_evaluation_runs.into_iter().collect();
         self.compute_evaluation_samples =
             persisted.compute_evaluation_samples.into_iter().collect();
+        self.compute_training_runs = persisted.compute_training_runs.into_iter().collect();
+        self.compute_accepted_outcomes = persisted.compute_accepted_outcomes.into_iter().collect();
         self.compute_synthetic_jobs = persisted.compute_synthetic_jobs.into_iter().collect();
         self.compute_synthetic_samples = persisted.compute_synthetic_samples.into_iter().collect();
         self.capacity_lots = persisted.capacity_lots.into_iter().collect();
@@ -2459,12 +2800,30 @@ impl KernelState {
                 .clone()
                 .into_iter()
                 .collect(),
+            compute_checkpoint_family_policies: self
+                .compute_checkpoint_family_policies
+                .clone()
+                .into_iter()
+                .collect(),
+            compute_validator_policies: self
+                .compute_validator_policies
+                .clone()
+                .into_iter()
+                .collect(),
+            compute_benchmark_packages: self
+                .compute_benchmark_packages
+                .clone()
+                .into_iter()
+                .collect(),
+            compute_training_policies: self.compute_training_policies.clone().into_iter().collect(),
             compute_evaluation_runs: self.compute_evaluation_runs.clone().into_iter().collect(),
             compute_evaluation_samples: self
                 .compute_evaluation_samples
                 .clone()
                 .into_iter()
                 .collect(),
+            compute_training_runs: self.compute_training_runs.clone().into_iter().collect(),
+            compute_accepted_outcomes: self.compute_accepted_outcomes.clone().into_iter().collect(),
             compute_synthetic_jobs: self.compute_synthetic_jobs.clone().into_iter().collect(),
             compute_synthetic_samples: self.compute_synthetic_samples.clone().into_iter().collect(),
             capacity_lots: self.capacity_lots.clone().into_iter().collect(),
@@ -3116,6 +3475,406 @@ impl KernelState {
         })
     }
 
+    pub fn register_compute_checkpoint_family_policy(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterComputeCheckpointFamilyPolicyRequest,
+    ) -> Result<MutationResult<RegisterComputeCheckpointFamilyPolicyResponse>, String> {
+        let checkpoint_family = normalize_required(
+            req.policy_record.checkpoint_family.as_str(),
+            "compute_checkpoint_family_missing",
+        )?;
+        let version = normalize_required(
+            req.policy_record.version.as_str(),
+            "compute_checkpoint_policy_version_missing",
+        )?;
+        req.policy_record
+            .checkpoint_family
+            .clone_from(&checkpoint_family);
+        req.policy_record.version.clone_from(&version);
+        req.policy_record.created_at_ms =
+            normalize_created_at_ms(req.policy_record.created_at_ms, context.now_unix_ms);
+        req.policy_record.updated_at_ms = if req.policy_record.updated_at_ms <= 0 {
+            req.policy_record.created_at_ms
+        } else {
+            req.policy_record
+                .updated_at_ms
+                .max(req.policy_record.created_at_ms)
+        };
+        validate_compute_checkpoint_family_policy(&req.policy_record)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.policy_record).map_err(|error| {
+            format!("kernel_compute_checkpoint_family_policy_encode_failed: {error}")
+        })?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.checkpoint_policy.register".to_string(),
+                created_at_ms: req.policy_record.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "checkpoint_family": checkpoint_family.clone(),
+                    "version": version.clone(),
+                    "status": req.policy_record.status,
+                    "allowed_environment_count": req.policy_record.allowed_environment_refs.len(),
+                    "validator_policy_ref": req.policy_record.validator_policy_ref.clone(),
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.checkpoint_policy.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterComputeCheckpointFamilyPolicyResponse {
+            policy_record: req.policy_record.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_checkpoint_family_policies.insert(
+            compute_checkpoint_family_policy_key(checkpoint_family.as_str(), version.as_str()),
+            ComputeCheckpointFamilyPolicyRecord {
+                policy_record: req.policy_record.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.policy_record.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn register_compute_validator_policy(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterComputeValidatorPolicyRequest,
+    ) -> Result<MutationResult<RegisterComputeValidatorPolicyResponse>, String> {
+        let policy_ref = normalize_required(
+            req.policy_record.policy_ref.as_str(),
+            "compute_validator_policy_ref_missing",
+        )?;
+        let version = normalize_required(
+            req.policy_record.version.as_str(),
+            "compute_validator_policy_version_missing",
+        )?;
+        req.policy_record.policy_ref.clone_from(&policy_ref);
+        req.policy_record.version.clone_from(&version);
+        req.policy_record.created_at_ms =
+            normalize_created_at_ms(req.policy_record.created_at_ms, context.now_unix_ms);
+        req.policy_record.updated_at_ms = if req.policy_record.updated_at_ms <= 0 {
+            req.policy_record.created_at_ms
+        } else {
+            req.policy_record
+                .updated_at_ms
+                .max(req.policy_record.created_at_ms)
+        };
+        validate_compute_validator_policy(&req.policy_record)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.policy_record)
+            .map_err(|error| format!("kernel_compute_validator_policy_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.validator_policy.register".to_string(),
+                created_at_ms: req.policy_record.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "policy_ref": policy_ref.clone(),
+                    "version": version.clone(),
+                    "validator_pool_ref": req.policy_record.validator_pool_ref.clone(),
+                    "status": req.policy_record.status,
+                    "benchmark_package_count": req.policy_record.benchmark_package_refs.len(),
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.validator_policy.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterComputeValidatorPolicyResponse {
+            policy_record: req.policy_record.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_validator_policies.insert(
+            compute_validator_policy_key(policy_ref.as_str(), version.as_str()),
+            ComputeValidatorPolicyRecord {
+                policy_record: req.policy_record.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.policy_record.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn register_compute_benchmark_package(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterComputeBenchmarkPackageRequest,
+    ) -> Result<MutationResult<RegisterComputeBenchmarkPackageResponse>, String> {
+        let benchmark_package_ref = normalize_required(
+            req.benchmark_package.benchmark_package_ref.as_str(),
+            "compute_benchmark_package_ref_missing",
+        )?;
+        let version = normalize_required(
+            req.benchmark_package.version.as_str(),
+            "compute_benchmark_package_version_missing",
+        )?;
+        let environment_ref = normalize_required(
+            req.benchmark_package.environment_ref.as_str(),
+            "compute_environment_ref_missing",
+        )?;
+        let environment = self
+            .get_compute_environment_package(
+                environment_ref.as_str(),
+                req.benchmark_package.environment_version.as_deref(),
+            )
+            .ok_or_else(|| "kernel_compute_environment_package_not_found".to_string())?;
+        req.benchmark_package
+            .benchmark_package_ref
+            .clone_from(&benchmark_package_ref);
+        req.benchmark_package.version.clone_from(&version);
+        req.benchmark_package.environment_ref = environment.environment_ref.clone();
+        req.benchmark_package.environment_version = Some(environment.version.clone());
+        req.benchmark_package.created_at_ms =
+            normalize_created_at_ms(req.benchmark_package.created_at_ms, context.now_unix_ms);
+        req.benchmark_package.updated_at_ms = if req.benchmark_package.updated_at_ms <= 0 {
+            req.benchmark_package.created_at_ms
+        } else {
+            req.benchmark_package
+                .updated_at_ms
+                .max(req.benchmark_package.created_at_ms)
+        };
+        validate_compute_benchmark_package(&req.benchmark_package)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.benchmark_package)
+            .map_err(|error| format!("kernel_compute_benchmark_package_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.benchmark_package.register".to_string(),
+                created_at_ms: req.benchmark_package.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "benchmark_package_ref": benchmark_package_ref.clone(),
+                    "version": version.clone(),
+                    "family": req.benchmark_package.family.clone(),
+                    "environment_ref": req.benchmark_package.environment_ref.clone(),
+                    "environment_version": req.benchmark_package.environment_version.clone(),
+                    "status": req.benchmark_package.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.benchmark_package.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterComputeBenchmarkPackageResponse {
+            benchmark_package: req.benchmark_package.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_benchmark_packages.insert(
+            compute_benchmark_package_key(benchmark_package_ref.as_str(), version.as_str()),
+            ComputeBenchmarkPackageRecord {
+                benchmark_package: req.benchmark_package.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.benchmark_package.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn register_compute_training_policy(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterComputeTrainingPolicyRequest,
+    ) -> Result<MutationResult<RegisterComputeTrainingPolicyResponse>, String> {
+        let training_policy_ref = normalize_required(
+            req.training_policy.training_policy_ref.as_str(),
+            "compute_training_policy_ref_missing",
+        )?;
+        let version = normalize_required(
+            req.training_policy.version.as_str(),
+            "compute_training_policy_version_missing",
+        )?;
+        req.training_policy
+            .training_policy_ref
+            .clone_from(&training_policy_ref);
+        req.training_policy.version.clone_from(&version);
+        req.training_policy.created_at_ms =
+            normalize_created_at_ms(req.training_policy.created_at_ms, context.now_unix_ms);
+        req.training_policy.updated_at_ms = if req.training_policy.updated_at_ms <= 0 {
+            req.training_policy.created_at_ms
+        } else {
+            req.training_policy
+                .updated_at_ms
+                .max(req.training_policy.created_at_ms)
+        };
+        for environment_ref in &req.training_policy.environment_refs {
+            if self
+                .get_compute_environment_package(environment_ref.as_str(), None)
+                .is_none()
+            {
+                return Err("kernel_compute_environment_package_not_found".to_string());
+            }
+        }
+        if self
+            .get_compute_checkpoint_family_policy(
+                req.training_policy.checkpoint_family.as_str(),
+                None,
+            )
+            .is_none()
+        {
+            return Err("kernel_compute_checkpoint_family_policy_not_found".to_string());
+        }
+        if self
+            .get_compute_validator_policy(req.training_policy.validator_policy_ref.as_str(), None)
+            .is_none()
+        {
+            return Err("kernel_compute_validator_policy_not_found".to_string());
+        }
+        for benchmark_package_ref in &req.training_policy.benchmark_package_refs {
+            if self
+                .get_compute_benchmark_package(benchmark_package_ref.as_str(), None)
+                .is_none()
+            {
+                return Err("kernel_compute_benchmark_package_not_found".to_string());
+            }
+        }
+        validate_compute_training_policy(&req.training_policy)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.training_policy)
+            .map_err(|error| format!("kernel_compute_training_policy_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.training_policy.register".to_string(),
+                created_at_ms: req.training_policy.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "training_policy_ref": training_policy_ref.clone(),
+                    "version": version.clone(),
+                    "checkpoint_family": req.training_policy.checkpoint_family.clone(),
+                    "validator_policy_ref": req.training_policy.validator_policy_ref.clone(),
+                    "environment_count": req.training_policy.environment_refs.len(),
+                    "benchmark_package_count": req.training_policy.benchmark_package_refs.len(),
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.training_policy.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterComputeTrainingPolicyResponse {
+            training_policy: req.training_policy.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_training_policies.insert(
+            compute_training_policy_key(training_policy_ref.as_str(), version.as_str()),
+            ComputeTrainingPolicyRecord {
+                training_policy: req.training_policy.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.training_policy.updated_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn create_compute_evaluation_run(
         &mut self,
         context: &KernelMutationContext,
@@ -3689,6 +4448,387 @@ impl KernelState {
                 eval_run: eval_run_record.eval_run,
                 receipt: put_result.receipt.clone(),
             },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_compute_training_run(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateComputeTrainingRunRequest,
+    ) -> Result<MutationResult<CreateComputeTrainingRunResponse>, String> {
+        let training_run_id = normalize_required(
+            req.training_run.training_run_id.as_str(),
+            "compute_training_run_id_missing",
+        )?;
+        if self
+            .compute_training_runs
+            .contains_key(training_run_id.as_str())
+        {
+            return Err("compute_training_run_id_conflict".to_string());
+        }
+        let training_policy = self
+            .get_compute_training_policy(req.training_run.training_policy_ref.as_str(), None)
+            .ok_or_else(|| "kernel_compute_training_policy_not_found".to_string())?;
+        let checkpoint_policy = self
+            .get_compute_checkpoint_family_policy(
+                req.training_run
+                    .checkpoint_binding
+                    .checkpoint_family
+                    .as_str(),
+                None,
+            )
+            .ok_or_else(|| "kernel_compute_checkpoint_family_policy_not_found".to_string())?;
+        let validator_policy = self
+            .get_compute_validator_policy(req.training_run.validator_policy_ref.as_str(), None)
+            .ok_or_else(|| "kernel_compute_validator_policy_not_found".to_string())?;
+        if validator_policy.policy_ref != training_policy.validator_policy_ref {
+            return Err("compute_training_validator_policy_mismatch".to_string());
+        }
+        if checkpoint_policy.checkpoint_family != training_policy.checkpoint_family {
+            return Err("compute_training_checkpoint_family_mismatch".to_string());
+        }
+        let (resolved_environment_binding, _) =
+            self.resolve_compute_environment_binding(&req.training_run.environment_binding)?;
+        if !training_policy
+            .environment_refs
+            .iter()
+            .any(|value| value == &resolved_environment_binding.environment_ref)
+        {
+            return Err("compute_training_environment_not_allowed".to_string());
+        }
+        let benchmark_package_refs = if req.training_run.benchmark_package_refs.is_empty() {
+            training_policy.benchmark_package_refs.clone()
+        } else {
+            req.training_run.benchmark_package_refs.clone()
+        };
+        for benchmark_package_ref in &benchmark_package_refs {
+            let package = self
+                .get_compute_benchmark_package(benchmark_package_ref.as_str(), None)
+                .ok_or_else(|| "kernel_compute_benchmark_package_not_found".to_string())?;
+            if package.environment_ref != resolved_environment_binding.environment_ref {
+                return Err("compute_training_benchmark_environment_mismatch".to_string());
+            }
+        }
+        if !matches!(
+            req.training_run.status,
+            ComputeTrainingRunStatus::Queued
+                | ComputeTrainingRunStatus::Preparing
+                | ComputeTrainingRunStatus::Running
+        ) {
+            return Err("compute_training_create_status_invalid".to_string());
+        }
+        req.training_run
+            .training_run_id
+            .clone_from(&training_run_id);
+        req.training_run.training_policy_ref = training_policy.training_policy_ref.clone();
+        req.training_run.environment_binding = resolved_environment_binding;
+        req.training_run.validator_policy_ref = validator_policy.policy_ref.clone();
+        req.training_run.benchmark_package_refs = benchmark_package_refs;
+        req.training_run.created_at_ms =
+            normalize_created_at_ms(req.training_run.created_at_ms, context.now_unix_ms);
+        if matches!(
+            req.training_run.status,
+            ComputeTrainingRunStatus::Preparing | ComputeTrainingRunStatus::Running
+        ) && req.training_run.started_at_ms.is_none()
+        {
+            req.training_run.started_at_ms = Some(req.training_run.created_at_ms);
+        }
+        validate_compute_training_run(&req.training_run)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.training_run)
+            .map_err(|error| format!("kernel_compute_training_run_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.training_run.create".to_string(),
+                created_at_ms: req.training_run.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "training_run_id": training_run_id.clone(),
+                    "training_policy_ref": req.training_run.training_policy_ref.clone(),
+                    "environment_binding": req.training_run.environment_binding.clone(),
+                    "checkpoint_family": req.training_run.checkpoint_binding.checkpoint_family.clone(),
+                    "validator_policy_ref": req.training_run.validator_policy_ref.clone(),
+                    "benchmark_package_count": req.training_run.benchmark_package_refs.len(),
+                    "status": req.training_run.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.training_run.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateComputeTrainingRunResponse {
+            training_run: req.training_run.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_training_runs.insert(
+            training_run_id,
+            ComputeTrainingRunRecord {
+                training_run: req.training_run.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.training_run.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn finalize_compute_training_run(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: FinalizeComputeTrainingRunRequest,
+    ) -> Result<MutationResult<FinalizeComputeTrainingRunResponse>, String> {
+        let training_run_id = normalize_required(
+            req.training_run_id.as_str(),
+            "compute_training_run_id_missing",
+        )?;
+        let Some(mut training_run_record) = self
+            .compute_training_runs
+            .get(training_run_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_training_run_not_found".to_string());
+        };
+        if matches!(
+            training_run_record.training_run.status,
+            ComputeTrainingRunStatus::Accepted
+                | ComputeTrainingRunStatus::Failed
+                | ComputeTrainingRunStatus::Cancelled
+        ) {
+            return Err("compute_training_run_already_finalized".to_string());
+        }
+        if !matches!(
+            req.status,
+            ComputeTrainingRunStatus::Accepted
+                | ComputeTrainingRunStatus::Failed
+                | ComputeTrainingRunStatus::Cancelled
+        ) {
+            return Err("compute_training_finalize_status_invalid".to_string());
+        }
+        req.training_run_id.clone_from(&training_run_id);
+        req.finalized_at_ms = normalize_created_at_ms(req.finalized_at_ms, context.now_unix_ms);
+        training_run_record.training_run.status = req.status;
+        training_run_record.training_run.finalized_at_ms = Some(req.finalized_at_ms);
+        if let Some(final_checkpoint_ref) = req.final_checkpoint_ref.as_deref() {
+            training_run_record.training_run.final_checkpoint_ref =
+                Some(final_checkpoint_ref.trim().to_string());
+        }
+        if let Some(promotion_checkpoint_ref) = req.promotion_checkpoint_ref.as_deref() {
+            training_run_record.training_run.promotion_checkpoint_ref =
+                Some(promotion_checkpoint_ref.trim().to_string());
+        }
+        if let Some(summary) = req.summary.clone() {
+            training_run_record.training_run.completed_step_count = summary.completed_step_count;
+            training_run_record.training_run.summary = Some(summary);
+        }
+        if !req.metadata.is_null() {
+            ensure_metadata_object(&mut training_run_record.training_run.metadata)?
+                .insert("finalize".to_string(), req.metadata.clone());
+        }
+        validate_compute_training_run(&training_run_record.training_run)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(training_run_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let payload = serde_json::to_value(&training_run_record.training_run).map_err(|error| {
+            format!("kernel_compute_training_run_finalize_encode_failed: {error}")
+        })?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.training_run.finalize".to_string(),
+                created_at_ms: req.finalized_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "training_run_id": training_run_id.clone(),
+                    "status": training_run_record.training_run.status,
+                    "final_checkpoint_ref": training_run_record.training_run.final_checkpoint_ref.clone(),
+                    "promotion_checkpoint_ref": training_run_record.training_run.promotion_checkpoint_ref.clone(),
+                    "summary": training_run_record.training_run.summary.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.training_run.finalize",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = FinalizeComputeTrainingRunResponse {
+            training_run: training_run_record.training_run.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_training_runs
+            .insert(training_run_id.clone(), training_run_record.clone());
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.finalized_at_ms)?;
+        Ok(MutationResult {
+            response: FinalizeComputeTrainingRunResponse {
+                training_run: training_run_record.training_run,
+                receipt: put_result.receipt.clone(),
+            },
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn accept_compute_outcome(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: AcceptComputeOutcomeRequest,
+    ) -> Result<MutationResult<AcceptComputeOutcomeResponse>, String> {
+        let outcome_id = normalize_required(
+            req.outcome.outcome_id.as_str(),
+            "compute_accepted_outcome_id_missing",
+        )?;
+        if self
+            .compute_accepted_outcomes
+            .contains_key(outcome_id.as_str())
+        {
+            return Err("compute_accepted_outcome_id_conflict".to_string());
+        }
+        req.outcome.outcome_id.clone_from(&outcome_id);
+        req.outcome.accepted_at_ms =
+            normalize_created_at_ms(req.outcome.accepted_at_ms, context.now_unix_ms);
+        match req.outcome.outcome_kind {
+            ComputeAcceptedOutcomeKind::EvaluationRun => {
+                let eval_run = self
+                    .get_compute_evaluation_run(req.outcome.source_run_id.as_str())
+                    .ok_or_else(|| "compute_eval_run_not_found".to_string())?;
+                if eval_run.status != ComputeEvaluationRunStatus::Finalized {
+                    return Err("compute_accepted_outcome_eval_not_finalized".to_string());
+                }
+                req.outcome.environment_binding = eval_run.environment_binding.clone();
+                req.outcome.checkpoint_binding = None;
+                req.outcome.training_summary = None;
+                if req.outcome.evaluation_summary.is_none() {
+                    req.outcome.evaluation_summary = eval_run.summary.clone();
+                }
+            }
+            ComputeAcceptedOutcomeKind::TrainingRun => {
+                let training_run = self
+                    .get_compute_training_run(req.outcome.source_run_id.as_str())
+                    .ok_or_else(|| "compute_training_run_not_found".to_string())?;
+                if training_run.status != ComputeTrainingRunStatus::Accepted {
+                    return Err("compute_accepted_outcome_training_not_accepted".to_string());
+                }
+                req.outcome.environment_binding = training_run.environment_binding.clone();
+                req.outcome.checkpoint_binding = Some(training_run.checkpoint_binding.clone());
+                req.outcome.validator_policy_ref = Some(training_run.validator_policy_ref.clone());
+                req.outcome.benchmark_package_refs = training_run.benchmark_package_refs.clone();
+                req.outcome.evaluation_summary = None;
+                if req.outcome.training_summary.is_none() {
+                    req.outcome.training_summary = training_run.summary.clone();
+                }
+            }
+        }
+        validate_compute_accepted_outcome(&req.outcome)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let payload = serde_json::to_value(&req.outcome)
+            .map_err(|error| format!("kernel_compute_accepted_outcome_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.outcome.accept".to_string(),
+                created_at_ms: req.outcome.accepted_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: payload,
+                outputs_payload: json!({
+                    "outcome_id": outcome_id.clone(),
+                    "outcome_kind": req.outcome.outcome_kind,
+                    "source_run_id": req.outcome.source_run_id.clone(),
+                    "environment_binding": req.outcome.environment_binding.clone(),
+                    "validator_policy_ref": req.outcome.validator_policy_ref.clone(),
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.outcome.accept",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = AcceptComputeOutcomeResponse {
+            outcome: req.outcome.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.compute_accepted_outcomes.insert(
+            outcome_id,
+            ComputeAcceptedOutcomeRecord {
+                outcome: req.outcome.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.outcome.accepted_at_ms)?;
+        Ok(MutationResult {
+            response,
             receipt_event: Some(receipt_event),
             snapshot_event: Some(snapshot_event),
         })
@@ -12252,36 +13392,44 @@ mod tests {
         floor_to_minute_utc, money_amount_value,
     };
     use openagents_kernel_core::authority::{
-        AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
-        BindCoverageRequest, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        AcceptComputeOutcomeRequest, AppendComputeEvaluationSamplesRequest,
+        AppendComputeSyntheticDataSamplesRequest, BindCoverageRequest,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
         CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
         CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
-        CreateComputeSyntheticDataJobRequest, CreateRiskClaimRequest,
-        CreateStructuredCapacityInstrumentRequest, FinalizeComputeEvaluationRunRequest,
-        FinalizeComputeSyntheticDataGenerationRequest, PlaceCoverageOfferRequest,
-        PublishComputeIndexRequest, RecordComputeSyntheticDataVerificationRequest,
-        RecordDeliveryProofRequest, RegisterComputeEnvironmentPackageRequest,
-        RegisterReservePartitionRequest, ResolveRiskClaimRequest,
+        CreateComputeSyntheticDataJobRequest, CreateComputeTrainingRunRequest,
+        CreateRiskClaimRequest, CreateStructuredCapacityInstrumentRequest,
+        FinalizeComputeEvaluationRunRequest, FinalizeComputeSyntheticDataGenerationRequest,
+        FinalizeComputeTrainingRunRequest, PlaceCoverageOfferRequest, PublishComputeIndexRequest,
+        RecordComputeSyntheticDataVerificationRequest, RecordDeliveryProofRequest,
+        RegisterComputeBenchmarkPackageRequest, RegisterComputeCheckpointFamilyPolicyRequest,
+        RegisterComputeEnvironmentPackageRequest, RegisterComputeTrainingPolicyRequest,
+        RegisterComputeValidatorPolicyRequest, RegisterReservePartitionRequest,
+        ResolveRiskClaimRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
         CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
-        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
-        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
-        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
-        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
-        ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
+        CapacityReserveState, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
+        ComputeBackendFamily, ComputeBenchmarkPackage, ComputeCapabilityEnvelope,
+        ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy, ComputeDeliveryVarianceReason,
+        ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
+        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
+        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
+        ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
+        ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason,
+        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+        ComputeProvisioningKind, ComputeRegistryStatus, ComputeSettlementFailureReason,
         ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
         ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
-        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeTrainingPolicy, ComputeTrainingRun, ComputeTrainingRunStatus,
+        ComputeTrainingSummary, ComputeValidatorPolicy, ComputeValidatorRequirements,
+        DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
     use openagents_kernel_core::receipts::{
@@ -12588,6 +13736,258 @@ mod tests {
                 metadata: json!({"schema": "v1"}),
             }],
             metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn checkpoint_family_policy_request(
+        created_at_ms: i64,
+    ) -> RegisterComputeCheckpointFamilyPolicyRequest {
+        RegisterComputeCheckpointFamilyPolicyRequest {
+            idempotency_key: "idemp.compute.checkpoint_policy.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            policy_record: ComputeCheckpointFamilyPolicy {
+                checkpoint_family: "decoder".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                description: Some("Decoder checkpoint policy".to_string()),
+                source_family: Some("sft".to_string()),
+                default_recovery_posture: Some("warm-resume".to_string()),
+                allowed_environment_refs: vec!["env.openagents.math.basic".to_string()],
+                validator_policy_ref: Some("policy://validator/training".to_string()),
+                retention_policy_ref: Some("policy://retention/checkpoints".to_string()),
+                metadata: json!({"tier": "reference"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn validator_policy_request(created_at_ms: i64) -> RegisterComputeValidatorPolicyRequest {
+        RegisterComputeValidatorPolicyRequest {
+            idempotency_key: "idemp.compute.validator_policy.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            policy_record: ComputeValidatorPolicy {
+                policy_ref: "policy://validator/training".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                validator_pool_ref: "validator-pool.training".to_string(),
+                minimum_validator_count: Some(2),
+                challenge_window_ms: Some(60_000),
+                required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                metadata: json!({"repeat_runs": 2}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn benchmark_package_request(created_at_ms: i64) -> RegisterComputeBenchmarkPackageRequest {
+        RegisterComputeBenchmarkPackageRequest {
+            idempotency_key: "idemp.compute.benchmark_package.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            benchmark_package: ComputeBenchmarkPackage {
+                benchmark_package_ref: "benchmark://mmlu/reference".to_string(),
+                version: "2026.03.14".to_string(),
+                family: "mmlu".to_string(),
+                display_name: "Reference MMLU".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: None,
+                benchmark_suite_ref: Some("benchmark://mmlu/pro".to_string()),
+                adapter_kind: Some("mmlu_multiple_choice_v1".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                pass_threshold_bps: Some(9_000),
+                required_metric_ids: vec!["accuracy".to_string()],
+                artifact_refs: vec!["artifact://benchmarks/mmlu/manifest".to_string()],
+                metadata: json!({"repeat_runs": 2}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn training_policy_request(created_at_ms: i64) -> RegisterComputeTrainingPolicyRequest {
+        RegisterComputeTrainingPolicyRequest {
+            idempotency_key: "idemp.compute.training_policy.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            training_policy: ComputeTrainingPolicy {
+                training_policy_ref: "policy://training/math/basic".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                environment_refs: vec!["env.openagents.math.basic".to_string()],
+                checkpoint_family: "decoder".to_string(),
+                validator_policy_ref: "policy://validator/training".to_string(),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                stage_policy_refs: vec![
+                    "policy://training/math/basic/general_sft".to_string(),
+                    "policy://training/math/basic/agentic_sft".to_string(),
+                    "policy://training/math/basic/rl".to_string(),
+                ],
+                metadata: json!({"curriculum_policy_ref": "policy://curriculum/math/basic"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn training_run_request(created_at_ms: i64) -> CreateComputeTrainingRunRequest {
+        CreateComputeTrainingRunRequest {
+            idempotency_key: "idemp.compute.training_run.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            training_run: ComputeTrainingRun {
+                training_run_id: "train.math.basic.alpha".to_string(),
+                training_policy_ref: "policy://training/math/basic".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                checkpoint_binding: ComputeCheckpointBinding {
+                    checkpoint_family: "decoder".to_string(),
+                    latest_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                    recovery_posture: Some("warm-resume".to_string()),
+                },
+                validator_policy_ref: "policy://validator/training".to_string(),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                product_id: Some("psionic.training.gradient.elastic".to_string()),
+                capacity_lot_id: Some("lot.training.alpha".to_string()),
+                instrument_id: Some("instrument.training.alpha".to_string()),
+                delivery_proof_id: Some("delivery.training.alpha".to_string()),
+                model_ref: Some("model://gpt-oss-20b".to_string()),
+                source_ref: Some("artifact://training/math-basic/input".to_string()),
+                rollout_verification_eval_run_ids: vec!["eval.run.alpha".to_string()],
+                created_at_ms,
+                started_at_ms: None,
+                finalized_at_ms: None,
+                expected_step_count: Some(64),
+                completed_step_count: None,
+                status: ComputeTrainingRunStatus::Queued,
+                final_checkpoint_ref: None,
+                promotion_checkpoint_ref: None,
+                summary: None,
+                metadata: json!({"stability_verdict": "continue"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_training_run_request(finalized_at_ms: i64) -> FinalizeComputeTrainingRunRequest {
+        FinalizeComputeTrainingRunRequest {
+            idempotency_key: "idemp.compute.training_run.finalize.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            training_run_id: "train.math.basic.alpha".to_string(),
+            status: ComputeTrainingRunStatus::Accepted,
+            finalized_at_ms,
+            final_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.alpha/final".to_string(),
+            ),
+            promotion_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+            ),
+            summary: Some(ComputeTrainingSummary {
+                completed_step_count: Some(64),
+                processed_token_count: Some(128_000),
+                average_loss: Some(0.42),
+                best_eval_score_bps: Some(9_350),
+                accepted_checkpoint_ref: Some(
+                    "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+                ),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.935,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"benchmark_package_ref": "benchmark://mmlu/reference"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "training_manifest".to_string(),
+                    artifact_ref: "artifact://training/math-basic/manifest".to_string(),
+                    digest: Some("sha256:train-manifest".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn accept_evaluation_outcome_request(accepted_at_ms: i64) -> AcceptComputeOutcomeRequest {
+        AcceptComputeOutcomeRequest {
+            idempotency_key: "idemp.compute.outcome.accept.eval.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            outcome: ComputeAcceptedOutcome {
+                outcome_id: "accepted.evaluation.alpha".to_string(),
+                outcome_kind: ComputeAcceptedOutcomeKind::EvaluationRun,
+                source_run_id: "eval.run.alpha".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: Some("2026.03.13".to_string()),
+                    dataset_ref: Some("dataset://math/basic".to_string()),
+                    rubric_ref: Some("rubric://math/basic".to_string()),
+                    evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                },
+                checkpoint_binding: None,
+                validator_policy_ref: Some("policy://validator/training".to_string()),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                accepted_at_ms,
+                evaluation_summary: None,
+                training_summary: None,
+                metadata: json!({"accepted_by": "kernel", "review_lane": "evaluation"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn accept_training_outcome_request(accepted_at_ms: i64) -> AcceptComputeOutcomeRequest {
+        AcceptComputeOutcomeRequest {
+            idempotency_key: "idemp.compute.outcome.accept.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            outcome: ComputeAcceptedOutcome {
+                outcome_id: "accepted.training.alpha".to_string(),
+                outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                source_run_id: "train.math.basic.alpha".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: Some("2026.03.13".to_string()),
+                    dataset_ref: Some("dataset://math/basic".to_string()),
+                    rubric_ref: Some("rubric://math/basic".to_string()),
+                    evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                },
+                checkpoint_binding: None,
+                validator_policy_ref: None,
+                benchmark_package_refs: Vec::new(),
+                accepted_at_ms,
+                evaluation_summary: None,
+                training_summary: None,
+                metadata: json!({"accepted_by": "kernel"}),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -13936,6 +15336,180 @@ mod tests {
             )
             .expect_err("duplicate sample should conflict");
         assert_eq!(error, "compute_eval_sample_already_exists");
+    }
+
+    #[test]
+    fn training_authority_registry_and_acceptance_flow_is_machine_legible() {
+        let created_at_ms = 1_762_000_324_500u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+        kernel
+            .register_compute_checkpoint_family_policy(
+                &fixture_context(created_at_ms + 100),
+                checkpoint_family_policy_request(created_at_ms as i64 + 100),
+            )
+            .expect("register checkpoint policy");
+        kernel
+            .register_compute_validator_policy(
+                &fixture_context(created_at_ms + 200),
+                validator_policy_request(created_at_ms as i64 + 200),
+            )
+            .expect("register validator policy");
+        kernel
+            .register_compute_benchmark_package(
+                &fixture_context(created_at_ms + 300),
+                benchmark_package_request(created_at_ms as i64 + 300),
+            )
+            .expect("register benchmark package");
+        kernel
+            .register_compute_training_policy(
+                &fixture_context(created_at_ms + 400),
+                training_policy_request(created_at_ms as i64 + 400),
+            )
+            .expect("register training policy");
+        let mut eval_request = compute_evaluation_run_request(created_at_ms as i64 + 450);
+        eval_request.eval_run.delivery_proof_id = None;
+        kernel
+            .create_compute_evaluation_run(&fixture_context(created_at_ms + 450), eval_request)
+            .expect("create eval run");
+        kernel
+            .append_compute_evaluation_samples(
+                &fixture_context(created_at_ms + 475),
+                append_compute_evaluation_samples_request(created_at_ms as i64 + 475),
+            )
+            .expect("append eval samples");
+        let accepted_eval = kernel
+            .finalize_compute_evaluation_run(
+                &fixture_context(created_at_ms + 490),
+                finalize_compute_evaluation_run_request(created_at_ms as i64 + 490),
+            )
+            .expect("finalize eval run");
+        assert_eq!(
+            accepted_eval.response.receipt.receipt_type,
+            "kernel.compute.eval_run.finalize.v1"
+        );
+        let accepted_eval_outcome = kernel
+            .accept_compute_outcome(
+                &fixture_context(created_at_ms + 495),
+                accept_evaluation_outcome_request(created_at_ms as i64 + 495),
+            )
+            .expect("accept evaluation outcome");
+        assert_eq!(
+            accepted_eval_outcome.response.outcome.outcome_kind,
+            ComputeAcceptedOutcomeKind::EvaluationRun
+        );
+        assert_eq!(
+            accepted_eval_outcome
+                .response
+                .outcome
+                .evaluation_summary
+                .as_ref()
+                .and_then(|summary| summary.pass_rate_bps),
+            Some(5_000)
+        );
+
+        let created = kernel
+            .create_compute_training_run(
+                &fixture_context(created_at_ms + 500),
+                training_run_request(created_at_ms as i64 + 500),
+            )
+            .expect("create training run");
+        assert_eq!(
+            created
+                .response
+                .training_run
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+        assert_eq!(
+            created.response.training_run.training_policy_ref,
+            "policy://training/math/basic"
+        );
+
+        let finalized = kernel
+            .finalize_compute_training_run(
+                &fixture_context(created_at_ms + 600),
+                finalize_training_run_request(created_at_ms as i64 + 600),
+            )
+            .expect("finalize training run");
+        assert_eq!(
+            finalized.response.training_run.status,
+            ComputeTrainingRunStatus::Accepted
+        );
+        assert_eq!(
+            finalized
+                .response
+                .training_run
+                .final_checkpoint_ref
+                .as_deref(),
+            Some("checkpoint://decoder/train.math.basic.alpha/final")
+        );
+
+        let accepted = kernel
+            .accept_compute_outcome(
+                &fixture_context(created_at_ms + 700),
+                accept_training_outcome_request(created_at_ms as i64 + 700),
+            )
+            .expect("accept training outcome");
+        assert_eq!(
+            accepted.response.outcome.outcome_kind,
+            ComputeAcceptedOutcomeKind::TrainingRun
+        );
+        assert_eq!(
+            accepted
+                .response
+                .outcome
+                .checkpoint_binding
+                .as_ref()
+                .map(|binding| binding.checkpoint_family.as_str()),
+            Some("decoder")
+        );
+        assert_eq!(
+            accepted.response.outcome.validator_policy_ref.as_deref(),
+            Some("policy://validator/training")
+        );
+        assert_eq!(
+            kernel.list_compute_checkpoint_family_policies(None).len(),
+            1
+        );
+        assert_eq!(
+            kernel
+                .get_compute_training_policy("policy://training/math/basic", None)
+                .expect("training policy")
+                .checkpoint_family,
+            "decoder"
+        );
+        assert_eq!(kernel.list_compute_training_runs(None, None, None).len(), 1);
+        assert_eq!(
+            kernel
+                .list_compute_accepted_outcomes(
+                    Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                    Some("env.openagents.math.basic"),
+                )
+                .len(),
+            1
+        );
+        assert_eq!(
+            kernel
+                .list_compute_accepted_outcomes(
+                    Some(ComputeAcceptedOutcomeKind::EvaluationRun),
+                    Some("env.openagents.math.basic"),
+                )
+                .len(),
+            1
+        );
     }
 
     #[test]

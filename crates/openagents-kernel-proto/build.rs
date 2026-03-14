@@ -8,6 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/openagents/compute/v1/compute_products.proto",
         "../../proto/openagents/compute/v1/compute_environments.proto",
         "../../proto/openagents/compute/v1/compute_evals.proto",
+        "../../proto/openagents/compute/v1/compute_training.proto",
         "../../proto/openagents/compute/v1/compute_synthetic.proto",
         "../../proto/openagents/compute/v1/compute_capacity.proto",
         "../../proto/openagents/compute/v1/compute_instruments.proto",

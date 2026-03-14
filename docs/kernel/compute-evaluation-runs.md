@@ -111,3 +111,7 @@ Receipt types:
   for held-out local eval runs, benchmark packages, repeat-run aggregation, and
   operator-local validator simulation, while this kernel lifecycle remains the
   canonical authority surface
+- `#3583`: checkpoint-family policy, validator-policy, benchmark-package,
+  training-policy, training-run, and accepted-outcome authority truth now sits
+  alongside this eval-run lifecycle
+  - landed in `docs/kernel/compute-training-authority.md`

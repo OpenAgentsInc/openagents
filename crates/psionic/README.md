@@ -206,8 +206,10 @@ Implemented now:
   contracts, benchmark packages with repeat-run aggregation, and operator-local
   validator simulation in `psionic-eval`, while kernel/Nexus still own
   canonical eval-run authority truth.
-- broader-stack authority flows for environment packages, eval runs, and
-  synthetic-data jobs now exist outside Psionic in kernel or Nexus surfaces.
+- broader-stack authority flows for environment packages, checkpoint-family
+  policies, validator policies, benchmark packages, training policies, eval
+  runs, training runs, accepted outcomes, and synthetic-data jobs now exist
+  outside Psionic in kernel or Nexus surfaces.
 
 Still planned:
 
